@@ -76,6 +76,9 @@ Run
 cargo run  
 ```
 
+![Preview1](./docs/images/bash_cargo_run.gif)
+
+
 # RPC API
 
 #### /network/points
@@ -85,6 +88,8 @@ Returns connected peers, after successful authentication.
 curl http://127.0.0.1:18732/network/points
 ```
 
+![Preview1](./docs/images/bash_network_points.gif)
+
 
 #### /chains/main/blocks/head
 Returns current head.
@@ -92,6 +97,8 @@ Returns current head.
 ```
 curl http://127.0.0.1:18732/chains/main/blocks/head
 ```
+
+![Preview1](./docs/images/bash_chains_main_blocks_head.gif)
 
 # Run configuration
 
