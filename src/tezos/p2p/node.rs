@@ -54,7 +54,6 @@ pub async fn forward_rpc_messages_to_p2p(
                     debug!("BootstrapWithPeers - initial_peers:{:?}", initial_peers);
 
                     // than start async bootstraping with received peers
-                    let pool = &mut await!(pool.lock());
                     await!(bootstrap(&p2p_client, &initial_peers, pool, thread_pool_inner))
                 }
                 (RpcMessage::BootstrapWithLookup(_), rpc_callback) => {
@@ -71,9 +70,8 @@ pub async fn forward_rpc_messages_to_p2p(
                     let initial_peers = tezos_node::lookup_initial_peers(&configuration::ENV.p2p.bootstrap_lookup_address).unwrap();
                     debug!("BootstrapWithLookup({:?}) - initial_peers:{:?}", &configuration::ENV.p2p.bootstrap_lookup_address, initial_peers);
 
-                    // than start async bootstraping with peers from lookup
-                    let pool = &mut await!(pool.lock());
-                    await!(bootstrap(&p2p_client, &initial_peers, pool, thread_pool_inner))
+                    // than start async bootstrapping with peers from lookup
+                    await!(bootstrap(&p2p_client, &initial_peers, pool.clone(), thread_pool_inner))
                 }
                 (RpcMessage::NetworkPoints(_), rpc_callback) => {
                     debug!("Handling rpc call NetworkPoints...");
@@ -138,7 +136,7 @@ pub async fn forward_rpc_messages_to_p2p(
 async fn bootstrap<'a>(
     p2p_client: &'a P2pClient,
     peers: &'a Vec<PeerURL>,
-    pool: &'a mut P2pPool,
+    pool: Arc<Mutex<P2pPool>>,
     mut thread_pool: ThreadPool) -> Result<(), Error> {
 
     let mut bootstrap_futures = vec![];
@@ -153,7 +151,7 @@ async fn bootstrap<'a>(
                 info!("Bootstrap of {:?} successful", hex::encode(peer_bootstrap.get_public_key()));
 
                 let peer_bootstrap = Arc::new(peer_bootstrap);
-                pool.peers.insert(peer_bootstrap.get_peer_id().clone(), peer_bootstrap.clone());
+                await!(pool.lock()).insert_peer(peer_bootstrap.get_peer_id(), peer_bootstrap.clone());
 
                 // start peer processing
                 thread_pool.spawn(

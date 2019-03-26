@@ -6,10 +6,11 @@ use crate::tezos::p2p::peer::P2pPeer;
 /// Structure for holding live references to all authenticated peers,
 /// for further user, e.g. send bootstrap to all peer
 pub struct P2pPool {
-    pub peers: HashMap<String, Arc<P2pPeer>>
+    peers: HashMap<String, Arc<P2pPeer>>
 }
 
 impl P2pPool {
+
     pub fn new() -> Self {
         P2pPool {
             peers: HashMap::new()
@@ -27,5 +28,9 @@ impl P2pPool {
 
         let peers_as_json = peers_as_json.join(",");
         peers_as_json
+    }
+
+    pub fn insert_peer(&mut self, peer_id: &str, peer: Arc<P2pPeer>) {
+        self.peers.insert(String::from(peer_id), peer);
     }
 }
