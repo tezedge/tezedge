@@ -86,7 +86,7 @@ pub enum SchemaType {
 pub trait EncodingFnTr: Fn(SchemaType) -> Encoding { }
 impl<F> EncodingFnTr for F where F: Fn(SchemaType) -> Encoding { }
 
-impl fmt::Debug for EncodingFnTr<Output = Encoding> {
+impl fmt::Debug for dyn EncodingFnTr<Output = Encoding> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn(SchemaType) -> Encoding")
     }

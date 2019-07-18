@@ -23,7 +23,7 @@ impl BinaryReader {
         }
     }
 
-    fn decode_record(&self, buf: &mut Buf, schema: &[Field]) -> Result<Value, Error> {
+    fn decode_record(&self, buf: &mut dyn Buf, schema: &[Field]) -> Result<Value, Error> {
         let mut values = vec![];
         for field in schema {
             let name = field.get_name();
@@ -33,7 +33,7 @@ impl BinaryReader {
         Ok(Value::Record(values))
     }
 
-    fn decode_value(&self, buf: &mut Buf, encoding: &Encoding) -> Result<Value, Error> {
+    fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, Error> {
         match encoding {
             Encoding::Split(inner_encoding) => {
                 let inner_encoding = inner_encoding(SchemaType::Binary);

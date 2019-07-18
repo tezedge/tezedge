@@ -5,6 +5,7 @@ use futures::executor::ThreadPool;
 use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::task::SpawnExt;
+use futures::stream::futures_unordered::FuturesUnordered;
 use log::{debug, error, info, warn};
 use serde_json::json;
 use serde_json::Value;
@@ -139,12 +140,11 @@ async fn bootstrap<'a>(
     pool: Arc<Mutex<P2pPool>>,
     mut thread_pool: ThreadPool) -> Result<(), Error> {
 
-    let mut bootstrap_futures = vec![];
+    let mut bootstrap_futures = FuturesUnordered::new();
     for peer in peers {
         bootstrap_futures.push(p2p_client.connect_peer(&peer));
     }
 
-    let mut bootstrap_futures = stream::futures_unordered(bootstrap_futures);
     while let Some(peer_bootstrap) = await!(bootstrap_futures.next()) {
         match peer_bootstrap {
             Ok(peer_bootstrap) => {
