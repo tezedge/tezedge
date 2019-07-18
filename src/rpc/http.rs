@@ -1,6 +1,6 @@
 use chrono::Utc;
 use failure::Error;
-use futures::prelude::*;
+use futures::{AsyncWriteExt, AsyncReadExt};
 use http::{Method, Response, Request, Uri, StatusCode};
 use http::header::{CONTENT_LENGTH, TRANSFER_ENCODING, SERVER, CONNECTION, DATE, CONTENT_TYPE, HeaderValue};
 use log::debug;
@@ -61,7 +61,7 @@ pub type Body = Option<String>;
 //}
 
 
-pub async fn http_send_response(mut resp: Response<Body>, mut tx: impl AsyncWriteExt) -> Result<(), Error> {
+pub async fn http_send_response(mut resp: Response<Body>, mut tx: impl AsyncWriteExt + Unpin) -> Result<(), Error> {
 
     if !resp.headers().contains_key(CONTENT_LENGTH) && resp.body().is_some() {
         let content_size = resp.body().as_ref().unwrap().len();
@@ -73,7 +73,7 @@ pub async fn http_send_response(mut resp: Response<Body>, mut tx: impl AsyncWrit
 
     let line = format!("HTTP/1.1 {} {}\r\n", resp.status().as_str(), resp.status().canonical_reason().unwrap());
     debug!("Send HTTP header: {:?}", &line);
-    await!(tx.write_all(line.as_bytes()))?;
+    tx.write_all(line.as_bytes()).await?;
 
     for (name, value) in resp.headers() {
         let line = format!("{}: {}\r\n", name.as_str().capitalize(), value.to_str()?);
@@ -96,7 +96,7 @@ pub async fn http_send_response(mut resp: Response<Body>, mut tx: impl AsyncWrit
     Ok(())
 }
 
-pub async fn http_receive_request(mut rx: impl AsyncReadExt) -> Result<Request<Body>, Error> {
+pub async fn http_receive_request(mut rx: impl AsyncReadExt + Unpin) -> Result<Request<Body>, Error> {
     let mut request_builder = Request::builder();
 
     let mut request_data = vec![];
@@ -285,7 +285,7 @@ pub async fn http_receive_request(mut rx: impl AsyncReadExt) -> Result<Request<B
 //}
 
 /// This is convenience function to send http OK json response.
-pub async fn http_send_response_ok_json<T: AsyncWriteExt + 'static>(msg: &str, tx: T) -> Result<(), Error> {
+pub async fn http_send_response_ok_json<T: AsyncWriteExt + Unpin + 'static>(msg: &str, tx: T) -> Result<(), Error> {
     let mut resp = Response::new(None);
     *resp.status_mut() = StatusCode::OK;
     resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_str("application/json").unwrap());
@@ -295,7 +295,7 @@ pub async fn http_send_response_ok_json<T: AsyncWriteExt + 'static>(msg: &str, t
 }
 
 /// This is convenience function to send http OK text/html response.
-pub async fn http_send_response_ok_text<T: AsyncWriteExt + 'static>(msg: &str, tx: T) -> Result<(), Error> {
+pub async fn http_send_response_ok_text<T: AsyncWriteExt + Unpin + 'static>(msg: &str, tx: T) -> Result<(), Error> {
     let mut resp = Response::new(None);
     *resp.status_mut() = StatusCode::OK;
     resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_str("text/html").unwrap());

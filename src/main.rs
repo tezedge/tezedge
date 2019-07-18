@@ -1,4 +1,4 @@
-#![feature(await_macro, async_await, futures_api, generators)]
+#![feature(await_macro, async_await, generators)]
 #[macro_use]
 extern crate lazy_static;
 
