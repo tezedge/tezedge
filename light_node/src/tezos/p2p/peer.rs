@@ -118,8 +118,8 @@ impl P2pPeer {
         self.peer_state.write().unwrap().increment_nonce_local();
 
         // send
-        let mut tx = await!(self.tx.lock());
-        if let Err(e) = await!(tx.write_message(&message_encrypted)) {
+        let mut tx = self.tx.lock().await;
+        if let Err(e) = tx.write_message(&message_encrypted).await {
             bail!("Failed to transfer message: {:?}", e);
         }
 
@@ -128,8 +128,8 @@ impl P2pPeer {
 
     pub async fn read_message(&self) -> Result<Vec<u8>, Error> {
         // read
-        let mut rx = await!(self.rx.lock());
-        let message_encrypted = await!(rx.read_message())?;
+        let mut rx = self.rx.lock().await;
+        let message_encrypted = rx.read_message().await?;
 
         // increment nonce
         let remote_nonce_to_use = self.peer_state.read().unwrap().nonce_remote.clone();

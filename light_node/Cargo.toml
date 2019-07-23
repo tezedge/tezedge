@@ -29,8 +29,8 @@ num-bigint = { version = "0.2.2", features = ["serde", "rand"] }
 num-traits = "0.2.8"
 rand = "0.6.5"
 regex = "1.2.0"
-romio = "0.3.0-alpha.9"
 serde = { version = "1.0.97", features = ["derive"] }
 serde_json = "1.0.40"
 sodiumoxide = "0.2.2"
+tokio = {git = "https://github.com/tokio-rs/tokio"}
 uuid = { version = "0.7.4", features = ["v4"] }
