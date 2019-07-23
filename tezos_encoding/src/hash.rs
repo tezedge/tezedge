@@ -1,4 +1,4 @@
-use crate::tezos::crypto::base58::ToBase58Check;
+use crypto::base58::ToBase58Check;
 
 pub mod prefix {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];

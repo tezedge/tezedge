@@ -2,9 +2,9 @@ use chrono::prelude::*;
 use num_traits::Num;
 use serde::ser::{Error as SerdeError, Serialize};
 
-use super::schema::{Encoding, Field, SchemaType};
-use super::ser::{Error, Serializer};
-use super::types::Value;
+use crate::schema::{Encoding, Field, SchemaType};
+use crate::ser::{Error, Serializer};
+use crate::types::Value;
 
 pub struct JsonWriter {
     data: String
@@ -304,8 +304,8 @@ mod tests {
     use serde::{Serialize};
 
     use super::*;
-    use crate::tezos::data_encoding::hash::{self, HashEncoding};
-    use crate::tezos::data_encoding::types::BigInt;
+    use crate::hash::{self, HashEncoding};
+    use crate::types::BigInt;
 
     #[test]
     fn can_serialize_complex_schema_to_binary() {

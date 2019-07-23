@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
 use crate::configuration;
-use crate::tezos::data_encoding::binary_reader::BinaryReader;
-use crate::tezos::data_encoding::binary_writer::BinaryWriter;
-use crate::tezos::data_encoding::de;
-use crate::tezos::data_encoding::de::from_value as deserialize_from_value;
-use crate::tezos::data_encoding::hash::{self, HashEncoding};
-use crate::tezos::data_encoding::json_writer::JsonWriter;
-use crate::tezos::data_encoding::schema::{Encoding, Field, SchemaType, Tag, TagMap};
-use crate::tezos::data_encoding::ser;
+use tezos_encoding::binary_reader::BinaryReader;
+use tezos_encoding::binary_writer::BinaryWriter;
+use tezos_encoding::de;
+use tezos_encoding::de::from_value as deserialize_from_value;
+use tezos_encoding::hash::{self, HashEncoding};
+use tezos_encoding::json_writer::JsonWriter;
+use tezos_encoding::schema::{Encoding, Field, SchemaType, Tag, TagMap};
+use tezos_encoding::ser;
 
 pub const MESSAGE_LENGTH_FIELD_SIZE: usize = 2;
 
