@@ -3,11 +3,11 @@ use bytes::{Buf, IntoBuf};
 use serde::de::{Error as SerdeError};
 
 #[allow(unused_imports)]
-use super::de::{self, Error};
+use crate::de::{self, Error};
 #[allow(unused_imports)]
-use super::schema::{Encoding, Field, Schema, Tag, TagMap, SchemaType};
-use super::types::{self, Value};
-use super::bit_utils::{BitTrim, BitReverse, ToBytes};
+use crate::schema::{Encoding, Field, Schema, Tag, TagMap, SchemaType};
+use crate::types::{self, Value};
+use crate::bit_utils::{BitTrim, BitReverse, ToBytes};
 
 pub struct BinaryReader {}
 
@@ -183,7 +183,7 @@ mod tests {
     use super::super::binary_writer::BinaryWriter;
     use super::super::ser::Serializer;
     use super::*;
-    use crate::tezos::data_encoding::types::BigInt;
+    use crate::types::BigInt;
 
     #[test]
     fn can_deserialize_z_from_binary() {

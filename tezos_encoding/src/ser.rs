@@ -4,8 +4,8 @@ use std::io;
 
 use serde::ser::{self, Error as SerdeError, Serialize};
 
-use crate::tezos::data_encoding::schema::Encoding;
-use crate::tezos::data_encoding::types::{BigInt, Value};
+use crate::schema::Encoding;
+use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Error {

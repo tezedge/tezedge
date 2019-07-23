@@ -8,8 +8,9 @@ use log::{debug, info, error, warn};
 use romio::TcpStream;
 use serde::Deserialize;
 
+use crypto::nonce::{self, Nonce};
+
 use crate::rpc::message::PeerURL;
-use crate::tezos::crypto::nonce::*;
 use crate::tezos::storage::db::Db;
 
 use super::message::*;
@@ -162,7 +163,7 @@ impl P2pClient {
     /// local_nonce is used for writing crypto messages to other peers
     /// remote_nonce is used for reading crypto messages from other peers
     fn generate_nonces(&self, sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, incoming: bool) -> (Nonce, Nonce) {
-        generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
+        nonce::generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
     }
 
     fn prepare_connection_message(&self) -> ConnectionMessage {

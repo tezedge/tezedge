@@ -3,12 +3,11 @@ use std::fmt;
 use std::io;
 use std::slice::Iter;
 use std::string;
-
 use serde::de::{self, Deserialize, DeserializeSeed, Error as SerdeError, Visitor, IntoDeserializer};
 use serde::forward_to_deserialize_any;
 
-use crate::tezos::data_encoding::schema::Encoding;
-use crate::tezos::data_encoding::types::{BigInt, Value};
+use crate::schema::Encoding;
+use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Error {

@@ -6,11 +6,11 @@ use byteorder::{BigEndian, WriteBytesExt};
 use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
-use super::bit_utils::BitTrim;
+use crate::bit_utils::BitTrim;
 #[allow(unused_imports)]
-use super::schema::{Encoding, Field, Schema, SchemaType, Tag, TagMap};
-use super::ser::{Error, Serializer};
-use super::types::{self, Value};
+use crate::schema::{Encoding, Field, Schema, SchemaType, Tag, TagMap};
+use crate::ser::{Error, Serializer};
+use crate::types::{self, Value};
 
 pub struct BinaryWriter {
     data: Vec<u8>
@@ -412,7 +412,7 @@ mod tests {
     use serde::{Serialize};
 
     use super::*;
-    use crate::tezos::data_encoding::types::BigInt;
+    use crate::types::BigInt;
 
     #[test]
     fn can_serialize_z_positive_to_binary() {

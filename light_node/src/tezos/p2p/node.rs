@@ -10,11 +10,12 @@ use log::{debug, error, info, warn};
 use serde_json::json;
 use serde_json::Value;
 
+use tezos_encoding::hash::{prefix, to_prefixed_hash};
+
 use crate::configuration::tezos_node;
 use crate::rpc::http::*;
 use crate::rpc::message::*;
 use crate::rpc::RpcRx;
-use crate::tezos::data_encoding::hash::{prefix, to_prefixed_hash};
 use crate::tezos::p2p::message::JsonMessage;
 use crate::tezos::p2p::pool::P2pPool;
 

@@ -5,10 +5,13 @@ use failure::{bail, Error};
 use futures::lock::Mutex;
 use log::debug;
 
+use crypto::{
+    crypto_box::*,
+    nonce::*
+};
+
 use crate::configuration;
 use crate::rpc::message::PeerURL;
-use crate::tezos::crypto::crypto_box::*;
-use crate::tezos::crypto::nonce::*;
 
 use super::message::*;
 use super::stream::*;
