@@ -5,7 +5,7 @@ use std::sync::RwLock;
 
 use failure::{bail, Error};
 use log::{debug, info, error, warn};
-use romio::TcpStream;
+use tokio::net::TcpStream;
 use serde::Deserialize;
 
 use crypto::nonce::{self, Nonce};
@@ -62,7 +62,7 @@ impl P2pClient {
                     debug!("=========>>>");
                     debug!("Sending bootstrap message to: {:?}", addr);
 
-                    match await!(TcpStream::connect(addr)) {
+                    match TcpStream::connect(addr).await {
                         Ok(stream) => {
 
                             let stream: MessageStream = stream.into();
@@ -72,7 +72,7 @@ impl P2pClient {
                             let connection_message = self.prepare_connection_message();
                             let connection_message_sent = {
                                 let as_bytes = connection_message.as_bytes()?;
-                                await!(msg_tx.write_message(&as_bytes))
+                                msg_tx.write_message(&as_bytes).await
                             };
                             if let Err(e) = connection_message_sent {
                                 bail!("Failed to transfer bootstrap message: {:?}", e);
@@ -80,7 +80,7 @@ impl P2pClient {
                             let connection_msg_bytes_sent = connection_message_sent.unwrap();
 
                             // receive connection message
-                            let received_connection_msg = await!(msg_rx.read_message());
+                            let received_connection_msg = msg_rx.read_message().await;
                             if let Err(e) = received_connection_msg {
                                 bail!("Failed to receive response to our bootstrap message: {:?}", e);
                             }
@@ -105,12 +105,12 @@ impl P2pClient {
 
                             // send metadata
                             let metadata = MetadataMessage::new(false, false);
-                            if let Err(e) = await!(peer.write_message(&metadata)) {
+                            if let Err(e) = peer.write_message(&metadata).await {
                                 bail!("Failed to transfer metadata: {:?}", e);
                             }
 
                             // receive metadata
-                            let metadata_received = await!(peer.read_message());
+                            let metadata_received = peer.read_message().await;
                             if let Err(e) = metadata_received {
                                 bail!("Failed to receive metadata: {:?}", e);
                             }
@@ -119,12 +119,12 @@ impl P2pClient {
 
                             // send ack
                             let ack = AckMessage::Ack;
-                            if let Err(e) = await!(peer.write_message(&ack)) {
+                            if let Err(e) = peer.write_message(&ack).await {
                                 bail!("Failed to transfer ack: {:?}", e);
                             }
 
                             // receive ack
-                            let ack_received = await!(peer.read_message());
+                            let ack_received = peer.read_message().await;
                             if let Err(e) = ack_received {
                                 bail!("Failed to receive ack: {:?}", e);
                             }
@@ -195,7 +195,7 @@ impl P2pClient {
                             // send back our current_branch
                             let message = PeerMessage::CurrentBranch(CurrentBranchMessage::from_bytes(current_branch.as_bytes()?)?);
                             let message: PeerMessageResponse = message.into();
-                            match await!(peer.write_message(&message)) {
+                            match peer.write_message(&message).await {
                                 Ok(()) => debug!("current branch sent to peer: {:?}", &peer.get_peer_id()),
                                 Err(e) => error!("Failed to write current branch message. {:?}", e),
                             }
@@ -219,7 +219,7 @@ impl P2pClient {
     pub async fn start_p2p_biznis<'a>(&'a self, peer: &'a P2pPeer) -> () {
         let get_current_branch_message = PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(self.init_chain_id.clone()));
         let response: PeerMessageResponse = get_current_branch_message.into();
-        match await!(peer.write_message(&response)) {
+        match peer.write_message(&response).await {
             Ok(()) => debug!("Write success"),
             Err(e) => error!("Failed to write message. {:?}", e),
         }

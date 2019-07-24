@@ -1,9 +1,12 @@
 use bytes::Buf;
 use failure::Error;
-use futures::io::{WriteHalf, ReadHalf};
-use futures::prelude::*;
 use bytes::{BufMut, IntoBuf};
-use romio::TcpStream;
+
+use tokio;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
+
 
 use super::message::{RawBinaryMessage, MESSAGE_LENGTH_FIELD_SIZE};
 
@@ -33,14 +36,14 @@ impl From<TcpStream> for MessageStream {
 }
 
 pub struct MessageReader {
-    stream: ReadHalf<TcpStream>
+    stream: TcpStreamReadHalf
 }
 
 impl MessageReader {
 
     pub async fn read_message(&mut self) -> Result<RawBinaryMessage, Error> {
         // read message length (2 bytes)
-        let msg_len_bytes = await!(self.read_message_length_bytes())?;
+        let msg_len_bytes = self.read_message_length_bytes().await?;
         // copy bytes containing message length to raw message buffer
         let mut all_recv_bytes = vec![];
         all_recv_bytes.extend_from_slice(&msg_len_bytes);
@@ -48,7 +51,7 @@ impl MessageReader {
         // read the message content
         let msg_len = msg_len_bytes.into_buf().get_u16_be() as usize;
         let mut msg_content_bytes =vec![0u8; msg_len];
-        await!(self.stream.read_exact(&mut msg_content_bytes))?;
+        self.stream.read_exact(&mut msg_content_bytes).await?;
         all_recv_bytes.extend_from_slice(&msg_content_bytes);
 
         Ok(all_recv_bytes.into())
@@ -56,13 +59,13 @@ impl MessageReader {
 
     async fn read_message_length_bytes(&mut self) -> Result<Vec<u8>, Error> {
         let mut msg_len_bytes = vec![0u8; MESSAGE_LENGTH_FIELD_SIZE];
-        await!(self.stream.read_exact(&mut msg_len_bytes))?;
+        self.stream.read_exact(&mut msg_len_bytes).await?;
         Ok(msg_len_bytes)
     }
 }
 
 pub struct MessageWriter {
-    stream: WriteHalf<TcpStream>
+    stream: TcpStreamWriteHalf
 }
 
 impl MessageWriter {
@@ -75,8 +78,7 @@ impl MessageWriter {
         msg_with_length.put(bytes);
 
         // write serialized message bytes
-        await!(self.stream.write_all(&msg_with_length))?;
-        await!(self.stream.flush())?;
+        self.stream.write_all(&msg_with_length).await?;
         Ok(msg_with_length.into())
     }
 }

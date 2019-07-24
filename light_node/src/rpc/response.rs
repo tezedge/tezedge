@@ -1,15 +1,14 @@
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use futures::io::AsyncWrite;
-use futures::io::WriteHalf;
-use romio::TcpStream;
+use tokio::net::tcp::split::TcpStreamWriteHalf;
+use tokio::io::AsyncWrite;
 
 /// Holds response channel for RPC messages.
-pub struct RpcResponse(WriteHalf<TcpStream>);
+pub struct RpcResponse(TcpStreamWriteHalf);
 
 impl RpcResponse {
-    pub fn new(tx: WriteHalf<TcpStream>) -> RpcResponse {
+    pub fn new(tx: TcpStreamWriteHalf) -> RpcResponse {
         RpcResponse(tx)
     }
 }
@@ -27,7 +26,7 @@ impl AsyncWrite for RpcResponse {
         Pin::new(&mut self.0).poll_flush(cx)
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.0).poll_close(cx)
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.0).poll_shutdown(cx)
     }
 }

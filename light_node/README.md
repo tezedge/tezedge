@@ -20,51 +20,10 @@ The relations between individual components are described in the diagram depicte
 
 # How to run the node
 
-Requirements
-------------
-
-**1. Install Rust** 
-
-We recommend installing Rust through rustup.
-
-Run the following in your terminal, then follow the onscreen instructions.
-
-```
-curl https://sh.rustup.rs -sSf | sh
-```
-
-**2. Rust version** 
-
-Rust nightly is required to build this project.
-```
-rustup install nightly-2019-07-16
-rustup default nightly-2019-07-16
-```
-Application has been tested to compile with `rustc 1.35.0-nightly (bc44841ad 2019-03-14)`.
-
-
-Building
---------
-
-**3. Build node** 
-
-On linux systems:
-
-```
-export SODIUM_USE_PKG_CONFIG=1
-cargo build
-```
-
-On windows systems with vcpkg:
-```
-set SODIUM_USE_PKG_CONFIG=1
-set VCPKGRS_DYNAMIC=1
-cargo build
-```
 
 Run
 ------------
-**4. Run node** 
+**Run node** 
 
 ```
 cargo run  

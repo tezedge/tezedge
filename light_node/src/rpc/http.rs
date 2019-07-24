@@ -1,65 +1,12 @@
 use chrono::Utc;
 use failure::Error;
-use futures::{AsyncWriteExt, AsyncReadExt};
 use http::{Method, Response, Request, Uri, StatusCode};
 use http::header::{CONTENT_LENGTH, TRANSFER_ENCODING, SERVER, CONNECTION, DATE, CONTENT_TYPE, HeaderValue};
 use log::debug;
 use regex::bytes::Regex;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub type Body = Option<String>;
-
-//pub async fn http_client(req: Request<Body>) -> Result<Response<Body>, Error> {
-//    let uri = req.uri();
-//    let stream_addr = format!("{}:{}", uri.host().unwrap(), uri.port_part().unwrap().as_u16()).parse()?;
-//    let (rx, tx) = await!(TcpStream::connect(&stream_addr))?.split();
-//    await!(http_send_request(req, tx))?;
-//    await!(http_receive_response(rx))
-//}
-//
-//async fn http_send_request(mut req: Request<Body>, mut tx: impl AsyncWriteExt) -> Result<(), Error> {
-//
-//    if !req.headers().contains_key(CONTENT_LENGTH) && req.body().is_some() {
-//        let content_size = req.body().as_ref().unwrap().len();
-//        req.headers_mut().insert(CONTENT_LENGTH, HeaderValue::from_str(&content_size.to_string())?);
-//    }
-//    if !req.headers().contains_key(HOST) && req.uri().host().is_some() {
-//        let host = String::from(req.uri().host().unwrap());
-//        req.headers_mut().insert(HOST, HeaderValue::from_str(&host)?);
-//    }
-//    if !req.headers().contains_key(USER_AGENT) {
-//        req.headers_mut().insert(USER_AGENT, HeaderValue::from_static("rp2p"));
-//    }
-//    if !req.headers_mut().contains_key(ACCEPT) {
-//        req.headers_mut().insert(ACCEPT, HeaderValue::from_static("*/*"));
-//    }
-//
-//    let line = format!("{} {} HTTP/1.1\r\n", req.method().as_str(), req.uri().path());
-//    debug!("");
-//    debug!("===================>>>");
-//    debug!("Send: {:?}", &line);
-//    await!(tx.write_all(line.as_bytes()))?;
-//
-//    for (name, value) in req.headers() {
-//        let line = format!("{}: {}\r\n", name.as_str(), value.to_str()?);
-//        debug!("Send header: {:?}", &line);
-//        await!(tx.write_all(line.as_bytes()))?;
-//    }
-//
-//    let line = "\r\n";
-//    debug!("Send header terminator");
-//    await!(tx.write_all(line.as_bytes()))?;
-//
-//    if let &Some(ref body) = req.body() {
-//        debug!("Send body: {:?}", &body);
-//        await!(tx.write_all(body.as_bytes()))?;
-//    }
-//
-//    await!(tx.flush())?;
-//    await!(tx.close())?;
-//
-//    Ok(())
-//}
-
 
 pub async fn http_send_response(mut resp: Response<Body>, mut tx: impl AsyncWriteExt + Unpin) -> Result<(), Error> {
 
@@ -78,20 +25,17 @@ pub async fn http_send_response(mut resp: Response<Body>, mut tx: impl AsyncWrit
     for (name, value) in resp.headers() {
         let line = format!("{}: {}\r\n", name.as_str().capitalize(), value.to_str()?);
         debug!("Send header: {:?}", &line);
-        await!(tx.write_all(line.as_bytes()))?;
+        tx.write_all(line.as_bytes()).await?;
     }
 
     let line = "\r\n";
     debug!("Send header terminator");
-    await!(tx.write_all(line.as_bytes()))?;
+    tx.write_all(line.as_bytes()).await?;
 
     if let &Some(ref body) = resp.body() {
         debug!("Send body: {:?}", &body);
-        await!(tx.write_all(body.as_bytes()))?;
+        tx.write_all(body.as_bytes()).await?;
     }
-
-    await!(tx.flush())?;
-    await!(tx.close())?;
 
     Ok(())
 }
@@ -105,7 +49,7 @@ pub async fn http_receive_request(mut rx: impl AsyncReadExt + Unpin) -> Result<R
     let mut transfer_encoding = None;
 
     let mut buf = [0u8; 512];
-    while let Ok(bytes_sz) = await!(rx.read(&mut buf)) {
+    while let Ok(bytes_sz) = rx.read(&mut buf).await {
         if bytes_sz == 0 {
             break;
         }
@@ -160,7 +104,7 @@ pub async fn http_receive_request(mut rx: impl AsyncReadExt + Unpin) -> Result<R
         debug!("Received data length: {}, content length: {}, parsed length: {:?}, remaining: {}", request_data.len(), content_length, parsed_length, remaining_content_length);
 
         let mut buf = vec![0u8; remaining_content_length];
-        await!(rx.read_exact(&mut buf))?;
+        rx.read_exact(&mut buf).await?;
         request_data.extend_from_slice(&buf);
 
         body = Some(std::str::from_utf8(&request_data[(request_data.len() - content_length)..request_data.len()])?.to_string());
@@ -206,7 +150,7 @@ pub async fn http_receive_request(mut rx: impl AsyncReadExt + Unpin) -> Result<R
                 }
 
                 if require_more_data {
-                    let bytes_sz = await!(rx.read(&mut buf))?;
+                    let bytes_sz = rx.read(&mut buf).await?;
                     request_data.extend_from_slice(&buf[0..bytes_sz]);
                 }
 
@@ -221,69 +165,6 @@ pub async fn http_receive_request(mut rx: impl AsyncReadExt + Unpin) -> Result<R
 }
 
 
-//async fn http_receive_response(mut rx: impl AsyncReadExt) -> Result<Response<Body>, Error> {
-//    let mut response_builder = Response::builder();
-//
-//    let mut response_data = vec![];
-//    let mut content_length = None;
-//    let mut parsed_length = None;
-//
-//    let mut buf = [0u8; 512];
-//    while let Ok(bytes_sz) = await!(rx.read(&mut buf)) {
-//        debug!("Received {} bytes", bytes_sz);
-//        if bytes_sz == 0 {
-//            break;
-//        }
-//
-//        response_data.extend_from_slice(&buf[0..bytes_sz]);
-//
-//        let mut headers = [httparse::EMPTY_HEADER; 32];
-//        let mut response_parser = httparse::Response::new(&mut headers);
-//
-//        if let httparse::Status::Complete(sz) = response_parser.parse(&response_data[..])? {
-//            parsed_length = Some(sz);
-//
-//            // content length
-//            content_length = response_parser.headers
-//                .iter()
-//                .find(|header| {
-//                    let content_length = CONTENT_LENGTH;
-//                    header.name.to_lowercase() == content_length.as_str()
-//                })
-//                .map(|header| std::str::from_utf8(header.value).unwrap().to_string().parse::<usize>().unwrap());
-//            // status
-//            if let Some(c) = response_parser.code {
-//                response_builder.status(c);
-//            }
-//            // headers
-//            for header in response_parser.headers.iter() {
-//                response_builder.header(header.name, std::str::from_utf8(header.value)?);
-//            }
-//
-//            break;
-//        }
-//    }
-//
-//    let mut body = None;
-//    if content_length.is_some() {
-//        let content_length = content_length.unwrap();
-//        let parsed_length = parsed_length.unwrap();
-//        let total_length = parsed_length + content_length;
-//        let remaining_content_length = if total_length >= response_data.len() { total_length - response_data.len() } else { 0 };
-//
-//        debug!("Received data length: {}, content length: {}, parsed length: {:?}, remaining: {}", response_data.len(), content_length, parsed_length, remaining_content_length);
-//
-//        let mut buf = vec![0u8; remaining_content_length];
-//        await!(rx.read_exact(&mut buf))?;
-//        response_data.extend_from_slice(&buf);
-//
-//        body = Some(std::str::from_utf8(&response_data[parsed_length..total_length])?.to_string());
-//        debug!("Received body: {:?}", &body);
-//    }
-//
-//    Ok(response_builder.body(body)?)
-//}
-
 /// This is convenience function to send http OK json response.
 pub async fn http_send_response_ok_json<T: AsyncWriteExt + Unpin + 'static>(msg: &str, tx: T) -> Result<(), Error> {
     let mut resp = Response::new(None);
@@ -291,7 +172,7 @@ pub async fn http_send_response_ok_json<T: AsyncWriteExt + Unpin + 'static>(msg:
     resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_str("application/json").unwrap());
     *resp.body_mut() = Some(String::from(msg));
 
-    await!(http_send_response(resp, tx))
+    http_send_response(resp, tx).await
 }
 
 /// This is convenience function to send http OK text/html response.
@@ -301,7 +182,7 @@ pub async fn http_send_response_ok_text<T: AsyncWriteExt + Unpin + 'static>(msg:
     resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_str("text/html").unwrap());
     *resp.body_mut() = Some(String::from(msg));
 
-    await!(http_send_response(resp, tx))
+    http_send_response(resp, tx).await
 }
 
 pub trait Capitalize {
