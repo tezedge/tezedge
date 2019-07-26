@@ -1,14 +1,14 @@
-use serde::{Deserialize};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Deserialize)]
-pub struct PeerURL {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PeerAddress {
     pub host: String,
     pub port: u16
 }
 
 #[derive(Debug, Deserialize)]
 pub struct BootstrapMessage {
-    pub initial_peers: Vec<PeerURL>,
+    pub initial_peers: Vec<PeerAddress>,
 }
 
 #[derive(Debug, Deserialize)]

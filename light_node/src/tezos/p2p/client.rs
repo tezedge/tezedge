@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crypto::nonce::{self, Nonce};
 
-use crate::rpc::message::PeerURL;
+use crate::rpc::message::PeerAddress;
 use crate::tezos::storage::db::Db;
 
 use super::message::*;
@@ -49,7 +49,7 @@ impl P2pClient {
         P2pClient { listener_port, init_chain_id, identity, versions, db: Arc::new(RwLock::new(db)) }
     }
 
-    pub async fn connect_peer<'a>(&'a self, peer: &'a PeerURL) -> Result<P2pPeer, Error> {
+    pub async fn connect_peer<'a>(&'a self, peer: &'a PeerAddress) -> Result<P2pPeer, Error> {
         let addr = format!("{}:{}", peer.host, peer.port);
 
         match addr.to_socket_addrs() {
@@ -95,7 +95,7 @@ impl P2pClient {
                             let peer = P2pPeer::new(
                                 peer_public_key.clone(),
                                 &self.identity.secret_key,
-                                PeerURL {host: peer.host.clone(), port: peer.port},
+                                PeerAddress {host: peer.host.clone(), port: peer.port},
                                 PeerState::new(
                                     &nonce_local,
                                     &nonce_remote),
@@ -229,7 +229,7 @@ impl P2pClient {
         // (Demo) get current_branch from db
         let branches = (&self.db.read().unwrap()).get_branches();
 
-        // filter with highest level and fittness
+        // filter with highest level and fitness
         let branches: Vec<CurrentBranchMessage> = branches.into_iter()
             .map(|bytes| CurrentBranchMessage::from_bytes(bytes).unwrap())
             .collect();

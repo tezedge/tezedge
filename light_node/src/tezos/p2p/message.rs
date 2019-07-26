@@ -428,7 +428,7 @@ impl HasEncoding for CurrentBranch {
 
 // -----------------------------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockHeader {
     level: i32,
     proto: u8,

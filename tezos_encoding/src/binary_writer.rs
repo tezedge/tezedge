@@ -7,8 +7,7 @@ use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::BitTrim;
-#[allow(unused_imports)]
-use crate::schema::{Encoding, Field, Schema, SchemaType, Tag, TagMap};
+use crate::schema::{Encoding, Field, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -411,8 +410,9 @@ impl BinaryWriter {
 mod tests {
     use serde::{Serialize};
 
-    use super::*;
+    use crate::schema::{Tag, TagMap};
     use crate::types::BigInt;
+    use super::*;
 
     #[test]
     fn can_serialize_z_positive_to_binary() {
