@@ -11,11 +11,12 @@ use crypto::{
 };
 
 use crate::configuration;
-use crate::rpc::message::PeerURL;
+use crate::rpc::message::PeerAddress;
 
 use super::message::*;
 use super::stream::*;
 
+pub type PeerId = String;
 pub type PublicKey = Vec<u8>;
 
 
@@ -48,9 +49,9 @@ impl PeerState {
 /// node communicates with these remote peers
 pub struct P2pPeer {
     /// Peer ID is created as hex string representation of peer public key bytes.
-    peer_id: String,
+    peer_id: PeerId,
     // Peer ip/port
-    peer: PeerURL,
+    peer: PeerAddress,
     /// Peer public key.
     public_key: PublicKey,
     /// Precomputed key is created from merge of peer public key and our secret key.
@@ -65,7 +66,7 @@ pub struct P2pPeer {
 }
 
 impl P2pPeer {
-    pub fn new(peer_public_key: PublicKey, node_sk_as_hex_string: &str, peer: PeerURL, peer_state: PeerState, rx: MessageReader, tx: MessageWriter) -> Self {
+    pub fn new(peer_public_key: PublicKey, node_sk_as_hex_string: &str, peer: PeerAddress, peer_state: PeerState, rx: MessageReader, tx: MessageWriter) -> Self {
 
         let peer_id = hex::encode(&peer_public_key);
         let peer_pk_as_hex_string = &hex::encode(&peer_public_key);
@@ -84,7 +85,7 @@ impl P2pPeer {
         }
     }
 
-    pub fn get_peer_id(&self) -> &String {
+    pub fn get_peer_id(&self) -> &PeerId {
         &self.peer_id
     }
 
@@ -92,7 +93,7 @@ impl P2pPeer {
         &self.public_key
     }
 
-    pub fn get_peer(&self) -> &PeerURL {
+    pub fn get_peer(&self) -> &PeerAddress {
         &self.peer
     }
 

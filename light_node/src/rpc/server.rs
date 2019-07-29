@@ -1,105 +1,137 @@
 use failure::Error;
 use futures::prelude::*;
-use http::{Method, Response, StatusCode};
-use log::{debug, error, info, warn};
-use tokio::net::{TcpStream, TcpListener};
+use hyper::{self, Body, Method, Request, Response, Server, StatusCode, header};
 
+use hyper::server::conn::AddrStream;
+use hyper::service::{make_service_fn, service_fn};
+use serde_json;
+use serde_json::json;
+
+use log::{info, warn};
 use crate::configuration;
-use crate::rpc::RpcTx;
-use crate::tezos::p2p::P2pRx;
 
-use super::http::*;
-use super::message::{RpcMessage, EmptyMessage};
-use super::response::RpcResponse;
+use crate::rpc::message::RpcMessage;
+use crate::tezos::p2p::node::P2pLayer;
+use crate::tezos::p2p::message::JsonMessage;
 
 
-
-async fn process_http_stream(stream: TcpStream, mut rpc_tx: RpcTx) -> Result<(), Error> {
-    let (http_rx, http_tx) = stream.split();
-    let req = http_receive_request(http_rx).await?;
-
-    // TODO: refactor somehow - mappings needs to come from caller of accept_connections
-    let rpc_msg_to_process = match (req.method(), req.uri().path()) {
+async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<Response<Body>, Error> {
+    let response = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
-            http_send_response_ok_text("rp2p rpc is running, see README.md for api desc",http_tx,).await?;
-            None
+            Response::builder()
+                .header(header::CONTENT_TYPE, "text/html")
+                .status(StatusCode::OK)
+                .body(Body::from("rp2p rpc is running, see README.md for api desc"))
+                .unwrap()
         }
         (&Method::POST, "/network/bootstrap") => {
-            let body = &req.body().as_ref().unwrap();
+            let body = request.into_body().try_concat().await?;
+            let body = String::from_utf8(body.to_vec())?;
             let msg = serde_json::from_str::<RpcMessage>(&body)?;
 
-            Some(
-                (
-                    msg,
-                    Some(RpcResponse::new(http_tx))
-                )
-            )
+            match msg {
+                RpcMessage::BootstrapWithPeers(peers) => {
+                    p2p.bootstrap_with_peers(peers).await?;
+                    Response::builder()
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .status(StatusCode::OK)
+                        .body(Body::from(
+                            json!({
+                                "result": "async bootstrap starts - see log or /network/points"
+                            }).to_string()))
+                        .unwrap()
+                }
+                RpcMessage::BootstrapWithLookup(_) => {
+                    p2p.bootstrap_with_lookup().await?;
+                    Response::builder()
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .status(StatusCode::OK)
+                        .body(Body::from(
+                            json!({
+                                "result": "async bootstrap starts (with lookup) - see log or /network/points"
+                            }).to_string()))
+                        .unwrap()
+                }
+                _ => Response::builder()
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .status(StatusCode::UNPROCESSABLE_ENTITY)
+                        .body(Body::from(
+                            json!({
+                                "result": "operation is not supported"
+                            }).to_string()))
+                        .unwrap()
+            }
         }
         (&Method::GET, "/network/points") => {
-            Some(
-                (
-                    RpcMessage::NetworkPoints(EmptyMessage {}),
-                    Some(RpcResponse::new(http_tx))
-                )
-            )
+            let network_points = p2p.get_network_points().await;
+            Response::builder()
+                .header(header::CONTENT_TYPE, "application/json")
+                .status(StatusCode::OK)
+                .body(Body::from(
+                    json!({
+                        "result": network_points
+                    }).to_string()))
+                .unwrap()
         }
         (&Method::GET, "/chains/main/blocks/head") => {
-            Some(
-                (
-                    RpcMessage::ChainsHead(EmptyMessage {}),
-                    Some(RpcResponse::new(http_tx))
-                )
-            )
+            match p2p.get_chains_head().await {
+                Some(head) => Response::builder()
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .status(StatusCode::OK)
+                    .body(Body::from(
+                        json!({
+                            "result": {
+                                "chain_id": head.chain_id(),
+                                "hash": "TODO",
+                                "header": head.header().as_json()?,
+                                "metadata": {},
+                                "operations": []
+                            }
+                        }).to_string()))
+                    .unwrap(),
+                None =>  Response::builder()
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .status(StatusCode::OK)
+                    .body(Body::from(
+                        json!({
+                            "result": []
+                        }).to_string()))
+                    .unwrap()
+            }
         }
         _ => {
-            warn!("{} {} not found", req.method(), req.uri().path());
-            let mut resp = Response::new(None);
-            *resp.status_mut() = StatusCode::NOT_FOUND;
-            http_send_response(resp, http_tx).await?;
-            None
+            warn!("RPC endpoint {} {} not found", request.method(), request.uri().path());
+            Response::builder()
+                .header(header::CONTENT_TYPE, "application/json")
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap()
         }
     };
 
-    if let Some((msg, callback)) = rpc_msg_to_process {
-        debug!("Pushing RPC message: {:?}", msg);
-        rpc_tx.send((msg, callback)).await?;
-    }
+    Ok(response)
+}
+
+pub async fn accept_connections(p2p: P2pLayer) -> Result<(), Error> {
+    let listen_address = format!("127.0.0.1:{}", configuration::ENV.rpc.listener_port).parse()?;
+
+    let service = make_service_fn(move |_: &AddrStream| {
+        let p2p = p2p.clone();
+        async move {
+            let p2p = p2p.clone();
+            Ok::<_, Error>(service_fn(move |req: Request<Body>| {
+                process_http_request(req, p2p.clone())
+            }))
+        }
+    });
+
+    let server = Server::bind(&listen_address)
+        .serve(service);
+
+    info!("Listening on http://{}", listen_address);
+
+    server.await?;
 
     Ok(())
 }
 
-pub async fn accept_connections(rpc_tx: RpcTx) -> Result<(), Error> {
-    let listen_addr = format!("127.0.0.1:{}", configuration::ENV.rpc.listener_port).parse().unwrap();
-    let listener = TcpListener::bind(&listen_addr)?;
-    let mut incoming = listener.incoming();
-
-    info!("Listening on {:?}", listen_addr);
-
-    while let Some(stream) = incoming.next().await {
-        let stream = stream?;
-        let addr = stream.peer_addr()?;
-        let tx = rpc_tx.clone();
-        tokio::spawn(async move {
-            info!("Accepting stream from: {}", addr);
-
-            match process_http_stream(stream, tx).await {
-                Ok(_) => info!("HTTP stream processed"),
-                Err(e) => error!("HTTP stream processing failed. Reason: {:?}", e),
-            }
-
-            debug!("Closing stream from: {}", addr);
-        });
-    }
-
-    Ok(())
-}
-
-pub async fn forward_p2p_messages_to_rpc(mut p2p_rx: P2pRx) {
-    info!("P2P consumer started");
-
-    while let Some(p2p_message) = p2p_rx.next().await {
-        debug!("Consuming message P2P message: {:?}", p2p_message);
-    }
-
-    info!("P2P consumer stopped");
-}

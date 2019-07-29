@@ -2,10 +2,8 @@ use bitvec::{Bits, BitVec};
 use bytes::{Buf, IntoBuf};
 use serde::de::{Error as SerdeError};
 
-#[allow(unused_imports)]
-use crate::de::{self, Error};
-#[allow(unused_imports)]
-use crate::schema::{Encoding, Field, Schema, Tag, TagMap, SchemaType};
+use crate::de::Error;
+use crate::schema::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
 use crate::bit_utils::{BitTrim, BitReverse, ToBytes};
 
@@ -180,10 +178,12 @@ impl BinaryReader {
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
-    use super::super::binary_writer::BinaryWriter;
-    use super::super::ser::Serializer;
-    use super::*;
+    use crate::schema::{Tag, TagMap};
+    use crate::binary_writer::BinaryWriter;
+    use crate::ser::Serializer;
+    use crate::de;
     use crate::types::BigInt;
+    use super::*;
 
     #[test]
     fn can_deserialize_z_from_binary() {
@@ -236,7 +236,7 @@ mod tests {
         let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(response_schema)).unwrap();
         // convert value to actual data structure
-        let value: Response = super::de::from_value(&value).unwrap();
+        let value: Response = de::from_value(&value).unwrap();
         let expected_value = Response {
             messages: vec![Message::GetHead(GetHeadRecord { chain_id: hex::decode("8eceda2f").unwrap() })]
         };
@@ -318,7 +318,7 @@ mod tests {
         let reader = BinaryReader::new();
         let value = reader.read(connection_message_buf, &connection_message_encoding).unwrap();
 
-        let connection_message_deserialized: ConnectionMessage = super::de::from_value(&value).unwrap();
+        let connection_message_deserialized: ConnectionMessage = de::from_value(&value).unwrap();
         assert_eq!(connection_message, connection_message_deserialized);
     }
 }

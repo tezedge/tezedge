@@ -4,15 +4,13 @@ extern crate lazy_static;
 
 use std::path::{Path, PathBuf};
 
-use futures::channel::mpsc;
-use futures::prelude::*;
 use log::{debug, error, info};
 use tokio;
 
 use crate::rpc::message::BootstrapMessage;
-use crate::rpc::message::EmptyMessage;
-use crate::rpc::message::PeerURL;
+use crate::rpc::message::PeerAddress;
 use crate::tezos::storage::db::Db;
+use crate::tezos::p2p::node::P2pLayer;
 
 mod tezos;
 mod rpc;
@@ -53,10 +51,10 @@ async fn main() {
         }
     }
 
-    let initial_peers: Vec<PeerURL> = configuration::ENV.initial_peers.clone()
+    let initial_peers: Vec<PeerAddress> = configuration::ENV.initial_peers.clone()
         .into_iter()
         .map(|(ip, port)| {
-            PeerURL {
+            PeerAddress {
                 host: ip.clone(),
                 port: port.clone(),
             }
@@ -78,9 +76,6 @@ async fn main() {
 
     info!("Starting Iron p2p");
 
-    let (mut rpc_tx, rpc_rx) = mpsc::channel(MPSC_BUFFER_SIZE);
-    let (_, p2p_rx) = mpsc::channel(MPSC_BUFFER_SIZE);
-
     let init_chain_id = hex::decode(configuration::tezos_node::genesis_chain_id());
     if let Err(e) = init_chain_id {
         error!("Failed to load initial chain id. Reason: {:?}", e);
@@ -99,27 +94,20 @@ async fn main() {
         Db::new()
     );
 
-    tokio::spawn(
-        tezos::p2p::node::forward_rpc_messages_to_p2p(
-            rpc_rx,
-            p2p_client.clone()
-        )
-    );
-    tokio::spawn(rpc::server::forward_p2p_messages_to_rpc(p2p_rx));
+    let p2p = P2pLayer::new(p2p_client);
 
     // init node bootstrap
     if initial_peers.is_empty() == false {
-        rpc_tx.send((rpc::message::RpcMessage::BootstrapWithPeers(BootstrapMessage { initial_peers }), None)).await
-            .expect("Failed to transmit bootstrap message to p2p layer")
+        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap message to p2p layer")
+
     } else {
-        rpc_tx.send((rpc::message::RpcMessage::BootstrapWithLookup(EmptyMessage {}), None)).await
-            .expect("Failed to transmit bootstrap message to p2p layer")
+        p2p.bootstrap_with_lookup().await.expect("Failed to transmit bootstrap message to p2p layer")
     }
 
     // ------------------
     // Lines after the following block will be executed only after accept_connections() task will complete
     // ------------------
-    let res = rpc::server::accept_connections(rpc_tx.clone()).await;
+    let res = rpc::server::accept_connections(p2p).await;
     if let Err(e) = res {
         error!("Failed to start accepting RPC connections. Reason: {:?}", e);
         return;

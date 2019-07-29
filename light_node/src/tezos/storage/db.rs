@@ -1,8 +1,13 @@
 use std::collections::HashMap;
 
-/// (Demo) Structure for represnting in-memory db for - just for demo purposes.
+use crate::tezos::p2p::peer::PeerId;
+
+
+pub type BranchId = Vec<u8>;
+
+/// Structure for representing in-memory db for - just for demo purposes.
 pub struct Db {
-    branches: HashMap<String, Vec<u8>>
+    branches: HashMap<PeerId, BranchId>
 }
 
 impl Db {
@@ -12,11 +17,11 @@ impl Db {
         }
     }
 
-    pub fn store_branch(&mut self, id: String, branch_as_bytes: Vec<u8>) {
+    pub fn store_branch(&mut self, id: PeerId, branch_as_bytes: BranchId) {
         self.branches.insert(id, branch_as_bytes);
     }
 
-    pub fn get_branches(&self) -> Vec<Vec<u8>> {
+    pub fn get_branches(&self) -> Vec<BranchId> {
         let mut branches = vec![];
         for (_, branch) in self.branches.iter() {
             branches.push(branch.clone());
