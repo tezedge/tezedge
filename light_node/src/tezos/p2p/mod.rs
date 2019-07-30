@@ -1,4 +1,5 @@
 #[macro_use]
+pub mod encoding;
 pub mod message;
 pub mod stream;
 pub mod peer;

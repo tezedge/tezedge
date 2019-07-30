@@ -11,7 +11,7 @@ use tezos_encoding::hash::{prefix, to_prefixed_hash};
 
 use crate::configuration::tezos_node;
 use crate::rpc::message::*;
-use crate::tezos::p2p::message::BlockHeader;
+use crate::tezos::p2p::encoding::block_header::BlockHeader;
 use crate::tezos::p2p::pool::P2pPool;
 
 use super::client::P2pClient;
@@ -117,7 +117,7 @@ async fn accept_peer_data(p2p_client: P2pClient, peer: Arc<P2pPeer>) {
     while let Ok(msg) = peer.read_message().await {
         match p2p_client.handle_message(&peer, &msg).await {
             Ok(()) => info!("Message processed successfully"),
-            Err(e) => warn!("Failed to process received message: {:?}", e)
+            Err(e) => warn!("Failed to process received encoding: {:?}", e)
         }
     }
 }

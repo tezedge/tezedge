@@ -2,7 +2,7 @@ use chrono::prelude::*;
 use num_traits::Num;
 use serde::ser::{Error as SerdeError, Serialize};
 
-use crate::schema::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::Value;
 
@@ -282,7 +282,7 @@ impl JsonWriter {
             Encoding::Greedy(un_sized_encoding) => {
                 self.encode_value(value, un_sized_encoding)
             }
-            Encoding::Tags(_) => {
+            Encoding::Tags(_,_) => {
                 unimplemented!("Encoding::Tags encoding is not supported for JSON format")
             }
             Encoding::Split(fn_encoding) => {

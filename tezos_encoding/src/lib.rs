@@ -3,7 +3,7 @@ mod bit_utils;
 
 #[macro_use]
 pub mod hash;
-pub mod schema;
+pub mod encoding;
 
 pub mod de;
 pub mod ser;

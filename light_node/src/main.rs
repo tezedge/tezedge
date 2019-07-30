@@ -98,10 +98,10 @@ async fn main() {
 
     // init node bootstrap
     if initial_peers.is_empty() == false {
-        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap message to p2p layer")
+        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap encoding to p2p layer")
 
     } else {
-        p2p.bootstrap_with_lookup().await.expect("Failed to transmit bootstrap message to p2p layer")
+        p2p.bootstrap_with_lookup().await.expect("Failed to transmit bootstrap encoding to p2p layer")
     }
 
     // ------------------

@@ -12,8 +12,8 @@ use crypto::{
 
 use crate::configuration;
 use crate::rpc::message::PeerAddress;
+use crate::tezos::p2p::message::BinaryMessage;
 
-use super::message::*;
 use super::stream::*;
 
 pub type PeerId = String;
@@ -121,7 +121,7 @@ impl P2pPeer {
         // send
         let mut tx = self.tx.lock().await;
         if let Err(e) = tx.write_message(&message_encrypted).await {
-            bail!("Failed to transfer message: {:?}", e);
+            bail!("Failed to transfer encoding: {:?}", e);
         }
 
         Ok(())
@@ -147,7 +147,7 @@ impl P2pPeer {
                 Ok(message)
             }
             | Err(ref e) => {
-                bail!("Decrypt message failed from peer: {} Reason: {:?}", self.peer_id, e)
+                bail!("Decrypt encoding failed from peer: {} Reason: {:?}", self.peer_id, e)
             }
         }
     }

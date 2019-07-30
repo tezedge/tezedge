@@ -6,7 +6,7 @@ use std::string;
 use serde::de::{self, Deserialize, DeserializeSeed, Error as SerdeError, Visitor, IntoDeserializer};
 use serde::forward_to_deserialize_any;
 
-use crate::schema::Encoding;
+use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]

@@ -7,7 +7,7 @@ use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::BitTrim;
-use crate::schema::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -297,14 +297,14 @@ impl BinaryWriter {
             Encoding::Obj(obj_schema) => {
                 self.encode_record(value, obj_schema)
             }
-            Encoding::Tags(tag_map) => {
+            Encoding::Tags(tag_sz, tag_map) => {
                 match value {
                     Value::Tag(ref tag_variant, ref tag_value) => {
                         match tag_map.find_by_variant(tag_variant) {
                             Some(tag) => {
                                 let data_len_before_write = self.data.len();
                                 // write tag id
-                                self.data.put_u16_be(tag.get_id());
+                                self.write_tag_id(*tag_sz, tag.get_id())?;
                                 // encode value
                                 self.encode_value(tag_value, tag.get_encoding())?;
 
@@ -319,7 +319,7 @@ impl BinaryWriter {
                             Some(tag) => {
                                 let data_len_before_write = self.data.len();
                                 // write tag id
-                                self.data.put_u16_be(tag.get_id());
+                                self.write_tag_id(*tag_sz, tag.get_id())?;
 
                                 Ok(self.data.len() - data_len_before_write)
                             }
@@ -333,6 +333,14 @@ impl BinaryWriter {
                 let inner_encoding = fn_encoding(SchemaType::Binary);
                 self.encode_value(value, &inner_encoding)
             }
+        }
+    }
+
+    fn write_tag_id(&mut self, tag_sz: usize, tag_id: u16) -> Result<(), Error> {
+        match tag_sz {
+            1 => Ok(self.data.put_u8(tag_id as u8)),
+            2 => Ok(self.data.put_u16_be(tag_id)),
+            _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
         }
     }
 
@@ -410,7 +418,7 @@ impl BinaryWriter {
 mod tests {
     use serde::{Serialize};
 
-    use crate::schema::{Tag, TagMap};
+    use crate::encoding::{Tag, TagMap};
     use crate::types::BigInt;
     use super::*;
 
@@ -531,6 +539,7 @@ mod tests {
         let response_schema = vec![
             Field::new("messages",  Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
+                    size_of::<u16>(),
                     TagMap::new(&vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))])
                 )
            )))
