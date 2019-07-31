@@ -10,6 +10,7 @@ use crate::types::{self, Value};
 pub struct BinaryReader {}
 
 impl BinaryReader {
+
     pub fn new() -> Self {
         BinaryReader {}
     }
@@ -79,7 +80,7 @@ impl BinaryReader {
             }
             Encoding::Tags(tag_sz, ref tag_map) => {
                 let tag_id = match tag_sz  {
-                    1 => Ok(buf.get_u8() as u16),
+                    1 => Ok(u16::from(buf.get_u8())),
                     2 => Ok(buf.get_u16_be()),
                     _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
                 }?;
@@ -89,7 +90,7 @@ impl BinaryReader {
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
                     },
-                    None => return Err(Error::custom(format!("No tag found for id: 0x{:X}", tag_id)))
+                    None => Err(Error::custom(format!("No tag found for id: 0x{:X}", tag_id)))
                 }
             }
             Encoding::List(encoding_inner) => {

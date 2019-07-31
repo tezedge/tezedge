@@ -171,14 +171,13 @@ impl P2pClient {
     fn prepare_connection_message(&self) -> ConnectionMessage {
         // generate init random nonce
         let nonce = Nonce::random();
-        let connection_message = ConnectionMessage::new(
+        ConnectionMessage::new(
             self.listener_port,
             &self.identity.public_key,
             &self.identity.proof_of_work_stamp,
             &nonce.get_bytes(),
             self.versions.iter().map(|v| v.into()).collect()
-        );
-        connection_message
+        )
     }
 
     pub async fn handle_message<'a>(&'a self, peer: &'a P2pPeer, message: &'a Vec<u8>) -> Result<(), Error> {

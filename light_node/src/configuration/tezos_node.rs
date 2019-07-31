@@ -29,7 +29,7 @@ pub fn versions() -> Vec<Version> {
     vec![Version { name: String::from("TEZOS_ALPHANET_2018-11-30T15:30:56Z"), major: 0, minor: 0 }]
 }
 
-pub fn lookup_initial_peers(bootstrap_addresses: & Vec<String>) -> Result<Vec<PeerAddress>, Error> {
+pub fn lookup_initial_peers(bootstrap_addresses: &[String]) -> Result<Vec<PeerAddress>, Error> {
     let mut initial_peers = vec![];
     for address in bootstrap_addresses {
         match resolve_initial_peers(&address) {

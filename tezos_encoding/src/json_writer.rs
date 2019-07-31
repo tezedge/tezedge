@@ -143,7 +143,7 @@ impl JsonWriter {
             Encoding::Int31 => {
                 match value {
                     Value::Int32(v) => {
-                        if (*v & 0x7FFFFFFF) == *v {
+                        if (*v & 0x7FFF_FFFF) == *v {
                             Ok(self.push_num(*v))
                         } else {
                             Err(Error::custom("Value is outside of Int31 range"))

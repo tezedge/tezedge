@@ -16,6 +16,7 @@ pub struct BinaryWriter {
 }
 
 impl BinaryWriter {
+
     pub fn new() -> BinaryWriter {
         BinaryWriter { data: Vec::new() }
     }
@@ -111,7 +112,7 @@ impl BinaryWriter {
             Encoding::Int31 => {
                 match value {
                     Value::Int32(v) => {
-                        if (*v & 0x7FFFFFFF) == *v {
+                        if (*v & 0x7FFF_FFFF) == *v {
                             self.data.put_i32_be(*v);
                             Ok(size_of::<i32>())
                         } else {
@@ -349,9 +350,7 @@ impl BinaryWriter {
             if let Some(sign) = value.chars().next() {
                 if sign.is_alphanumeric() {
                     (0, false)
-                } else {
-                    if sign == '-' { (1, true) } else { (1, false) }
-                }
+                } else if sign == '-' { (1, true) } else { (1, false) }
             } else {
                 return Err(Error::custom("Cannot process empty value"));
             }

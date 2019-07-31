@@ -78,7 +78,7 @@ impl P2pLayer {
 
 async fn bootstrap<'a>(
     p2p_client: &'a P2pClient,
-    peers: &'a Vec<PeerAddress>,
+    peers: &'a [PeerAddress],
     pool: Arc<Mutex<P2pPool>>) -> Result<(), Error> {
     let mut bootstrap_futures = FuturesUnordered::new();
     for peer in peers {
