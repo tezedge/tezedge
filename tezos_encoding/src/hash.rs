@@ -29,7 +29,7 @@ impl HashEncoding {
         &self.prefix
     }
 
-    pub fn encode_bytes(&self, bytes: &Vec<u8>) -> String {
+    pub fn encode_bytes(&self, bytes: &[u8]) -> String {
         let mut hash = vec![];
         hash.extend_from_slice(&self.prefix);
         hash.extend(bytes);

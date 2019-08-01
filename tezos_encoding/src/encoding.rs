@@ -138,7 +138,8 @@ pub enum Encoding {
     /// Encoding of arbitrary sized bytes (encoded via hex in JSON and directly as a sequence byte in binary).
     Bytes,
     /// Tag is prefixed by tag id and followed by encoded bytes
-    Tags(TagMap),
+    /// First argument represents size of the tag marker in bytes.
+    Tags(usize, TagMap),
     /// List combinator.
     /// - encoded as an array in JSON
     /// - encoded as the concatenation of all the element in binary
@@ -159,7 +160,7 @@ pub enum Encoding {
     Dynamic(Box<Encoding>),
     /// Represents fixed block in binary encoding.
     Sized(usize, Box<Encoding>),
-    /// Almost same as [Dynamic] but without bytes size information prefix.
+    /// Almost same as [Encoding::Dynamic] but without bytes size information prefix.
     /// It assumes that encoding passed as argument will process rest of the available data.
     Greedy(Box<Encoding>),
     /// Decode various types of hashes. Hash has it's own predefined length and prefix.
@@ -205,6 +206,11 @@ impl Encoding {
     pub fn dynamic(encoding: Encoding) -> Encoding {
         Encoding::Dynamic(Box::new(encoding))
     }
+}
+
+/// Indicates that type has it's own ser/de schema.
+pub trait HasEncoding {
+    fn encoding() -> Encoding;
 }
 
 #[cfg(test)]

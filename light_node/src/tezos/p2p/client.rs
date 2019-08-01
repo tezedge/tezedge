@@ -13,10 +13,12 @@ use crypto::nonce::{self, Nonce};
 use crate::rpc::message::PeerAddress;
 use crate::tezos::storage::db::Db;
 
-use super::message::*;
+use super::encoding::prelude::*;
 use super::peer::{P2pPeer, PeerState};
 use super::stream::MessageStream;
 use crate::configuration;
+use crate::tezos::p2p::encoding::peer::PeerMessageResponse;
+use crate::tezos::p2p::message::{BinaryMessage, RawBinaryMessage};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Version {
@@ -60,7 +62,7 @@ impl P2pClient {
                     debug!("");
                     debug!("");
                     debug!("=========>>>");
-                    debug!("Sending bootstrap message to: {:?}", addr);
+                    debug!("Sending bootstrap encoding to: {:?}", addr);
 
                     match TcpStream::connect(addr).await {
                         Ok(stream) => {
@@ -68,21 +70,21 @@ impl P2pClient {
                             let stream: MessageStream = stream.into();
                             let (mut msg_rx, mut msg_tx) = stream.split();
 
-                            // send connection message
+                            // send connection encoding
                             let connection_message = self.prepare_connection_message();
                             let connection_message_sent = {
                                 let as_bytes = connection_message.as_bytes()?;
                                 msg_tx.write_message(&as_bytes).await
                             };
                             if let Err(e) = connection_message_sent {
-                                bail!("Failed to transfer bootstrap message: {:?}", e);
+                                bail!("Failed to transfer bootstrap encoding: {:?}", e);
                             }
                             let connection_msg_bytes_sent = connection_message_sent.unwrap();
 
-                            // receive connection message
+                            // receive connection encoding
                             let received_connection_msg = msg_rx.read_message().await;
                             if let Err(e) = received_connection_msg {
-                                bail!("Failed to receive response to our bootstrap message: {:?}", e);
+                                bail!("Failed to receive response to our bootstrap encoding: {:?}", e);
                             }
                             let received_connection_msg = received_connection_msg.unwrap();
 
@@ -158,7 +160,7 @@ impl P2pClient {
         }
     }
 
-    /// Generate nonces (sent and recv message must be with length bytes also)
+    /// Generate nonces (sent and recv encoding must be with length bytes also)
     ///
     /// local_nonce is used for writing crypto messages to other peers
     /// remote_nonce is used for reading crypto messages from other peers
@@ -169,20 +171,19 @@ impl P2pClient {
     fn prepare_connection_message(&self) -> ConnectionMessage {
         // generate init random nonce
         let nonce = Nonce::random();
-        let connection_message = ConnectionMessage::new(
+        ConnectionMessage::new(
             self.listener_port,
             &self.identity.public_key,
             &self.identity.proof_of_work_stamp,
             &nonce.get_bytes(),
             self.versions.iter().map(|v| v.into()).collect()
-        );
-        connection_message
+        )
     }
 
     pub async fn handle_message<'a>(&'a self, peer: &'a P2pPeer, message: &'a Vec<u8>) -> Result<(), Error> {
 
         for peer_message in PeerMessageResponse::from_bytes(message.clone())?.get_messages() {
-            super::message::log(&peer_message)?;
+            crate::tezos::p2p::encoding::peer::log(&peer_message)?;
 
             match peer_message {
                 PeerMessage::GetCurrentBranch(get_current_branch_message) => {
@@ -197,7 +198,7 @@ impl P2pClient {
                             let message: PeerMessageResponse = message.into();
                             match peer.write_message(&message).await {
                                 Ok(()) => debug!("current branch sent to peer: {:?}", &peer.get_peer_id()),
-                                Err(e) => error!("Failed to write current branch message. {:?}", e),
+                                Err(e) => error!("Failed to write current branch encoding. {:?}", e),
                             }
                         }
                     }
@@ -209,7 +210,7 @@ impl P2pClient {
                     // (Demo) store current_branch in db
                     self.db.write().unwrap().store_branch(peer.get_peer_id().clone(), current_branch_message.as_bytes()?);
                 },
-                _ => warn!("Received message (but not handled): {:?}", peer_message)
+                _ => warn!("Received encoding (but not handled): {:?}", peer_message)
             }
         }
 
@@ -221,7 +222,7 @@ impl P2pClient {
         let response: PeerMessageResponse = get_current_branch_message.into();
         match peer.write_message(&response).await {
             Ok(()) => debug!("Write success"),
-            Err(e) => error!("Failed to write message. {:?}", e),
+            Err(e) => error!("Failed to write encoding. {:?}", e),
         }
     }
 

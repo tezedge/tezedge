@@ -1,15 +1,16 @@
 use bitvec::{Bits, BitVec};
 use bytes::{Buf, IntoBuf};
-use serde::de::{Error as SerdeError};
+use serde::de::Error as SerdeError;
 
+use crate::bit_utils::{BitReverse, BitTrim, ToBytes};
 use crate::de::Error;
-use crate::schema::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
-use crate::bit_utils::{BitTrim, BitReverse, ToBytes};
 
 pub struct BinaryReader {}
 
 impl BinaryReader {
+
     pub fn new() -> Self {
         BinaryReader {}
     }
@@ -77,14 +78,19 @@ impl BinaryReader {
                 let mut buf_slice = buf.take(bytes_sz);
                 self.decode_value(&mut buf_slice, un_sized_encoding)
             }
-            Encoding::Tags(ref tag_map) => {
-                let tag_id = buf.get_u16_be();
+            Encoding::Tags(tag_sz, ref tag_map) => {
+                let tag_id = match tag_sz  {
+                    1 => Ok(u16::from(buf.get_u8())),
+                    2 => Ok(buf.get_u16_be()),
+                    _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
+                }?;
+
                 match tag_map.find_by_id(tag_id) {
                     Some(tag) => {
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
                     },
-                    None => return Err(Error::custom(format!("No tag found for id: 0x{:X}", tag_id)))
+                    None => Err(Error::custom(format!("No tag found for id: 0x{:X}", tag_id)))
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -177,12 +183,16 @@ impl BinaryReader {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::size_of;
+
     use serde::{Deserialize, Serialize};
-    use crate::schema::{Tag, TagMap};
+
     use crate::binary_writer::BinaryWriter;
-    use crate::ser::Serializer;
     use crate::de;
+    use crate::encoding::{Tag, TagMap};
+    use crate::ser::Serializer;
     use crate::types::BigInt;
+
     use super::*;
 
     #[test]
@@ -226,6 +236,7 @@ mod tests {
         let response_schema = vec![
             Field::new("messages",  Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
+                    size_of::<u16>(),
                     TagMap::new(&vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))])
                 )
            )))

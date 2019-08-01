@@ -1,14 +1,12 @@
+use bytes::{BufMut, IntoBuf};
 use bytes::Buf;
 use failure::Error;
-use bytes::{BufMut, IntoBuf};
-
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
+use tokio::net::TcpStream;
 
-
-use super::message::{RawBinaryMessage, MESSAGE_LENGTH_FIELD_SIZE};
+use crate::tezos::p2p::message::{MESSAGE_LENGTH_FIELD_SIZE, RawBinaryMessage};
 
 pub struct MessageStream {
     reader: MessageReader,
@@ -42,13 +40,13 @@ pub struct MessageReader {
 impl MessageReader {
 
     pub async fn read_message(&mut self) -> Result<RawBinaryMessage, Error> {
-        // read message length (2 bytes)
+        // read encoding length (2 bytes)
         let msg_len_bytes = self.read_message_length_bytes().await?;
-        // copy bytes containing message length to raw message buffer
+        // copy bytes containing encoding length to raw encoding buffer
         let mut all_recv_bytes = vec![];
         all_recv_bytes.extend_from_slice(&msg_len_bytes);
 
-        // read the message content
+        // read the encoding content
         let msg_len = msg_len_bytes.into_buf().get_u16_be() as usize;
         let mut msg_content_bytes =vec![0u8; msg_len];
         self.stream.read_exact(&mut msg_content_bytes).await?;
@@ -73,11 +71,11 @@ impl MessageWriter {
     pub async fn write_message<'a>(&'a mut self, bytes: &'a [u8]) -> Result<RawBinaryMessage, Error> {
         // add length
         let mut msg_with_length = vec![];
-        // adds MESSAGE_LENGTH_FIELD_SIZE - 2 bytes with length of message
+        // adds MESSAGE_LENGTH_FIELD_SIZE - 2 bytes with length of encoding
         msg_with_length.put_u16_be(bytes.len() as u16);
         msg_with_length.put(bytes);
 
-        // write serialized message bytes
+        // write serialized encoding bytes
         self.stream.write_all(&msg_with_length).await?;
         Ok(msg_with_length.into())
     }

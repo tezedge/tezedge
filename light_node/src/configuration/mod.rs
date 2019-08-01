@@ -90,7 +90,7 @@ impl Environment {
                     .unwrap_or_default()
                     .parse::<String>()
                     .expect("Was expecting value of bootstrap-lookup-address")
-                    .split(",")
+                    .split(',')
                     .map(|peer| peer.to_string())
                     .collect(),
             },
@@ -115,7 +115,7 @@ impl Environment {
                         .collect()
                 }).unwrap_or(Vec::new()),
             identity_json_file_path: args.value_of("identity")
-                .map(|identity_json_file_path| PathBuf::from(identity_json_file_path)),
+                .map(PathBuf::from),
             log_messages_as_hex: args.value_of("logh")
                 .unwrap()
                 .parse::<bool>()

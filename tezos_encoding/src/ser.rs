@@ -4,7 +4,7 @@ use std::io;
 
 use serde::ser::{self, Error as SerdeError, Serialize};
 
-use crate::schema::Encoding;
+use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]

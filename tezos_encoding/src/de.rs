@@ -6,7 +6,7 @@ use std::string;
 use serde::de::{self, Deserialize, DeserializeSeed, Error as SerdeError, Visitor, IntoDeserializer};
 use serde::forward_to_deserialize_any;
 
-use crate::schema::Encoding;
+use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -116,16 +116,16 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         where
             V: Visitor<'de>,
     {
-        match self.input {
-            &Value::Unit => visitor.visit_unit(),
-            &Value::Bool(b) => visitor.visit_bool(b),
-            &Value::Int8(i) => visitor.visit_i8(i),
-            &Value::Uint8(i) => visitor.visit_u8(i),
-            &Value::Int16(i) => visitor.visit_i16(i),
-            &Value::Uint16(i) => visitor.visit_u16(i),
-            &Value::Int31(i) | &Value::Int32(i) | &Value::RangedInt(i) => visitor.visit_i32(i),
-            &Value::Int64(x) => visitor.visit_i64(x),
-            &Value::Float(x) => visitor.visit_f64(x),
+        match *self.input {
+            Value::Unit => visitor.visit_unit(),
+            Value::Bool(b) => visitor.visit_bool(b),
+            Value::Int8(i) => visitor.visit_i8(i),
+            Value::Uint8(i) => visitor.visit_u8(i),
+            Value::Int16(i) => visitor.visit_i16(i),
+            Value::Uint16(i) => visitor.visit_u16(i),
+            Value::Int31(i) | Value::Int32(i) | Value::RangedInt(i) => visitor.visit_i32(i),
+            Value::Int64(x) => visitor.visit_i64(x),
+            Value::Float(x) => visitor.visit_f64(x),
             _ => Err(Error::custom(format!("Unsupported value of type {:?} in deserialize_any.", self.input))),
         }
     }

@@ -56,7 +56,7 @@ async fn main() {
         .map(|(ip, port)| {
             PeerAddress {
                 host: ip.clone(),
-                port: port.clone(),
+                port,
             }
         })
         .collect();
@@ -69,8 +69,7 @@ async fn main() {
                 tezos_default_identity
             } else {
                 // or just use our config/identity.json
-                let tezos_default_identity = Path::new("./config/identity.json").to_path_buf();
-                tezos_default_identity
+                Path::new("./config/identity.json").to_path_buf()
             }
         });
 
@@ -97,11 +96,11 @@ async fn main() {
     let p2p = P2pLayer::new(p2p_client);
 
     // init node bootstrap
-    if initial_peers.is_empty() == false {
-        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap message to p2p layer")
+    if !initial_peers.is_empty() {
+        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap encoding to p2p layer")
 
     } else {
-        p2p.bootstrap_with_lookup().await.expect("Failed to transmit bootstrap message to p2p layer")
+        p2p.bootstrap_with_lookup().await.expect("Failed to transmit bootstrap encoding to p2p layer")
     }
 
     // ------------------
