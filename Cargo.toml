@@ -2,6 +2,7 @@
 
 members = [
     "crypto",
+    "tezos_interop",
     "tezos_encoding",
     "light_node"
 ]
