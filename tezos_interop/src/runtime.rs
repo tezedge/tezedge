@@ -2,14 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::ptr;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender, SendError};
 use std::task::{Context, Poll, Waker};
 
-use futures::task::Spawn;
 use ocaml::core::callback::caml_startup;
-use ocaml::core::memory::caml_initialize;
 
-const MAX_QUEUED_TASKS: usize = 10;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref OCAML_ENV: OcamlEnvironment = initialize_environment();
+}
 
 pub fn initialize_ocaml() {
     let mut ptr = ptr::null_mut();
@@ -67,7 +69,31 @@ impl OcamlThreadExecutor {
 
 }
 
+struct OcamlTaskSpawner {
+    spawned_tasks: Arc<Mutex<Sender<OcamlTask>>>
+}
 
+impl OcamlTaskSpawner {
+    pub fn spawn(&self, task: OcamlTask) -> Result<(), SendError<OcamlTask>> {
+        self.spawned_tasks.lock().unwrap().send(task)
+    }
+}
+
+struct OcamlEnvironment {
+    spawner: OcamlTaskSpawner
+}
+
+fn initialize_environment() -> OcamlEnvironment {
+    let (task_tx, task_rx) = channel();
+    let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
+    let executor = OcamlThreadExecutor { ready_tasks: task_rx };
+    std::thread::spawn(move || {
+        //initialize_ocaml();
+        executor.run()
+    });
+
+    OcamlEnvironment { spawner }
+}
 
 pub fn run<T, F>(f: F) -> OcamlResult<T>
     where
@@ -75,12 +101,6 @@ pub fn run<T, F>(f: F) -> OcamlResult<T>
         T: Send + 'static
 {
 
-    let (task_tx, task_rx) = channel();
-    let executor = OcamlThreadExecutor { ready_tasks: task_rx };
-    std::thread::spawn(move || {
-        //initialize_ocaml();
-        executor.run()
-    });
 
     let result = Arc::new(Mutex::new(None));
     let state = Arc::new(Mutex::new(SharedState { waker: None }));
@@ -93,7 +113,7 @@ pub fn run<T, F>(f: F) -> OcamlResult<T>
         future: ocaml_future,
         state: state.clone()
     };
-    task_tx.send(task);
+    OCAML_ENV.spawner.spawn(task).expect("Failed to spawn task");
 
     result_future
 }
