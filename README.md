@@ -37,6 +37,26 @@ rustup default nightly-2019-07-30
 ```
 Application has been tested to compile with `rustc 1.38.0-nightly (dddb7fca0 2019-07-30)`.
 
+**3. Install OCaml**
+
+To build ocaml binaries used by our codebase you need to have opam installed.
+
+On linux systems first download and install opam:
+
+```
+wget https://github.com/ocaml/opam/releases/download/2.0.5/opam-2.0.5-x86_64-linux
+sudo cp opam-2.0.5-x86_64-linux /usr/local/bin/opam
+sudo chmod a+x /usr/local/bin/opam
+```
+
+Then install required OCaml version and dune package manager:
+```
+opam switch create 4.07.0
+opam switch set 4.07.0
+opam update
+opam install dune
+```
+
 
 Building
 --------
@@ -46,13 +66,7 @@ Building
 On linux systems:
 
 ```
+eval $(opam env)
 export SODIUM_USE_PKG_CONFIG=1
-cargo build
-```
-
-On windows systems with vcpkg:
-```
-set SODIUM_USE_PKG_CONFIG=1
-set VCPKGRS_DYNAMIC=1
 cargo build
 ```
