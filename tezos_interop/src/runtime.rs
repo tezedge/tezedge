@@ -17,7 +17,7 @@ lazy_static! {
 
 /// This function will start ocaml runtime.
 /// Ocaml runtime should always be called from a single thread.
-pub fn startup_ocaml() {
+pub fn start_ocaml_runtime() {
     let mut ptr = ptr::null_mut();
     let argv: *mut *mut u8 = &mut ptr;
     unsafe {
@@ -139,7 +139,7 @@ fn initialize_environment() -> OcamlEnvironment {
     let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
     let executor = OcamlThreadExecutor { ready_tasks: task_rx };
     std::thread::spawn(move || {
-        //initialize_ocaml();
+        start_ocaml_runtime();
         executor.run()
     });
 
