@@ -41,11 +41,14 @@ fn build_ocaml_libs() {
 }
 
 fn link_ocaml_lib() {
-    let tezos_use_mock = env::var("TEZOS_USE_MOCK").unwrap();
+    let tezos_use_mock = env::var("TEZOS_USE_MOCK").unwrap_or("DEFAULT".to_string());
 
     let lib_name = match tezos_use_mock.as_ref() {
         "1" | "yes" => "tzmock",
-        _ => unimplemented!("Invalid profile: {}", tezos_use_mock)
+        _ => {
+            println!("cargo:warning=OCaml lib '{}' not found, falling back to 'tzmock'.", tezos_use_mock);
+            "tzmock"
+        }
     };
 
     println!("cargo:rustc-link-lib=dylib={}", lib_name)

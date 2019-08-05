@@ -1,8 +1,0 @@
-[package]
-name = "lib_ocaml"
-version = "0.0.1"
-edition = "2018"
-
-[dev-dependencies]
-futures-preview = "0.3.0-alpha.17"
-ocaml = "0.7.0"
