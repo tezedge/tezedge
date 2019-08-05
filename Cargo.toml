@@ -4,6 +4,5 @@ members = [
     "crypto",
     "tezos_interop",
     "tezos_encoding",
-    "light_node",
-    "integration_tests/tezos_interop"
+    "light_node"
 ]

@@ -1,0 +1,3 @@
+# dune build output
+/tezos_interop/lib_ocaml/tzmock/.merlin
+/tzmock/_build/
