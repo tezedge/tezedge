@@ -21,9 +21,10 @@ mod tests {
         let arg = 15486;
         let ocaml_future = runtime::run(move || {
             let f = ocaml::named_value("twice").expect("function not registered");
-            f.call(Value::int32(arg)).unwrap().int32_val()
+            f.call(Value::i32(arg)).unwrap().i32_val()
         });
         let ocaml_result = futures::executor::block_on(ocaml_future);
+
         assert_eq!(arg * 2, ocaml_result)
     }
 }

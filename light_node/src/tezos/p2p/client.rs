@@ -275,7 +275,7 @@ mod tests {
     # [test]
     fn can_serialize_get_current_branch_message() {
         let get_current_branch_message = PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(hex::decode("8eceda2f").unwrap()));
-        let response: PeerMessageResponse = dbg!(get_current_branch_message.into());
+        let response: PeerMessageResponse = get_current_branch_message.into();
         let message_bytes = response.as_bytes().unwrap();
         let expected_writer_result = hex::decode("0000000600108eceda2f").expect("Failed to decode");
         assert_eq ! (expected_writer_result, message_bytes);
@@ -284,7 +284,7 @@ mod tests {
     # [test]
     fn can_serialize_get_current_head_message() {
         let get_current_branch_message = PeerMessage::GetCurrentHead(GetCurrentHeadMessage::new(hex::decode("8eceda2f").unwrap()));
-        let response: PeerMessageResponse = dbg!(get_current_branch_message.into());
+        let response: PeerMessageResponse = get_current_branch_message.into();
         let message_bytes = response.as_bytes().unwrap();
         let expected_writer_result = hex::decode("0000000600138eceda2f").expect("Failed to decode");
         assert_eq ! (expected_writer_result, message_bytes);
