@@ -1,3 +1,5 @@
 # dune build output
 /*/.merlin
-/*/_build/
+/*/_build
+*.a
+*.o

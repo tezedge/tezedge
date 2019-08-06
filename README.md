@@ -8,7 +8,7 @@ The project can be considered as a proof of concept. This PoC demonstrates the v
 ## Components
 
 * **light_node:** Implementation of a lightweight Tezos node written in Rust.
-  If you want to run node, then enter *light_node* directory and then execute `cargo run`. For more details consult node [README.md](light_node/README.md) file.
+  If you want to run node, then enter *light_node* directory and then execute `cargo run`. For more details consult node [README](light_node/README.md) file.
 
 * **tezos_encoding:** All incoming messages are transformed into standard Rust structures for easy manipulation using de component. This component implements serialization and deserialization of all data types used in Tezos messages.
 
@@ -61,12 +61,13 @@ opam install dune
 Building
 --------
 
-**3. Build node** 
+**4. Build node** 
 
 On linux systems:
 
 ```
-eval $(opam env)
 export SODIUM_USE_PKG_CONFIG=1
 cargo build
 ```
+
+For more info on how to compile OCaml interop library please see [README](tezos_interop/README.md).
