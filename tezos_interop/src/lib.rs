@@ -1,10 +1,10 @@
 #![feature(async_await, fn_traits)]
+
 pub mod runtime;
 
 #[cfg(test)]
 mod tests {
     use ocaml::Value;
-
     use crate::runtime;
 
     #[test]
@@ -26,5 +26,19 @@ mod tests {
         let ocaml_result = futures::executor::block_on(ocaml_future);
 
         assert_eq!(arg * 2, ocaml_result)
+    }
+
+    #[test]
+    fn can_call_ocaml_fn_echo() {
+        let arg = "Hello this is dog!";
+        let ocaml_future = runtime::run(move || {
+            let f = ocaml::named_value("echo").expect("function not registered");
+            let s = f.call(ocaml::Str::from(arg)).unwrap();
+            let s = ocaml::Str::from(s.clone());
+            s.as_str().to_string()
+        });
+        let ocaml_result = futures::executor::block_on(ocaml_future);
+
+        assert_eq!(arg, &ocaml_result)
     }
 }
