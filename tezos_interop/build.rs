@@ -31,8 +31,15 @@ fn run_builder(lib_dir: &PathBuf) {
     };
 }
 
-fn build_ocaml_libs() {
-
+fn rerun_if_ocaml_file_changes(lib_dir: &PathBuf) {
+    fs::read_dir(lib_dir.as_path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|dir_entry| dir_entry.path())
+        .filter(|path| path.is_file())
+        .map(|path| (path.as_os_str().to_str().unwrap().to_string(), path.file_name().unwrap().to_str().unwrap().to_string()))
+        .filter(|(_, file_name)| file_name.ends_with("ml")|| file_name.ends_with("mli"))
+        .for_each(|(path, _)| println!("cargo:rerun-if-changed={}", path));
 }
 
 fn main() {
@@ -45,21 +52,25 @@ fn main() {
 
         let lib_a = format!("lib{}.a", lib_name);
         let lib_o = format!("lib{}.o", lib_name);
-        Command::new("cp")
+        // move .o file to OUT_DIR location
+        Command::new("mv")
             .args(&[
                 Path::new(&lib_dir).join(&lib_o).to_str().unwrap(),
                 Path::new(&out_dir).join(&lib_o).to_str().unwrap(),
             ])
             .status()
             .expect("File copy failed.");
+        // crate .a package
         Command::new("ar")
             .args(&["qs", &lib_a, &lib_o])
             .current_dir(&out_dir)
             .status()
             .expect("ar gave an error");
 
+        rerun_if_ocaml_file_changes(&lib_dir);
     }
 
     println!("cargo:rustc-link-search={}", out_dir);
-    println!("cargo:rustc-link-lib=dylib={}", &env::var("OCAML_LIB").unwrap_or("tzmock".to_string()))
+    println!("cargo:rustc-link-lib=dylib={}", &env::var("OCAML_LIB").unwrap_or("tzmock".to_string()));
+    println!("cargo:rerun-if-env-changed=OCAML_LIB");
 }
