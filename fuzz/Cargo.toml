@@ -1,0 +1,18 @@
+[package]
+name = "fuzz"
+version = "0.0.1"
+authors = ["Automatically generated"]
+edition = "2018"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = { git = "https://github.com/rust-fuzz/libfuzzer-sys.git" }
+tezos_encoding = { path = "../tezos_encoding" }
+light_node = { path = "../light_node" }
+
+[[bin]]
+name = "fuzz_tezos_encoding"
+path = "fuzz_targets/fuzz_tezos_encoding.rs"

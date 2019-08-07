@@ -9,17 +9,15 @@ use tokio;
 
 use tezos_encoding::hash::{prefix, to_prefixed_hash};
 
+use crate::configuration;
 use crate::configuration::tezos_node;
 use crate::rpc::message::*;
 use crate::tezos::p2p::encoding::block_header::BlockHeader;
 use crate::tezos::p2p::pool::P2pPool;
-
-use super::client::P2pClient;
-use super::peer::P2pPeer;
-use crate::configuration;
+use crate::tezos::p2p::client::P2pClient;
+use crate::tezos::p2p::peer::P2pPeer;
 
 /// node - represents running rust tezos node, node communicates with remote peers
-
 #[derive(Clone)]
 pub struct P2pLayer {
     pool: Arc<Mutex<P2pPool>>,
@@ -36,7 +34,7 @@ impl ChainsHead {
         &self.chain_id
     }
 
-pub fn header(&self) -> &BlockHeader {
+    pub fn header(&self) -> &BlockHeader {
         &self.header
     }
 }

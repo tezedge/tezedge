@@ -138,7 +138,7 @@ impl P2pPeer {
 
         // decrypt
         match decrypt(message_encrypted.get_contents(), &remote_nonce_to_use, &self.precomputed_key) {
-            | Ok(message) => {
+            Ok(message) => {
                 if configuration::ENV.log_messages_as_hex {
                     debug!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
                 } else {
@@ -146,7 +146,7 @@ impl P2pPeer {
                 }
                 Ok(message)
             }
-            | Err(ref e) => {
+            Err(ref e) => {
                 bail!("Decrypt encoding failed from peer: {} Reason: {:?}", self.peer_id, e)
             }
         }
