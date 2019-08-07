@@ -12,9 +12,25 @@ use log::{info, warn};
 use crate::rpc::message::RpcMessage;
 use crate::p2p::node::P2pLayer;
 use crate::p2p::message::JsonMessage;
+use std::sync::Arc;
+use futures::lock::Mutex;
 
+#[derive(Clone)]
+pub struct RpcLayer {
+    bootstrap_lookup_address: Vec<String>,
+    listener_port: u16
+}
 
-async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<Response<Body>, Error> {
+impl RpcLayer {
+
+    pub fn new(bootstrap_lookup_address: Vec<String>, listener_port: u16) -> Self {
+        RpcLayer { bootstrap_lookup_address: bootstrap_lookup_address.clone(), listener_port }
+    }
+}
+
+async fn process_http_request(request: Request<Body>, rpc: Arc<Mutex<RpcLayer>>, p2p: Arc<Mutex<P2pLayer>>) -> Result<Response<Body>, Error> {
+    let rpc = rpc.lock().await;
+    let p2p = p2p.lock().await;
     let response = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
             Response::builder()
@@ -41,7 +57,7 @@ async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<R
                         .unwrap()
                 }
                 RpcMessage::BootstrapWithLookup(_) => {
-                    p2p.bootstrap_with_lookup().await?;
+                    p2p.bootstrap_with_lookup(&rpc.bootstrap_lookup_address).await?;
                     Response::builder()
                         .header(header::CONTENT_TYPE, "application/json")
                         .status(StatusCode::OK)
@@ -52,13 +68,13 @@ async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<R
                         .unwrap()
                 }
                 _ => Response::builder()
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .status(StatusCode::UNPROCESSABLE_ENTITY)
-                        .body(Body::from(
-                            json!({
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .status(StatusCode::UNPROCESSABLE_ENTITY)
+                    .body(Body::from(
+                        json!({
                                 "result": "operation is not supported"
                             }).to_string()))
-                        .unwrap()
+                    .unwrap()
             }
         }
         (&Method::GET, "/network/points") => {
@@ -88,7 +104,7 @@ async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<R
                             }
                         }).to_string()))
                     .unwrap(),
-                None =>  Response::builder()
+                None => Response::builder()
                     .header(header::CONTENT_TYPE, "application/json")
                     .status(StatusCode::OK)
                     .body(Body::from(
@@ -111,15 +127,18 @@ async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<R
     Ok(response)
 }
 
-pub async fn accept_connections(p2p: P2pLayer, listener_port: u16) -> Result<(), Error> {
-    let listen_address = format!("127.0.0.1:{}", listener_port).parse()?;
+pub async fn accept_connections(rpc: RpcLayer, p2p: P2pLayer) -> Result<(), Error> {
+    let listen_address = format!("127.0.0.1:{}", rpc.listener_port).parse()?;
+
+    let rpc = Arc::new(Mutex::new(rpc));
+    let p2p = Arc::new(Mutex::new(p2p));
 
     let service = make_service_fn(move |_: &AddrStream| {
         let p2p = p2p.clone();
+        let rpc = rpc.clone();
         async move {
-            let p2p = p2p.clone();
             Ok::<_, Error>(service_fn(move |req: Request<Body>| {
-                process_http_request(req, p2p.clone())
+                process_http_request(req, rpc.clone(), p2p.clone())
             }))
         }
     });
@@ -133,4 +152,3 @@ pub async fn accept_connections(p2p: P2pLayer, listener_port: u16) -> Result<(),
 
     Ok(())
 }
-

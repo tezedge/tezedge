@@ -5,12 +5,11 @@ extern crate lazy_static;
 use std::path::{Path, PathBuf};
 
 use log::{debug, error, info};
-use tokio;
 
-use crate::rpc::message::BootstrapMessage;
-use crate::rpc::message::PeerAddress;
-use crate::tezos::storage::db::Db;
-use crate::tezos::p2p::node::P2pLayer;
+use networking::p2p::node::P2pLayer;
+use networking::rpc::message::{BootstrapMessage, PeerAddress};
+use storage::db::Db;
+use tokio;
 
 mod configuration;
 
@@ -104,7 +103,7 @@ async fn main() {
     // ------------------
     // Lines after the following block will be executed only after accept_connections() task will complete
     // ------------------
-    let res = rpc::server::accept_connections(p2p).await;
+    let res = networking::rpc::server::accept_connections(p2p, configuration::ENV.rpc.listener_port).await;
     if let Err(e) = res {
         error!("Failed to start accepting RPC connections. Reason: {:?}", e);
         return;

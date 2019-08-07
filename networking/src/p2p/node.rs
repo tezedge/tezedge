@@ -16,6 +16,7 @@ use crate::p2p::{
     pool::P2pPool,
 };
 use crate::rpc::message::*;
+use crate::p2p::lookup::lookup_initial_peers;
 
 /// node - represents running rust tezos node, node communicates with remote peers
 #[derive(Clone)]
@@ -53,9 +54,9 @@ impl P2pLayer {
         bootstrap(&self.client, &msg.initial_peers, self.pool.clone()).await
     }
 
-    pub async fn bootstrap_with_lookup(&self) -> Result<(), Error> {
-        let initial_peers = tezos_node::lookup_initial_peers(&configuration::ENV.p2p.bootstrap_lookup_address).unwrap();
-        debug!("BootstrapWithLookup({:?}) - initial_peers:{:?}", &configuration::ENV.p2p.bootstrap_lookup_address, &initial_peers);
+    pub async fn bootstrap_with_lookup(&self, bootstrap_addresses: &[String]) -> Result<(), Error> {
+        let initial_peers = lookup_initial_peers(bootstrap_addresses).unwrap();
+        debug!("BootstrapWithLookup({:?}) - initial_peers:{:?}", bootstrap_addresses, &initial_peers);
         bootstrap(&self.client, &initial_peers, self.pool.clone()).await
     }
 
