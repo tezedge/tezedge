@@ -11,7 +11,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = { git = "https://github.com/rust-fuzz/libfuzzer-sys.git" }
 tezos_encoding = { path = "../tezos_encoding" }
-light_node = { path = "../light_node" }
+networking = { path = "../networking" }
 
 [[bin]]
 name = "fuzz_tezos_encoding"

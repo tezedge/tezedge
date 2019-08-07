@@ -4,7 +4,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::hash;
 use tezos_encoding::hash::HashEncoding;
 
-use super::*;
+use crate::p2p::encoding::ChainId;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetCurrentHeadMessage {

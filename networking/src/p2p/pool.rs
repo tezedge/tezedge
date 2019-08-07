@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::tezos::p2p::peer::P2pPeer;
+use crate::p2p::peer::P2pPeer;
 use crate::rpc::message::PeerAddress;
 
 /// Structure for holding live references to all authenticated peers,

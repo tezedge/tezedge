@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
-use super::*;
+use crate::p2p::encoding::ChainId;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetCurrentBranchMessage {

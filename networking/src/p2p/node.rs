@@ -4,18 +4,18 @@ use failure::Error;
 use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream::futures_unordered::FuturesUnordered;
+
 use log::{debug, error, info, warn};
+use tezos_encoding::hash::{prefix, to_prefixed_hash};
 use tokio;
 
-use tezos_encoding::hash::{prefix, to_prefixed_hash};
-
-use crate::configuration;
-use crate::configuration::tezos_node;
+use crate::p2p::{
+    client::P2pClient,
+    encoding::block_header::BlockHeader,
+    peer::P2pPeer,
+    pool::P2pPool,
+};
 use crate::rpc::message::*;
-use crate::tezos::p2p::encoding::block_header::BlockHeader;
-use crate::tezos::p2p::pool::P2pPool;
-use crate::tezos::p2p::client::P2pClient;
-use crate::tezos::p2p::peer::P2pPeer;
 
 /// node - represents running rust tezos node, node communicates with remote peers
 #[derive(Clone)]

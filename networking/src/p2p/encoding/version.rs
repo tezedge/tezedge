@@ -19,8 +19,8 @@ impl HasEncoding for Version {
     }
 }
 
-impl From<&crate::tezos::p2p::client::Version> for Version {
-    fn from(version: &crate::tezos::p2p::client::Version) -> Self {
+impl From<&crate::p2p::client::Version> for Version {
+    fn from(version: &crate::p2p::client::Version) -> Self {
         Version {
             name: version.name.clone(),
             major: version.major,

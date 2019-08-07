@@ -3,18 +3,18 @@ use std::sync::RwLock;
 
 use failure::{bail, Error};
 use futures::lock::Mutex;
-use log::debug;
 
 use crypto::{
     crypto_box::*,
     nonce::*
 };
+use log::debug;
 
-use crate::configuration;
+use crate::p2p::{
+    message::BinaryMessage,
+    stream::*,
+};
 use crate::rpc::message::PeerAddress;
-use crate::tezos::p2p::message::BinaryMessage;
-
-use super::stream::*;
 
 pub type PeerId = String;
 pub type PublicKey = Vec<u8>;
@@ -63,10 +63,12 @@ pub struct P2pPeer {
     ///
     rx: Arc<Mutex<MessageReader>>,
     tx: Arc<Mutex<MessageWriter>>,
+    /// print messages as hex string in log statements
+    log_messages: bool,
 }
 
 impl P2pPeer {
-    pub fn new(peer_public_key: PublicKey, node_sk_as_hex_string: &str, peer: PeerAddress, peer_state: PeerState, rx: MessageReader, tx: MessageWriter) -> Self {
+    pub fn new(peer_public_key: PublicKey, node_sk_as_hex_string: &str, peer: PeerAddress, peer_state: PeerState, rx: MessageReader, tx: MessageWriter, log_messages: bool) -> Self {
 
         let peer_id = hex::encode(&peer_public_key);
         let peer_pk_as_hex_string = &hex::encode(&peer_public_key);
@@ -74,6 +76,7 @@ impl P2pPeer {
         P2pPeer {
             peer_id,
             peer,
+            log_messages,
             public_key: peer_public_key,
             precomputed_key: precompute(
                 peer_pk_as_hex_string,
@@ -99,7 +102,7 @@ impl P2pPeer {
 
     pub async fn write_message<'a>(&'a self, message: &'a impl BinaryMessage) -> Result<(), Error> {
         let message_bytes = message.as_bytes()?;
-        if configuration::ENV.log_messages_as_hex {
+        if self.log_messages {
             debug!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
         } else {
             debug!("Message to send to peer {} ...", self.peer_id);
@@ -111,7 +114,7 @@ impl P2pPeer {
             &self.peer_state.read().unwrap().nonce_local,
             &self.precomputed_key,
         )?;
-        if configuration::ENV.log_messages_as_hex {
+        if self.log_messages {
             debug!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
         }
 
@@ -139,7 +142,7 @@ impl P2pPeer {
         // decrypt
         match decrypt(message_encrypted.get_contents(), &remote_nonce_to_use, &self.precomputed_key) {
             Ok(message) => {
-                if configuration::ENV.log_messages_as_hex {
+                if self.log_messages {
                     debug!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
                 } else {
                     debug!("Message received from peer {} ... ", self.peer_id);

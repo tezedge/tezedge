@@ -12,8 +12,6 @@ use crate::rpc::message::PeerAddress;
 use crate::tezos::storage::db::Db;
 use crate::tezos::p2p::node::P2pLayer;
 
-mod tezos;
-mod rpc;
 mod configuration;
 
 const LOG_FILE: &str = "log4rs.yml";

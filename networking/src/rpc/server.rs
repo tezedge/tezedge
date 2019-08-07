@@ -8,11 +8,10 @@ use serde_json;
 use serde_json::json;
 
 use log::{info, warn};
-use crate::configuration;
 
 use crate::rpc::message::RpcMessage;
-use crate::tezos::p2p::node::P2pLayer;
-use crate::tezos::p2p::message::JsonMessage;
+use crate::p2p::node::P2pLayer;
+use crate::p2p::message::JsonMessage;
 
 
 async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<Response<Body>, Error> {
@@ -112,8 +111,8 @@ async fn process_http_request(request: Request<Body>, p2p: P2pLayer) -> Result<R
     Ok(response)
 }
 
-pub async fn accept_connections(p2p: P2pLayer) -> Result<(), Error> {
-    let listen_address = format!("127.0.0.1:{}", configuration::ENV.rpc.listener_port).parse()?;
+pub async fn accept_connections(p2p: P2pLayer, listener_port: u16) -> Result<(), Error> {
+    let listen_address = format!("127.0.0.1:{}", listener_port).parse()?;
 
     let service = make_service_fn(move |_: &AddrStream| {
         let p2p = p2p.clone();

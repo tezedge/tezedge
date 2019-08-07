@@ -22,4 +22,5 @@ pub mod prelude {
     pub use super::get_current_head::GetCurrentHeadMessage;
     pub use super::current_head::CurrentHeadMessage;
     pub use super::peer::PeerMessage;
+    pub use super::peer::PeerMessageResponse;
 }
