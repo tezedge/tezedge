@@ -1,3 +1,4 @@
+#![feature(concat_idents)]
 mod types;
 mod bit_utils;
 
