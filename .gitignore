@@ -9,3 +9,7 @@
 
 # Idea project files
 .idea
+
+# Honggfuzz worspace
+/hfuzz_workspace
+/hfuzz_target

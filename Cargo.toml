@@ -7,5 +7,6 @@ members = [
     "networking",
     "storage",
     "light_node",
-    "fuzz"
+
+    "fuzz/connection_message"
 ]

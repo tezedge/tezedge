@@ -11,7 +11,7 @@ lazy_static! {
 #[derive(Debug, Clone)]
 pub struct P2p {
     pub listener_port: u16,
-    pub bootstrap_lookup_address: Vec<String>,
+    pub bootstrap_lookup_addresses: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,8 +25,7 @@ pub struct Environment {
     pub rpc: Rpc,
     pub initial_peers: Vec<(String, u16)>,
     pub identity_json_file_path: Option<PathBuf>,
-    pub log_messages_as_hex: bool,
-    pub log_messages_as_json: bool,
+    pub log_message_contents: bool,
 }
 
 impl Environment {
@@ -40,13 +39,13 @@ impl Environment {
                 .long("p2p-port")
                 .takes_value(true)
                 .default_value("9732")
-                .help("Socket listening port for p2p for communucation with tezos world"))
+                .help("Socket listening port for p2p for communication with tezos world"))
             .arg(Arg::with_name("rpc-port")
                 .short("r")
                 .long("rpc-port")
                 .takes_value(true)
                 .default_value("18732")
-                .help("Rust server RPC port for communucation with rust node"))
+                .help("Rust server RPC port for communication with rust node"))
             .arg(Arg::with_name("peers")
                 .short("p")
                 .long("peers")
@@ -64,18 +63,12 @@ impl Environment {
                 .long("identity")
                 .takes_value(true)
                 .help("Path to Tezos identity.json file."))
-            .arg(Arg::with_name("logh")
-                .short("h")
-                .long("logh")
+            .arg(Arg::with_name("log-message-contents")
+                .short("m")
+                .long("log-message-contents")
                 .takes_value(true)
                 .default_value("true")
-                .help("Log messages as plain bytes (HEX). Default: true"))
-            .arg(Arg::with_name("logj")
-                .short("j")
-                .long("logj")
-                .takes_value(true)
-                .default_value("true")
-                .help("Log messages as JSON. Default: true"))
+                .help("Log message contents. Default: true"))
             .get_matches();
 
         Environment {
@@ -85,7 +78,7 @@ impl Environment {
                     .unwrap_or_default()
                     .parse::<u16>()
                     .expect("Was expecting value of p2p-port"),
-                bootstrap_lookup_address: args.
+                bootstrap_lookup_addresses: args.
                     value_of("bootstrap-lookup-address")
                     .unwrap_or_default()
                     .parse::<String>()
@@ -116,14 +109,10 @@ impl Environment {
                 }).unwrap_or(Vec::new()),
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
-            log_messages_as_hex: args.value_of("logh")
+            log_message_contents: args.value_of("log-message-contents")
                 .unwrap()
                 .parse::<bool>()
-                .expect("Was expecting value of logh"),
-            log_messages_as_json: args.value_of("logj")
-                .unwrap()
-                .parse::<bool>()
-                .expect("Was expecting value of logj"),
+                .expect("Was expecting value of log-message-contents"),
         }
     }
 }

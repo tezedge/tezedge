@@ -26,7 +26,7 @@ impl HasEncoding for AckMessage {
 mod tests {
     use failure::Error;
 
-    use crate::tezos::p2p::message::BinaryMessage;
+    use crate::p2p::message::BinaryMessage;
 
     use super::*;
 

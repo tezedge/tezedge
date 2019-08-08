@@ -98,7 +98,7 @@ mod tests {
 
     use tezos_encoding::binary_writer::BinaryWriter;
 
-    use crate::tezos::p2p::message::BinaryMessage;
+    use crate::p2p::message::BinaryMessage;
 
     use super::*;
 

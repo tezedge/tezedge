@@ -27,7 +27,7 @@ impl ConnectionMessage {
                 .expect("Failed to decode public ket from hex string"),
             proof_of_work_stamp: hex::decode(proof_of_work_stamp)
                 .expect("Failed to decode proof of work stamp from hex string"),
-            message_nonce: message_nonce.into()
+            message_nonce: message_nonce.into(),
         }
     }
 

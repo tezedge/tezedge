@@ -23,13 +23,12 @@ pub struct RpcLayer {
 
 impl RpcLayer {
 
-    pub fn new(bootstrap_lookup_address: Vec<String>, listener_port: u16) -> Self {
+    pub fn new(bootstrap_lookup_address: &Vec<String>, listener_port: u16) -> Self {
         RpcLayer { bootstrap_lookup_address: bootstrap_lookup_address.clone(), listener_port }
     }
 }
 
 async fn process_http_request(request: Request<Body>, rpc: Arc<Mutex<RpcLayer>>, p2p: Arc<Mutex<P2pLayer>>) -> Result<Response<Body>, Error> {
-    let rpc = rpc.lock().await;
     let p2p = p2p.lock().await;
     let response = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => {
@@ -57,6 +56,7 @@ async fn process_http_request(request: Request<Body>, rpc: Arc<Mutex<RpcLayer>>,
                         .unwrap()
                 }
                 RpcMessage::BootstrapWithLookup(_) => {
+                    let rpc = rpc.lock().await;
                     p2p.bootstrap_with_lookup(&rpc.bootstrap_lookup_address).await?;
                     Response::builder()
                         .header(header::CONTENT_TYPE, "application/json")

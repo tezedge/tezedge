@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use failure::{bail, Error};
 use log::warn;
 
-use crate::rpc::message::PeerAddress;
-use crate::tezos::p2p::client::{Identity, Version};
+use networking::p2p::client::{Identity, Version};
 
 pub fn get_default_tezos_identity_json_file_path() -> Result<PathBuf, Error> {
     match dirs::home_dir() {

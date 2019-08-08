@@ -47,13 +47,15 @@ impl<T> BinaryMessage for T
 ///
 /// Example:
 /// ```rust
+/// use crate::networking::p2p::message::RawBinaryMessage;
+///
 /// let raw: RawBinaryMessage = hex::decode("000600108eceda2f").unwrap().into();
 ///
 /// let all_received_bytes = hex::decode("000600108eceda2f").unwrap();
 /// assert_eq!(raw.get_raw(), &all_received_bytes);
 ///
 /// let actual_message_bytes = hex::decode("00108eceda2f").unwrap();
-/// assert_eq!(raw.get_contents(), &actual_message_bytes);
+/// assert_eq!(&raw.get_contents().to_vec(), &actual_message_bytes);
 /// ```
 pub struct RawBinaryMessage(Vec<u8>);
 
