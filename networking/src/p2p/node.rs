@@ -4,22 +4,21 @@ use failure::Error;
 use futures::lock::Mutex;
 use futures::prelude::*;
 use futures::stream::futures_unordered::FuturesUnordered;
+
 use log::{debug, error, info, warn};
+use tezos_encoding::hash::{prefix, to_prefixed_hash};
 use tokio;
 
-use tezos_encoding::hash::{prefix, to_prefixed_hash};
-
-use crate::configuration::tezos_node;
+use crate::p2p::{
+    client::P2pClient,
+    encoding::block_header::BlockHeader,
+    peer::P2pPeer,
+    pool::P2pPool,
+};
 use crate::rpc::message::*;
-use crate::tezos::p2p::encoding::block_header::BlockHeader;
-use crate::tezos::p2p::pool::P2pPool;
-
-use super::client::P2pClient;
-use super::peer::P2pPeer;
-use crate::configuration;
+use crate::p2p::lookup::lookup_initial_peers;
 
 /// node - represents running rust tezos node, node communicates with remote peers
-
 #[derive(Clone)]
 pub struct P2pLayer {
     pool: Arc<Mutex<P2pPool>>,
@@ -36,7 +35,7 @@ impl ChainsHead {
         &self.chain_id
     }
 
-pub fn header(&self) -> &BlockHeader {
+    pub fn header(&self) -> &BlockHeader {
         &self.header
     }
 }
@@ -55,9 +54,9 @@ impl P2pLayer {
         bootstrap(&self.client, &msg.initial_peers, self.pool.clone()).await
     }
 
-    pub async fn bootstrap_with_lookup(&self) -> Result<(), Error> {
-        let initial_peers = tezos_node::lookup_initial_peers(&configuration::ENV.p2p.bootstrap_lookup_address).unwrap();
-        debug!("BootstrapWithLookup({:?}) - initial_peers:{:?}", &configuration::ENV.p2p.bootstrap_lookup_address, &initial_peers);
+    pub async fn bootstrap_with_lookup(&self, bootstrap_addresses: &[String]) -> Result<(), Error> {
+        let initial_peers = lookup_initial_peers(bootstrap_addresses).unwrap();
+        debug!("BootstrapWithLookup({:?}) - initial_peers:{:?}", bootstrap_addresses, &initial_peers);
         bootstrap(&self.client, &initial_peers, self.pool.clone()).await
     }
 

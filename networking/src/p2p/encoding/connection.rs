@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::de;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
-use crate::tezos::p2p::encoding::version::Version;
-use crate::tezos::p2p::message::{BinaryMessage, RawBinaryMessage};
+use crate::p2p::encoding::version::Version;
+use crate::p2p::message::{BinaryMessage, RawBinaryMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConnectionMessage {
@@ -27,7 +27,7 @@ impl ConnectionMessage {
                 .expect("Failed to decode public ket from hex string"),
             proof_of_work_stamp: hex::decode(proof_of_work_stamp)
                 .expect("Failed to decode proof of work stamp from hex string"),
-            message_nonce: message_nonce.into()
+            message_nonce: message_nonce.into(),
         }
     }
 

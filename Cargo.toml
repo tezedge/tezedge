@@ -4,5 +4,9 @@ members = [
     "crypto",
     "tezos_interop",
     "tezos_encoding",
-    "light_node"
+    "networking",
+    "storage",
+    "light_node",
+
+    "fuzz/connection_message"
 ]

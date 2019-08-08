@@ -6,7 +6,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::hash;
 use tezos_encoding::hash::HashEncoding;
 
-use crate::tezos::p2p::encoding::block_header::BlockHeader;
+use crate::p2p::encoding::block_header::BlockHeader;
 
 use super::*;
 

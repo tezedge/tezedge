@@ -4,21 +4,20 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use failure::{bail, Error};
-use log::{debug, info, error, warn};
-use tokio::net::TcpStream;
+use log::{debug, error, info, warn};
 use serde::Deserialize;
+use tokio::net::TcpStream;
 
 use crypto::nonce::{self, Nonce};
+use storage::db::Db;
 
+use crate::p2p::{
+    encoding::prelude::*,
+    message::{BinaryMessage, RawBinaryMessage},
+    peer::{P2pPeer, PeerState},
+    stream::MessageStream,
+};
 use crate::rpc::message::PeerAddress;
-use crate::tezos::storage::db::Db;
-
-use super::encoding::prelude::*;
-use super::peer::{P2pPeer, PeerState};
-use super::stream::MessageStream;
-use crate::configuration;
-use crate::tezos::p2p::encoding::peer::PeerMessageResponse;
-use crate::tezos::p2p::message::{BinaryMessage, RawBinaryMessage};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Version {
@@ -32,7 +31,7 @@ pub struct Identity {
     pub peer_id: String,
     pub public_key: String,
     pub secret_key: String,
-    pub proof_of_work_stamp: String
+    pub proof_of_work_stamp: String,
 }
 
 #[derive(Clone)]
@@ -42,13 +41,13 @@ pub struct P2pClient {
     identity: Identity,
     versions: Vec<Version>,
     db: Arc<RwLock<Db>>,
+    log_messages: bool,
 }
 
 impl P2pClient {
-    pub fn new(init_chain_id: Vec<u8>, identity: Identity, versions: Vec<Version>, db: Db) -> Self {
-        let listener_port: u16 = configuration::ENV.p2p.listener_port;
+    pub fn new(init_chain_id: Vec<u8>, identity: Identity, versions: Vec<Version>, db: Db, listener_port: u16, log_messages: bool) -> Self {
         info!("Configuration - Rust node p2p listening on port: {:?}", listener_port);
-        P2pClient { listener_port, init_chain_id, identity, versions, db: Arc::new(RwLock::new(db)) }
+        P2pClient { listener_port, init_chain_id, identity, log_messages, versions, db: Arc::new(RwLock::new(db)) }
     }
 
     pub async fn connect_peer<'a>(&'a self, peer: &'a PeerAddress) -> Result<P2pPeer, Error> {
@@ -57,7 +56,6 @@ impl P2pClient {
         match addr.to_socket_addrs() {
             Ok(socket_addresses) => {
                 if let Some(ref addr) = socket_addresses.into_iter().next() {
-
                     debug!("");
                     debug!("");
                     debug!("");
@@ -66,7 +64,6 @@ impl P2pClient {
 
                     match TcpStream::connect(addr).await {
                         Ok(stream) => {
-
                             let stream: MessageStream = stream.into();
                             let (mut msg_rx, mut msg_tx) = stream.split();
 
@@ -97,12 +94,13 @@ impl P2pClient {
                             let peer = P2pPeer::new(
                                 peer_public_key.clone(),
                                 &self.identity.secret_key,
-                                PeerAddress {host: peer.host.clone(), port: peer.port},
+                                PeerAddress { host: peer.host.clone(), port: peer.port },
                                 PeerState::new(
                                     &nonce_local,
                                     &nonce_remote),
                                 msg_rx,
-                                msg_tx
+                                msg_tx,
+                                self.log_messages,
                             );
 
                             // send metadata
@@ -136,7 +134,7 @@ impl P2pClient {
                                 AckMessage::Ack => {
                                     debug!("Received remote peer ack/nack - ACK");
                                     Ok(peer)
-                                },
+                                }
                                 AckMessage::Nack => {
                                     bail!("Received remote peer ack/nack - NACK");
                                 }
@@ -176,14 +174,15 @@ impl P2pClient {
             &self.identity.public_key,
             &self.identity.proof_of_work_stamp,
             &nonce.get_bytes(),
-            self.versions.iter().map(|v| v.into()).collect()
+            self.versions.iter().map(|v| v.into()).collect(),
         )
     }
 
     pub async fn handle_message<'a>(&'a self, peer: &'a P2pPeer, message: &'a Vec<u8>) -> Result<(), Error> {
-
         for peer_message in PeerMessageResponse::from_bytes(message.clone())?.get_messages() {
-            crate::tezos::p2p::encoding::peer::log(&peer_message)?;
+            if self.log_messages {
+                crate::p2p::encoding::peer::log(&peer_message)?;
+            }
 
             match peer_message {
                 PeerMessage::GetCurrentBranch(get_current_branch_message) => {
@@ -202,14 +201,14 @@ impl P2pClient {
                             }
                         }
                     }
-                },
+                }
                 PeerMessage::CurrentBranch(current_branch_message) => {
                     debug!("Received current_branch_message from peer: {:?} for chain_id: {:?}", &peer.get_peer_id(), hex::encode(current_branch_message.get_chain_id()));
                     debug!("Received current_branch_message from peer: {:?} for current_head.operations_hash: {:?}", &peer.get_peer_id(), hex::encode(current_branch_message.get_current_branch().get_current_head().get_operations_hash()));
 
                     // (Demo) store current_branch in db
                     self.db.write().unwrap().store_branch(peer.get_peer_id().clone(), current_branch_message.as_bytes()?);
-                },
+                }
                 _ => warn!("Received encoding (but not handled): {:?}", peer_message)
             }
         }
@@ -272,22 +271,22 @@ impl P2pClient {
 mod tests {
     use super::*;
 
-    # [test]
+    #[test]
     fn can_serialize_get_current_branch_message() {
         let get_current_branch_message = PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(hex::decode("8eceda2f").unwrap()));
         let response: PeerMessageResponse = get_current_branch_message.into();
         let message_bytes = response.as_bytes().unwrap();
         let expected_writer_result = hex::decode("0000000600108eceda2f").expect("Failed to decode");
-        assert_eq ! (expected_writer_result, message_bytes);
+        assert_eq!(expected_writer_result, message_bytes);
     }
 
-    # [test]
+    #[test]
     fn can_serialize_get_current_head_message() {
         let get_current_branch_message = PeerMessage::GetCurrentHead(GetCurrentHeadMessage::new(hex::decode("8eceda2f").unwrap()));
         let response: PeerMessageResponse = get_current_branch_message.into();
         let message_bytes = response.as_bytes().unwrap();
         let expected_writer_result = hex::decode("0000000600138eceda2f").expect("Failed to decode");
-        assert_eq ! (expected_writer_result, message_bytes);
+        assert_eq!(expected_writer_result, message_bytes);
     }
 
     #[test]

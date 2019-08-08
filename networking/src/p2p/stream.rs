@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
 use tokio::net::TcpStream;
 
-use crate::tezos::p2p::message::{MESSAGE_LENGTH_FIELD_SIZE, RawBinaryMessage};
+use crate::p2p::message::{MESSAGE_LENGTH_FIELD_SIZE, RawBinaryMessage};
 
 pub struct MessageStream {
     reader: MessageReader,

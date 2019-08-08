@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::ser;
 
-use crate::configuration;
-use crate::tezos::p2p::message::JsonMessage;
+use crate::p2p::message::JsonMessage;
 
 use super::current_branch::CurrentBranchMessage;
 use super::current_head::CurrentHeadMessage;
@@ -77,18 +76,16 @@ impl From<PeerMessage> for PeerMessageResponse {
 }
 
 pub fn log(peer_message: &PeerMessage) -> Result<(), ser::Error> {
-    if configuration::ENV.log_messages_as_json {
-        let json = match peer_message {
-            PeerMessage::Bootstrap | PeerMessage::Disconnect => None,
-            PeerMessage::GetCurrentBranch(msg) => Some(msg.as_json()?),
-            PeerMessage::CurrentBranch(msg) => Some(msg.as_json()?),
-            PeerMessage::GetCurrentHead(msg) => Some(msg.as_json()?),
-            PeerMessage::CurrentHead(msg) => Some(msg.as_json()?),
-        };
+    let json = match peer_message {
+        PeerMessage::Bootstrap | PeerMessage::Disconnect => None,
+        PeerMessage::GetCurrentBranch(msg) => Some(msg.as_json()?),
+        PeerMessage::CurrentBranch(msg) => Some(msg.as_json()?),
+        PeerMessage::GetCurrentHead(msg) => Some(msg.as_json()?),
+        PeerMessage::CurrentHead(msg) => Some(msg.as_json()?),
+    };
 
-        if let Some(json) = json {
-            debug!("Message received from peer: as JSON: \n{}", json);
-        }
+    if let Some(json) = json {
+        debug!("Message received from peer: as JSON: \n{}", json);
     }
 
     Ok(())
@@ -101,7 +98,7 @@ mod tests {
 
     use tezos_encoding::binary_writer::BinaryWriter;
 
-    use crate::tezos::p2p::message::BinaryMessage;
+    use crate::p2p::message::BinaryMessage;
 
     use super::*;
 

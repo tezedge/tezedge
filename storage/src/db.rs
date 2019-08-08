@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::tezos::p2p::peer::PeerId;
-
-
+pub type PeerId = String;
 pub type BranchId = Vec<u8>;
 
 /// Structure for representing in-memory db for - just for demo purposes.

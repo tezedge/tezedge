@@ -5,15 +5,13 @@ extern crate lazy_static;
 use std::path::{Path, PathBuf};
 
 use log::{debug, error, info};
+
+use networking::p2p::node::P2pLayer;
+use networking::rpc::message::{BootstrapMessage, PeerAddress};
+use storage::db::Db;
 use tokio;
+use networking::rpc::server::RpcLayer;
 
-use crate::rpc::message::BootstrapMessage;
-use crate::rpc::message::PeerAddress;
-use crate::tezos::storage::db::Db;
-use crate::tezos::p2p::node::P2pLayer;
-
-mod tezos;
-mod rpc;
 mod configuration;
 
 const LOG_FILE: &str = "log4rs.yml";
@@ -40,7 +38,7 @@ fn configure_default_logger() {
 
 #[tokio::main]
 async fn main() {
-    use crate::tezos::p2p::client::P2pClient;
+    use networking::p2p::client::P2pClient;
 
     match log4rs::init_file(LOG_FILE, Default::default()) {
         Ok(_) => debug!("Logger configured from file: {}", LOG_FILE),
@@ -90,29 +88,28 @@ async fn main() {
         init_chain_id.unwrap(),
         identity.unwrap(),
         configuration::tezos_node::versions(),
-        Db::new()
+        Db::new(),
+        configuration::ENV.p2p.listener_port,
+        configuration::ENV.log_message_contents
     );
 
     let p2p = P2pLayer::new(p2p_client);
-
     // init node bootstrap
     if !initial_peers.is_empty() {
         p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap encoding to p2p layer")
-
     } else {
-        p2p.bootstrap_with_lookup().await.expect("Failed to transmit bootstrap encoding to p2p layer")
+        p2p.bootstrap_with_lookup(&configuration::ENV.p2p.bootstrap_lookup_addresses).await.expect("Failed to transmit bootstrap encoding to p2p layer")
     }
 
+    let rpc = RpcLayer::new(&configuration::ENV.p2p.bootstrap_lookup_addresses, configuration::ENV.rpc.listener_port);
     // ------------------
     // Lines after the following block will be executed only after accept_connections() task will complete
     // ------------------
-    let res = rpc::server::accept_connections(p2p).await;
+    let res = networking::rpc::server::accept_connections(rpc, p2p).await;
     if let Err(e) = res {
         error!("Failed to start accepting RPC connections. Reason: {:?}", e);
         return;
     }
-
-
 
     info!("Iron p2p stopped")
 }
