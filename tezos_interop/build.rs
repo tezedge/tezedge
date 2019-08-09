@@ -16,46 +16,30 @@ fn run_builder(lib_dir: &PathBuf) {
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "docker" => {
-            // $ docker build -t lib_ocaml .
+            // $ docker build -t lib_ocaml -f ../../docker/Dockerfile .
             Command::new("docker")
-                .args(&["build", "-t", "lib_ocaml", "."])
-                .current_dir("docker")
+                .args(&["build", "-t", "lib_ocaml", "-f", "../../docker/Dockerfile", "."])
+                .current_dir(&lib_dir)
                 .status()
                 .expect("Couldn't run docker build.");
 
-            // $ docker run -di lib_ocaml sh
-            let docker_run_output = String::from_utf8(Command::new("docker")
-                .args(&["run", "-di", "lib_ocaml", "sh"])
-                .output()
-                .expect("Couldn't start docker container.")
-                .stdout)
-                .unwrap();
-            let container_id = docker_run_output.trim();
-
-            // $ docker cp <lib_dir> <container_id>:/home/appuser/build
+            // $ docker run -w /home/appuser/build --name lib_ocaml lib_ocaml make
             Command::new("docker")
-                .args(&["cp", lib_dir.as_os_str().to_str().unwrap(), &format!("{}:/home/appuser/build", container_id)])
+                .args(&["run", "-w", "/home/appuser/build", "--name", "lib_ocaml", "lib_ocaml", "make"])
                 .status()
-                .expect("Couldn't copy files to container.");
+                .expect("Couldn't run build process inside of the docker container.");
 
-            // $ docker exec -w /home/appuser/build <container_id> make
+            // $ docker cp lib_ocaml:/home/appuser/build/artifacts <lib_dir>/artifacts
             Command::new("docker")
-                .args(&["exec", "-w", "/home/appuser/build", container_id, "make"])
-                .status()
-                .expect("Couldn't run build process inside of docker container.");
-
-            // $ docker cp <container_id>:/home/appuser/build/artifacts <lib_dir>/artifacts
-            Command::new("docker")
-                .args(&["cp", &format!("{}:/home/appuser/build/artifacts", container_id), lib_dir.join("artifacts").as_os_str().to_str().unwrap()])
+                .args(&["cp", "lib_ocaml:/home/appuser/build/artifacts/.", lib_dir.join("artifacts").as_os_str().to_str().unwrap()])
                 .status()
                 .expect("Couldn't copy files from container to host.");
 
-            // $ docker stop <container_id>
-//            Command::new("docker")
-//                .args(&["kill", container_id])
-//                .status()
-//                .expect("Couldn't stop container.");
-
+            // $ docker container rm lib_ocaml
+            Command::new("docker")
+                .args(&["container", "rm", "lib_ocaml"])
+                .status()
+                .expect("Couldn't remove the docker container.");
         }
         _ => unimplemented!("cargo:warning=Invalid OCaml build chain '{}' .", build_chain)
     };

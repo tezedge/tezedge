@@ -12,10 +12,13 @@ Valid values are:
 people who don't want to install OCaml. First run might take some time to complete because docker images are fairly large. 
 * `local` use this option if you have OCaml already installed.
 
+Note: the first time you build using docker might take a long time because it's building ocaml image from scratch.
+In the future we will shorten this time by providing a prebuild docker image.
+
 ### Linking OCaml libraries
 `OCAML_LIB` environment variable will set name of the ocaml library which will be used fer linking.
 Default value is `tzmock`.
 
 Valid values are:
 * `tzmock` will use mock ocaml code, at the moment this is the only valid option
- 
+* `tzreal` will build forked version of the Tezos repository. 
