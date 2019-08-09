@@ -8,6 +8,7 @@ fn run_builder(lib_dir: &PathBuf) {
 
     match build_chain.as_ref() {
         "local" => {
+            // $ opam config exec make
             Command::new("opam")
                 .args(&["config", "exec", "make"])
                 .current_dir(lib_dir)
@@ -15,17 +16,46 @@ fn run_builder(lib_dir: &PathBuf) {
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "docker" => {
+            // $ docker build -t lib_ocaml .
             Command::new("docker")
                 .args(&["build", "-t", "lib_ocaml", "."])
-                .current_dir("lib_ocaml")
+                .current_dir("docker")
                 .status()
                 .expect("Couldn't run docker build.");
 
-            let lib_dir_absolute_path = fs::canonicalize(lib_dir).unwrap();
+            // $ docker run -di lib_ocaml sh
+            let docker_run_output = String::from_utf8(Command::new("docker")
+                .args(&["run", "-di", "lib_ocaml", "sh"])
+                .output()
+                .expect("Couldn't start docker container.")
+                .stdout)
+                .unwrap();
+            let container_id = docker_run_output.trim();
+
+            // $ docker cp <lib_dir> <container_id>:/home/appuser/build
             Command::new("docker")
-                .args(&["run", "-w", "/home/opam/build", "-v", &format!("{}:/home/opam/build", lib_dir_absolute_path.as_os_str().to_str().unwrap()), "lib_ocaml", "make"])
+                .args(&["cp", lib_dir.as_os_str().to_str().unwrap(), &format!("{}:/home/appuser/build", container_id)])
+                .status()
+                .expect("Couldn't copy files to container.");
+
+            // $ docker exec -w /home/appuser/build <container_id> make
+            Command::new("docker")
+                .args(&["exec", "-w", "/home/appuser/build", container_id, "make"])
                 .status()
                 .expect("Couldn't run build process inside of docker container.");
+
+            // $ docker cp <container_id>:/home/appuser/build/artifacts <lib_dir>/artifacts
+            Command::new("docker")
+                .args(&["cp", &format!("{}:/home/appuser/build/artifacts", container_id), lib_dir.join("artifacts").as_os_str().to_str().unwrap()])
+                .status()
+                .expect("Couldn't copy files from container to host.");
+
+            // $ docker stop <container_id>
+//            Command::new("docker")
+//                .args(&["kill", container_id])
+//                .status()
+//                .expect("Couldn't stop container.");
+
         }
         _ => unimplemented!("cargo:warning=Invalid OCaml build chain '{}' .", build_chain)
     };
@@ -45,32 +75,26 @@ fn rerun_if_ocaml_file_changes(lib_dir: &PathBuf) {
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
-    let ocaml_libs = vec!["tzmock"];
-    for lib_name in ocaml_libs.into_iter() {
-        let lib_dir = Path::new("lib_ocaml").join(lib_name);
-        run_builder(&lib_dir);
+    let lib_name = env::var("OCAML_LIB").unwrap_or("tzmock".to_string());
+    let lib_dir = Path::new("lib_ocaml").join(&lib_name);
+    run_builder(&lib_dir);
 
-        let lib_a = format!("lib{}.a", lib_name);
-        let lib_o = format!("lib{}.o", lib_name);
-        // move .o file to OUT_DIR location
-        Command::new("mv")
-            .args(&[
-                Path::new(&lib_dir).join(&lib_o).to_str().unwrap(),
-                Path::new(&out_dir).join(&lib_o).to_str().unwrap(),
-            ])
-            .status()
-            .expect("File copy failed.");
-        // crate .a package
-        Command::new("ar")
-            .args(&["qs", &lib_a, &lib_o])
-            .current_dir(&out_dir)
-            .status()
-            .expect("ar gave an error");
-
-        rerun_if_ocaml_file_changes(&lib_dir);
+    // copy artifact files to OUT_DIR location
+    let artifacts_dir_items = fs::read_dir(lib_dir.join("artifacts").as_path()).unwrap().filter_map(Result::ok)
+        .map(|dir_entry| dir_entry.path())
+        .filter(|path| path.is_file())
+        .collect::<Vec<PathBuf>>();
+    let artifacts_dir_items = artifacts_dir_items.iter().map(|p| p.as_path()).collect();
+    let mut copy_options = fs_extra::dir::CopyOptions::new();
+    copy_options.overwrite = true;
+    let bytes_copied = fs_extra::copy_items(&artifacts_dir_items, &out_dir, &copy_options).expect("Failed to copy artifacts to build output directory.");
+    if bytes_copied == 0 {
+        println!("cargo:warning=No files were copied over from artifacts directory.")
     }
 
-    println!("cargo:rustc-link-search={}", out_dir);
-    println!("cargo:rustc-link-lib=dylib={}", &env::var("OCAML_LIB").unwrap_or("tzmock".to_string()));
+    rerun_if_ocaml_file_changes(&lib_dir);
+
+    println!("cargo:rustc-link-search={}", &out_dir);
+    println!("cargo:rustc-link-lib=dylib={}", &lib_name);
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
 }
