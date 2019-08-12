@@ -147,10 +147,10 @@ fn initialize_environment() -> OcamlEnvironment {
 }
 
 /// Run a function in ocaml runtime and return a result.
-pub fn run<F, T>(f: F) -> OcamlResult<T>
+pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     where
-        F: FnOnce() -> T + Send + 'static,
-        T: Send + 'static
+        F: FnOnce() -> T + 'static + Send,
+        T: 'static + Send
 {
     let result = Arc::new(Mutex::new(None));
     let state = Arc::new(Mutex::new(SharedState { waker: None }));
