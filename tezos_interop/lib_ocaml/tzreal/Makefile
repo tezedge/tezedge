@@ -3,7 +3,7 @@ OBJDIR = artifacts
 all: package
 
 package: build
-		ar qs $(OBJDIR)/libtzmock.a $(OBJDIR)/*.o
+		ar qs $(OBJDIR)/libtzreal.a $(OBJDIR)/*.o
 
 build: build-deps
 		cd tezos && opam config exec -- make
@@ -14,12 +14,8 @@ build-deps: git
 		cd tezos && make build-deps
 
 git:
-		@if [ ! -d tezos ] ;\
-		then \
-	  		echo "Tezos repo does not exist, fetching"; \
-	  		git clone https://gitlab.com/jurajselep/tezos.git; \
-	  		cd tezos && git checkout poc-protocol-alphanet; \
-		fi
+		git submodule update --init --remote
 
 clean:
-		rm -rf tezos artifacts
+		cd tezos && opam config exec -- make clean
+		rm -rf artifacts
