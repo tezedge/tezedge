@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn run_builder(lib_dir: &PathBuf) {
-    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("local".to_string());
+    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("docker".to_string());
 
     match build_chain.as_ref() {
         "local" => {
