@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash;
-use tezos_encoding::hash::HashEncoding;
+use tezos_encoding::hash::{HashEncoding, Prefix};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Mempool {
@@ -24,8 +23,8 @@ impl Mempool {
 impl HasEncoding for Mempool {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(32, &hash::prefix::OPERATION_HASH))))),
-            Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(32, &hash::prefix::OPERATION_HASH)))))),
+            Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(32, Prefix::OperationHash))))),
+            Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(32, Prefix::OperationHash)))))),
         ])
     }
 }

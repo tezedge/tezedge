@@ -2,8 +2,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::HashEncoding;
-use tezos_encoding::hash;
+use tezos_encoding::hash::{HashEncoding, Prefix};
 
 use super::*;
 
@@ -38,10 +37,10 @@ impl HasEncoding for BlockHeader {
         Encoding::Obj(vec![
             Field::new("level", Encoding::Int32),
             Field::new("proto", Encoding::Uint8),
-            Field::new("predecessor", Encoding::Hash(HashEncoding::new(32, &hash::prefix::BLOCK_HASH))),
+            Field::new("predecessor", Encoding::Hash(HashEncoding::new(32, Prefix::BlockHash))),
             Field::new("timestamp", Encoding::Timestamp),
             Field::new("validation_pass", Encoding::Uint8),
-            Field::new("operations_hash", Encoding::Hash(HashEncoding::new(32, &hash::prefix::OPERATION_LIST_LIST_HASH))),
+            Field::new("operations_hash", Encoding::Hash(HashEncoding::new(32, Prefix::OperationListListHash))),
             Field::new("fitness", Encoding::Split(Rc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::dynamic(Encoding::list(Encoding::Bytes)),
@@ -50,7 +49,7 @@ impl HasEncoding for BlockHeader {
                     ))
                 }
             ))),
-            Field::new("context", Encoding::Hash(HashEncoding::new(32, &hash::prefix::CONTEXT_HASH))),
+            Field::new("context", Encoding::Hash(HashEncoding::new(32, Prefix::ContextHash))),
             Field::new("protocol_data", Encoding::Split(Rc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,

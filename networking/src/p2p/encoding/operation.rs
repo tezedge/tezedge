@@ -3,8 +3,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash;
-use tezos_encoding::hash::HashEncoding;
+use tezos_encoding::hash::{HashEncoding, Prefix};
 
 use super::*;
 
@@ -32,7 +31,7 @@ pub struct Operation {
 impl HasEncoding for Operation {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("branch", Encoding::Hash(HashEncoding::new(32, &hash::prefix::BLOCK_HASH))),
+            Field::new("branch", Encoding::Hash(HashEncoding::new(32, Prefix::BlockHash))),
             Field::new("data", Encoding::Split(Rc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,
@@ -58,7 +57,7 @@ mod tests {
         let message_bytes = hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?;
         let operation = Operation::from_bytes(message_bytes)?;
 //        let hash_encoding = HashEncoding::new(32, &hash::prefix::BLOCK_HASH);
-        assert_eq!("BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H", to_prefixed_hash(&hash::prefix::BLOCK_HASH, &operation.branch));
+        assert_eq!("BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H", to_prefixed_hash(Prefix::BlockHash.as_bytes(), &operation.branch));
         assert_eq!("000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08", &hex::encode(&operation.data));
 
         Ok(())
