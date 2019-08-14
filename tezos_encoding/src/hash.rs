@@ -1,4 +1,6 @@
+use std::string::ToString;
 use crypto::base58::ToBase58Check;
+use std::io;
 
 pub mod prefix {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
@@ -6,18 +8,20 @@ pub mod prefix {
     pub const CONTEXT_HASH: [u8; 2] = [79, 199];
     pub const OPERATION_HASH: [u8; 2] = [5, 116];
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
+
+
 }
 
 #[derive(Debug, Clone)]
-pub struct HashEncoding {
+pub struct HashEncoding<'a> {
     bytes_size: usize,
-    prefix: Vec<u8>,
+    prefix: &'a [u8],
 }
 
 /// This is hash configuration used to encode/decode data.
-impl HashEncoding {
-    pub fn new(bytes_size: usize, prefix: &[u8]) -> HashEncoding {
-        HashEncoding { bytes_size, prefix: prefix.to_vec() }
+impl<'a> HashEncoding<'a> {
+    pub fn new(bytes_size: usize, prefix: &'a[u8]) -> HashEncoding {
+        HashEncoding { bytes_size, prefix }
     }
 
     /// Get length of hash in bytes (excluding prefix).
@@ -25,8 +29,8 @@ impl HashEncoding {
         self.bytes_size
     }
     /// Get hash prefix bytes. Prefix is used when hash is by base58check.
-    pub fn get_prefix(&self) -> &Vec<u8> {
-        &self.prefix
+    pub fn get_prefix(&self) -> &'a [u8] {
+        self.prefix
     }
 
     pub fn encode_bytes(&self, bytes: &[u8]) -> String {
@@ -37,11 +41,27 @@ impl HashEncoding {
     }
 }
 
+#[derive(Debug)]
+pub struct Hash<'a> {
+    encoding: &'a [u8],
+    data: Vec<u8>
+}
+
+impl ToString for Hash<'_> {
+    fn to_string(&self) -> String {
+        to_prefixed_hash(self.encoding, &self.data)
+    }
+}
+
 pub fn to_prefixed_hash(prefix: &[u8], data: &[u8]) -> String {
     let mut hash = vec![];
     hash.extend_from_slice(&prefix);
     hash.extend_from_slice(&data);
     hash.to_base58check()
+}
+
+pub fn from_prefixed_hash<'a>(prefix: &'a[u8], data: &[u8]) -> Result<Hash<'a>, io::Error> {
+    unimplemented!()
 }
 
 #[cfg(test)]

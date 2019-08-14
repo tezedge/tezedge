@@ -8,6 +8,8 @@ use serde::forward_to_deserialize_any;
 
 use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
+use crate::hash::{Hash, HashEncoding, from_prefixed_hash};
+use failure::_core::mem::uninitialized;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Error {
@@ -499,6 +501,50 @@ impl<'de> Deserialize<'de> for BigInt {
         deserializer.deserialize_string(BigIntVisitor)
     }
 }
+
+
+/*
+ * -----------------------------------------------------------------------------
+ *  Hash<'static> deserialization
+ * -----------------------------------------------------------------------------
+ */
+struct HashIntVisitor(HashEncoding<'static>);
+
+impl<'de> Visitor<'de> for HashIntVisitor {
+    type Value = Hash<'static>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("an encoded hash string")
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        let hash: Hash = from_prefixed_hash(self.0.get_prefix(), value.as_bytes()).unwrap().into();
+        Ok(hash)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        let hash: Hash = from_prefixed_hash(self.0.get_prefix(), value.as_bytes()).unwrap().into();
+        Ok(hash)
+    }
+
+}
+
+impl<'de> Deserialize<'de> for Hash<'static> {
+    fn deserialize<D>(deserializer: D) -> Result<Hash<'static>, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        unimplemented!("TODO")
+//        deserializer.deserialize_string(HashIntVisitor)
+    }
+}
+
 
 
 #[cfg(test)]

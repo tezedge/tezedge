@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::hash;
-use tezos_encoding::hash::HashEncoding;
+use tezos_encoding::hash::{HashEncoding, Hash};
 
 use super::*;
 
