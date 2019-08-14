@@ -67,7 +67,7 @@ impl P2pLayer {
     pub async fn get_chains_head(&self) -> Option<ChainsHead> {
         match self.client.get_current_branch() {
             Some(current_branch_msg) => Some(ChainsHead {
-                chain_id: to_prefixed_hash(&prefix::CHAIN_ID, current_branch_msg.get_chain_id().clone()),
+                chain_id: to_prefixed_hash(&prefix::CHAIN_ID, &current_branch_msg.get_chain_id()),
                 header: current_branch_msg.get_current_branch().get_current_head().clone(),
             }),
             None => None

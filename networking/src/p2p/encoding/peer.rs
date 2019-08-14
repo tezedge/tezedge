@@ -7,11 +7,13 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::ser;
 
 use crate::p2p::message::JsonMessage;
-
-use super::current_branch::CurrentBranchMessage;
-use super::current_head::CurrentHeadMessage;
-use super::get_current_branch::GetCurrentBranchMessage;
-use super::get_current_head::GetCurrentHeadMessage;
+use crate::p2p::encoding::{
+    current_branch::CurrentBranchMessage,
+    current_head::CurrentHeadMessage,
+    get_current_branch::GetCurrentBranchMessage,
+    get_current_head::GetCurrentHeadMessage,
+    operation::OperationMessage,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PeerMessage {
@@ -29,7 +31,7 @@ pub enum PeerMessage {
 //    GetBlockHeaders,  // TODO
 //    BlockHeader,      // TODO
 //    GetOperations,    // TODO
-//    Operation(OperationMessage),
+    Operation(OperationMessage),
 //    GetProtocols,     // TODO
 //    Protocol,         // TODO
 //    GetOperationHashesForBlocks,    // TODO
@@ -62,6 +64,7 @@ impl HasEncoding for PeerMessageResponse {
                         Tag::new(0x11, "CurrentBranch", CurrentBranchMessage::encoding()),
                         Tag::new(0x13, "GetCurrentHead", GetCurrentHeadMessage::encoding()),
                         Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding()),
+                        Tag::new(0x31, "Operation", OperationMessage::encoding()),
                     ])
                 )
             )))
@@ -82,6 +85,7 @@ pub fn log(peer_message: &PeerMessage) -> Result<(), ser::Error> {
         PeerMessage::CurrentBranch(msg) => Some(msg.as_json()?),
         PeerMessage::GetCurrentHead(msg) => Some(msg.as_json()?),
         PeerMessage::CurrentHead(msg) => Some(msg.as_json()?),
+        PeerMessage::Operation(msg) => Some(msg.as_json()?),
     };
 
     if let Some(json) = json {

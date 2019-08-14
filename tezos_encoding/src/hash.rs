@@ -37,10 +37,10 @@ impl HashEncoding {
     }
 }
 
-pub fn to_prefixed_hash(prefix: &[u8], mut data: Vec<u8>) -> String {
+pub fn to_prefixed_hash(prefix: &[u8], data: &[u8]) -> String {
     let mut hash = vec![];
     hash.extend_from_slice(&prefix);
-    hash.append(&mut data);
+    hash.extend_from_slice(&data);
     hash.to_base58check()
 }
 
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_encode_chain_id() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(&prefix::CHAIN_ID, hex::decode("8eceda2f")?);
+        let decoded = to_prefixed_hash(&prefix::CHAIN_ID, &hex::decode("8eceda2f")?);
         let expected = "NetXgtSLGNJvNye";
         assert_eq!(expected, decoded);
 
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn test_encode_block_header() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(&prefix::BLOCK_HASH, hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?);
+        let decoded = to_prefixed_hash(&prefix::BLOCK_HASH, &hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?);
         let expected = "BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9";
         assert_eq!(expected, decoded);
 
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_encode_context() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(&prefix::CONTEXT_HASH, hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?);
+        let decoded = to_prefixed_hash(&prefix::CONTEXT_HASH, &hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?);
         let expected = "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd";
         assert_eq!(expected, decoded);
 
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_encode_operations_hash() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(&prefix::OPERATION_LIST_LIST_HASH, hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?);
+        let decoded = to_prefixed_hash(&prefix::OPERATION_LIST_LIST_HASH, &hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?);
         let expected = "LLoads9N8uB8v659hpNhpbrLzuzLdUCjz5euiR6Lm2hd7C6sS2Vep";
         assert_eq!(expected, decoded);
 

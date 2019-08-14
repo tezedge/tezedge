@@ -1,6 +1,7 @@
 pub type ChainId = Vec<u8>;
 pub type BlockHash = Vec<u8>;
 
+pub mod operation;
 pub mod version;
 pub mod connection;
 pub mod metadata;
