@@ -35,7 +35,7 @@ impl HasEncoding for CurrentHeadMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashEncoding::new(4, &hash::prefix::CHAIN_ID))),
-            Field::new("current_block_header", BlockHeader::encoding()),
+            Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding())),
             Field::new("current_mempool", Mempool::encoding())
         ])
     }

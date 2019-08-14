@@ -40,7 +40,7 @@ impl HasEncoding for CurrentBranchMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CurrentBranch {
     current_head: BlockHeader,
-    history: Vec<u8>,
+    history: Vec<BlockHash>,
 }
 
 impl CurrentBranch {
@@ -50,7 +50,7 @@ impl CurrentBranch {
     }
 
     #[allow(dead_code)]
-    pub fn get_history(&self) -> &Vec<u8> {
+    pub fn get_history(&self) -> &Vec<BlockHash> {
         &self.history
     }
 }
@@ -58,11 +58,11 @@ impl CurrentBranch {
 impl HasEncoding for CurrentBranch {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("current_head", BlockHeader::encoding()),
+            Field::new("current_head", Encoding::dynamic(BlockHeader::encoding())),
             Field::new("history", Encoding::Split(Rc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
-                    SchemaType::Binary => Encoding::list(Encoding::Uint8)
+                    SchemaType::Binary => Encoding::list(Encoding::Hash(HashEncoding::new(32, &hash::prefix::BLOCK_HASH)))
                 }
             )))
         ])

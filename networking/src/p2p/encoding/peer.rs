@@ -23,13 +23,13 @@ pub enum PeerMessage {
 
     GetCurrentBranch(GetCurrentBranchMessage),
     CurrentBranch(CurrentBranchMessage),
-    //    Deactivate,     // TODO
+//    Deactivate,     // TODO
     GetCurrentHead(GetCurrentHeadMessage),
     CurrentHead(CurrentHeadMessage),
 //    GetBlockHeaders,  // TODO
 //    BlockHeader,      // TODO
 //    GetOperations,    // TODO
-//    Operation,        // TODO
+//    Operation(OperationMessage),
 //    GetProtocols,     // TODO
 //    Protocol,         // TODO
 //    GetOperationHashesForBlocks,    // TODO
@@ -134,7 +134,7 @@ mod tests {
                 let expected_protocol_data = hex::decode("0000000000031b4f9aff00c6d9a5d1fbf5eda49a01e52017dc78ca1d7a45f3f4fe32840052f9845a61ccdd6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a").unwrap();
                 assert_eq!(&expected_protocol_data, current_head.get_protocol_data());
 
-                assert_eq!(4512, current_branch_message.get_current_branch().get_history().len());
+                assert_eq!(141, current_branch_message.get_current_branch().get_history().len());
 
                 let mut writer = BinaryWriter::new();
                 let bytes = writer.write(current_branch_message, &CurrentBranchMessage::encoding()).unwrap();

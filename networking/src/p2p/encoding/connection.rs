@@ -41,7 +41,8 @@ impl ConnectionMessage {
     }
 }
 
-// TODO: remove this construct
+// TODO: Replace this by impl TryFrom with a bounded generic parameter
+//       after https://github.com/rust-lang/rust/issues/50133 is resolved.
 impl TryFrom<RawBinaryMessage> for ConnectionMessage {
     type Error = de::Error;
 

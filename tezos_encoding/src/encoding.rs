@@ -140,7 +140,8 @@ pub enum Encoding {
     /// Tag is prefixed by tag id and followed by encoded bytes
     /// First argument represents size of the tag marker in bytes.
     Tags(usize, TagMap),
-    /// List combinator.
+    /// List combinator. It's behavior is similar to [Encoding::Greedy] encoding. Main distinction
+    /// is that we are expecting list of items instead of a single item to be contained in binary data.
     /// - encoded as an array in JSON
     /// - encoded as the concatenation of all the element in binary
     List(Box<Encoding>),
