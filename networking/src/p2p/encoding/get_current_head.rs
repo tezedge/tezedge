@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash;
-use tezos_encoding::hash::HashEncoding;
+use tezos_encoding::hash::{HashEncoding, Prefix};
 
 use crate::p2p::encoding::ChainId;
 
@@ -21,7 +20,7 @@ impl GetCurrentHeadMessage {
 impl HasEncoding for GetCurrentHeadMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashEncoding::new(4, &hash::prefix::CHAIN_ID)))
+            Field::new("chain_id", Encoding::Hash(HashEncoding::new(4, Prefix::ChainId)))
         ])
     }
 }

@@ -166,7 +166,7 @@ pub enum Encoding {
     Greedy(Box<Encoding>),
     /// Decode various types of hashes. Hash has it's own predefined length and prefix.
     /// This is controller by a hash implementation.
-    Hash(HashEncoding<'static>),
+    Hash(HashEncoding),
     /// Provides different encoding based on target data type.
     Split(Rc<dyn EncodingFnTr<Output = Encoding>>),
     /// Timestamp encoding.

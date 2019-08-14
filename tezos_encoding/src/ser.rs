@@ -6,7 +6,6 @@ use serde::ser::{self, Error as SerdeError, Serialize};
 
 use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
-use crate::hash::Hash;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Error {
@@ -420,20 +419,6 @@ impl Serialize for BigInt {
     {
         let bigint: num_bigint::BigInt = self.into();
         serializer.serialize_str(&bigint.to_str_radix(16))
-    }
-}
-
-/*
- * -----------------------------------------------------------------------------
- *  Hash<'static> serialization
- * -----------------------------------------------------------------------------
- */
-impl Serialize for Hash<'static> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: ser::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
     }
 }
 
