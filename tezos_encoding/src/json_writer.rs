@@ -304,7 +304,7 @@ mod tests {
     use serde::{Serialize};
 
     use super::*;
-    use crate::hash::{HashEncoding, Prefix};
+    use crate::hash::{HashEncoding, HashType};
     use crate::types::BigInt;
 
     #[test]
@@ -384,7 +384,7 @@ mod tests {
             Field::new("d", Encoding::Float),
             Field::new("e", Encoding::Enum),
             Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema)))),
-            Field::new("h", Encoding::Hash(HashEncoding::new(4, Prefix::ChainId)))
+            Field::new("h", Encoding::Hash(HashEncoding::new(HashType::ChainId)))
 
         ];
 

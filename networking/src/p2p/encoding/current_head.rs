@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{HashEncoding, Prefix};
+use tezos_encoding::hash::{HashEncoding, HashType};
 
 use super::*;
 use super::block_header::BlockHeader;
@@ -33,7 +33,7 @@ impl CurrentHeadMessage {
 impl HasEncoding for CurrentHeadMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashEncoding::new(4, Prefix::ChainId))),
+            Field::new("chain_id", Encoding::Hash(HashEncoding::new(HashType::ChainId))),
             Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding())),
             Field::new("current_mempool", Mempool::encoding())
         ])

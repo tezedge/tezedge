@@ -6,7 +6,7 @@ use futures::prelude::*;
 use futures::stream::futures_unordered::FuturesUnordered;
 
 use log::{debug, error, info, warn};
-use tezos_encoding::hash::{to_prefixed_hash, Prefix};
+use tezos_encoding::hash::{to_prefixed_hash, HashType};
 use tokio;
 
 use crate::p2p::{
@@ -67,7 +67,7 @@ impl P2pLayer {
     pub async fn get_chains_head(&self) -> Option<ChainsHead> {
         match self.client.get_current_branch() {
             Some(current_branch_msg) => Some(ChainsHead {
-                chain_id: to_prefixed_hash(Prefix::ChainId.as_bytes(), &current_branch_msg.get_chain_id()),
+                chain_id: to_prefixed_hash(HashType::ChainId.prefix(), &current_branch_msg.get_chain_id()),
                 header: current_branch_msg.get_current_branch().get_current_head().clone(),
             }),
             None => None
