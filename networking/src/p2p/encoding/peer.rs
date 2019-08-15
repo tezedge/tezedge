@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::ser;
 
+use crate::p2p::encoding::block_header::{BlockHeaderMessage, GetBlockHeadersMessage};
 use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
 use crate::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
 use crate::p2p::encoding::operation::{GetOperationsMessage, OperationMessage};
@@ -14,18 +15,17 @@ use crate::p2p::message::JsonMessage;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PeerMessage {
     Disconnect,
-    //    Advertise,      // TODO
+//    Advertise,      // TODO
 //    SwapRequest,    // TODO
 //    SwapAck,        // TODO
     Bootstrap,
-
     GetCurrentBranch(GetCurrentBranchMessage),
     CurrentBranch(CurrentBranchMessage),
 //    Deactivate,     // TODO
     GetCurrentHead(GetCurrentHeadMessage),
     CurrentHead(CurrentHeadMessage),
-//    GetBlockHeaders,  // TODO
-//    BlockHeader,      // TODO
+    GetBlockHeaders(GetBlockHeadersMessage),
+    BlockHeader(BlockHeaderMessage),
     GetOperations(GetOperationsMessage),
     Operation(OperationMessage),
 //    GetProtocols,     // TODO
@@ -60,6 +60,9 @@ impl HasEncoding for PeerMessageResponse {
                         Tag::new(0x11, "CurrentBranch", CurrentBranchMessage::encoding()),
                         Tag::new(0x13, "GetCurrentHead", GetCurrentHeadMessage::encoding()),
                         Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding()),
+                        Tag::new(0x20, "GetBlockHeaders", GetBlockHeadersMessage::encoding()),
+                        Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding()),
+                        Tag::new(0x30, "GetOperations", GetOperationsMessage::encoding()),
                         Tag::new(0x31, "Operation", OperationMessage::encoding()),
                     ])
                 )
@@ -83,6 +86,8 @@ pub fn log(peer_message: &PeerMessage) -> Result<(), ser::Error> {
         PeerMessage::CurrentHead(msg) => Some(msg.as_json()?),
         PeerMessage::Operation(msg) => Some(msg.as_json()?),
         PeerMessage::GetOperations(msg) => Some(msg.as_json()?),
+        PeerMessage::BlockHeader(msg) => Some(msg.as_json()?),
+        PeerMessage::GetBlockHeaders(msg) => Some(msg.as_json()?),
     };
 
     if let Some(json) = json {
