@@ -8,6 +8,13 @@ mod prefix_bytes {
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
 }
 
+pub type Hash = Vec<u8>;
+pub type ChainId = Hash;
+pub type BlockHash = Hash;
+pub type OperationHash = Hash;
+pub type OperationListListHash = Hash;
+pub type ContextHash = Hash;
+
 #[derive(Debug, Copy, Clone)]
 pub enum HashType {
     ChainId,

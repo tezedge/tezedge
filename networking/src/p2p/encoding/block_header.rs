@@ -1,10 +1,9 @@
 use std::rc::Rc;
+
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{HashEncoding, HashType};
-
-use super::*;
+use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, OperationListListHash};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockHeader {
@@ -13,9 +12,9 @@ pub struct BlockHeader {
     predecessor: BlockHash,
     timestamp: i64,
     validation_pass: u8,
-    operations_hash: Vec<u8>,
+    operations_hash: OperationListListHash,
     fitness: Vec<Vec<u8>>,
-    context: Vec<u8>,
+    context: ContextHash,
     protocol_data: Vec<u8>
 }
 
@@ -26,9 +25,9 @@ impl BlockHeader {
     pub fn get_predecessor(&self) -> &BlockHash { &self.predecessor }
     pub fn get_timestamp(&self) -> i64 { self.timestamp }
     pub fn get_validation_pass(&self) -> u8 { self.validation_pass }
-    pub fn get_operations_hash(&self) -> &Vec<u8> { &self.operations_hash }
+    pub fn get_operations_hash(&self) -> &OperationListListHash { &self.operations_hash }
     pub fn get_fitness(&self) -> &Vec<Vec<u8>> { &self.fitness }
-    pub fn get_context(&self) -> &Vec<u8> { &self.context }
+    pub fn get_context(&self) -> &ContextHash { &self.context }
     pub fn get_protocol_data(&self) -> &Vec<u8> { &self.protocol_data }
 }
 
@@ -63,7 +62,9 @@ impl HasEncoding for BlockHeader {
 #[cfg(test)]
 mod tests {
     use failure::Error;
+
     use crate::p2p::message::BinaryMessage;
+
     use super::*;
 
     #[test]
