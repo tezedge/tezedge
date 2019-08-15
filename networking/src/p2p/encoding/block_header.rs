@@ -5,6 +5,35 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, OperationListListHash};
 
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BlockHeaderMessage {
+    block_header: BlockHeader
+}
+
+impl HasEncoding for BlockHeaderMessage {
+    fn encoding() -> Encoding {
+        Encoding::Obj(vec![
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+        ])
+    }
+}
+
+// -----------------------------------------------------------------------------------------------
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetBlockHeadersMessage {
+    get_block_headers: Vec<BlockHash>,
+}
+
+impl HasEncoding for GetBlockHeadersMessage {
+    fn encoding() -> Encoding {
+        Encoding::Obj(vec![
+            Field::new("get_block_headers", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::BlockHash))))),
+        ])
+    }
+}
+
+// -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockHeader {
     level: i32,
