@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_encoding::hash::{ChainId, HashEncoding, HashType};
 
-use super::*;
 use super::block_header::BlockHeader;
 use super::mempool::Mempool;
 

@@ -3,11 +3,9 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_encoding::hash::{HashEncoding, HashType, ChainId, BlockHash};
 
 use crate::p2p::encoding::block_header::BlockHeader;
-
-use super::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CurrentBranchMessage {

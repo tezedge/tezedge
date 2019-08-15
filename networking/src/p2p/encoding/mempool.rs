@@ -1,21 +1,21 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_encoding::hash::{HashEncoding, HashType, OperationHash};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Mempool {
-    known_valid: Vec<Vec<u8>>,
-    pending: Vec<Vec<u8>>,
+    known_valid: Vec<OperationHash>,
+    pending: Vec<OperationHash>,
 }
 
 #[allow(dead_code)]
 impl Mempool {
-    pub fn get_known_valid(&self) -> &Vec<Vec<u8>> {
+    pub fn get_known_valid(&self) -> &Vec<OperationHash> {
         &self.known_valid
     }
 
-    pub fn get_pending(&self) -> &Vec<Vec<u8>> {
+    pub fn get_pending(&self) -> &Vec<OperationHash> {
         &self.pending
     }
 }

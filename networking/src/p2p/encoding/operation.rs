@@ -3,9 +3,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{HashEncoding, HashType};
-
-use super::*;
+use tezos_encoding::hash::{HashEncoding, HashType, BlockHash};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OperationMessage {

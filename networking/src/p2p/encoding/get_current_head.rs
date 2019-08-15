@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{HashEncoding, HashType};
-
-use crate::p2p::encoding::ChainId;
+use tezos_encoding::hash::{HashEncoding, HashType, ChainId};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetCurrentHeadMessage {
