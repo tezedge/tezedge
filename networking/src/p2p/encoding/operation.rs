@@ -3,7 +3,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{HashEncoding, HashType, BlockHash};
+use tezos_encoding::hash::{HashEncoding, HashType, BlockHash, OperationHash};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OperationMessage {
@@ -39,6 +39,21 @@ impl HasEncoding for Operation {
         ])
     }
 }
+
+// -----------------------------------------------------------------------------------------------
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetOperationsMessage {
+    get_operations: Vec<OperationHash>,
+}
+
+impl HasEncoding for GetOperationsMessage {
+    fn encoding() -> Encoding {
+        Encoding::Obj(vec![
+            Field::new("get_operations", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::OperationHash))))),
+        ])
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
