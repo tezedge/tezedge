@@ -13,7 +13,7 @@ use storage::db::Db;
 
 use crate::p2p::{
     encoding::prelude::*,
-    message::{BinaryMessage, RawBinaryMessage},
+    message::{BinaryMessage, RawBinaryMessage, JsonMessage},
     peer::{P2pPeer, PeerState},
     stream::MessageStream,
 };
@@ -179,11 +179,13 @@ impl P2pClient {
     }
 
     pub async fn handle_message<'a>(&'a self, peer: &'a P2pPeer, message: &'a Vec<u8>) -> Result<(), Error> {
-        for peer_message in PeerMessageResponse::from_bytes(message.clone())?.get_messages() {
-            if self.log_messages {
-                crate::p2p::encoding::peer::log(&peer_message)?;
-            }
+        let response = PeerMessageResponse::from_bytes(message.clone())?;
+        if self.log_messages {
+            debug!("Response received from peer [as JSON]: \n{}", response.as_json()?);
+        }
 
+
+        for peer_message in response.get_messages() {
             match peer_message {
                 PeerMessage::GetCurrentBranch(get_current_branch_message) => {
                     debug!("Received get_current_branch_message from peer: {:?} for chain_id: {:?}", &peer.get_peer_id(), hex::encode(get_current_branch_message.get_chain_id()));
