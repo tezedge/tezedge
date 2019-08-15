@@ -6,6 +6,7 @@ mod prefix_bytes {
     pub const CONTEXT_HASH: [u8; 2] = [79, 199];
     pub const OPERATION_HASH: [u8; 2] = [5, 116];
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
+    pub const PROTOCOL_HASH: [u8; 2] = [2, 170];
 }
 
 pub type Hash = Vec<u8>;
@@ -14,11 +15,13 @@ pub type BlockHash = Hash;
 pub type OperationHash = Hash;
 pub type OperationListListHash = Hash;
 pub type ContextHash = Hash;
+pub type ProtocolHash = Hash;
 
 #[derive(Debug, Copy, Clone)]
 pub enum HashType {
     ChainId,
     BlockHash,
+    ProtocolHash,
     ContextHash,
     OperationHash,
     OperationListListHash,
@@ -31,6 +34,7 @@ impl HashType {
             HashType::ChainId => &CHAIN_ID,
             HashType::BlockHash => &BLOCK_HASH,
             HashType::ContextHash => &CONTEXT_HASH,
+            HashType::ProtocolHash => &PROTOCOL_HASH,
             HashType::OperationHash => &OPERATION_HASH,
             HashType::OperationListListHash => &OPERATION_LIST_LIST_HASH,
         }
@@ -41,6 +45,7 @@ impl HashType {
             HashType::ChainId => 4,
             HashType::BlockHash
             | HashType::ContextHash
+            | HashType::ProtocolHash
             | HashType::OperationHash
             | HashType::OperationListListHash => 32,
         }
