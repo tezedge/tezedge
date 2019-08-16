@@ -1,16 +1,14 @@
 use std::mem::size_of;
 
-use log::debug;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_encoding::ser;
 
 use crate::p2p::encoding::block_header::{BlockHeaderMessage, GetBlockHeadersMessage};
 use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
 use crate::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
 use crate::p2p::encoding::operation::{GetOperationsMessage, OperationMessage};
-use crate::p2p::message::JsonMessage;
+use crate::p2p::encoding::protocol::{GetProtocolsMessage, ProtocolMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PeerMessage {
@@ -28,8 +26,8 @@ pub enum PeerMessage {
     BlockHeader(BlockHeaderMessage),
     GetOperations(GetOperationsMessage),
     Operation(OperationMessage),
-//    GetProtocols,     // TODO
-//    Protocol,         // TODO
+    GetProtocols(GetProtocolsMessage),
+    Protocol(ProtocolMessage),
 //    GetOperationHashesForBlocks,    // TODO
 //    OperationHashesForBlock,        // TODO
 //    GetOperationsForBlocks,         // TODO
@@ -64,6 +62,8 @@ impl HasEncoding for PeerMessageResponse {
                         Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding()),
                         Tag::new(0x30, "GetOperations", GetOperationsMessage::encoding()),
                         Tag::new(0x31, "Operation", OperationMessage::encoding()),
+                        Tag::new(0x40, "GetProtocols", GetProtocolsMessage::encoding()),
+                        Tag::new(0x41, "Protocol", ProtocolMessage::encoding()),
                     ])
                 )
             )))
@@ -76,27 +76,6 @@ impl From<PeerMessage> for PeerMessageResponse {
         PeerMessageResponse { messages: vec![peer_message] }
     }
 }
-
-pub fn log(peer_message: &PeerMessage) -> Result<(), ser::Error> {
-    let json = match peer_message {
-        PeerMessage::Bootstrap | PeerMessage::Disconnect => None,
-        PeerMessage::GetCurrentBranch(msg) => Some(msg.as_json()?),
-        PeerMessage::CurrentBranch(msg) => Some(msg.as_json()?),
-        PeerMessage::GetCurrentHead(msg) => Some(msg.as_json()?),
-        PeerMessage::CurrentHead(msg) => Some(msg.as_json()?),
-        PeerMessage::Operation(msg) => Some(msg.as_json()?),
-        PeerMessage::GetOperations(msg) => Some(msg.as_json()?),
-        PeerMessage::BlockHeader(msg) => Some(msg.as_json()?),
-        PeerMessage::GetBlockHeaders(msg) => Some(msg.as_json()?),
-    };
-
-    if let Some(json) = json {
-        debug!("Message received from peer: as JSON: \n{}", json);
-    }
-
-    Ok(())
-}
-
 
 #[cfg(test)]
 mod tests {

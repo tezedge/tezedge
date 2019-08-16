@@ -7,6 +7,7 @@ pub mod current_branch;
 pub mod current_head;
 pub mod mempool;
 pub mod block_header;
+pub mod protocol;
 pub mod peer;
 
 pub mod prelude {

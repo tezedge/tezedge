@@ -207,6 +207,12 @@ impl Encoding {
     pub fn dynamic(encoding: Encoding) -> Encoding {
         Encoding::Dynamic(Box::new(encoding))
     }
+
+    /// Utility function to construct [Encoding::Option] without the need
+    /// to manually create new [Box].
+    pub fn option(encoding: Encoding) -> Encoding {
+        Encoding::Option(Box::new(encoding))
+    }
 }
 
 /// Indicates that type has it's own ser/de schema.
