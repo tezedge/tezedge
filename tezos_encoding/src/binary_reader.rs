@@ -197,7 +197,7 @@ impl BinaryReader {
                 let inner_encoding = inner_encoding(SchemaType::Binary);
                 self.decode_value(buf, &inner_encoding)
             }
-            Encoding::Recursive(fn_encoding) => {
+            Encoding::Lazy(fn_encoding) => {
                 let inner_encoding = fn_encoding();
                 self.decode_value(buf, &inner_encoding)
             }

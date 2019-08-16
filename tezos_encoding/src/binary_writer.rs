@@ -334,7 +334,7 @@ impl BinaryWriter {
                 let inner_encoding = fn_encoding(SchemaType::Binary);
                 self.encode_value(value, &inner_encoding)
             }
-            Encoding::Recursive(fn_encoding) => {
+            Encoding::Lazy(fn_encoding) => {
                 let inner_encoding = fn_encoding();
                 self.encode_value(value, &inner_encoding)
             }

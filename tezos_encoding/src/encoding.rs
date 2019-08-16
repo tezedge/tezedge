@@ -169,7 +169,7 @@ pub enum Encoding {
     /// Is the collection of fields.
     /// prefixed its length in bytes, encoded as the concatenation of all the element in binary
     Dynamic(Box<Encoding>),
-    /// Represents fixed block in binary encoding.
+    /// Represents fixed size block in binary encoding.
     Sized(usize, Box<Encoding>),
     /// Almost same as [Encoding::Dynamic] but without bytes size information prefix.
     /// It assumes that encoding passed as argument will process rest of the available data.
@@ -185,7 +185,7 @@ pub enum Encoding {
     Timestamp,
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
-    Recursive(Rc<dyn RecursiveEncodingFn<Output = Encoding>>)
+    Lazy(Rc<dyn RecursiveEncodingFn<Output = Encoding>>)
 }
 
 impl Encoding {

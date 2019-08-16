@@ -59,7 +59,7 @@ impl HasEncoding for OperationsForBlocksMessage {
         Encoding::Obj(vec![
             Field::new("operations_for_block", OperationsForBlock::encoding()),
             Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operations", Encoding::list(Operation::encoding())),
+            Field::new("operations", Encoding::list(Encoding::dynamic(Operation::encoding()))),
         ])
     }
 }
@@ -71,10 +71,20 @@ pub struct PathRight {
     path: Path,
 }
 
+impl PathRight {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn left(&self) -> &Hash {
+        &self.left
+    }
+}
+
 impl HasEncoding for PathRight {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashEncoding::new(HashType::OperationListListHash))),
+            Field::new("left", Encoding::Hash(HashEncoding::new(HashType::OperationListListHash))),
             Field::new("path", path_encoding()),
         ])
     }
@@ -84,6 +94,16 @@ impl HasEncoding for PathRight {
 pub struct PathLeft {
     path: Path,
     right: Hash
+}
+
+impl PathLeft {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn right(&self) -> &Hash {
+        &self.right
+    }
 }
 
 impl HasEncoding for PathLeft {
@@ -106,8 +126,8 @@ fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(&[
-            Tag::new(0xF0, "Left", Encoding::Recursive(Rc::new(|| PathLeft::encoding()))),
-            Tag::new(0x0F, "Right", Encoding::Recursive(Rc::new(|| PathRight::encoding()))),
+            Tag::new(0xF0, "Left", Encoding::Lazy(Rc::new(|| PathLeft::encoding()))),
+            Tag::new(0x0F, "Right", Encoding::Lazy(Rc::new(|| PathRight::encoding()))),
             Tag::new(0x00, "Op", Encoding::Unit),
         ])
     )
