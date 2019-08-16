@@ -54,10 +54,6 @@ impl BinaryReader {
 
     fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, Error> {
         match encoding {
-            Encoding::Split(inner_encoding) => {
-                let inner_encoding = inner_encoding(SchemaType::Binary);
-                self.decode_value(buf, &inner_encoding)
-            }
             Encoding::Unit => Ok(Value::Unit),
             Encoding::Int8 => Ok(Value::Int8(safe!(buf, get_i8, i8))),
             Encoding::Uint8 => Ok(Value::Uint8(safe!(buf, get_u8, u8))),
@@ -100,8 +96,8 @@ impl BinaryReader {
             }
             Encoding::Tags(tag_sz, ref tag_map) => {
                 let tag_id = match tag_sz  {
-                    1 => Ok(u16::from(safe!(buf, get_u8, u8))),
-                    2 => Ok(safe!(buf, get_u16_be, u16)),
+                    /*u8*/  1 => Ok(u16::from(safe!(buf, get_u8, u8))),
+                    /*u16*/ 2 => Ok(safe!(buf, get_u16_be, u16)),
                     _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
                 }?;
 
@@ -197,7 +193,17 @@ impl BinaryReader {
                 safe!(buf, bytes_sz, buf.copy_to_slice(&mut buf_slice));
                 Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
             }
-            _ => Err(Error::custom(format!("Unsupported encoding {:?}", encoding)))
+            Encoding::Split(inner_encoding) => {
+                let inner_encoding = inner_encoding(SchemaType::Binary);
+                self.decode_value(buf, &inner_encoding)
+            }
+            Encoding::Recursive(fn_encoding) => {
+                let inner_encoding = fn_encoding();
+                self.decode_value(buf, &inner_encoding)
+            }
+            Encoding::Uint32
+            | Encoding::RangedInt
+            | Encoding::RangedFloat => Err(Error::custom(format!("Unsupported encoding {:?}", encoding)))
         }
     }
 }

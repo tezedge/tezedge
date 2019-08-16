@@ -126,7 +126,18 @@ mod tests {
     #[test]
     fn test_decode_block_header_hash() -> Result<(), failure::Error> {
         let decoded = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
-        let expected = hex::decode("2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b")?;
+        let decoded = hex::encode(&decoded);
+        let expected = "2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_operations_hash() -> Result<(), failure::Error> {
+        let decoded = HashEncoding::new(HashType::OperationListListHash).string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?;
+        let decoded = hex::encode(&decoded);
+        let expected = "7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c3";
         assert_eq!(expected, decoded);
 
         Ok(())

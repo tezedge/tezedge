@@ -8,6 +8,7 @@ pub mod current_head;
 pub mod mempool;
 pub mod block_header;
 pub mod protocol;
+pub mod operations_for_blocks;
 pub mod peer;
 
 pub mod prelude {

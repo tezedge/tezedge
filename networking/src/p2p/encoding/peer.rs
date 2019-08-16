@@ -9,6 +9,7 @@ use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranc
 use crate::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
 use crate::p2p::encoding::operation::{GetOperationsMessage, OperationMessage};
 use crate::p2p::encoding::protocol::{GetProtocolsMessage, ProtocolMessage};
+use crate::p2p::encoding::operations_for_blocks::{GetOperationsForBlocksMessage, OperationsForBlocksMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PeerMessage {
@@ -30,8 +31,8 @@ pub enum PeerMessage {
     Protocol(ProtocolMessage),
 //    GetOperationHashesForBlocks,    // TODO
 //    OperationHashesForBlock,        // TODO
-//    GetOperationsForBlocks,         // TODO
-//    OperationsForBlock,             // TODO
+    GetOperationsForBlocks(GetOperationsForBlocksMessage),
+    OperationsForBlocks(OperationsForBlocksMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -64,6 +65,8 @@ impl HasEncoding for PeerMessageResponse {
                         Tag::new(0x31, "Operation", OperationMessage::encoding()),
                         Tag::new(0x40, "GetProtocols", GetProtocolsMessage::encoding()),
                         Tag::new(0x41, "Protocol", ProtocolMessage::encoding()),
+                        Tag::new(0x60, "GetOperationsForBlocks", GetOperationsForBlocksMessage::encoding()),
+                        Tag::new(0x61, "OperationsForBlocks", OperationsForBlocksMessage::encoding()),
                     ])
                 )
             )))
@@ -87,6 +90,7 @@ mod tests {
 
     use super::*;
     use tezos_encoding::hash::{HashEncoding, HashType};
+    use crate::p2p::encoding::operations_for_blocks::Path;
 
     #[test]
     fn can_deserialize_current_branch_message() {
@@ -232,6 +236,50 @@ mod tests {
                 let block_headers = message.get_block_headers();
                 assert_eq!(1, block_headers.len());
                 assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_headers[0]));
+            }
+            _ => panic!("Unsupported encoding: {:?}", message)
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_deserialize_get_operations_for_blocks() -> Result<(), Error> {
+        let message_bytes = hex::decode("0000008a006000000084ed4197d381a4d4f56be30bf7157426671276aa187bbe0bb9484974af59e069aa01ed4197d381a4d4f56be30bf7157426671276aa187bbe0bb9484974af59e069aa02ed4197d381a4d4f56be30bf7157426671276aa187bbe0bb9484974af59e069aa00ed4197d381a4d4f56be30bf7157426671276aa187bbe0bb9484974af59e069aa03")?;
+        let messages = PeerMessageResponse::from_bytes(message_bytes)?;
+        assert_eq!(1, messages.get_messages().len());
+
+        let message = messages.get_messages().get(0).unwrap();
+        match message {
+            PeerMessage::GetOperationsForBlocks(message) => {
+                let operations = message.get_operations_for_blocks();
+                assert_eq!(4, operations.len());
+                assert_eq!("BMWmj9CTojf7AnA8ZQFWGkh1cXB6FkST8Ey5coaeHX6cVNAZqA6", HashEncoding::new(HashType::BlockHash).bytes_to_string(&operations[0].hash()));
+                assert_eq!(1, operations[0].validation_pass());
+            }
+            _ => panic!("Unsupported encoding: {:?}", message)
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_deserialize_operations_for_blocks() -> Result<(), Error> {
+        let message_bytes = hex::decode("000000660061b12238a7c3577d725939970800ade6b82d94a231e855b46af46c37850dd02452030ffe7601035ca2892f983c10203656479cfd2f8a4ea656f300cd9d68f74aa625870f7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c300")?;
+        let messages = PeerMessageResponse::from_bytes(message_bytes)?;
+        assert_eq!(1, messages.get_messages().len());
+
+        let message = messages.get_messages().get(0).unwrap();
+        match message {
+            PeerMessage::OperationsForBlocks(message) => {
+                assert_eq!("BM4Hyf4ay3u2PcUBmumTEPcWW8Z7t45HXGZAjLNnenSC2f8bLte", HashEncoding::new(HashType::BlockHash).bytes_to_string(&message.operations_for_block().hash()));
+                let path = message.operation_hashes_path();
+                match path {
+                    Path::Left(_left) => {
+                        // NOTHING
+                    },
+                    _ => panic!("Unexpected path: {:?}", path)
+                }
             }
             _ => panic!("Unsupported encoding: {:?}", message)
         }

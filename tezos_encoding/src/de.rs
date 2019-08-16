@@ -408,7 +408,7 @@ impl<'de, 'a> de::EnumAccess<'de> for EnumDeserializer<'a, 'de> {
                 let val = variant.as_str().into_deserializer();
                 seed.deserialize(val).map(|s| (s, self))
             },
-            _ => Err(Error::custom(format!("not an enum but a {:?}", self.de.input))),
+            _ => Err(Error::custom(format!("variant_seed: not an enum but a {:?}", self.de.input))),
         }
     }
 }

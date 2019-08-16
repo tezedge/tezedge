@@ -10,7 +10,7 @@ pub mod runtime;
 ///
 /// It can be then easily awaited in rust:
 ///
-/// ```rust
+/// ```edition2018
 /// #![feature(async_await)]
 /// use ocaml::{Value, Str, named_value};
 /// use crate::runtime;
