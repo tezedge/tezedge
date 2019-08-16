@@ -1,4 +1,4 @@
-use crypto::base58::ToBase58Check;
+use crypto::base58::{ToBase58Check, FromBase58Check, FromBase58CheckError};
 
 mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
@@ -66,16 +66,21 @@ impl HashEncoding {
         self.0.size()
     }
 
-    pub fn encode_bytes(&self, bytes: &[u8]) -> String {
-        to_prefixed_hash(self.0.prefix(), bytes)
+    pub fn bytes_to_string(&self, data: &[u8]) -> String {
+        assert_eq!(self.0.size(), data.len(), "Expected data length is {} but instead found {}", self.0.size(), data.len());
+        let mut hash = vec![];
+        hash.extend(self.0.prefix());
+        hash.extend(data);
+        hash.to_base58check()
     }
-}
 
-pub fn to_prefixed_hash(prefix: &[u8], data: &[u8]) -> String {
-    let mut hash = vec![];
-    hash.extend(prefix);
-    hash.extend(data);
-    hash.to_base58check()
+    pub fn string_to_bytes(&self, data: &str) -> Result<Hash, FromBase58CheckError> {
+        let mut hash = data.from_base58check()?;
+        let expected_len = self.0.size() + self.0.prefix().len();
+        assert_eq!(expected_len, hash.len(), "Expected decoded length is {} but instead found {}", expected_len, hash.len());
+        hash.drain(0..self.0.prefix().len());
+        Ok(hash)
+    }
 }
 
 #[cfg(test)]
@@ -84,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_encode_chain_id() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(HashType::ChainId.prefix(), &hex::decode("8eceda2f")?);
+        let decoded = HashEncoding::new(HashType::ChainId).bytes_to_string(&hex::decode("8eceda2f")?);
         let expected = "NetXgtSLGNJvNye";
         assert_eq!(expected, decoded);
 
@@ -93,7 +98,7 @@ mod tests {
 
     #[test]
     fn test_encode_block_header() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(HashType::BlockHash.prefix(), &hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?);
+        let decoded = HashEncoding::new(HashType::BlockHash).bytes_to_string(&hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?);
         let expected = "BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9";
         assert_eq!(expected, decoded);
 
@@ -102,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_encode_context() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(HashType::ContextHash.prefix(), &hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?);
+        let decoded = HashEncoding::new(HashType::ContextHash).bytes_to_string(&hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?);
         let expected = "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd";
         assert_eq!(expected, decoded);
 
@@ -111,8 +116,28 @@ mod tests {
 
     #[test]
     fn test_encode_operations_hash() -> Result<(), failure::Error> {
-        let decoded = to_prefixed_hash(HashType::OperationListListHash.prefix(), &hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?);
+        let decoded = HashEncoding::new(HashType::OperationListListHash).bytes_to_string(&hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?);
         let expected = "LLoads9N8uB8v659hpNhpbrLzuzLdUCjz5euiR6Lm2hd7C6sS2Vep";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_block_header_hash() -> Result<(), failure::Error> {
+        let decoded = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
+        let decoded = hex::encode(&decoded);
+        let expected = "2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decode_operations_hash() -> Result<(), failure::Error> {
+        let decoded = HashEncoding::new(HashType::OperationListListHash).string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?;
+        let decoded = hex::encode(&decoded);
+        let expected = "7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c3";
         assert_eq!(expected, decoded);
 
         Ok(())

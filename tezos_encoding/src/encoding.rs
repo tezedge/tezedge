@@ -63,7 +63,8 @@ impl TagMap {
         let mut variant_to_tag = HashMap::new();
 
         for tag in tags {
-            id_to_tag.insert(tag.get_id(), tag.clone());
+            let prev_item = id_to_tag.insert(tag.get_id(), tag.clone());
+            assert!(prev_item.is_none(), "Tag id: 0x{:X} is already present in TagMap", tag.get_id());
             variant_to_tag.insert(tag.get_variant().to_string(), tag.clone());
         }
 
@@ -83,14 +84,23 @@ pub enum SchemaType {
     Json, Binary
 }
 
-pub trait EncodingFnTr: Fn(SchemaType) -> Encoding { }
-impl<F> EncodingFnTr for F where F: Fn(SchemaType) -> Encoding { }
-
-impl fmt::Debug for dyn EncodingFnTr<Output = Encoding> {
+pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding { }
+impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding { }
+impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn(SchemaType) -> Encoding")
     }
 }
+
+
+pub trait RecursiveEncodingFn: Fn() -> Encoding { }
+impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding { }
+impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Fn() -> Encoding")
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub enum Encoding {
@@ -159,7 +169,7 @@ pub enum Encoding {
     /// Is the collection of fields.
     /// prefixed its length in bytes, encoded as the concatenation of all the element in binary
     Dynamic(Box<Encoding>),
-    /// Represents fixed block in binary encoding.
+    /// Represents fixed size block in binary encoding.
     Sized(usize, Box<Encoding>),
     /// Almost same as [Encoding::Dynamic] but without bytes size information prefix.
     /// It assumes that encoding passed as argument will process rest of the available data.
@@ -168,11 +178,14 @@ pub enum Encoding {
     /// This is controller by a hash implementation.
     Hash(HashEncoding),
     /// Provides different encoding based on target data type.
-    Split(Rc<dyn EncodingFnTr<Output = Encoding>>),
+    Split(Rc<dyn SplitEncodingFn<Output = Encoding>>),
     /// Timestamp encoding.
     /// - encoded as RFC 3339 in json
     /// - encoded as [Encoding::Int64] in binary
     Timestamp,
+    /// This is used to handle recursive encodings needed to encode tree structure.
+    /// Encoding itself produces no output in binary or json.
+    Lazy(Rc<dyn RecursiveEncodingFn<Output = Encoding>>)
 }
 
 impl Encoding {

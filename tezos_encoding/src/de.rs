@@ -112,6 +112,9 @@ impl<'de> StructDeserializer<'de> {
 impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     type Error = Error;
 
+    // Look at the input data to decide what Serde data model type to
+    // deserialize as. Not all data formats are able to support this operation.
+    // Formats that support `deserialize_any` are known as self-describing.
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -134,13 +137,17 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64
     }
 
+    // The `Serializer` implementation on the previous page serialized chars as
+    // single-character strings so handle that representation here.
     fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
     {
-        Err(Error::custom("avro does not support char"))
+        Err(Error::custom("tezos protocol does not support char"))
     }
 
+    // Refer to the "Understanding deserializer lifetimes" page for information
+    // about the three deserialization flavors of strings in Serde.
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -169,6 +176,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
+    // The `Serializer` implementation on the previous page serialized byte
+    // arrays as JSON arrays of bytes. Handle that representation here.
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -193,6 +202,14 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
+    // An absent optional is represented as the JSON `null` and a present
+    // optional is represented as just the contained value.
+    //
+    // As commented in `Serializer` implementation, this is a lossy
+    // representation. For example the values `Some(())` and `None` both
+    // serialize as just `null`. Unfortunately this is typically what people
+    // expect when working with JSON. Other formats are encouraged to behave
+    // more intelligently if possible.
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -209,6 +226,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
+    // In Serde, unit means an anonymous value containing no data.
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -219,6 +237,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
+    // Unit struct means a named value containing no data.
     fn deserialize_unit_struct<V>(
         self,
         _: &'static str,
@@ -230,6 +249,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         self.deserialize_unit(visitor)
     }
 
+    // As is done here, serializers are encouraged to treat newtype structs as
+    // insignificant wrappers around the data they contain. That means not
+    // parsing anything other than the contained value.
     fn deserialize_newtype_struct<V>(
         self,
         _: &'static str,
@@ -241,6 +263,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_newtype_struct(self)
     }
 
+    // Deserialization of compound types like sequences and maps happens by
+    // passing the visitor an "Access" object that gives it the ability to
+    // iterate through the data contained in the sequence.
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -251,6 +276,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         }
     }
 
+    // Tuples look just like sequences in JSON. Some formats may be able to
+    // represent tuples more efficiently.
+    //
+    // As indicated by the length parameter, the `Deserialize` implementation
+    // for a tuple in the Serde data model is required to know the length of the
+    // tuple before even looking at the input data.
     fn deserialize_tuple<V>(self, _: usize, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -258,6 +289,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         self.deserialize_seq(visitor)
     }
 
+    // Tuple structs look just like sequences in JSON.
     fn deserialize_tuple_struct<V>(
         self,
         _: &'static str,
@@ -270,6 +302,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         self.deserialize_seq(visitor)
     }
 
+    // Much like `deserialize_seq` but calls the visitors `visit_map` method
+    // with a `MapAccess` implementation, rather than the visitor's `visit_seq`
+    // method with a `SeqAccess` implementation.
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -277,6 +312,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         unimplemented!("Map type is not supported")
     }
 
+    // Structs look just like maps in JSON.
+    //
+    // Notice the `fields` parameter - a "struct" in the Serde data model means
+    // that the `Deserialize` implementation is required to know what the fields
+    // are before even looking at the input data. Any key-value pairing in which
+    // the fields cannot be known ahead of time is probably a map.
     fn deserialize_struct<V>(
         self,
         _: &'static str,
@@ -304,6 +345,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_enum(EnumDeserializer::new(self))
     }
 
+    // An identifier in Serde is the type that identifies a field of a struct or
+    // the variant of an enum. In JSON, struct fields and enum variants are
+    // represented as strings. In other formats they may be represented as
+    // numeric indices.
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
@@ -311,11 +356,22 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         self.deserialize_str(visitor)
     }
 
+    // Like `deserialize_any` but indicates to the `Deserializer` that it makes
+    // no difference which `Visitor` method is called because the data is
+    // ignored.
+    //
+    // Some deserializers are able to implement this more efficiently than
+    // `deserialize_any`, for example by rapidly skipping over matched
+    // delimiters without paying close attention to the data in between.
+    //
+    // Some formats are not able to implement this at all. Formats that can
+    // implement `deserialize_any` and `deserialize_ignored_any` are known as
+    // self-describing.
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
         where
             V: Visitor<'de>,
     {
-        self.deserialize_any(visitor)
+        visitor.visit_unit()
     }
 }
 
@@ -408,7 +464,7 @@ impl<'de, 'a> de::EnumAccess<'de> for EnumDeserializer<'a, 'de> {
                 let val = variant.as_str().into_deserializer();
                 seed.deserialize(val).map(|s| (s, self))
             },
-            _ => Err(Error::custom(format!("not an enum but a {:?}", self.de.input))),
+            _ => Err(Error::custom(format!("variant_seed: not an enum but a {:?}", self.de.input))),
         }
     }
 }

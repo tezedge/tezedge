@@ -39,9 +39,9 @@ pub trait FromBase58Check {
 impl ToBase58Check for [u8] {
     fn to_base58check(&self) -> String {
         let mut payload = vec![];
-        payload.extend_from_slice(self);
+        payload.extend(self);
         let checksum = double_sha256(self);
-        payload.extend_from_slice(&checksum[..4]);
+        payload.extend(&checksum[..4]);
 
         payload.to_base58()
     }
