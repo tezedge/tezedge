@@ -86,6 +86,7 @@ mod tests {
     use crate::p2p::message::BinaryMessage;
 
     use super::*;
+    use tezos_encoding::hash::{HashEncoding, HashType};
 
     #[test]
     fn can_deserialize_current_branch_message() {
@@ -201,8 +202,8 @@ mod tests {
         let message_bytes = hex::decode("000000020002")?;
         let messages = PeerMessageResponse::from_bytes(message_bytes).unwrap();
         assert_eq!(1, messages.get_messages().len());
-        let message = messages.get_messages().get(0).unwrap();
 
+        let message = messages.get_messages().get(0).unwrap();
         match message {
             PeerMessage::Bootstrap => {
                 Ok(())
@@ -217,5 +218,24 @@ mod tests {
         let serialized = hex::encode(message.as_bytes()?);
         let expected = "000000020002";
         Ok(assert_eq!(expected, &serialized))
+    }
+
+    #[test]
+    fn can_deserialize_get_block_headers() -> Result<(), Error> {
+        let message_bytes = hex::decode("000000260020000000202253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b")?;
+        let messages = PeerMessageResponse::from_bytes(message_bytes)?;
+        assert_eq!(1, messages.get_messages().len());
+
+        let message = messages.get_messages().get(0).unwrap();
+        match message {
+            PeerMessage::GetBlockHeaders(message) => {
+                let block_headers = message.get_block_headers();
+                assert_eq!(1, block_headers.len());
+                assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_headers[0]));
+            }
+            _ => panic!("Unsupported encoding: {:?}", message)
+        }
+
+        Ok(())
     }
 }
