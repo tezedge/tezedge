@@ -11,6 +11,10 @@ pub struct Mempool {
 
 #[allow(dead_code)]
 impl Mempool {
+    pub fn new() -> Self {
+        Mempool { pending: Vec::new(), known_valid: Vec::new() }
+    }
+
     pub fn get_known_valid(&self) -> &Vec<OperationHash> {
         &self.known_valid
     }
@@ -26,22 +30,5 @@ impl HasEncoding for Mempool {
             Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::OperationHash))))),
             Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::OperationHash)))))),
         ])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use failure::Error;
-
-    use crate::p2p::message::BinaryMessage;
-
-    use super::*;
-
-    #[test]
-    fn can_serialize_mempool() -> Result<(), Error> {
-        let message = Mempool { pending: Vec::new(), known_valid: Vec::new() };
-        let serialized = hex::encode(message.as_bytes()?);
-        let expected = "000000000000000400000000";
-        Ok(assert_eq!(expected, &serialized))
     }
 }
