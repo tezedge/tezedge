@@ -20,7 +20,7 @@ impl HasEncoding for ProtocolMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Component {
     name: String,
-    interface: String,
+    interface: Option<String>,
     implementation: String,
 }
 
@@ -42,11 +42,21 @@ pub struct Protocol {
     components: Vec<Component>,
 }
 
+impl Protocol {
+    pub fn expected_env_version(&self) -> i16 {
+        self.expected_env_version
+    }
+
+    pub fn components(&self) -> &Vec<Component> {
+        &self.components
+    }
+}
+
 impl HasEncoding for Protocol {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("expected_env_version", Encoding::Int16),
-            Field::new("components", Component::encoding())
+            Field::new("components", Encoding::dynamic(Encoding::list(Component::encoding())))
         ])
     }
 }
