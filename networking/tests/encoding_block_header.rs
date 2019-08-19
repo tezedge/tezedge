@@ -2,6 +2,7 @@ use failure::Error;
 
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::message::BinaryMessage;
+use tezos_encoding::hash::{HashEncoding, HashType};
 
 #[test]
 fn can_deserialize_block_header() -> Result<(), Error> {
@@ -14,4 +15,21 @@ fn can_deserialize_block_header() -> Result<(), Error> {
     assert_eq!("000000000003c762c7df00a856b8bfcaf0676f069f825ca75f37f2bee9fe55ba109cec3d1d041d8c03519626c0c0faa557e778cb09d2e0c729e8556ed6a7a518c84982d1f2682bc6aa753f", &hex::encode(&block_header.get_protocol_data()));
 
     Ok(())
+}
+
+#[test]
+fn can_deserialize_get_block_headers() -> Result<(), Error> {
+    let message_bytes = hex::decode("000000260020000000202253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b")?;
+    let messages = PeerMessageResponse::from_bytes(message_bytes)?;
+    assert_eq!(1, messages.get_messages().len());
+
+    let message = messages.get_messages().get(0).unwrap();
+    match message {
+        PeerMessage::GetBlockHeaders(message) => {
+            let block_headers = message.get_block_headers();
+            assert_eq!(1, block_headers.len());
+            Ok(assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_headers[0])))
+        }
+        _ => panic!("Unsupported encoding: {:?}", message)
+    }
 }
