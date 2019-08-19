@@ -1,4 +1,5 @@
 #![feature(async_await, fn_traits)]
+
 pub mod runtime;
 
 /// This modules will allow you to call OCaml code:
@@ -10,26 +11,26 @@ pub mod runtime;
 ///
 /// It can be then easily awaited in rust:
 ///
-/// ```edition2018
+/// ```rust,edition2018
 /// #![feature(async_await)]
-/// use ocaml::{Value, Str, named_value};
-/// use crate::runtime;
+/// use tezos_interop::runtime::OcamlResult;
+/// use tezos_interop::runtime;
+/// use ocaml::{Str};
 ///
-/// async fn ocaml_fn_echo(arg: String) -> String {
+/// async fn ocaml_fn_echo(arg: String) -> OcamlResult<String> {
 ///     runtime::spawn(move || {
-///         let ocaml_function = named_value("echo").expect("function 'echo' is not registered");
+///         let ocaml_function = ocaml::named_value("echo").expect("function 'echo' is not registered");
 ///         let ocaml_result: Str = ocaml_function.call::<Str>(arg.as_str().into()).unwrap().into();
 ///         ocaml_result.as_str().to_string()
-///     }).await
+///     })
 /// }
 ///
 /// async fn call_ocaml() {
-///     ocaml_fn_echo("Hello world!".into()).await;
+///     let res = ocaml_fn_echo("Hello world!".into()).await;
+///     assert_eq!("Hello world!", &res);
 /// }
+///
 /// ```
-
-
-
 #[cfg(test)]
 mod tests {
     use ocaml::{Value, Str};
