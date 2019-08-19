@@ -4,7 +4,7 @@ pub fn digest(data: &[u8]) -> Vec<u8> {
     let mut hasher = State::new(32, None).unwrap();
     hasher.update(data).expect("Failed to update hasher state");
 
-    let hash = hasher.finalize().unwrap();;
+    let hash = hasher.finalize().unwrap();
     let mut result = Vec::new();
     result.extend_from_slice(hash.as_ref());
     result
