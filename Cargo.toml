@@ -1,5 +1,4 @@
 [workspace]
-
 members = [
     "crypto",
     "tezos_interop",
