@@ -5,15 +5,16 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-crypto = { path = "../crypto" }
 bitvec = "0.9.0"
 byteorder = "1.3.2"
 bytes = "0.4.12"
 chrono = "0.4.7"
 failure = "0.1.5"
-futures-preview = "0.3.0-alpha.17"
+futures-preview = "0.3.0-alpha.18"
 hex = "0.3.2"
 num-bigint = "0.2.2"
 num-traits = "0.2.8"
 serde = { version = "1.0.97", features = ["derive"] }
 serde_json = "1.0.40"
+# local dependencies
+crypto = { path = "../crypto" }
