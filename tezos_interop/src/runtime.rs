@@ -30,7 +30,9 @@ pub fn start_ocaml_runtime() {
 pub struct OcamlResult<T>
     where T: Send
 {
+    /// will contain result of `OcamlTask`
     result: Arc<Mutex<Option<T>>>,
+    /// shared state between `OcamlTask` and `OcamlResult`
     state: Arc<Mutex<SharedState>>,
 }
 
@@ -46,7 +48,9 @@ impl<T> Future for OcamlResult<T>
             Some(_) => Poll::Ready(result.take().unwrap()),
             None => {
                 let mut state = self.state.lock().unwrap();
+                // always take the current waker so `OcamlThreadExecutor` will be able to notify it
                 state.waker = Some(cx.waker().clone());
+                // return pending, because we had not result available
                 Poll::Pending
             }
         }
@@ -56,7 +60,9 @@ impl<T> Future for OcamlResult<T>
 /// Ocaml task is executed by `OcamlThreadExecutor`. Task holds future responsible
 /// for executing ocaml function(s) and passing the result back to rust.
 struct OcamlTask {
-    future: Box<dyn FnOnce() + Send + 'static>,
+    /// this operation will be executed by `OcamlThreadExecutor` in the thread that is allowed to access the ocaml runtime
+    op: Box<dyn FnOnce() + Send + 'static>,
+    /// shared state between `OcamlTask` and `OcamlResult`
     state: Arc<Mutex<SharedState>>,
 }
 
@@ -73,12 +79,11 @@ impl OcamlTask {
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static
     {
-        let ocaml_future = Box::new(move || {
-            let mut result = f_result_holder.lock().unwrap();
-            *result = Some(f());
-        });
         OcamlTask {
-            future: ocaml_future,
+            op: Box::new(move || {
+                let mut result = f_result_holder.lock().unwrap();
+                *result = Some(f());
+            }),
             state: shared_state,
         }
     }
@@ -86,6 +91,7 @@ impl OcamlTask {
 
 /// This struct represents a shared state between `OcamlTask` and `OcamlResult`.
 struct SharedState {
+    /// this waker is used to notify that `OcamlResult` is now ready to be polled
     waker: Option<Waker>
 }
 
@@ -103,7 +109,9 @@ impl OcamlThreadExecutor {
     /// Runs scheduled ocaml task to it's completion.
     fn run(&self) {
         while let Ok(task) = self.ready_tasks.recv() {
-            task.future.call_once(());
+            // execute future from task
+            (task.op)();
+            // notify waker that OcamlResult (it implements Future) is ready to be polled
             if let Some(waker) = task.state.lock().unwrap().waker.take() {
                 waker.wake()
             }
