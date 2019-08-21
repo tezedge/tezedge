@@ -45,6 +45,15 @@ fn run_builder(lib_dir: &PathBuf) {
     };
 }
 
+fn update_git_submodules(lib_dir: &PathBuf) {
+    // git submodule update --init --remote
+    Command::new("git")
+        .args(&["submodule", "update", "--init", "--remote"])
+        .current_dir(lib_dir)
+        .status()
+        .expect("Couldn't update git submodules.");
+}
+
 fn rerun_if_ocaml_file_changes(lib_dir: &PathBuf) {
     fs::read_dir(lib_dir.as_path())
         .unwrap()
@@ -61,6 +70,7 @@ fn main() {
 
     let lib_name = env::var("OCAML_LIB").unwrap_or("tzmock".to_string());
     let lib_dir = Path::new("lib_ocaml").join(&lib_name);
+    update_git_submodules(&lib_dir);
     run_builder(&lib_dir);
 
     // copy artifact files to OUT_DIR location

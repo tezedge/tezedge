@@ -10,11 +10,8 @@ build: build-deps
 		mkdir -p $(OBJDIR)
 		mv tezos/libtezos-protocol-ffi.so $(OBJDIR)/libtzreal.o
 
-build-deps: git
+build-deps:
 		cd tezos && make build-deps
-
-git:
-		git submodule update --init --remote
 
 clean:
 		cd tezos && opam config exec -- make clean
