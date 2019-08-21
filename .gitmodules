@@ -1,4 +1,4 @@
 [submodule "tezos_interop/lib_ocaml/tzreal/tezos"]
 	path = tezos_interop/lib_ocaml/tzreal/tezos
-	url = https://gitlab.com/jurajselep/tezos.git
+	url = https://gitlab.com/simplestaking/tezos.git
 	branch = poc-protocol-alphanet
