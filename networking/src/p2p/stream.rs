@@ -8,6 +8,7 @@ use tokio::net::TcpStream;
 
 use crate::p2p::message::{MESSAGE_LENGTH_FIELD_SIZE, RawBinaryMessage};
 
+/// Holds read and write parts of the message stream.
 pub struct MessageStream {
     reader: MessageReader,
     writer: MessageWriter,
@@ -33,30 +34,36 @@ impl From<TcpStream> for MessageStream {
     }
 }
 
+/// Reader of the TCP/IP connection.
 pub struct MessageReader {
+    /// reader part or the TCP/IP network stream
     stream: TcpStreamReadHalf
 }
 
 impl MessageReader {
 
+    /// Read message from network and return message contents in a form of bytes.
+    /// Each message is prefixed by a 2 bytes indicating total length of the message.
     pub async fn read_message(&mut self) -> Result<RawBinaryMessage, Error> {
         // read encoding length (2 bytes)
         let msg_len_bytes = self.read_message_length_bytes().await?;
         // copy bytes containing encoding length to raw encoding buffer
         let mut all_recv_bytes = vec![];
-        all_recv_bytes.extend_from_slice(&msg_len_bytes);
+        all_recv_bytes.extend(&msg_len_bytes);
 
-        // read the encoding content
+        // read the message contents
         let msg_len = msg_len_bytes.into_buf().get_u16_be() as usize;
-        let mut msg_content_bytes =vec![0u8; msg_len];
+        let mut msg_content_bytes = vec![0u8; msg_len];
         self.stream.read_exact(&mut msg_content_bytes).await?;
-        all_recv_bytes.extend_from_slice(&msg_content_bytes);
+        all_recv_bytes.extend(&msg_content_bytes);
 
         Ok(all_recv_bytes.into())
     }
 
-    async fn read_message_length_bytes(&mut self) -> Result<Vec<u8>, Error> {
-        let mut msg_len_bytes = vec![0u8; MESSAGE_LENGTH_FIELD_SIZE];
+    /// Read 2 bytes containing total length of the message contents from the network stream.
+    /// Total length is encoded as u big endian u16.
+    async fn read_message_length_bytes(&mut self) -> Result<[u8; MESSAGE_LENGTH_FIELD_SIZE], Error> {
+        let mut msg_len_bytes: [u8; MESSAGE_LENGTH_FIELD_SIZE] = [0; MESSAGE_LENGTH_FIELD_SIZE];
         self.stream.read_exact(&mut msg_len_bytes).await?;
         Ok(msg_len_bytes)
     }
@@ -68,6 +75,13 @@ pub struct MessageWriter {
 
 impl MessageWriter {
 
+    /// Construct and write message to network stream.
+    ///
+    /// # Arguments
+    /// * `bytes` - A message contents represented ab bytes
+    ///
+    /// In case all bytes are successfully written to network stream a raw binary
+    /// message is returned as a result.
     pub async fn write_message<'a>(&'a mut self, bytes: &'a [u8]) -> Result<RawBinaryMessage, Error> {
         // add length
         let mut msg_with_length = vec![];

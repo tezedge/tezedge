@@ -46,11 +46,12 @@ impl PeerState {
 
 /// P2pPeer represents live secured connection with remote peer
 ///
-/// node communicates with these remote peers
+/// Network layer communicates with remote peer through TCP/IP.
+/// Every peer has it's own identifier represented by hash of it's public key.
 pub struct P2pPeer {
     /// Peer ID is created as hex string representation of peer public key bytes.
     peer_id: PeerId,
-    // Peer ip/port
+    /// Peer ip/port
     peer: PeerAddress,
     /// Peer public key.
     public_key: PublicKey,
