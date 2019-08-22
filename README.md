@@ -32,10 +32,10 @@ curl https://sh.rustup.rs -sSf | sh
 
 Rust nightly is required to build this project.
 ```
-rustup install nightly-2019-08-13
-rustup default nightly-2019-08-13
+rustup install nightly-2019-08-22
+rustup default nightly-2019-08-22
 ```
-Application has been tested to compile with `rustc 1.38.0-nightly (60960a260 2019-08-12)`.
+Application has been tested to compile with `rustc 1.39.0-nightly (e44fdf979 2019-08-21)`.
 
 **3. Install OCaml**
 
