@@ -416,7 +416,7 @@ dependencies = [
 [[package]]
 name = "h2"
 version = "0.2.0-alpha.0"
-source = "git+https://github.com/hyperium/h2#b2c5d7f0bb716f834b8f1f260505bb8fc259b68c"
+source = "git+https://github.com/hyperium/h2#85b1f669c0f729f281f398e8a767cea69c1eefca"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -482,7 +482,7 @@ dependencies = [
 [[package]]
 name = "hyper"
 version = "0.13.0-a.0"
-source = "git+https://github.com/hyperium/hyper.git#a22dabd0935e5471fb6b7e511fc9c585ced0a53a"
+source = "git+https://github.com/hyperium/hyper.git#7b1d6d71b7e15dfab47010a56a6ca295697dfe10"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-channel-preview 0.3.0-alpha.18 (registry+https://github.com/rust-lang/crates.io-index)",

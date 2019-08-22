@@ -1,4 +1,4 @@
-#![feature(async_await, fn_traits)]
+#![feature(fn_traits)]
 
 /// This modules will allow you to call OCaml code:
 ///
@@ -10,7 +10,6 @@
 /// It can be then easily awaited in rust:
 ///
 /// ```rust,edition2018
-/// #![feature(async_await)]
 /// use tezos_interop::runtime::OcamlResult;
 /// use tezos_interop::runtime;
 /// use ocaml::{Str};
