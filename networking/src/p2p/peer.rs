@@ -3,12 +3,12 @@ use std::sync::RwLock;
 
 use failure::{bail, Error};
 use futures::lock::Mutex;
+use log::debug;
 
 use crypto::{
     crypto_box::*,
     nonce::*
 };
-use log::debug;
 
 use crate::p2p::{
     message::BinaryMessage,
