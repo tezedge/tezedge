@@ -8,8 +8,10 @@ use log::{debug, error, info};
 use networking::p2p::node::P2pLayer;
 use networking::rpc::message::{BootstrapMessage, PeerAddress};
 use storage::db::Db;
+use riker::actors::*;
 use tokio;
 use networking::rpc::server::RpcLayer;
+use networking::p2p::server::{P2PServer, accept_incoming_p2p_connections};
 
 mod configuration;
 
@@ -110,5 +112,17 @@ async fn main() {
         return;
     }
 
+
+
+    // -----------------------------
+    let actor_system = ActorSystem::new().expect("Failed to create actor system");
+    accept_incoming_p2p_connections(&actor_system).await.unwrap();
+    // -----------------------------
+
+
+
+
     info!("Iron p2p stopped")
 }
+
+

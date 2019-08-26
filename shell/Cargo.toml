@@ -1,0 +1,11 @@
+[package]
+name = "shell"
+version = "0.1.0"
+authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
+edition = "2018"
+
+[dependencies]
+riker = { git = "https://github.com/riker-rs/riker" }
+riker-patterns = "0.3.2"
+# local dependencies
+networking = { path = "../networking" }
