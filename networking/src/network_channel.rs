@@ -43,6 +43,7 @@ impl From<PeerBootstrapped> for NetworkChannelMsg {
     }
 }
 
+pub const DEFAULT_TOPIC: &str = "network";
 
 /// This struct represents network bus where all network events must be published.
 pub struct NetworkChannel(Channel<NetworkChannelMsg>);

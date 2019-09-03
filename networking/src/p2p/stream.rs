@@ -1,6 +1,7 @@
+use std::io;
+
 use bytes::{BufMut, IntoBuf};
 use bytes::Buf;
-use failure::Error;
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
@@ -44,7 +45,7 @@ impl MessageReader {
 
     /// Read message from network and return message contents in a form of bytes.
     /// Each message is prefixed by a 2 bytes indicating total length of the message.
-    pub async fn read_message(&mut self) -> Result<RawBinaryMessage, Error> {
+    pub async fn read_message(&mut self) -> io::Result<RawBinaryMessage> {
         // read encoding length (2 bytes)
         let msg_len_bytes = self.read_message_length_bytes().await?;
         // copy bytes containing encoding length to raw encoding buffer
@@ -62,7 +63,7 @@ impl MessageReader {
 
     /// Read 2 bytes containing total length of the message contents from the network stream.
     /// Total length is encoded as u big endian u16.
-    async fn read_message_length_bytes(&mut self) -> Result<[u8; MESSAGE_LENGTH_FIELD_SIZE], Error> {
+    async fn read_message_length_bytes(&mut self) -> io::Result<[u8; MESSAGE_LENGTH_FIELD_SIZE]> {
         let mut msg_len_bytes: [u8; MESSAGE_LENGTH_FIELD_SIZE] = [0; MESSAGE_LENGTH_FIELD_SIZE];
         self.stream.read_exact(&mut msg_len_bytes).await?;
         Ok(msg_len_bytes)
@@ -82,7 +83,7 @@ impl MessageWriter {
     ///
     /// In case all bytes are successfully written to network stream a raw binary
     /// message is returned as a result.
-    pub async fn write_message<'a>(&'a mut self, bytes: &'a [u8]) -> Result<RawBinaryMessage, Error> {
+    pub async fn write_message<'a>(&'a mut self, bytes: &'a [u8]) -> io::Result<RawBinaryMessage> {
         // add length
         let mut msg_with_length = vec![];
         // adds MESSAGE_LENGTH_FIELD_SIZE - 2 bytes with length of encoding

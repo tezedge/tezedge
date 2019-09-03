@@ -8,7 +8,7 @@ use log::{debug, error, info, warn};
 use serde::Deserialize;
 use tokio::net::TcpStream;
 
-use crypto::nonce::{self, Nonce};
+use crypto::nonce::{self, Nonce, NoncePair};
 use storage::db::Db;
 
 use crate::p2p::{
@@ -85,7 +85,7 @@ impl P2pClient {
                             }
                             let received_connection_msg = received_connection_msg.unwrap();
 
-                            let (nonce_local, nonce_remote) = self.generate_nonces(&connection_msg_bytes_sent, &received_connection_msg, false);
+                            let NoncePair { local: nonce_local, remote: nonce_remote } = self.generate_nonces(&connection_msg_bytes_sent, &received_connection_msg, false);
 
                             let received_connection_msg = ConnectionMessage::try_from(received_connection_msg)?;
                             let peer_public_key = received_connection_msg.get_public_key();
@@ -162,7 +162,7 @@ impl P2pClient {
     ///
     /// local_nonce is used for writing crypto messages to other peers
     /// remote_nonce is used for reading crypto messages from other peers
-    fn generate_nonces(&self, sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, incoming: bool) -> (Nonce, Nonce) {
+    fn generate_nonces(&self, sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, incoming: bool) -> NoncePair {
         nonce::generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
     }
 

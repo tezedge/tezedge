@@ -1,14 +1,13 @@
-use std::collections::HashMap;
-use std::net::{IpAddr, Shutdown, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use log::info;
 use futures::lock::Mutex;
 use riker::actors::*;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 
-use crate::network_channel::NetworkChannelMsg;
-use crate::p2p::stream::MessageStream;
+use crate::network_channel::{NetworkChannelMsg, DEFAULT_TOPIC};
 use crate::peer::{Peer, Bootstrap};
 use crate::network_channel::PeerCreated;
 
@@ -34,7 +33,11 @@ pub struct HandleConnection {
 /// Open connection to remote peer node.
 #[derive(Clone, Debug)]
 pub struct ConnectPeer {
-    address: SocketAddr,
+    pub address: SocketAddr,
+    pub listener_port: u16,
+    pub public_key: String,
+    pub secret_key: String,
+    pub proof_of_work_stamp: String,
 }
 
 #[actor(BlacklistIpAddress, WhitelistIpAddress, HandleConnection, ConnectPeer)]
@@ -79,7 +82,7 @@ impl Actor for ConnectionManager {
 impl Receive<BlacklistIpAddress> for ConnectionManager {
     type Msg = ConnectionManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: BlacklistIpAddress, sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: BlacklistIpAddress, _sender: Sender) {
         unimplemented!()
     }
 }
@@ -87,7 +90,7 @@ impl Receive<BlacklistIpAddress> for ConnectionManager {
 impl Receive<WhitelistIpAddress> for ConnectionManager {
     type Msg = ConnectionManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: WhitelistIpAddress, sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: WhitelistIpAddress, _sender: Sender) {
         unimplemented!()
     }
 }
@@ -95,22 +98,27 @@ impl Receive<WhitelistIpAddress> for ConnectionManager {
 impl Receive<ConnectPeer> for ConnectionManager {
     type Msg = ConnectionManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ConnectPeer, sender: Sender) {
-        let peer = Peer::new(&ctx.system, self.event_channel.clone()).unwrap();
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ConnectPeer, _sender: Sender) {
+        let address = msg.address.clone();
+        let peer = Peer::new(
+            &ctx.system,
+            self.event_channel.clone(),
+            address.clone(),
+            msg.into(),
+        ).unwrap();
+
         // let the world know the new peer is here
-        self.event_channel.tell(Publish { msg: PeerCreated { peer: peer.clone() }.into(), topic: "_none".into() }, None);
+        self.event_channel.tell(Publish { msg: PeerCreated { peer: peer.clone() }.into(), topic: DEFAULT_TOPIC.into() }, None);
 
+        let system = ctx.system.clone();
         tokio::spawn(async move {
-            match TcpStream::connect(&msg.address).await {
+            match TcpStream::connect(&address).await {
                 Ok(stream) => {
-                    let stream: MessageStream = stream.into();
-                    let (msg_rx, msg_tx) = stream.split();
-
-                    peer.tell(Bootstrap { rx: Arc::new(Mutex::new(msg_rx)), tx: Arc::new(Mutex::new(msg_tx)) }, None);
+                    peer.tell(Bootstrap::outbound(stream, address), None);
                 }
                 Err(e) => {
-                    // TODO: implement peer termination
-                    //peer.tell(Publish { msg: PeerCreated { peer }, topic: "_none".into() }, Some(ctx.myself()));
+                    info!("Connection to {:?} failed", &address);
+                    system.stop(peer);
                 }
             }
         });
@@ -120,7 +128,7 @@ impl Receive<ConnectPeer> for ConnectionManager {
 impl Receive<HandleConnection> for ConnectionManager {
     type Msg = ConnectionManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: HandleConnection, sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: HandleConnection, sender: Sender) {
         tokio::spawn(async move {
             let mut buf = [0; 1024];
 

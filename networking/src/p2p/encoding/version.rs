@@ -9,6 +9,12 @@ pub struct Version {
     minor: u16,
 }
 
+impl Version {
+    pub fn new(name: String, major: u16, minor: u16,) -> Self {
+        Version { name, major, minor }
+    }
+}
+
 impl HasEncoding for Version {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
