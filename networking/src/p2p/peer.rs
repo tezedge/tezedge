@@ -259,7 +259,7 @@ impl Receive<Bootstrap> for Peer {
 
             async fn set_net(net: &Network, tx: MessageSender) {
                 net.rx_run.store(true, Ordering::Relaxed);
-                *net.tx.lock().await = tx;
+                *net.tx.lock().await = Some(tx);
             }
 
             match bootstrap(msg, info).await {
