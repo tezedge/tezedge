@@ -1,5 +1,9 @@
 use riker::actors::*;
-use crate::peer::PeerRef;
+use super::peer::PeerRef;
+use std::sync::Arc;
+use crate::p2p::encoding::peer::PeerMessageResponse;
+
+pub const DEFAULT_TOPIC: &str = "network";
 
 /// Peer has been created. This event does indicate
 /// only creation of the peer and is not indicative if
@@ -17,12 +21,19 @@ pub struct PeerDisconnected;
 #[derive(Clone, Debug)]
 pub struct PeerBootstrapped;
 
+/// We have received message from another peer
+#[derive(Clone, Debug)]
+pub struct PeerMessageReceived {
+    message: Arc<PeerMessageResponse>
+}
+
 /// Network channel event message.
 #[derive(Clone, Debug)]
 pub enum NetworkChannelMsg {
     PeerCreated(PeerCreated),
     PeerDisconnected(PeerDisconnected),
-    PeerBootstrapped(PeerBootstrapped)
+    PeerBootstrapped(PeerBootstrapped),
+    PeerMessageReceived(PeerMessageReceived)
 }
 
 impl From<PeerCreated> for NetworkChannelMsg {
@@ -43,7 +54,11 @@ impl From<PeerBootstrapped> for NetworkChannelMsg {
     }
 }
 
-pub const DEFAULT_TOPIC: &str = "network";
+impl From<PeerMessageReceived> for NetworkChannelMsg {
+    fn from(msg: PeerMessageReceived) -> Self {
+        NetworkChannelMsg::PeerMessageReceived(msg)
+    }
+}
 
 /// This struct represents network bus where all network events must be published.
 pub struct NetworkChannel(Channel<NetworkChannelMsg>);

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::p2p::peer::P2pPeer;
+use super::peer::Peer;
 use crate::rpc::message::PeerAddress;
 
 /// Structure for holding live references to all authenticated peers,
@@ -26,7 +26,7 @@ impl P2pPool {
         addresses
     }
 
-    pub fn insert_peer(&mut self, peer_id: &str, peer: Arc<P2pPeer>) {
+    pub fn insert_peer(&mut self, peer_id: &str, peer: Arc<Peer>) {
         self.peers.insert(String::from(peer_id), peer);
     }
 }
