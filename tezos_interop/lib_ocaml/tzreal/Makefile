@@ -9,7 +9,7 @@ package: build
 build: build-deps
 		cd ${TEZOS_BASE_DIR} && opam config exec -- make
 		mkdir -p $(OBJDIR)
-		mv ${TEZOS_BASE_DIR}/libtezos-protocol-ffi.so $(OBJDIR)/libtzreal.o
+		mv ${TEZOS_BASE_DIR}/libtezos-ffi.so $(OBJDIR)/libtzreal.o
 
 build-deps:
 		cd ${TEZOS_BASE_DIR} && make build-deps
