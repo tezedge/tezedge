@@ -1,7 +1,10 @@
+use log::debug;
 use riker::actors::*;
+
+use networking::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
+use networking::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
-use networking::p2p::encoding::current_branch::CurrentBranchMessage;
-use networking::p2p::peer::GetCurrentBranch;
+use networking::p2p::peer::{GetCurrentBranch, SendMessage};
 use tezos_encoding::hash::{HashEncoding, HashType};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -50,7 +53,19 @@ impl Receive<NetworkChannelMsg> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, sender: Sender) {
         if let NetworkChannelMsg::PeerBootstrapped(msg) = msg {
-            msg.peer.tell(GetCurrentBranch { chain_id: genesis_chain_id() }, None);
+            msg.peer
+                .tell(SendMessage::new(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(genesis_chain_id())).into()), None);
+        } else if let NetworkChannelMsg::PeerMessageReceived(received) = msg {
+            received.message.get_messages().iter()
+                .for_each(|message| match message {
+                    PeerMessage::CurrentBranch(message) => {
+                        self.current_branch = Some(*message.clone());
+                    }
+                    PeerMessage::GetCurrentBranch(message) => {
+                        // .. ignore
+                    }
+                    _ => debug!("Ignored message: {:?}", message),
+                });
         }
     }
 }

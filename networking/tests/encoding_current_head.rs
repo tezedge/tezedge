@@ -4,6 +4,15 @@ use networking::p2p::encoding::prelude::*;
 use networking::p2p::message::BinaryMessage;
 
 #[test]
+fn can_serialize_get_current_head_message() {
+    let get_current_branch_message = PeerMessage::GetCurrentHead(GetCurrentHeadMessage::new(hex::decode("8eceda2f").unwrap()));
+    let response: PeerMessageResponse = get_current_branch_message.into();
+    let message_bytes = response.as_bytes().unwrap();
+    let expected_writer_result = hex::decode("0000000600138eceda2f").expect("Failed to decode");
+    assert_eq!(expected_writer_result, message_bytes);
+}
+
+#[test]
 fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
     let message_bytes = hex::decode("0000010400148eceda2f000000ce0003be930116caa5bebae6c1997498bd90b2d2d6dcb14e2cc3a83b38067c784a0b485a4763000000005c8f572e049518937f78bbc2e2d460e7d26daa73c93763362c64c2059f5b7ecaba6e6f580d000000110000000100000000080000000000714aa08e289a17ee0bbd90ef57b80c52318829029fc9e17e4a782248755cdeaafd0dac000000000003e35a661200a75ebed94c886ce8c2700cc2fb38e301e7573f481eff49aea6892068cef7c9290947567e9df3a2cfc99ed9b0666f9c0291f586f65eb9e42cf4cdbef1ef8424d000000020c533d1d8a515b35fac67eb9926a6c983397208511ce69808d57177415654bf090000000400000000")?;
     let messages = PeerMessageResponse::from_bytes(message_bytes)?;

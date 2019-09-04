@@ -168,6 +168,18 @@ pub struct GetCurrentBranch {
     chain_id: ChainId
 }
 
+#[derive(Clone, Debug)]
+pub struct SendMessage {
+    /// Message is wrapped in `Arc` to avoid excessive cloning.
+    message: Arc<PeerMessageResponse>
+}
+
+impl SendMessage {
+    pub fn new(msg: PeerMessageResponse) -> Self {
+        SendMessage { message: Arc::new(msg) }
+    }
+}
+
 #[derive(Clone)]
 struct Network {
     /// Message receiver boolean indicating whether
@@ -290,6 +302,21 @@ impl Receive<GetCurrentBranch> for Peer {
             let get_current_branch: PeerMessageResponse = PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(msg.chain_id.clone())).into();
             let tx = tx.lock().await.unwrap();
             match tx.write_message(&get_current_branch).await {
+                Ok(()) => debug!("Write success"),
+                Err(e) => warn!("Failed to write encoding. {:?}", e),
+            }
+        });
+    }
+}
+
+impl Receive<SendMessage> for Peer {
+    type Msg = PeerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, sender: Sender) {
+        let tx = self.net.tx.clone();
+        ctx.run(async move {
+            let tx = tx.lock().await.unwrap();
+            match tx.write_message(&msg.message).await {
                 Ok(()) => debug!("Write success"),
                 Err(e) => warn!("Failed to write encoding. {:?}", e),
             }
