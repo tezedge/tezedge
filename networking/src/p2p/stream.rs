@@ -3,13 +3,14 @@ use std::io;
 use bytes::{BufMut, IntoBuf};
 use bytes::Buf;
 use failure::Fail;
+use log::debug;
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
 use tokio::net::TcpStream;
 
 use crypto::crypto_box::{encrypt, decrypt, PrecomputedKey, CryptoError};
-use crypto::nonce::{self, Nonce, NoncePair};
+use crypto::nonce::Nonce;
 
 use crate::p2p::binary_message::{BinaryMessage, MESSAGE_LENGTH_FIELD_SIZE, RawBinaryMessage};
 use crate::p2p::peer::PeerId;
@@ -25,6 +26,10 @@ pub enum StreamError {
     FailedToDecryptMessage {
         error: CryptoError
     },
+    #[fail(display = "Message serialization error")]
+    SerializationError {
+        error: tezos_encoding::ser::Error
+    },
     #[fail(display = "Network error: {}", message)]
     NetworkError {
         message: &'static str,
@@ -32,9 +37,15 @@ pub enum StreamError {
     },
 }
 
-impl From<std::io::Error> for PeerError {
+impl From<tezos_encoding::ser::Error> for StreamError {
+    fn from(error: tezos_encoding::ser::Error) -> Self {
+        StreamError::SerializationError { error }
+    }
+}
+
+impl From<std::io::Error> for StreamError {
     fn from(error: std::io::Error) -> Self {
-        PeerError::NetworkError { error, message: "Network IO error" }
+        StreamError::NetworkError { error, message: "Network error" }
     }
 }
 
@@ -152,7 +163,7 @@ impl EncryptedMessageWriter {
         // encrypt
         let message_encrypted = match encrypt(&message_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
             Ok(msg) => msg,
-            Err(error) => return Err(PeerError::FailedToEncryptMessage { error })
+            Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
         };
         debug!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
 
@@ -199,9 +210,13 @@ impl EncryptedMessageReader {
                 Ok(message)
             }
             Err(error) => {
-                Err(PeerError::FailedToDecryptMessage { error })
+                Err(StreamError::FailedToDecryptMessage { error })
             }
         }
+    }
+
+    pub fn peer_id(&self) -> &PeerId {
+        &self.peer_id
     }
 
     fn nonce_fetch_increment(&mut self) -> Nonce {

@@ -5,11 +5,10 @@ use futures::lock::Mutex;
 use log::info;
 use riker::actors::*;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
 
 use crate::p2p::peer::PeerRef;
 
-use super::network_channel::{NetworkChannelMsg, PeerCreated};
+use super::network_channel::NetworkChannelMsg;
 use super::peer::{Bootstrap, Peer};
 
 /// Blacklist the IP address.
@@ -27,7 +26,7 @@ pub struct WhitelistIpAddress {
 /// Accept incoming peer connection.
 #[derive(Clone, Debug)]
 pub struct AcceptPeer {
-    stream: Arc<Mutex<TcpStream>>,
+    stream: Arc<Mutex<Option<TcpStream>>>,
     address: SocketAddr,
 }
 
@@ -79,11 +78,10 @@ impl NetworkManager {
         NetworkManager { event_channel, listener_port, public_key, secret_key, proof_of_work_stamp }
     }
 
-    fn create_peer(&self, sys: &ActorSystem, address: &SocketAddr) -> PeerRef {
+    fn create_peer(&self, sys: &ActorSystem) -> PeerRef {
         Peer::new(
             sys,
             self.event_channel.clone(),
-            &address,
             self.listener_port,
             &self.public_key,
             &self.secret_key,
@@ -96,7 +94,7 @@ impl Actor for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        ctx.run(begin_listen_incoming(self.listener_port, ctx.myself()));
+        ctx.system.exec.spawn_ok(begin_listen_incoming(self.listener_port, ctx.myself()));
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -125,15 +123,15 @@ impl Receive<ConnectToPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ConnectToPeer, _sender: Sender) {
-        let peer= self.create_peer(&ctx.system, &msg.address);
+        let peer= self.create_peer(&ctx.system);
         let system = ctx.system.clone();
 
-        ctx.run(async move {
+        ctx.system.exec.spawn_ok(async move {
             match TcpStream::connect(&msg.address).await {
                 Ok(stream) => {
                     peer.tell(Bootstrap::outgoing(stream, msg.address), None);
                 }
-                Err(e) => {
+                Err(_) => {
                     info!("Connection to {:?} failed", &msg.address);
                     system.stop(peer);
                 }
@@ -145,11 +143,11 @@ impl Receive<ConnectToPeer> for NetworkManager {
 impl Receive<AcceptPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, sender: Sender) {
-        let peer= self.create_peer(&ctx.system, &msg.address);
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
+        let peer= self.create_peer(&ctx.system);
 
-        ctx.run(async move {
-            peer.tell(Bootstrap::incoming(stream, msg.address), None);
+        ctx.system.exec.spawn_ok(async move {
+            peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
         });
     }
 }
@@ -162,6 +160,6 @@ async fn begin_listen_incoming(listener_port: u16, connection_manager: NetworkMa
 
     loop {
         let (stream, address) = listener.accept().await.unwrap();
-        connection_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(stream)), address }, None);
+        connection_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
     }
 }

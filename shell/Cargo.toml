@@ -9,6 +9,8 @@ dns-lookup = "1.0.1"
 hex = "0.3.2"
 log = "0.4.8"
 riker = { git = "https://github.com/riker-rs/riker" }
+serde = { version = "1.0.99", features = ["derive"] }
+serde_json = "1.0.40"
 # local dependencies
 networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos_encoding" }
