@@ -47,7 +47,7 @@ impl<T> BinaryMessage for T
 ///
 /// Example:
 /// ```rust
-/// use crate::networking::p2p::message::RawBinaryMessage;
+/// use crate::networking::p2p::binary_message::RawBinaryMessage;
 ///
 /// let raw: RawBinaryMessage = hex::decode("000600108eceda2f").unwrap().into();
 ///

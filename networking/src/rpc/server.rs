@@ -11,7 +11,7 @@ use log::{info, warn};
 
 use crate::rpc::message::RpcMessage;
 use crate::p2p::node::P2pLayer;
-use crate::p2p::message::JsonMessage;
+use crate::p2p::binary_message::JsonMessage;
 use std::sync::Arc;
 use futures::lock::Mutex;
 

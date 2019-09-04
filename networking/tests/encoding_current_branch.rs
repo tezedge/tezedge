@@ -1,7 +1,7 @@
 use failure::Error;
 
 use networking::p2p::encoding::prelude::*;
-use networking::p2p::message::BinaryMessage;
+use networking::p2p::binary_message::BinaryMessage;
 
 #[test]
 fn can_deserialize_and_serialize_current_branch_message() {

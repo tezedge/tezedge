@@ -7,7 +7,7 @@ use tezos_encoding::de;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::encoding::version::Version;
-use crate::p2p::message::{BinaryMessage, RawBinaryMessage};
+use crate::p2p::binary_message::{BinaryMessage, RawBinaryMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConnectionMessage {

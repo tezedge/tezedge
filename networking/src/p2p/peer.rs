@@ -11,15 +11,15 @@ use log::{debug, info, warn};
 use riker::actors::*;
 use tokio::net::TcpStream;
 
-use crypto::crypto_box::*;
+use crypto::crypto_box::precompute;
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::hash::ChainId;
 
+use super::binary_message::{BinaryMessage, RawBinaryMessage};
 use super::encoding::prelude::*;
-use super::message::{BinaryMessage, RawBinaryMessage};
-use super::network_channel::{NetworkChannelTopic, NetworkChannelMsg, PeerBootstrapped, PeerMessageReceived};
-use super::stream::{MessageReader, MessageStream, MessageWriter};
-use crate::p2p::network_channel::PeerCreated;
+use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived, PeerCreated};
+use super::stream::{MessageReader, MessageStream, MessageWriter, StreamError};
+use crate::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
@@ -34,16 +34,8 @@ enum PeerError {
     FailedToPrecomputeKey,
     #[fail(display = "Network error: {}", message)]
     NetworkError {
+        error: dyn std::error::Error,
         message: &'static str,
-        error: io::Error,
-    },
-    #[fail(display = "Failed to decrypt message")]
-    FailedToDecryptMessage {
-        error: CryptoError
-    },
-    #[fail(display = "Failed to encrypt message")]
-    FailedToEncryptMessage {
-        error: CryptoError
     },
     #[fail(display = "Message serialization error")]
     SerializationError {
@@ -69,82 +61,16 @@ impl From<tezos_encoding::de::Error> for PeerError {
 
 impl From<std::io::Error> for PeerError {
     fn from(error: std::io::Error) -> Self {
-        PeerError::NetworkError { error, message: "Network IO error" }
+        PeerError::NetworkError { error, message: "Network error" }
     }
 }
 
-/// Message sender encapsulates process of the outgoing message transmission.
-/// This process involves (not only) nonce increment, encryption and network transmission.
-struct MessageSender {
-    /// Precomputed key is created from merge of peer public key and our secret key.
-    /// It's used to speedup of crypto operations.
-    precomputed_key: PrecomputedKey,
-    /// Nonce used to encrypt outgoing messages
-    nonce_local: Nonce,
-    /// Outgoing message writer
-    tx: MessageWriter,
-    /// Peer ID is created as hex string representation of peer public key bytes.
-    peer_id: PeerId,
-}
-
-impl MessageSender {
-    pub async fn write_message<'a>(&'a mut self, message: &'a impl BinaryMessage) -> Result<(), PeerError> {
-        let message_bytes = message.as_bytes()?;
-        debug!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
-
-        // encrypt
-        let message_encrypted = match encrypt(&message_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
-            Ok(msg) => msg,
-            Err(error) => return Err(PeerError::FailedToEncryptMessage { error })
-        };
-        debug!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
-
-        // send
-        self.tx.write_message(&message_encrypted).await?;
-
-        Ok(())
-    }
-
-    fn nonce_fetch_increment(&mut self) -> Nonce {
-        let incremented = self.nonce_local.increment();
-        std::mem::replace(&mut self.nonce_local, incremented)
+impl From<StreamError> for PeerError {
+    fn from(error: StreamError) -> Self {
+        PeerError::NetworkError { error, message: "Stream error" }
     }
 }
 
-struct MessageReceiver {
-    /// Precomputed key is created from merge of peer public key and our secret key.
-    /// It's used to speedup of crypto operations.
-    precomputed_key: PrecomputedKey,
-    /// Nonce used to decrypt received messages
-    nonce_remote: Nonce,
-    /// Incoming message reader
-    rx: MessageReader,
-    /// Peer ID is created as hex string representation of peer public key bytes.
-    peer_id: PeerId,
-}
-
-impl MessageReceiver {
-    pub async fn read_message(&mut self) -> Result<Vec<u8>, PeerError> {
-        // read
-        let message_encrypted = self.rx.read_message().await?;
-
-        // decrypt
-        match decrypt(message_encrypted.get_contents(), &self.nonce_fetch_increment(), &self.precomputed_key) {
-            Ok(message) => {
-                debug!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
-                Ok(message)
-            }
-            Err(error) => {
-                Err(PeerError::FailedToDecryptMessage { error })
-            }
-        }
-    }
-
-    fn nonce_fetch_increment(&mut self) -> Nonce {
-        let incremented = self.nonce_remote.increment();
-        std::mem::replace(&mut self.nonce_remote, incremented)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct Bootstrap {
@@ -370,18 +296,8 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     };
 
     // from now on all messages will be encrypted
-    let mut msg_tx = MessageSender {
-        precomputed_key: precomputed_key.clone(),
-        nonce_local,
-        tx: msg_tx,
-        peer_id: peer_id.clone(),
-    };
-    let mut msg_rx = MessageReceiver {
-        precomputed_key,
-        nonce_remote,
-        rx: msg_rx,
-        peer_id,
-    };
+    let mut msg_tx = EncryptedMessageWriter::new(tx, precomputed_key.clone(), nonce_local, peer_id.clone());
+    let mut msg_rx = EncryptedMessageReader::new(rx, precomputed_key, nonce_remote, peer_id);
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
