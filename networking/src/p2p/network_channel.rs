@@ -10,7 +10,7 @@ pub const DEFAULT_TOPIC: &str = "network";
 /// bootstrap is going to be successful or not.
 #[derive(Clone, Debug)]
 pub struct PeerCreated {
-    pub peer: PeerRef
+    pub peer: PeerRef,
 }
 
 /// The peer has disconnected.
@@ -19,12 +19,15 @@ pub struct PeerDisconnected;
 
 /// Peer has been bootstrapped.
 #[derive(Clone, Debug)]
-pub struct PeerBootstrapped;
+pub struct PeerBootstrapped {
+    pub peer: PeerRef,
+}
 
 /// We have received message from another peer
 #[derive(Clone, Debug)]
 pub struct PeerMessageReceived {
-    message: Arc<PeerMessageResponse>
+    pub peer: PeerRef,
+    pub message: Arc<PeerMessageResponse>
 }
 
 /// Network channel event message.
@@ -57,6 +60,20 @@ impl From<PeerBootstrapped> for NetworkChannelMsg {
 impl From<PeerMessageReceived> for NetworkChannelMsg {
     fn from(msg: PeerMessageReceived) -> Self {
         NetworkChannelMsg::PeerMessageReceived(msg)
+    }
+}
+
+/// Represents various topics
+pub enum NetworkChannelTopic {
+    /// Events generated from networking layer
+    NetworkEvents
+}
+
+impl From<NetworkChannelTopic> for Topic {
+    fn from(evt: NetworkChannelTopic) -> Self {
+        match evt {
+            NetworkChannelTopic::NetworkEvents => Topic::from("network.events")
+        }
     }
 }
 

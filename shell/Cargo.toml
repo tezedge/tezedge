@@ -6,7 +6,9 @@ edition = "2018"
 
 [dependencies]
 dns-lookup = "1.0.1"
+hex = "0.3.2"
 log = "0.4.8"
 riker = { git = "https://github.com/riker-rs/riker" }
 # local dependencies
 networking = { path = "../networking" }
+tezos_encoding = { path = "../tezos_encoding" }

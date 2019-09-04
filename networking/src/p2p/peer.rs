@@ -17,7 +17,7 @@ use tezos_encoding::hash::ChainId;
 
 use super::encoding::prelude::*;
 use super::message::{BinaryMessage, RawBinaryMessage};
-use super::network_channel::{DEFAULT_TOPIC, NetworkChannelMsg, PeerBootstrapped, PeerMessageReceived};
+use super::network_channel::{NetworkChannelTopic, NetworkChannelMsg, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{MessageReader, MessageStream, MessageWriter};
 use crate::p2p::network_channel::PeerCreated;
 
@@ -232,16 +232,13 @@ impl Peer {
             }
         }
     }
-
-
 }
-
 
 impl Actor for Peer {
     type Msg = PeerMsg;
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: DEFAULT_TOPIC.into() }, None);
+        self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -271,7 +268,7 @@ impl Receive<Bootstrap> for Peer {
                 Ok(BootstrapOutput(mut rx, tx)) => {
                     set_net(&net, tx).await;
 
-                    event_channel.tell(Publish { msg: PeerBootstrapped.into(), topic: DEFAULT_TOPIC.into() }, Some(myself.clone().into()));
+                    event_channel.tell(Publish { msg: PeerBootstrapped.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
 
                     begin_process_incoming(rx, net.rx_run, myself, event_channel);
                 }

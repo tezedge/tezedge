@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -6,13 +7,14 @@ use dns_lookup::LookupError;
 use log::warn;
 use riker::actors::*;
 
-use networking::p2p::network_channel::NetworkChannelMsg;
-use networking::p2p::network_manager::{NetworkManagerRef, ConnectToPeer};
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
+use networking::p2p::network_manager::{ConnectToPeer, NetworkManagerRef};
 use networking::p2p::peer::{PeerRef, Terminate};
 
 /// Check peer threshold
 struct CheckThreshold;
 
+#[derive(Clone, Debug)]
 pub struct Threshold {
     low: usize,
     high: usize,
@@ -47,10 +49,11 @@ impl PeerManager {
                event_channel: ChannelRef<NetworkChannelMsg>,
                network: NetworkManagerRef,
                bootstrap_addresses: &[String],
+               initial_peers: &[SocketAddr],
                threshold: Threshold) -> Result<PeerManagerRef, CreateError>
     {
         sys.actor_of(
-            Props::new_args(PeerManager::actor, (event_channel, network, bootstrap_addresses)),
+            Props::new_args(PeerManager::actor, (event_channel, network, bootstrap_addresses, initial_peers, threshold)),
             PeerManager::name())
     }
 
@@ -60,13 +63,20 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn actor((event_channel, bootstrap_addresses, network, threshold): (ChannelRef<NetworkChannelMsg>, Vec<String>, NetworkManagerRef, Threshold)) -> Self {
-        PeerManager { event_channel, network, bootstrap_addresses, threshold, peers: HashMap::new(), potential_peers: HashSet::new() }
+    fn actor((event_channel, bootstrap_addresses, initial_peers, network, threshold): (ChannelRef<NetworkChannelMsg>, Vec<String>, &[SocketAddr], NetworkManagerRef, Threshold)) -> Self {
+        PeerManager { event_channel, network, bootstrap_addresses, threshold, peers: HashMap::new(), potential_peers: HashSet::from_iter(initial_peers) }
     }
 }
 
 impl Actor for PeerManager {
     type Msg = PeerManagerMsg;
+
+    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        self.event_channel.tell(Subscribe {
+            actor: Box::new(ctx.myself()),
+            topic: NetworkChannelTopic::NetworkEvents.into() }, None);
+    }
+
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         ctx.schedule(
@@ -93,15 +103,34 @@ impl Receive<CheckThreshold> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckThreshold, _sender: Sender) {
         if self.peers.len() < self.threshold.low {
-            // request for more peers
-            lookup_peers(&self.bootstrap_addresses).iter()
-                .for_each(|address| self.network.tell(ConnectToPeer { address: address.clone() }, ctx.myself().into()))
+            if self.potential_peers.len() < self.threshold.low {
+                // lookup for more peers
+                lookup_peers(&self.bootstrap_addresses).iter()
+                    .for_each(self.potential_peers.insert);
+            }
+
+            let addresses_to_connect = self.potential_peers.iter()
+                .take(self.threshold.low - self.peers.len())
+                .collect();
+            addresses_to_connect
+                .for_each(|address| {
+                    self.potential_peers.remove(address);
+                    self.network.tell(ConnectToPeer { address: address.clone() }, ctx.myself().into())
+                });
         } else if self.peers.len() > self.threshold.high {
             // stop some peers
             self.peers.values()
                 .take(self.peers.len() - self.threshold.high)
                 .for_each(|peer| ctx.system.stop(peer.clone()))
         }
+    }
+}
+
+impl Receive<NetworkChannelMsg> for PeerManager {
+    type Msg = PeerManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, sender: Sender) {
+
     }
 }
 

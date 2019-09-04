@@ -84,7 +84,7 @@ impl GetCurrentBranchMessage {
 impl HasEncoding for GetCurrentBranchMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::sized(4, Encoding::Bytes))
+            Field::new("chain_id", Encoding::Hash(HashEncoding::new(HashType::ChainId)))
         ])
     }
 }

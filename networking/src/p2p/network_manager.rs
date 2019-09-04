@@ -9,8 +9,7 @@ use tokio::prelude::*;
 
 use crate::p2p::peer::PeerRef;
 
-use super::network_channel::{DEFAULT_TOPIC, NetworkChannelMsg};
-use super::network_channel::PeerCreated;
+use super::network_channel::{NetworkChannelMsg, PeerCreated};
 use super::peer::{Bootstrap, Peer};
 
 /// Blacklist the IP address.

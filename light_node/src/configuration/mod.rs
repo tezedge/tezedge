@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::{App, Arg};
@@ -23,7 +24,7 @@ pub struct Rpc {
 pub struct Environment {
     pub p2p: P2p,
     pub rpc: Rpc,
-    pub initial_peers: Vec<(String, u16)>,
+    pub initial_peers: Vec<SocketAddr>,
     pub identity_json_file_path: Option<PathBuf>,
     pub log_message_contents: bool,
 }
@@ -95,18 +96,11 @@ impl Environment {
                     .expect("Was expecting value of rpc-port"),
             },
             initial_peers: args.value_of("peers")
-                .map(|peers_str| {
-                    peers_str
-                        .split(',')
-                        .map(|ip_port: &str| {
-                            let mut split = ip_port.splitn(2, ':');
-                            (
-                                split.next().expect("Was expecting IP address or hostname").to_string(),
-                                split.next().map(|v| v.parse().expect("Failed to parse port number")).unwrap_or(9732),
-                            )
-                        })
-                        .collect()
-                }).unwrap_or(Vec::new()),
+                .map(|peers_str| peers_str
+                    .split(',')
+                    .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
+                    .collect()
+                ).unwrap_or(Vec::new()),
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
             log_message_contents: args.value_of("log-message-contents")
