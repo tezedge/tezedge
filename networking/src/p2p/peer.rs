@@ -19,6 +19,7 @@ use super::encoding::prelude::*;
 use super::message::{BinaryMessage, RawBinaryMessage};
 use super::network_channel::{DEFAULT_TOPIC, NetworkChannelMsg, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{MessageReader, MessageStream, MessageWriter};
+use crate::p2p::network_channel::PeerCreated;
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
@@ -239,6 +240,10 @@ impl Peer {
 impl Actor for Peer {
     type Msg = PeerMsg;
 
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: DEFAULT_TOPIC.into() }, None);
+    }
+
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         // Use the respective Receive<T> implementation
         self.receive(ctx, msg, sender);
@@ -250,12 +255,12 @@ impl Receive<Bootstrap> for Peer {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Bootstrap, sender: Sender) {
         let info = self.local.clone();
-        let myself = ctx.myself.clone();
+        let myself = ctx.myself();
         let system = ctx.system.clone();
         let net = self.net.clone();
         let event_channel = self.event_channel.clone();
 
-        tokio::spawn(async move {
+        ctx.run(async move {
 
             async fn set_net(net: &Network, tx: MessageSender) {
                 net.rx_run.store(true, Ordering::Relaxed);
@@ -284,7 +289,7 @@ impl Receive<GetCurrentBranch> for Peer {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetCurrentBranch, sender: Sender) {
         let tx = self.net.tx.clone();
-        tokio::spawn(async move {
+        ctx.run(async move {
             let get_current_branch: PeerMessageResponse = PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(msg.chain_id.clone())).into();
             let tx = tx.lock().await.unwrap();
             match tx.write_message(&get_current_branch).await {
@@ -388,6 +393,7 @@ fn generate_nonces(sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, inc
     nonce::generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
 }
 
+/// Return supported network protocol version
 fn supported_version() -> Version {
     Version::new("TEZOS_ALPHANET_2018-11-30T15:30:56Z".into(), 0, 0)
 }
