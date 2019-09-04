@@ -1,4 +1,5 @@
 OBJDIR = artifacts
+TEZOS_BASE_DIR?=src
 
 all: package
 
@@ -6,13 +7,13 @@ package: build
 		ar qs $(OBJDIR)/libtezos.a $(OBJDIR)/*.o
 
 build: build-deps
-		cd src && opam config exec -- make
+		cd ${TEZOS_BASE_DIR} && opam config exec -- make
 		mkdir -p $(OBJDIR)
-		mv src/libtezos-ffi.so $(OBJDIR)/libtezos.o
+		mv ${TEZOS_BASE_DIR}/libtezos-ffi.so $(OBJDIR)/libtezos.o
 
 build-deps:
-		cd src && make build-deps
+		cd ${TEZOS_BASE_DIR} && make build-deps
 
 clean:
-		cd src && opam config exec -- make clean
+		cd ${TEZOS_BASE_DIR} && opam config exec -- make clean
 		rm -rf artifacts

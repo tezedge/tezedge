@@ -71,7 +71,12 @@ fn main() {
         &configuration::ENV.initial_peers,
         configuration::ENV.peer_threshold)
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), rocks_db.clone());
+    let _ = ChainManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        rocks_db.clone(),
+        configuration::ENV.tezos_data_dir.clone()
+    );
     let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
 
     tokio_runtime.block_on(async move {

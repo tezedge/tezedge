@@ -30,7 +30,8 @@ pub struct Environment {
     pub identity_json_file_path: Option<PathBuf>,
     pub log_message_contents: bool,
     pub bootstrap_db_path: PathBuf,
-    pub peer_threshold: Threshold
+    pub peer_threshold: Threshold,
+    pub tezos_data_dir: String
 }
 
 impl Environment {
@@ -90,6 +91,12 @@ impl Environment {
                 .takes_value(true)
                 .default_value("15")
                 .help("Maximal number of peers to connect to"))
+            .arg(Arg::with_name("tezos-data-dir")
+                .short("d")
+                .long("tezos-data-dir")
+                .takes_value(true)
+                .required(true)
+                .help("A directory for Tezos OCaml runtime storage (context/store)"))
             .get_matches();
 
         Environment {
@@ -123,6 +130,9 @@ impl Environment {
                 ).unwrap_or(Vec::new()),
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
+            tezos_data_dir: args.value_of("tezos-data-dir")
+                .unwrap()
+                .to_string(),
             log_message_contents: args.value_of("log-message-contents")
                 .unwrap()
                 .parse::<bool>()

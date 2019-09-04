@@ -1,9 +1,9 @@
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use log::trace;
 
-use tezos_encoding::hash::{HashRef, ToHashRef};
+use tezos_encoding::hash::{HashRef, ToHashRef, ChainId, BlockHash};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_storage::{BlockStorage, BlockStorageDatabase};
@@ -12,13 +12,19 @@ use crate::persistent::database::IteratorMode;
 pub struct BlockState {
     storage: BlockStorage,
     missing_blocks: HashSet<HashRef>,
+    genesis: HashRef,
+    current_head: Arc<Mutex<HashRef>>,
+    current_chain_id: HashRef,
 }
 
 impl BlockState {
-    pub fn new(db: Arc<BlockStorageDatabase>) -> Self {
+    pub fn new(db: Arc<BlockStorageDatabase>, chain_id: ChainId, genesis: BlockHash, current_head: BlockHash) -> Self {
         BlockState {
             storage: BlockStorage::new(db),
             missing_blocks: HashSet::new(),
+            genesis: genesis.to_hash_ref(),
+            current_head: Arc::new(Mutex::new(current_head.to_hash_ref())),
+            current_chain_id: chain_id.to_hash_ref()
         }
     }
 
@@ -63,5 +69,9 @@ impl BlockState {
         }
 
         Ok(())
+    }
+
+    pub fn get_current_chain_id(&self) -> ChainId {
+        self.current_chain_id.get_hash()
     }
 }

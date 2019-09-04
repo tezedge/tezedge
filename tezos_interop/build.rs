@@ -83,7 +83,11 @@ fn rerun_if_ocaml_file_changes() {
 }
 
 fn main() {
-    update_git_submodules();
+    // check we want to update git updates or just skip updates, because of development process and changes on ocaml side, which are not yet in git
+    let want_to_update_git_submodules : bool = env::var("UPDATE_GIT_SUBMODULES").unwrap_or("true".to_string()).parse::<bool>().unwrap();
+    if want_to_update_git_submodules {
+        update_git_submodules();
+    }
 
     let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("remote".to_string());
     run_builder(&build_chain);
@@ -107,4 +111,5 @@ fn main() {
     println!("cargo:rustc-link-search={}", &out_dir);
     println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
+    println!("cargo:rerun-if-env-changed=UPDATE_GIT_SUBMODULES");
 }
