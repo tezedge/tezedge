@@ -21,4 +21,6 @@ Default value is `tzmock`.
 
 Valid values are:
 * `tzmock` will use mock ocaml code, at the moment this is the only valid option
-* `tzreal` will build forked version of the Tezos repository. 
+* `tzreal` will build forked version of the Tezos repository.
+  * `UPDATE_GIT_SUBMODULES` (default `true`) is used to skip git update of Tezos repository.
+  * `TEZOS_BASE_DIR` is used to change location of Tezos repository on file system.

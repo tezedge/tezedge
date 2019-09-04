@@ -70,7 +70,13 @@ fn main() {
 
     let lib_name = env::var("OCAML_LIB").unwrap_or("tzmock".to_string());
     let lib_dir = Path::new("lib_ocaml").join(&lib_name);
-    update_git_submodules(&lib_dir);
+
+    // check we want to update git updates or just skip updates, because of development process and changes on ocaml side, which are not yet in git
+    let want_to_update_git_submodules : bool = env::var("UPDATE_GIT_SUBMODULES").unwrap_or("true".to_string()).parse::<bool>().unwrap();
+    if want_to_update_git_submodules {
+        update_git_submodules(&lib_dir);
+    }
+
     run_builder(&lib_dir);
 
     // copy artifact files to OUT_DIR location
@@ -91,4 +97,5 @@ fn main() {
     println!("cargo:rustc-link-search={}", &out_dir);
     println!("cargo:rustc-link-lib=dylib={}", &lib_name);
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
+    println!("cargo:rerun-if-env-changed=UPDATE_GIT_SUBMODULES");
 }
