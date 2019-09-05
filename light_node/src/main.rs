@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use log::{debug, error, info};
 use riker::actors::*;
+use tokio;
 
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
@@ -40,14 +41,14 @@ fn configure_default_logger() {
 
 fn main() {
 
-    match log4rs::init_file(LOG_FILE, Default::default()) {
-        Ok(_) => debug!("Logger configured from file: {}", LOG_FILE),
-        Err(m) => {
-            println!("Logger configuration file {} not loaded: {}", LOG_FILE, m);
-            println!("Using default logger configuration");
-            configure_default_logger()
-        }
-    }
+//    match log4rs::init_file(LOG_FILE, Default::default()) {
+//        Ok(_) => debug!("Logger configured from file: {}", LOG_FILE),
+//        Err(m) => {
+//            println!("Logger configuration file {} not loaded: {}", LOG_FILE, m);
+//            println!("Using default logger configuration");
+//            configure_default_logger()
+//        }
+//    }
 
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
@@ -72,8 +73,8 @@ fn main() {
 
     // -----------------------------
     let actor_system = ActorSystem::new().expect("Failed to create actor system");
-    let network_channel = NetworkChannel::new(&actor_system).expect("Failed to create network channel");
-    let network_manager = NetworkManager::new(
+    let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+    let network_manager = NetworkManager::actor(
         &actor_system,
         network_channel.clone(),
         configuration::ENV.p2p.listener_port,
@@ -81,7 +82,7 @@ fn main() {
         identity.secret_key,
         identity.proof_of_work_stamp)
         .expect("Failed to create network manager");
-    let _ = PeerManager::new(
+    let _ = PeerManager::actor(
         &actor_system,
         network_channel.clone(),
         network_manager.clone(),
@@ -89,9 +90,8 @@ fn main() {
         &configuration::ENV.initial_peers,
         Threshold::new(1, 30))
         .expect("Failed to create peer manager");
-    let _ = ChainManager::new(&actor_system, network_channel.clone());
+    let _ = ChainManager::actor(&actor_system, network_channel.clone());
     // -----------------------------
-
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -100,8 +100,7 @@ fn main() {
     }).expect("Error setting Ctrl-C handler");
     info!("Waiting for Ctrl-C...");
     while running.load(Ordering::SeqCst) {
-        std::thread::sleep(Duration::from_millis(1_000));
-        debug!("Uptime: {}", actor_system.uptime());
+        std::thread::sleep(Duration::from_millis(500));
     }
     info!("Got it! Exiting...");
 }

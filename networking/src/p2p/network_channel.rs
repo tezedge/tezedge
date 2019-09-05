@@ -82,16 +82,16 @@ pub struct NetworkChannel(Channel<NetworkChannelMsg>);
 
 impl NetworkChannel {
 
-    fn props() -> BoxActorProd<Channel<NetworkChannelMsg>> {
-        Props::new(Channel::new)
+    pub fn actor(fact: &impl ActorRefFactory) -> Result<ChannelRef<NetworkChannelMsg>, CreateError> {
+        fact.actor_of(Props::new(NetworkChannel::new), NetworkChannel::name())
     }
 
     fn name() -> &'static str {
-        "network-channel"
+        "network-event-channel"
     }
 
-    pub fn new(fact: &impl ActorRefFactory) -> Result<ChannelRef<NetworkChannelMsg>, CreateError> {
-        fact.actor_of(NetworkChannel::props(), NetworkChannel::name())
+    fn new() -> Self {
+        NetworkChannel(Channel::new())
     }
 }
 

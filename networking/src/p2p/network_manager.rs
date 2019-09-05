@@ -5,11 +5,10 @@ use futures::lock::Mutex;
 use log::info;
 use riker::actors::*;
 use tokio::net::{TcpListener, TcpStream};
-
-use crate::p2p::peer::PeerRef;
+use tokio::runtime::Runtime;
 
 use super::network_channel::NetworkChannelMsg;
-use super::peer::{Bootstrap, Peer};
+use super::peer::{Bootstrap, Peer, PeerRef};
 
 /// Blacklist the IP address.
 #[derive(Clone, Debug)]
@@ -52,11 +51,12 @@ pub struct NetworkManager {
     public_key: String,
     secret_key: String,
     proof_of_work_stamp: String,
+    tokio_runtime: Runtime,
 }
 
 impl NetworkManager {
 
-    pub fn new(sys: &impl ActorRefFactory,
+    pub fn actor(sys: &impl ActorRefFactory,
                event_channel: ChannelRef<NetworkChannelMsg>,
                listener_port: u16,
                public_key: String,
@@ -64,7 +64,7 @@ impl NetworkManager {
                proof_of_work_stamp: String) -> Result<NetworkManagerRef, CreateError>
     {
         sys.actor_of(
-            Props::new_args(NetworkManager::actor, (event_channel, listener_port, public_key, secret_key, proof_of_work_stamp)),
+            Props::new_args(NetworkManager::new, (event_channel, listener_port, public_key, secret_key, proof_of_work_stamp)),
             NetworkManager::name())
     }
 
@@ -74,8 +74,15 @@ impl NetworkManager {
         "network-manager"
     }
 
-    fn actor((event_channel, listener_port, public_key, secret_key, proof_of_work_stamp): (ChannelRef<NetworkChannelMsg>, u16, String, String, String)) -> Self {
-        NetworkManager { event_channel, listener_port, public_key, secret_key, proof_of_work_stamp }
+    fn new((event_channel, listener_port, public_key, secret_key, proof_of_work_stamp): (ChannelRef<NetworkChannelMsg>, u16, String, String, String)) -> Self {
+        NetworkManager {
+            event_channel,
+            listener_port,
+            public_key,
+            secret_key,
+            proof_of_work_stamp,
+            tokio_runtime: Runtime::new().unwrap()
+        }
     }
 
     fn create_peer(&self, sys: &ActorSystem) -> PeerRef {
@@ -85,7 +92,8 @@ impl NetworkManager {
             self.listener_port,
             &self.public_key,
             &self.secret_key,
-            &self.proof_of_work_stamp
+            &self.proof_of_work_stamp,
+            self.tokio_runtime.executor(),
         ).unwrap()
     }
 }
@@ -93,9 +101,19 @@ impl NetworkManager {
 impl Actor for NetworkManager {
     type Msg = NetworkManagerMsg;
 
-    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
-        ctx.system.exec.spawn_ok(begin_listen_incoming(self.listener_port, ctx.myself()));
+    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        let listener_port = self.listener_port;
+        let myself = ctx.myself();
+
+        self.tokio_runtime.spawn(async move {
+            begin_listen_incoming(listener_port, myself).await;
+        });
     }
+
+    fn post_stop(&mut self) {
+        self.tokio_runtime.stop();
+    }
+
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         // Use the respective Receive<T> implementation
@@ -126,7 +144,7 @@ impl Receive<ConnectToPeer> for NetworkManager {
         let peer= self.create_peer(&ctx.system);
         let system = ctx.system.clone();
 
-        ctx.system.exec.spawn_ok(async move {
+        self.tokio_runtime.spawn(async move {
             match TcpStream::connect(&msg.address).await {
                 Ok(stream) => {
                     peer.tell(Bootstrap::outgoing(stream, msg.address), None);
@@ -145,18 +163,15 @@ impl Receive<AcceptPeer> for NetworkManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
         let peer= self.create_peer(&ctx.system);
-
-        ctx.system.exec.spawn_ok(async move {
-            peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
-        });
+        peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
     }
 }
 
 
 /// Start to listen for incoming connections indefinitely.
 async fn begin_listen_incoming(listener_port: u16, connection_manager: NetworkManagerRef) {
-    let listener_address = format!("127.0.0.1:{}", listener_port).parse().unwrap();
-    let mut listener = TcpListener::bind(&listener_address).unwrap();
+    let listener_address = format!("127.0.0.1:{}", listener_port).parse::<SocketAddr>().unwrap();
+    let mut listener = TcpListener::bind(&listener_address).await.unwrap();
 
     loop {
         let (stream, address) = listener.accept().await.unwrap();

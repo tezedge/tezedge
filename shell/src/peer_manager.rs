@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use dns_lookup::LookupError;
-use log::warn;
+use log::{debug, info, warn};
 use riker::actors::*;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
@@ -46,7 +46,7 @@ pub struct PeerManager {
 pub type PeerManagerRef = ActorRef<PeerManagerMsg>;
 
 impl PeerManager {
-    pub fn new(sys: &impl ActorRefFactory,
+    pub fn actor(sys: &impl ActorRefFactory,
                event_channel: ChannelRef<NetworkChannelMsg>,
                network: NetworkManagerRef,
                bootstrap_addresses: &[String],
@@ -54,7 +54,7 @@ impl PeerManager {
                threshold: Threshold) -> Result<PeerManagerRef, CreateError> {
 
         sys.actor_of(
-            Props::new_args(PeerManager::actor, (event_channel, bootstrap_addresses.to_vec(), HashSet::from_iter(initial_peers.to_vec()), network, threshold)),
+            Props::new_args(PeerManager::new, (event_channel, bootstrap_addresses.to_vec(), HashSet::from_iter(initial_peers.to_vec()), network, threshold)),
             PeerManager::name())
     }
 
@@ -64,7 +64,7 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn actor((event_channel, bootstrap_addresses, potential_peers, network, threshold): (ChannelRef<NetworkChannelMsg>, Vec<String>, HashSet<SocketAddr>, NetworkManagerRef, Threshold)) -> Self {
+    fn new((event_channel, bootstrap_addresses, potential_peers, network, threshold): (ChannelRef<NetworkChannelMsg>, Vec<String>, HashSet<SocketAddr>, NetworkManagerRef, Threshold)) -> Self {
         PeerManager { event_channel, network, bootstrap_addresses, threshold, peers: HashMap::new(), potential_peers }
     }
 }
@@ -73,15 +73,13 @@ impl Actor for PeerManager {
     type Msg = PeerManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.event_channel.tell(Subscribe {
+        self.event_channel
+            .tell(Subscribe {
             actor: Box::new(ctx.myself()),
             topic: NetworkChannelTopic::NetworkEvents.into() }, None);
-    }
 
-
-    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         ctx.schedule::<PeerManagerMsg, _>(
-            Duration::from_secs(4),
+            Duration::from_secs(2),
             Duration::from_secs(60),
             ctx.myself(),
             None,
@@ -89,12 +87,14 @@ impl Actor for PeerManager {
     }
 
     fn sys_recv(&mut self, _ctx: &Context<Self::Msg>, msg: SystemMsg, _sender: Option<BasicActorRef>) {
+        debug!("sys_recv: {:?}", &msg);
         if let SystemMsg::Event(SystemEvent::ActorTerminated(evt)) = msg {
             self.peers.remove(evt.actor.uri());
         }
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        debug!("recv: {:?}", &msg);
         self.receive(ctx, msg, sender);
     }
 }
@@ -104,10 +104,13 @@ impl Receive<CheckThreshold> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckThreshold, _sender: Sender) {
         if self.peers.len() < self.threshold.low {
+            warn!("Peer count is too low. actual={}, required={}", self.peers.len(), self.threshold.low);
             if self.potential_peers.len() < self.threshold.low {
+                info!("Looking for new peers..");
                 // lookup for more peers
                 lookup_peers(&self.bootstrap_addresses).iter()
                     .for_each(|i| {
+                        info!("found potential peer: {}", i);
                         self.potential_peers.insert(*i);
                     });
             }
@@ -122,6 +125,8 @@ impl Receive<CheckThreshold> for PeerManager {
                     self.network.tell(ConnectToPeer { address: address.clone() }, ctx.myself().into())
                 });
         } else if self.peers.len() > self.threshold.high {
+            warn!("Peer count is too high. Some peers will be stopped. actual={}, required={}", self.peers.len(), self.threshold.high);
+
             // stop some peers
             self.peers.values()
                 .take(self.peers.len() - self.threshold.high)

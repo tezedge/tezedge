@@ -8,13 +8,14 @@ use futures::lock::Mutex;
 use log::{debug, info, warn};
 use riker::actors::*;
 use tokio::net::TcpStream;
+use tokio::runtime::TaskExecutor;
 
 use crypto::crypto_box::precompute;
 use crypto::nonce::{self, Nonce, NoncePair};
 
 use super::binary_message::{BinaryMessage, RawBinaryMessage};
 use super::encoding::prelude::*;
-use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived, PeerCreated};
+use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerCreated, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
@@ -128,6 +129,8 @@ pub struct Peer {
     local: Arc<Local>,
     /// Network IO
     net: Network,
+    /// Tokio task executor
+    tokio_executor: TaskExecutor,
 }
 
 impl Peer {
@@ -137,7 +140,8 @@ impl Peer {
                listener_port: u16,
                public_key: &String,
                secret_key: &String,
-               proof_of_work_stamp: &String) -> Result<PeerRef, CreateError>
+               proof_of_work_stamp: &String,
+               tokio_executor: TaskExecutor) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port: listener_port.clone(),
@@ -145,19 +149,20 @@ impl Peer {
             public_key: public_key.clone(),
             secret_key: secret_key.clone()
         };
-        let props = Props::new_args(Peer::actor, (event_channel, Arc::new(info)));
+        let props = Props::new_args(Peer::actor, (event_channel, Arc::new(info), tokio_executor));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }
 
-    fn actor((event_channel, info): (ChannelRef<NetworkChannelMsg>, Arc<Local>)) -> Self {
+    fn actor((event_channel, info, tokio_executor): (ChannelRef<NetworkChannelMsg>, Arc<Local>, TaskExecutor)) -> Self {
         Peer {
             event_channel,
             local: info,
             net: Network {
                 rx_run: Arc::new(AtomicBool::new(false)),
                 tx: Arc::new(Mutex::new(None)),
-            }
+            },
+            tokio_executor
         }
     }
 }
@@ -165,7 +170,7 @@ impl Peer {
 impl Actor for Peer {
     type Msg = PeerMsg;
 
-    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
     }
 
@@ -185,7 +190,7 @@ impl Receive<Bootstrap> for Peer {
         let net = self.net.clone();
         let event_channel = self.event_channel.clone();
 
-        ctx.system.exec.spawn_ok(async move {
+        self.tokio_executor.spawn(async move {
 
             async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
                 net.rx_run.store(true, Ordering::Relaxed);
@@ -214,7 +219,7 @@ impl Receive<SendMessage> for Peer {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
         let tx = self.net.tx.clone();
-        ctx.system.exec.spawn_ok(async move {
+        self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             let tx = tx_lock.as_mut();
             match tx.unwrap().write_message(&*msg.message).await {

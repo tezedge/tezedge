@@ -22,9 +22,9 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
 
-    pub fn new(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::actor, event_channel),
+            Props::new_args(ChainManager::new, event_channel),
             ChainManager::name())
     }
 
@@ -34,7 +34,7 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn actor(event_channel: ChannelRef<NetworkChannelMsg>) -> Self {
+    fn new(event_channel: ChannelRef<NetworkChannelMsg>) -> Self {
         ChainManager { event_channel, current_branch: None }
     }
 }
