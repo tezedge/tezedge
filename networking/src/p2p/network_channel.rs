@@ -90,7 +90,7 @@ impl NetworkChannel {
         "network-channel"
     }
 
-    pub fn channel(fact: &impl ActorRefFactory) -> Result<ChannelRef<NetworkChannelMsg>, CreateError> {
+    pub fn new(fact: &impl ActorRefFactory) -> Result<ChannelRef<NetworkChannelMsg>, CreateError> {
         fact.actor_of(NetworkChannel::props(), NetworkChannel::name())
     }
 }

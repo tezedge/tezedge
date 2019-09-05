@@ -56,7 +56,7 @@ pub struct NetworkManager {
 
 impl NetworkManager {
 
-    pub fn new(sys: &ActorSystem,
+    pub fn new(sys: &impl ActorRefFactory,
                event_channel: ChannelRef<NetworkChannelMsg>,
                listener_port: u16,
                public_key: String,

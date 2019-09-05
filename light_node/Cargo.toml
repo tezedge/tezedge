@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.0"
+ctrlc = { version = "3.1", features = ["termination"] }
 dirs = "1.0.4"
 failure = "0.1.5"
 hex = "0.3.2"
@@ -15,9 +16,9 @@ log4rs = { version = "0.8.3", features = ["rolling_file_appender", "compound_pol
 riker = { git = "https://github.com/riker-rs/riker" }
 serde = { version = "1.0.99", features = ["derive"] }
 serde_json = "1.0.40"
-tokio = "0.2.0-alpha.2"
 # Local dependencies
 tezos_encoding = { path = "../tezos_encoding" }
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
+shell = { path = "../shell" }

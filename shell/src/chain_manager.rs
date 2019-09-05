@@ -1,20 +1,11 @@
 use log::debug;
 use riker::actors::*;
-use serde::Deserialize;
 
 use networking::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
 use networking::p2p::encoding::peer::PeerMessage;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
 use networking::p2p::peer::SendMessage;
 use tezos_encoding::hash::{HashEncoding, HashType};
-
-#[derive(Clone, Debug, Deserialize)]
-struct Identity {
-    peer_id: String,
-    public_key: String,
-    secret_key: String,
-    proof_of_work_stamp: String,
-}
 
 #[derive(Clone, Debug)]
 pub struct Balance;
@@ -25,6 +16,27 @@ pub struct ChainManager {
     event_channel: ChannelRef<NetworkChannelMsg>,
 
     current_branch: Option<CurrentBranchMessage> // TODO: this is totally incorrect, fix
+}
+
+pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
+
+impl ChainManager {
+
+    pub fn new(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>) -> Result<ChainManagerRef, CreateError> {
+        sys.actor_of(
+            Props::new_args(ChainManager::actor, event_channel),
+            ChainManager::name())
+    }
+
+    /// The `ChainManager` is intended to serve as a singleton actor so that's why
+    /// we won't support multiple names per instance.
+    fn name() -> &'static str {
+        "chain-manager"
+    }
+
+    fn actor(event_channel: ChannelRef<NetworkChannelMsg>) -> Self {
+        ChainManager { event_channel, current_branch: None }
+    }
 }
 
 impl Actor for ChainManager {
@@ -44,7 +56,7 @@ impl Actor for ChainManager {
 impl Receive<Balance> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: Balance, _sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: Balance, _sender: Sender) {
         // ...
     }
 }
@@ -52,7 +64,7 @@ impl Receive<Balance> for ChainManager {
 impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, sender: Sender) {
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         if let NetworkChannelMsg::PeerBootstrapped(msg) = msg {
             msg.peer
                 .tell(SendMessage::new(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(genesis_chain_id())).into()), None);
@@ -62,7 +74,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                     PeerMessage::CurrentBranch(message) => {
                         self.current_branch = Some(message.clone());
                     }
-                    PeerMessage::GetCurrentBranch(message) => {
+                    PeerMessage::GetCurrentBranch(_message) => {
                         // .. ignore
                     }
                     _ => debug!("Ignored message: {:?}", message),

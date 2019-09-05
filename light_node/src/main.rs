@@ -2,16 +2,17 @@
 extern crate lazy_static;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use log::{debug, error, info};
-
-use networking::p2p::node::P2pLayer;
-use networking::rpc::message::{BootstrapMessage, PeerAddress};
-use storage::db::Db;
 use riker::actors::*;
-use tokio;
-use networking::rpc::server::RpcLayer;
-use networking::p2p::server::{P2PServer, accept_incoming_p2p_connections};
+
+use networking::p2p::network_channel::NetworkChannel;
+use networking::p2p::network_manager::NetworkManager;
+use shell::chain_manager::ChainManager;
+use shell::peer_manager::{PeerManager, Threshold};
 
 mod configuration;
 
@@ -37,9 +38,7 @@ fn configure_default_logger() {
     log4rs::init_config(config).unwrap();
 }
 
-#[tokio::main]
-async fn main() {
-    use networking::p2p::client::P2pClient;
+fn main() {
 
     match log4rs::init_file(LOG_FILE, Default::default()) {
         Ok(_) => debug!("Logger configured from file: {}", LOG_FILE),
@@ -49,16 +48,6 @@ async fn main() {
             configure_default_logger()
         }
     }
-
-    let initial_peers: Vec<PeerAddress> = configuration::ENV.initial_peers.clone()
-        .into_iter()
-        .map(|(ip, port)| {
-            PeerAddress {
-                host: ip.clone(),
-                port,
-            }
-        })
-        .collect();
 
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
@@ -72,57 +61,49 @@ async fn main() {
             }
         });
 
-    info!("Starting Iron p2p");
+    info!("Starting Light Node");
 
-    let init_chain_id = hex::decode(configuration::tezos_node::genesis_chain_id());
-    if let Err(e) = init_chain_id {
-        error!("Failed to load initial chain id. Reason: {:?}", e);
-        return;
-    }
     let identity = configuration::tezos_node::load_identity(identity_json_file_path);
     if let Err(e) = identity {
         error!("Failed to load identity. Reason: {:?}", e);
         return;
     }
-
-    let p2p_client = P2pClient::new(
-        init_chain_id.unwrap(),
-        identity.unwrap(),
-        configuration::tezos_node::versions(),
-        Db::new(),
-        configuration::ENV.p2p.listener_port,
-        configuration::ENV.log_message_contents
-    );
-
-    let p2p = P2pLayer::new(p2p_client);
-    // init node bootstrap
-    if !initial_peers.is_empty() {
-        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap encoding to p2p layer")
-    } else {
-        p2p.bootstrap_with_lookup(&configuration::ENV.p2p.bootstrap_lookup_addresses).await.expect("Failed to transmit bootstrap encoding to p2p layer")
-    }
-
-    let rpc = RpcLayer::new(&configuration::ENV.p2p.bootstrap_lookup_addresses, configuration::ENV.rpc.listener_port);
-    // ------------------
-    // Lines after the following block will be executed only after accept_connections() task will complete
-    // ------------------
-    let res = networking::rpc::server::accept_connections(rpc, p2p).await;
-    if let Err(e) = res {
-        error!("Failed to start accepting RPC connections. Reason: {:?}", e);
-        return;
-    }
-
-
+    let identity = identity.unwrap();
 
     // -----------------------------
     let actor_system = ActorSystem::new().expect("Failed to create actor system");
-    accept_incoming_p2p_connections(&actor_system).await.unwrap();
+    let network_channel = NetworkChannel::new(&actor_system).expect("Failed to create network channel");
+    let network_manager = NetworkManager::new(
+        &actor_system,
+        network_channel.clone(),
+        configuration::ENV.p2p.listener_port,
+        identity.public_key,
+        identity.secret_key,
+        identity.proof_of_work_stamp)
+        .expect("Failed to create network manager");
+    let _ = PeerManager::new(
+        &actor_system,
+        network_channel.clone(),
+        network_manager.clone(),
+        &configuration::ENV.p2p.bootstrap_lookup_addresses,
+        &configuration::ENV.initial_peers,
+        Threshold::new(1, 30))
+        .expect("Failed to create peer manager");
+    let _ = ChainManager::new(&actor_system, network_channel.clone());
     // -----------------------------
 
 
-
-
-    info!("Iron p2p stopped")
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error setting Ctrl-C handler");
+    info!("Waiting for Ctrl-C...");
+    while running.load(Ordering::SeqCst) {
+        std::thread::sleep(Duration::from_millis(1_000));
+        debug!("Uptime: {}", actor_system.uptime());
+    }
+    info!("Got it! Exiting...");
 }
 
 

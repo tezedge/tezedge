@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use failure::{bail, Error};
 use log::warn;
+use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Identity {
@@ -19,7 +20,7 @@ pub fn load_identity(identity_json_file_path: PathBuf) -> Result<Identity, Error
     Ok(serde_json::from_str::<Identity>(&contents)?)
 }
 
-fn get_default_tezos_identity_json_file_path() -> Result<PathBuf, Error> {
+pub fn get_default_tezos_identity_json_file_path() -> Result<PathBuf, Error> {
     match dirs::home_dir() {
         Some(home_dir) => {
             let mut config_path = home_dir;

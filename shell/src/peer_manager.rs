@@ -46,13 +46,13 @@ pub struct PeerManager {
 pub type PeerManagerRef = ActorRef<PeerManagerMsg>;
 
 impl PeerManager {
-    pub fn new(sys: &ActorSystem,
+    pub fn new(sys: &impl ActorRefFactory,
                event_channel: ChannelRef<NetworkChannelMsg>,
                network: NetworkManagerRef,
                bootstrap_addresses: &[String],
                initial_peers: &[SocketAddr],
-               threshold: Threshold) -> Result<PeerManagerRef, CreateError>
-    {
+               threshold: Threshold) -> Result<PeerManagerRef, CreateError> {
+
         sys.actor_of(
             Props::new_args(PeerManager::actor, (event_channel, bootstrap_addresses.to_vec(), HashSet::from_iter(initial_peers.to_vec()), network, threshold)),
             PeerManager::name())
@@ -88,7 +88,7 @@ impl Actor for PeerManager {
             CheckThreshold.into());
     }
 
-    fn sys_recv(&mut self, ctx: &Context<Self::Msg>, msg: SystemMsg, sender: Option<BasicActorRef>) {
+    fn sys_recv(&mut self, _ctx: &Context<Self::Msg>, msg: SystemMsg, _sender: Option<BasicActorRef>) {
         if let SystemMsg::Event(SystemEvent::ActorTerminated(evt)) = msg {
             self.peers.remove(evt.actor.uri());
         }
@@ -133,8 +133,10 @@ impl Receive<CheckThreshold> for PeerManager {
 impl Receive<NetworkChannelMsg> for PeerManager {
     type Msg = PeerManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, sender: Sender) {
-
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+        if let NetworkChannelMsg::PeerCreated(msg) = msg {
+            self.peers.insert(msg.peer.uri().clone(), msg.peer);
+        }
     }
 }
 
