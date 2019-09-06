@@ -23,4 +23,5 @@ pub mod prelude {
     pub use super::operations_for_blocks::{GetOperationsForBlocksMessage, OperationsForBlock, OperationsForBlocksMessage, Path, PathLeft, PathRight};
     pub use super::peer::{PeerMessage, PeerMessageResponse};
     pub use super::protocol::{Component, GetProtocolsMessage, Protocol, ProtocolMessage};
+    pub use super::version::Version;
 }

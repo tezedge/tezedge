@@ -4,6 +4,7 @@ members = [
     "tezos_interop",
     "tezos_encoding",
     "networking",
+    "shell",
     "storage",
     "light_node",
 

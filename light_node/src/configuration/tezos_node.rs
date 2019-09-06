@@ -3,8 +3,22 @@ use std::path::PathBuf;
 
 use failure::{bail, Error};
 use log::warn;
+use serde::Deserialize;
 
-use networking::p2p::client::{Identity, Version};
+#[derive(Clone, Debug, Deserialize)]
+pub struct Identity {
+    peer_id: String,
+    pub public_key: String,
+    pub secret_key: String,
+    pub proof_of_work_stamp: String,
+}
+
+/// Load identity from tezos configuration file.
+pub fn load_identity(identity_json_file_path: PathBuf) -> Result<Identity, Error> {
+    warn!("Using Tezos identity from file: {:?}", &identity_json_file_path);
+    let contents = fs::read_to_string(&identity_json_file_path)?;
+    Ok(serde_json::from_str::<Identity>(&contents)?)
+}
 
 pub fn get_default_tezos_identity_json_file_path() -> Result<PathBuf, Error> {
     match dirs::home_dir() {
@@ -16,21 +30,4 @@ pub fn get_default_tezos_identity_json_file_path() -> Result<PathBuf, Error> {
         }
         None => bail!("HOME directory not found"),
     }
-}
-
-pub fn load_identity(identity_json_file_path: PathBuf) -> Result<Identity, Error> {
-    warn!("Using Tezos identity from file: {:?}", &identity_json_file_path);
-    let contents = fs::read_to_string(&identity_json_file_path)?;
-    Ok(serde_json::from_str::<Identity>(&contents)?)
-}
-
-pub fn versions() -> Vec<Version> {
-    vec![Version { name: String::from("TEZOS_ALPHANET_2018-11-30T15:30:56Z"), major: 0, minor: 0 }]
-}
-
-
-
-pub fn genesis_chain_id() -> String {
-    // TODO: real structure according to tezos-node and encoding [NetXgtSLGNJvNye]
-    String::from("8eceda2f")
 }

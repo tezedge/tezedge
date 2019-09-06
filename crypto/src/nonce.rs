@@ -56,16 +56,21 @@ impl Nonce {
     }
 }
 
-pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> (Nonce, Nonce) {
+pub struct NoncePair {
+    pub local: Nonce,
+    pub remote: Nonce,
+}
+
+pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> NoncePair {
     let (init_msg, resp_msg) = if incoming { (recv_msg, sent_msg) } else { (sent_msg, recv_msg) };
 
     let nonce_init_to_resp = blake2b::digest(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))[0..NONCE_SIZE].to_vec();
     let nonce_resp_to_init = blake2b::digest(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))[0..NONCE_SIZE].to_vec();
 
     if incoming {
-        (Nonce::new(&nonce_init_to_resp), Nonce::new(&nonce_resp_to_init))
+        NoncePair { local: Nonce::new(&nonce_init_to_resp), remote: Nonce::new(&nonce_resp_to_init) }
     } else {
-        (Nonce::new(&nonce_resp_to_init), Nonce::new(&nonce_init_to_resp))
+        NoncePair { local: Nonce::new(&nonce_resp_to_init), remote: Nonce::new(&nonce_init_to_resp) }
     }
 }
 
@@ -88,7 +93,7 @@ mod tests {
         let sent_msg = hex::decode("00874d1b98317bd6efad8352a7144c9eb0b218c9130e0a875973908ddc894b764ffc0d7f176cf800b978af9e919bdc35122585168475096d0ebcaca1f2a1172412b91b363ff484d1c64c03417e0e755e696c386a0000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000").unwrap();
         let recv_msg = hex::decode("00874d1ab3845960b32b039fef38ca5c9f8f867df1d522f27a83e07d9dfbe3b296a6c076412d98b369ab015d57247e5380d708b9edfcca0ca2c865346ef9c3d7ed00182cf4f613a6303c9b2a28cda8ff93687bd20000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000").unwrap();
 
-        let (local_nonce, remote_nonce) = generate_nonces(&sent_msg, &recv_msg, false);
+        let NoncePair { local: local_nonce, remote: remote_nonce } = generate_nonces(&sent_msg, &recv_msg, false);
         let expected_local_nonce = "8dde158c55cff52f4be9352787d333e616a67853640d72c5";
         let expected_remote_nonce = "e67481a23cf9b404626a12bd405066e161b32dc53f469153";
         assert_eq!(expected_remote_nonce, hex::encode(remote_nonce.get_bytes()));
@@ -100,7 +105,7 @@ mod tests {
         let sent_msg = hex::decode("00874d1b98317bd6efad8352a7144c9eb0b218c9130e0a875973908ddc894b764ffc0d7f176cf800b978af9e919bdc35122585168475096d0ebcaca1f2a1172412b91b363ff484d1c64c03417e0e755e696c386a0000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000").unwrap();
         let recv_msg = hex::decode("00874d1ab3845960b32b039fef38ca5c9f8f867df1d522f27a83e07d9dfbe3b296a6c076412d98b369ab015d57247e5380d708b9edfcca0ca2c865346ef9c3d7ed00182cf4f613a6303c9b2a28cda8ff93687bd20000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000").unwrap();
 
-        let (local_nonce, remote_nonce) = generate_nonces(&sent_msg, &recv_msg, true);
+        let NoncePair { local: local_nonce, remote: remote_nonce } = generate_nonces(&sent_msg, &recv_msg, true);
         let expected_local_nonce = "ff0451d94af9f75a46d74a2a9f685cff20222a15829f121d";
         let expected_remote_nonce = "8a09a2c43a61aa6eccee084aa66da9bc94b441b17615be58";
         assert_eq!(expected_remote_nonce, hex::encode(remote_nonce.get_bytes()));

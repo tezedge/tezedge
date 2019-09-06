@@ -1,157 +1,361 @@
+use std::convert::TryFrom;
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use failure::{bail, Error};
+use failure::{Error, Fail};
 use futures::lock::Mutex;
+use log::{debug, info, warn};
+use riker::actors::*;
+use tokio::net::TcpStream;
+use tokio::runtime::TaskExecutor;
 
-use crypto::{
-    crypto_box::*,
-    nonce::*
-};
-use log::debug;
+use crypto::crypto_box::precompute;
+use crypto::nonce::{self, Nonce, NoncePair};
 
-use crate::p2p::{
-    message::BinaryMessage,
-    stream::*,
-};
-use crate::rpc::message::PeerAddress;
+use super::binary_message::{BinaryMessage, RawBinaryMessage};
+use super::encoding::prelude::*;
+use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerCreated, PeerMessageReceived};
+use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
+
+static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
 pub type PeerId = String;
 pub type PublicKey = Vec<u8>;
 
-
-/// Contains peer state information. Fox example nonce values - both local and remove.
-#[derive(Debug)]
-pub struct PeerState {
-    pub nonce_local: Nonce,
-    pub nonce_remote: Nonce,
+#[derive(Debug, Fail)]
+enum PeerError {
+    #[fail(display = "Received NACK from remote peer")]
+    NackReceived,
+    #[fail(display = "Failed to create precomputed key")]
+    FailedToPrecomputeKey,
+    #[fail(display = "Network error: {}", message)]
+    NetworkError {
+        error: Error,
+        message: &'static str,
+    },
+    #[fail(display = "Message serialization error")]
+    SerializationError {
+        error: tezos_encoding::ser::Error
+    },
+    #[fail(display = "Message deserialization error")]
+    DeserializationError {
+        error: tezos_encoding::de::Error
+    },
 }
 
-impl PeerState {
-    pub fn new(nonce_local: &Nonce, nonce_remote: &Nonce) -> PeerState {
-        PeerState {
-            nonce_local: nonce_local.clone(),
-            nonce_remote: nonce_remote.clone(),
-        }
-    }
-
-    pub fn increment_nonce_local(&mut self) {
-        self.nonce_local = self.nonce_local.increment();
-    }
-
-    pub fn increment_nonce_remote(&mut self) {
-        self.nonce_remote = self.nonce_remote.increment();
+impl From<tezos_encoding::ser::Error> for PeerError {
+    fn from(error: tezos_encoding::ser::Error) -> Self {
+        PeerError::SerializationError { error }
     }
 }
 
-/// P2pPeer represents live secured connection with remote peer
-///
-/// Network layer communicates with remote peer through TCP/IP.
-/// Every peer has it's own identifier represented by hash of it's public key.
-pub struct P2pPeer {
-    /// Peer ID is created as hex string representation of peer public key bytes.
-    peer_id: PeerId,
-    /// Peer ip/port
-    peer: PeerAddress,
-    /// Peer public key.
-    public_key: PublicKey,
-    /// Precomputed key is created from merge of peer public key and our secret key.
-    /// It's used to speedup of crypto operations.
-    precomputed_key: PrecomputedKey,
-
-    /// Contains peer state information. This is for internal use by `P2pPeer` only.
-    peer_state: Arc<RwLock<PeerState>>,
-    ///
-    rx: Arc<Mutex<MessageReader>>,
-    tx: Arc<Mutex<MessageWriter>>,
-    /// print messages as hex string in log statements
-    log_messages: bool,
+impl From<tezos_encoding::de::Error> for PeerError {
+    fn from(error: tezos_encoding::de::Error) -> Self {
+        PeerError::DeserializationError { error }
+    }
 }
 
-impl P2pPeer {
-    pub fn new(peer_public_key: PublicKey, node_sk_as_hex_string: &str, peer: PeerAddress, peer_state: PeerState, rx: MessageReader, tx: MessageWriter, log_messages: bool) -> Self {
+impl From<std::io::Error> for PeerError {
+    fn from(error: std::io::Error) -> Self {
+        PeerError::NetworkError { error: error.into(), message: "Network error" }
+    }
+}
 
-        let peer_id = hex::encode(&peer_public_key);
-        let peer_pk_as_hex_string = &hex::encode(&peer_public_key);
+impl From<StreamError> for PeerError {
+    fn from(error: StreamError) -> Self {
+        PeerError::NetworkError { error: error.into(), message: "Stream error" }
+    }
+}
 
-        P2pPeer {
-            peer_id,
-            peer,
-            log_messages,
-            public_key: peer_public_key,
-            precomputed_key: precompute(
-                peer_pk_as_hex_string,
-                node_sk_as_hex_string,
-            ).expect("Failed to create precomputed key"),
-            peer_state: Arc::new(RwLock::new(peer_state)),
-            rx: Arc::new(Mutex::new(rx)),
-            tx: Arc::new(Mutex::new(tx)),
+
+#[derive(Clone, Debug)]
+pub struct Bootstrap {
+    stream: Arc<Mutex<Option<TcpStream>>>,
+    address: SocketAddr,
+    incoming: bool,
+}
+
+impl Bootstrap {
+    pub fn incoming(stream: Arc<Mutex<Option<TcpStream>>>, address: SocketAddr) -> Self {
+        Bootstrap { stream, address, incoming: true }
+    }
+
+    pub fn outgoing(stream: TcpStream, address: SocketAddr) -> Self {
+        Bootstrap { stream: Arc::new(Mutex::new(Some(stream))), address, incoming: false }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SendMessage {
+    /// Message is wrapped in `Arc` to avoid excessive cloning.
+    message: Arc<PeerMessageResponse>
+}
+
+impl SendMessage {
+    pub fn new(msg: PeerMessageResponse) -> Self {
+        SendMessage { message: Arc::new(msg) }
+    }
+}
+
+#[derive(Clone)]
+struct Network {
+    /// Message receiver boolean indicating whether
+    /// more messages should be received from network
+    rx_run: Arc<AtomicBool>,
+    /// Message sender
+    tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
+}
+
+/// Local node info
+pub struct Local {
+    /// port where remote node can establish new connection
+    listener_port: u16,
+    /// our public key
+    public_key: String,
+    /// our secret key
+    secret_key: String,
+    /// proof of work
+    proof_of_work_stamp: String,
+}
+
+pub type PeerRef = ActorRef<PeerMsg>;
+
+#[actor(Bootstrap, SendMessage)]
+pub struct Peer {
+    /// All events generated by the peer will end up in this channel
+    event_channel: ChannelRef<NetworkChannelMsg>,
+    /// Local node info
+    local: Arc<Local>,
+    /// Network IO
+    net: Network,
+    /// Tokio task executor
+    tokio_executor: TaskExecutor,
+}
+
+impl Peer {
+    pub fn new(sys: &impl ActorRefFactory,
+               event_channel: ChannelRef<NetworkChannelMsg>,
+               listener_port: u16,
+               public_key: &String,
+               secret_key: &String,
+               proof_of_work_stamp: &String,
+               tokio_executor: TaskExecutor) -> Result<PeerRef, CreateError>
+    {
+        let info = Local {
+            listener_port: listener_port.clone(),
+            proof_of_work_stamp: proof_of_work_stamp.clone(),
+            public_key: public_key.clone(),
+            secret_key: secret_key.clone(),
+        };
+        let props = Props::new_args(Peer::actor, (event_channel, Arc::new(info), tokio_executor));
+        let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
+        sys.actor_of(props, &format!("peer-{}", actor_id))
+    }
+
+    fn actor((event_channel, info, tokio_executor): (ChannelRef<NetworkChannelMsg>, Arc<Local>, TaskExecutor)) -> Self {
+        Peer {
+            event_channel,
+            local: info,
+            net: Network {
+                rx_run: Arc::new(AtomicBool::new(false)),
+                tx: Arc::new(Mutex::new(None)),
+            },
+            tokio_executor,
         }
     }
+}
 
-    pub fn get_peer_id(&self) -> &PeerId {
-        &self.peer_id
+impl Actor for Peer {
+    type Msg = PeerMsg;
+
+    fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
     }
 
-    pub fn get_public_key(&self) -> &PublicKey {
-        &self.public_key
+    fn post_stop(&mut self) {
+        self.net.rx_run.store(false, Ordering::Relaxed);
     }
 
-    pub fn get_peer(&self) -> &PeerAddress {
-        &self.peer
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        // Use the respective Receive<T> implementation
+        self.receive(ctx, msg, sender);
     }
+}
 
-    pub async fn write_message<'a>(&'a self, message: &'a impl BinaryMessage) -> Result<(), Error> {
-        let message_bytes = message.as_bytes()?;
-        if self.log_messages {
-            debug!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
-        } else {
-            debug!("Message to send to peer {} ...", self.peer_id);
-        }
+impl Receive<Bootstrap> for Peer {
+    type Msg = PeerMsg;
 
-        // encrypt
-        let message_encrypted = encrypt(
-            &message_bytes,
-            &self.peer_state.read().unwrap().nonce_local,
-            &self.precomputed_key,
-        )?;
-        if self.log_messages {
-            debug!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
-        }
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: Bootstrap, _sender: Sender) {
+        let info = self.local.clone();
+        let myself = ctx.myself();
+        let system = ctx.system.clone();
+        let net = self.net.clone();
+        let event_channel = self.event_channel.clone();
 
-        // increment nonce
-        self.peer_state.write().unwrap().increment_nonce_local();
-
-        // send
-        let mut tx = self.tx.lock().await;
-        if let Err(e) = tx.write_message(&message_encrypted).await {
-            bail!("Failed to transfer encoding: {:?}", e);
-        }
-
-        Ok(())
-    }
-
-    pub async fn read_message(&self) -> Result<Vec<u8>, Error> {
-        // read
-        let mut rx = self.rx.lock().await;
-        let message_encrypted = rx.read_message().await?;
-
-        // increment nonce
-        let remote_nonce_to_use = self.peer_state.read().unwrap().nonce_remote.clone();
-        self.peer_state.write().unwrap().increment_nonce_remote();
-
-        // decrypt
-        match decrypt(message_encrypted.get_contents(), &remote_nonce_to_use, &self.precomputed_key) {
-            Ok(message) => {
-                if self.log_messages {
-                    debug!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
-                } else {
-                    debug!("Message received from peer {} ... ", self.peer_id);
-                }
-                Ok(message)
+        self.tokio_executor.spawn(async move {
+            async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
+                net.rx_run.store(true, Ordering::Relaxed);
+                *net.tx.lock().await = Some(tx);
             }
-            Err(ref e) => {
-                bail!("Decrypt encoding failed from peer: {} Reason: {:?}", self.peer_id, e)
+
+            match bootstrap(msg, info).await {
+                Ok(BootstrapOutput(rx, tx)) => {
+                    setup_net(&net, tx).await;
+
+                    event_channel.tell(Publish { msg: PeerBootstrapped { peer: myself.clone() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
+                    // begin to process incoming messages in a loop
+                    begin_process_incoming(rx, net.rx_run, myself.clone(), event_channel).await;
+                    // connection to peer was closed, stop this actor
+                    system.stop(myself);
+                }
+                Err(e) => {
+                    warn!("Connection to peer failed: {}", e);
+                    system.stop(myself);
+                }
+            }
+        });
+    }
+}
+
+impl Receive<SendMessage> for Peer {
+    type Msg = PeerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
+        let system = ctx.system.clone();
+        let myself = ctx.myself();
+        let tx = self.net.tx.clone();
+        self.tokio_executor.spawn(async move {
+            let mut tx_lock = tx.lock().await;
+            let tx = tx_lock.as_mut();
+            if let Err(e) = tx.unwrap().write_message(&*msg.message).await {
+                warn!("Failed to send message. {:?}", e);
+                system.stop(myself);
+            }
+        });
+    }
+}
+
+/// Output values of the successful bootstrap process
+struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter);
+
+async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, PeerError> {
+    let (mut msg_rx, mut msg_tx) = {
+        let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");
+        let msg_reader: MessageStream = stream.into();
+        msg_reader.split()
+    };
+
+    // send connection message
+    let connection_message = ConnectionMessage::new(
+        info.listener_port,
+        &info.public_key,
+        &info.proof_of_work_stamp,
+        &Nonce::random().get_bytes(),
+        vec![supported_version()]);
+    let connection_message_sent = {
+        let as_bytes = connection_message.as_bytes()?;
+        match msg_tx.write_message(&as_bytes).await {
+            Ok(bytes) => bytes,
+            Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Failed to transfer connection message" })
+        }
+    };
+
+    // receive connection message
+    let received_connection_msg = match msg_rx.read_message().await {
+        Ok(msg) => msg,
+        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Receive no response to our connection message" })
+    };
+    // generate local and remote nonce
+    let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_msg, msg.incoming);
+
+    // convert received bytes from remote peer into `ConnectionMessage`
+    let received_connection_msg: ConnectionMessage = ConnectionMessage::try_from(received_connection_msg)?;
+    let peer_public_key = received_connection_msg.get_public_key();
+    let peer_id = hex::encode(&peer_public_key);
+    debug!("Received peer_public_key: {}", &peer_id);
+
+    // pre-compute encryption key
+    let precomputed_key = match precompute(&hex::encode(peer_public_key), &info.secret_key) {
+        Ok(key) => key,
+        Err(_) => return Err(PeerError::FailedToPrecomputeKey)
+    };
+
+    // from now on all messages will be encrypted
+    let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, peer_id.clone());
+    let mut msg_rx = EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, peer_id);
+
+    // send metadata
+    let metadata = MetadataMessage::new(false, false);
+    msg_tx.write_message(&metadata).await?;
+
+    // receive metadata
+    let metadata_received = MetadataMessage::from_bytes(msg_rx.read_message().await?)?;
+    debug!("Received remote peer metadata - disable_mempool: {}, private_node: {}", metadata_received.disable_mempool, metadata_received.private_node);
+
+    // send ack
+    msg_tx.write_message(&AckMessage::Ack).await?;
+
+    // receive ack
+    let ack_received = AckMessage::from_bytes(msg_rx.read_message().await?)?;
+
+    match ack_received {
+        AckMessage::Ack => {
+            debug!("Received ACK");
+            Ok(BootstrapOutput(msg_rx, msg_tx))
+        }
+        AckMessage::Nack => {
+            debug!("Received NACK");
+            Err(PeerError::NackReceived)
+        }
+    }
+}
+
+
+/// Generate nonces (sent and recv encoding must be with length bytes also)
+///
+/// local_nonce is used for writing crypto messages to other peers
+/// remote_nonce is used for reading crypto messages from other peers
+fn generate_nonces(sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, incoming: bool) -> NoncePair {
+    nonce::generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
+}
+
+/// Return supported network protocol version
+fn supported_version() -> Version {
+    Version::new("TEZOS_ALPHANET_2018-11-30T15:30:56Z".into(), 0, 0)
+}
+
+/// Start to process incoming data
+async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: ChannelRef<NetworkChannelMsg>) {
+    info!("Starting accepting messages from peer: {}", rx.peer_id());
+
+    while rx_run.load(Ordering::Relaxed) {
+        match rx.read_message().await {
+            Ok(msg) => {
+                match PeerMessageResponse::from_bytes(msg) {
+                    Ok(msg) => {
+                        let broadcast_message = rx_run.load(Ordering::Relaxed);
+                        if broadcast_message {
+                            debug!("Message parsed successfully");
+                            event_channel.tell(
+                                Publish {
+                                    msg: PeerMessageReceived {
+                                        peer: myself.clone(),
+                                        message: Arc::new(msg),
+                                    }.into(),
+                                    topic: NetworkChannelTopic::NetworkEvents.into(),
+                                }, Some(myself.clone().into()));
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to process received message: {:?}", e);
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to read message: {:?}", e);
+                break;
             }
         }
     }

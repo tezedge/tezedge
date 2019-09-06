@@ -7,7 +7,7 @@ use tezos_encoding::hash::{HashEncoding, HashType, ChainId, BlockHash};
 
 use crate::p2p::encoding::block_header::BlockHeader;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CurrentBranchMessage {
     chain_id: ChainId,
     current_branch: CurrentBranch,
@@ -33,7 +33,7 @@ impl HasEncoding for CurrentBranchMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CurrentBranch {
     current_head: BlockHeader,
     history: Vec<BlockHash>,
@@ -84,7 +84,7 @@ impl GetCurrentBranchMessage {
 impl HasEncoding for GetCurrentBranchMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::sized(4, Encoding::Bytes))
+            Field::new("chain_id", Encoding::Hash(HashEncoding::new(HashType::ChainId)))
         ])
     }
 }

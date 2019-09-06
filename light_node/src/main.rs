@@ -3,61 +3,18 @@ extern crate lazy_static;
 
 use std::path::{Path, PathBuf};
 
-use log::{debug, error, info};
+use log::{error, info};
+use riker::actors::*;
+use tokio::runtime::Runtime;
 
-use networking::p2p::node::P2pLayer;
-use networking::rpc::message::{BootstrapMessage, PeerAddress};
-use storage::db::Db;
-use tokio;
-use networking::rpc::server::RpcLayer;
+use networking::p2p::network_channel::NetworkChannel;
+use networking::p2p::network_manager::NetworkManager;
+use shell::chain_manager::ChainManager;
+use shell::peer_manager::{PeerManager, Threshold};
 
 mod configuration;
 
-const LOG_FILE: &str = "log4rs.yml";
-pub const MPSC_BUFFER_SIZE: usize = 50;
-
-/// Function configures default console logger.
-fn configure_default_logger() {
-    use log::LevelFilter;
-    use log4rs::append::console::ConsoleAppender;
-    use log4rs::encode::pattern::PatternEncoder;
-    use log4rs::config::{Appender, Config, Root};
-
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d} {h({l})} {t} - {h({m})} {n}")))
-        .build();
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .build(Root::builder().appender("stdout").build(LevelFilter::Info))
-        .unwrap();
-
-    log4rs::init_config(config).unwrap();
-}
-
-#[tokio::main]
-async fn main() {
-    use networking::p2p::client::P2pClient;
-
-    match log4rs::init_file(LOG_FILE, Default::default()) {
-        Ok(_) => debug!("Logger configured from file: {}", LOG_FILE),
-        Err(m) => {
-            println!("Logger configuration file {} not loaded: {}", LOG_FILE, m);
-            println!("Using default logger configuration");
-            configure_default_logger()
-        }
-    }
-
-    let initial_peers: Vec<PeerAddress> = configuration::ENV.initial_peers.clone()
-        .into_iter()
-        .map(|(ip, port)| {
-            PeerAddress {
-                host: ip.clone(),
-                port,
-            }
-        })
-        .collect();
-
+fn main() {
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
             let tezos_default_identity: PathBuf = configuration::tezos_node::get_default_tezos_identity_json_file_path().unwrap();
@@ -70,45 +27,51 @@ async fn main() {
             }
         });
 
-    info!("Starting Iron p2p");
+    info!("Starting Light Node");
 
-    let init_chain_id = hex::decode(configuration::tezos_node::genesis_chain_id());
-    if let Err(e) = init_chain_id {
-        error!("Failed to load initial chain id. Reason: {:?}", e);
-        return;
-    }
     let identity = configuration::tezos_node::load_identity(identity_json_file_path);
     if let Err(e) = identity {
         error!("Failed to load identity. Reason: {:?}", e);
         return;
     }
+    let identity = identity.unwrap();
 
-    let p2p_client = P2pClient::new(
-        init_chain_id.unwrap(),
-        identity.unwrap(),
-        configuration::tezos_node::versions(),
-        Db::new(),
+    let actor_system = ActorSystem::new().expect("Failed to create actor system");
+    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+
+    let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+    let network_manager = NetworkManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        tokio_runtime.executor(),
         configuration::ENV.p2p.listener_port,
-        configuration::ENV.log_message_contents
-    );
+        identity.public_key,
+        identity.secret_key,
+        identity.proof_of_work_stamp)
+        .expect("Failed to create network manager");
+    let _ = PeerManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        network_manager.clone(),
+        &configuration::ENV.p2p.bootstrap_lookup_addresses,
+        &configuration::ENV.initial_peers,
+        Threshold::new(1, 30))
+        .expect("Failed to create peer manager");
+    let _ = ChainManager::actor(&actor_system, network_channel.clone());
 
-    let p2p = P2pLayer::new(p2p_client);
-    // init node bootstrap
-    if !initial_peers.is_empty() {
-        p2p.bootstrap_with_peers(BootstrapMessage { initial_peers }).await.expect("Failed to transmit bootstrap encoding to p2p layer")
-    } else {
-        p2p.bootstrap_with_lookup(&configuration::ENV.p2p.bootstrap_lookup_addresses).await.expect("Failed to transmit bootstrap encoding to p2p layer")
-    }
+    tokio_runtime.block_on(async move {
+        use tokio::net::signal;
+        use futures::future;
+        use futures::stream::StreamExt;
 
-    let rpc = RpcLayer::new(&configuration::ENV.p2p.bootstrap_lookup_addresses, configuration::ENV.rpc.listener_port);
-    // ------------------
-    // Lines after the following block will be executed only after accept_connections() task will complete
-    // ------------------
-    let res = networking::rpc::server::accept_connections(rpc, p2p).await;
-    if let Err(e) = res {
-        error!("Failed to start accepting RPC connections. Reason: {:?}", e);
-        return;
-    }
-
-    info!("Iron p2p stopped")
+        let ctrl_c = signal::ctrl_c().unwrap();
+        let prog = ctrl_c.take(1).for_each(|_| {
+            info!("ctrl-c received!");
+            future::ready(())
+        });
+        prog.await;
+        let _ = actor_system.shutdown().await;
+    });
 }
+
+

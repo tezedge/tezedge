@@ -1,7 +1,7 @@
 use honggfuzz::fuzz;
 use log::debug;
 
-use networking::p2p::message::BinaryMessage;
+use networking::p2p::binary_message::BinaryMessage;
 use networking::p2p::encoding::prelude::*;
 
 fn main() {
