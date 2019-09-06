@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use dns_lookup::LookupError;
-use log::{debug, info, warn};
+use log::{info, warn};
 use riker::actors::*;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
@@ -87,14 +87,12 @@ impl Actor for PeerManager {
     }
 
     fn sys_recv(&mut self, _ctx: &Context<Self::Msg>, msg: SystemMsg, _sender: Option<BasicActorRef>) {
-        debug!("sys_recv: {:?}", &msg);
         if let SystemMsg::Event(SystemEvent::ActorTerminated(evt)) = msg {
             self.peers.remove(evt.actor.uri());
         }
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
-        debug!("recv: {:?}", &msg);
         self.receive(ctx, msg, sender);
     }
 }

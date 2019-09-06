@@ -41,7 +41,7 @@ enum PeerError {
     #[fail(display = "Message deserialization error")]
     DeserializationError {
         error: tezos_encoding::de::Error
-    }
+    },
 }
 
 impl From<tezos_encoding::ser::Error> for PeerError {
@@ -134,8 +134,7 @@ pub struct Peer {
 }
 
 impl Peer {
-
-    pub fn new(sys: &ActorSystem,
+    pub fn new(sys: &impl ActorRefFactory,
                event_channel: ChannelRef<NetworkChannelMsg>,
                listener_port: u16,
                public_key: &String,
@@ -147,7 +146,7 @@ impl Peer {
             listener_port: listener_port.clone(),
             proof_of_work_stamp: proof_of_work_stamp.clone(),
             public_key: public_key.clone(),
-            secret_key: secret_key.clone()
+            secret_key: secret_key.clone(),
         };
         let props = Props::new_args(Peer::actor, (event_channel, Arc::new(info), tokio_executor));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
@@ -162,7 +161,7 @@ impl Peer {
                 rx_run: Arc::new(AtomicBool::new(false)),
                 tx: Arc::new(Mutex::new(None)),
             },
-            tokio_executor
+            tokio_executor,
         }
     }
 }
@@ -172,6 +171,10 @@ impl Actor for Peer {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
+    }
+
+    fn post_stop(&mut self) {
+        self.net.rx_run.store(false, Ordering::Relaxed);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -191,7 +194,6 @@ impl Receive<Bootstrap> for Peer {
         let event_channel = self.event_channel.clone();
 
         self.tokio_executor.spawn(async move {
-
             async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
                 net.rx_run.store(true, Ordering::Relaxed);
                 *net.tx.lock().await = Some(tx);
@@ -202,8 +204,10 @@ impl Receive<Bootstrap> for Peer {
                     setup_net(&net, tx).await;
 
                     event_channel.tell(Publish { msg: PeerBootstrapped { peer: myself.clone() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
-
-                    begin_process_incoming(rx, net.rx_run, myself, event_channel).await
+                    // begin to process incoming messages in a loop
+                    begin_process_incoming(rx, net.rx_run, myself.clone(), event_channel).await;
+                    // connection to peer was closed, stop this actor
+                    system.stop(myself);
                 }
                 Err(e) => {
                     warn!("Connection to peer failed: {}", e);
@@ -218,13 +222,15 @@ impl Receive<SendMessage> for Peer {
     type Msg = PeerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
+        let system = ctx.system.clone();
+        let myself = ctx.myself();
         let tx = self.net.tx.clone();
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             let tx = tx_lock.as_mut();
-            match tx.unwrap().write_message(&*msg.message).await {
-                Ok(()) => debug!("Write success"),
-                Err(e) => warn!("Failed to write encoding. {:?}", e),
+            if let Err(e) = tx.unwrap().write_message(&*msg.message).await {
+                warn!("Failed to send message. {:?}", e);
+                system.stop(myself);
             }
         });
     }
@@ -295,10 +301,11 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 
     match ack_received {
         AckMessage::Ack => {
-            debug!("Received remote peer ack/nack - ACK");
+            debug!("Received ACK");
             Ok(BootstrapOutput(msg_rx, msg_tx))
         }
         AckMessage::Nack => {
+            debug!("Received NACK");
             Err(PeerError::NackReceived)
         }
     }
@@ -323,23 +330,33 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
     info!("Starting accepting messages from peer: {}", rx.peer_id());
 
     while rx_run.load(Ordering::Relaxed) {
-        if let Ok(msg) = rx.read_message().await {
-            match PeerMessageResponse::from_bytes(msg) {
-                Ok(msg) => {
-                    info!("Message parsed successfully");
-                    event_channel.tell(
-                        Publish {
-                            msg: PeerMessageReceived {
-                                peer: myself.clone(),
-                                message: Arc::new(msg),
-                            }.into(),
-                            topic: NetworkChannelTopic::NetworkEvents.into(),
-                        }, Some(myself.clone().into()));
+        match rx.read_message().await {
+            Ok(msg) => {
+                match PeerMessageResponse::from_bytes(msg) {
+                    Ok(msg) => {
+                        let broadcast_message = rx_run.load(Ordering::Relaxed);
+                        if broadcast_message {
+                            debug!("Message parsed successfully");
+                            event_channel.tell(
+                                Publish {
+                                    msg: PeerMessageReceived {
+                                        peer: myself.clone(),
+                                        message: Arc::new(msg),
+                                    }.into(),
+                                    topic: NetworkChannelTopic::NetworkEvents.into(),
+                                }, Some(myself.clone().into()));
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to process received message: {:?}", e);
+                        break;
+                    }
                 }
-                Err(e) => warn!("Failed to process received message: {:?}", e)
             }
-        } else {
-            // TODO: notify disconnect event / stop actor
+            Err(e) => {
+                warn!("Failed to read message: {:?}", e);
+                break;
+            }
         }
     }
 }

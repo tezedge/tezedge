@@ -43,9 +43,11 @@ impl Actor for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.event_channel.tell(Subscribe {
-            actor: Box::new(ctx.myself()),
-            topic: NetworkChannelTopic::NetworkEvents.into() }, None);
+        self.event_channel.tell(
+            Subscribe {
+                actor: Box::new(ctx.myself()),
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+            }, None);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -65,20 +67,27 @@ impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
-        if let NetworkChannelMsg::PeerBootstrapped(msg) = msg {
-            msg.peer
-                .tell(SendMessage::new(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(genesis_chain_id())).into()), None);
-        } else if let NetworkChannelMsg::PeerMessageReceived(received) = msg {
-            received.message.get_messages().iter()
-                .for_each(|message| match message {
-                    PeerMessage::CurrentBranch(message) => {
-                        self.current_branch = Some(message.clone());
-                    }
-                    PeerMessage::GetCurrentBranch(_message) => {
-                        // .. ignore
-                    }
-                    _ => debug!("Ignored message: {:?}", message),
-                });
+        match msg {
+            NetworkChannelMsg::PeerBootstrapped(msg) => {
+                debug!("Requesting current branch from peer: {}", &msg.peer);
+                msg.peer
+                    .tell(SendMessage::new(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(genesis_chain_id())).into()), None);
+            },
+            NetworkChannelMsg::PeerMessageReceived(received) => {
+                debug!("Received current branch from peer: {}", &received.peer);
+                received.message.get_messages().iter()
+
+                    .for_each(|message| match message {
+                        PeerMessage::CurrentBranch(message) => {
+                            self.current_branch = Some(message.clone());
+                        }
+                        PeerMessage::GetCurrentBranch(_message) => {
+                            // .. ignore
+                        }
+                        _ => debug!("Ignored message: {:?}", message),
+                    })
+            },
+            _ => (),
         }
     }
 }

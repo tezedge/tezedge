@@ -5,7 +5,7 @@ use futures::lock::Mutex;
 use log::info;
 use riker::actors::*;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::runtime::Runtime;
+use tokio::runtime::TaskExecutor;
 
 use super::network_channel::NetworkChannelMsg;
 use super::peer::{Bootstrap, Peer, PeerRef};
@@ -47,24 +47,24 @@ pub type NetworkManagerRef = ActorRef<NetworkManagerMsg>;
 #[actor(BlacklistIpAddress, WhitelistIpAddress, AcceptPeer, ConnectToPeer)]
 pub struct NetworkManager {
     event_channel: ChannelRef<NetworkChannelMsg>,
+    tokio_executor: TaskExecutor,
     listener_port: u16,
     public_key: String,
     secret_key: String,
     proof_of_work_stamp: String,
-    tokio_runtime: Option<Runtime>,
 }
 
 impl NetworkManager {
-
     pub fn actor(sys: &impl ActorRefFactory,
-               event_channel: ChannelRef<NetworkChannelMsg>,
-               listener_port: u16,
-               public_key: String,
-               secret_key: String,
-               proof_of_work_stamp: String) -> Result<NetworkManagerRef, CreateError>
+                 event_channel: ChannelRef<NetworkChannelMsg>,
+                 tokio_executor: TaskExecutor,
+                 listener_port: u16,
+                 public_key: String,
+                 secret_key: String,
+                 proof_of_work_stamp: String) -> Result<NetworkManagerRef, CreateError>
     {
         sys.actor_of(
-            Props::new_args(NetworkManager::new, (event_channel, listener_port, public_key, secret_key, proof_of_work_stamp)),
+            Props::new_args(NetworkManager::new, (event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp)),
             NetworkManager::name())
     }
 
@@ -74,18 +74,18 @@ impl NetworkManager {
         "network-manager"
     }
 
-    fn new((event_channel, listener_port, public_key, secret_key, proof_of_work_stamp): (ChannelRef<NetworkChannelMsg>, u16, String, String, String)) -> Self {
+    fn new((event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp): (ChannelRef<NetworkChannelMsg>, TaskExecutor, u16, String, String, String)) -> Self {
         NetworkManager {
             event_channel,
+            tokio_executor,
             listener_port,
             public_key,
             secret_key,
             proof_of_work_stamp,
-            tokio_runtime: Some(Runtime::new().unwrap())
         }
     }
 
-    fn create_peer(&self, sys: &ActorSystem) -> PeerRef {
+    fn create_peer(&self, sys: &impl ActorRefFactory) -> PeerRef {
         Peer::new(
             sys,
             self.event_channel.clone(),
@@ -93,7 +93,7 @@ impl NetworkManager {
             &self.public_key,
             &self.secret_key,
             &self.proof_of_work_stamp,
-            self.tokio_runtime.as_ref().unwrap().executor(),
+            self.tokio_executor.clone(),
         ).unwrap()
     }
 }
@@ -105,16 +105,10 @@ impl Actor for NetworkManager {
         let listener_port = self.listener_port;
         let myself = ctx.myself();
 
-        self.tokio_runtime.as_ref().unwrap().spawn(async move {
+        self.tokio_executor.spawn(async move {
             begin_listen_incoming(listener_port, myself).await;
         });
     }
-
-    fn post_stop(&mut self) {
-        let runtime = self.tokio_runtime.take().unwrap();
-        runtime.shutdown_now();
-    }
-
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         // Use the respective Receive<T> implementation
@@ -142,16 +136,18 @@ impl Receive<ConnectToPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ConnectToPeer, _sender: Sender) {
-        let peer= self.create_peer(&ctx.system);
+        let peer = self.create_peer(ctx);
         let system = ctx.system.clone();
 
-        self.tokio_runtime.as_ref().unwrap().spawn(async move {
+        self.tokio_executor.spawn(async move {
+            info!("Connecting to {}", &msg.address);
             match TcpStream::connect(&msg.address).await {
                 Ok(stream) => {
+                    info!("Connection to {} successful", &msg.address);
                     peer.tell(Bootstrap::outgoing(stream, msg.address), None);
                 }
                 Err(_) => {
-                    info!("Connection to {:?} failed", &msg.address);
+                    info!("Connection to {} failed", &msg.address);
                     system.stop(peer);
                 }
             }
@@ -163,7 +159,7 @@ impl Receive<AcceptPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
-        let peer= self.create_peer(&ctx.system);
+        let peer = self.create_peer(ctx);
         peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
     }
 }

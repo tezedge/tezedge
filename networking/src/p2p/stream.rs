@@ -3,7 +3,7 @@ use std::io;
 use bytes::{BufMut, IntoBuf};
 use bytes::Buf;
 use failure::Fail;
-use log::debug;
+use log::trace;
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
@@ -158,14 +158,14 @@ impl EncryptedMessageWriter {
 
     pub async fn write_message<'a>(&'a mut self, message: &'a impl BinaryMessage) -> Result<(), StreamError> {
         let message_bytes = message.as_bytes()?;
-        debug!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
+        trace!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
 
         // encrypt
         let message_encrypted = match encrypt(&message_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
             Ok(msg) => msg,
             Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
         };
-        debug!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
+        trace!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
 
         // send
         self.tx.write_message(&message_encrypted).await?;
@@ -206,7 +206,7 @@ impl EncryptedMessageReader {
         // decrypt
         match decrypt(message_encrypted.get_contents(), &self.nonce_fetch_increment(), &self.precomputed_key) {
             Ok(message) => {
-                debug!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
+                trace!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
                 Ok(message)
             }
             Err(error) => {

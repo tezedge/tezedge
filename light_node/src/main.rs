@@ -2,12 +2,10 @@
 extern crate lazy_static;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use log::{error, info};
 use riker::actors::*;
+use tokio::runtime::Runtime;
 
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
@@ -17,7 +15,6 @@ use shell::peer_manager::{PeerManager, Threshold};
 mod configuration;
 
 fn main() {
-
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
             let tezos_default_identity: PathBuf = configuration::tezos_node::get_default_tezos_identity_json_file_path().unwrap();
@@ -39,12 +36,14 @@ fn main() {
     }
     let identity = identity.unwrap();
 
-    // -----------------------------
     let actor_system = ActorSystem::new().expect("Failed to create actor system");
+    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+
     let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let network_manager = NetworkManager::actor(
         &actor_system,
         network_channel.clone(),
+        tokio_runtime.executor(),
         configuration::ENV.p2p.listener_port,
         identity.public_key,
         identity.secret_key,
@@ -59,18 +58,20 @@ fn main() {
         Threshold::new(1, 30))
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone());
-    // -----------------------------
 
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
-    info!("Waiting for Ctrl-C...");
-    while running.load(Ordering::SeqCst) {
-        std::thread::sleep(Duration::from_millis(500));
-    }
-    info!("Got it! Exiting...");
+    tokio_runtime.block_on(async move {
+        use tokio::net::signal;
+        use futures::future;
+        use futures::stream::StreamExt;
+
+        let ctrl_c = signal::ctrl_c().unwrap();
+        let prog = ctrl_c.take(1).for_each(|_| {
+            info!("ctrl-c received!");
+            future::ready(())
+        });
+        prog.await;
+        let _ = actor_system.shutdown().await;
+    });
 }
 
 
