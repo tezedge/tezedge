@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use failure::Fail;
 
+use crypto::blake2b;
 use tezos_encoding::binary_reader::BinaryReader;
 use tezos_encoding::binary_writer::BinaryWriter;
 use tezos_encoding::de;
@@ -8,6 +10,8 @@ use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::json_writer::JsonWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::ser;
+use tezos_encoding::hash::Hash;
+use crate::p2p::binary_message::MessageHashError::SerializationError;
 
 pub const MESSAGE_LENGTH_FIELD_SIZE: usize = 2;
 
@@ -89,5 +93,32 @@ impl<T> JsonMessage for T
     fn as_json(&self) -> Result<String, ser::Error> {
         let mut writer = JsonWriter::new();
         writer.write(self, &Self::encoding())
+    }
+}
+
+/// Message hash error
+#[derive(Debug, Fail)]
+pub enum MessageHashError {
+    #[fail(display = "Message serialization error")]
+    SerializationError {
+        error: ser::Error
+    },
+}
+
+impl From<ser::Error> for MessageHashError {
+    fn from(error: ser::Error) -> Self {
+        SerializationError { error }
+    }
+}
+
+/// Trait for getting hash of the message.
+pub trait MessageHash {
+    fn message_hash(&self) -> Result<Hash, MessageHashError>;
+}
+
+impl<T: BinaryMessage> MessageHash for T {
+    fn message_hash(&self) -> Result<Hash, MessageHashError> {
+        let bytes = self.as_bytes()?;
+        Ok(blake2b::digest(&bytes))
     }
 }

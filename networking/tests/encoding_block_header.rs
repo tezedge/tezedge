@@ -1,7 +1,7 @@
 use failure::Error;
 
 use networking::p2p::encoding::prelude::*;
-use networking::p2p::binary_message::BinaryMessage;
+use networking::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_encoding::hash::{HashEncoding, HashType};
 
 #[test]
@@ -13,8 +13,7 @@ fn can_deserialize_block_header() -> Result<(), Error> {
     assert_eq!(4, block_header.get_validation_pass());
     assert_eq!(2, block_header.get_fitness().len());
     assert_eq!("000000000003c762c7df00a856b8bfcaf0676f069f825ca75f37f2bee9fe55ba109cec3d1d041d8c03519626c0c0faa557e778cb09d2e0c729e8556ed6a7a518c84982d1f2682bc6aa753f", &hex::encode(&block_header.get_protocol_data()));
-
-    Ok(())
+    Ok(assert_eq!("BKoBK7Qa8J4Wvz85MDRWmpAntd5UhPhCh3p6Ga6woJywF8cZkeJ", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header.message_hash()?)))
 }
 
 #[test]

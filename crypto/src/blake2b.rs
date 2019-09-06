@@ -15,7 +15,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn blake2b256() {
+    fn blake2b_256() {
         let hash = digest(b"hello world");
         let expected = hex::decode("256c83b297114d201b30179f3f0ef0cace9783622da5974326b436178aeef610").unwrap();
         assert_eq!(expected, hash)
