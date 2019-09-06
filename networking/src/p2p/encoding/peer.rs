@@ -37,13 +37,7 @@ pub enum PeerMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PeerMessageResponse {
-    messages: Vec<PeerMessage>,
-}
-
-impl PeerMessageResponse {
-    pub fn get_messages(&self) -> &Vec<PeerMessage> {
-        &self.messages
-    }
+    pub messages: Vec<PeerMessage>,
 }
 
 impl HasEncoding for PeerMessageResponse {

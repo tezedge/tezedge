@@ -8,7 +8,7 @@ use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, Opera
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BlockHeaderMessage {
-    block_header: BlockHeader
+    pub block_header: BlockHeader
 }
 
 impl HasEncoding for BlockHeaderMessage {
