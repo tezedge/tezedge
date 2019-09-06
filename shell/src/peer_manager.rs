@@ -143,19 +143,19 @@ impl Receive<NetworkChannelMsg> for PeerManager {
     }
 }
 
-fn lookup_peers(bootstrap_addresses: &[String]) -> Vec<SocketAddr> {
-    let mut initial_peers = vec![];
+fn lookup_peers(bootstrap_addresses: &[String]) -> HashSet<SocketAddr> {
+    let mut resolved_peers = HashSet::new();
     for address in bootstrap_addresses {
         match resolve_dns_name_to_peer_address(&address) {
             Ok(peers) => {
-                initial_peers.extend(peers)
+                resolved_peers.extend(&peers)
             },
             Err(e) => {
                 warn!("DNS lookup for address: {:?} error: {:?}", &address, e)
             }
         }
     }
-    initial_peers
+    resolved_peers
 }
 
 fn resolve_dns_name_to_peer_address(address: &str) -> Result<Vec<SocketAddr>, LookupError> {
