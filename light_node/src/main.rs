@@ -6,9 +6,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use log::{debug, error, info};
+use log::{error, info};
 use riker::actors::*;
-use tokio;
 
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
@@ -17,38 +16,7 @@ use shell::peer_manager::{PeerManager, Threshold};
 
 mod configuration;
 
-const LOG_FILE: &str = "log4rs.yml";
-pub const MPSC_BUFFER_SIZE: usize = 50;
-
-/// Function configures default console logger.
-fn configure_default_logger() {
-    use log::LevelFilter;
-    use log4rs::append::console::ConsoleAppender;
-    use log4rs::encode::pattern::PatternEncoder;
-    use log4rs::config::{Appender, Config, Root};
-
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d} {h({l})} {t} - {h({m})} {n}")))
-        .build();
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .build(Root::builder().appender("stdout").build(LevelFilter::Info))
-        .unwrap();
-
-    log4rs::init_config(config).unwrap();
-}
-
 fn main() {
-
-//    match log4rs::init_file(LOG_FILE, Default::default()) {
-//        Ok(_) => debug!("Logger configured from file: {}", LOG_FILE),
-//        Err(m) => {
-//            println!("Logger configuration file {} not loaded: {}", LOG_FILE, m);
-//            println!("Using default logger configuration");
-//            configure_default_logger()
-//        }
-//    }
 
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {

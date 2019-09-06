@@ -1,0 +1,25 @@
+[log]
+# max level to log
+level = "debug"
+
+# Uncomment this to enable filters on the logger.  The {module} field
+# of every log line will be checked, and if the {module} field contains
+# any item in this list, the entire log line will be omitted from the
+# logging output.
+filter = [ "tokio_net" ]
+
+# log format to use
+# correlates to format!(log_format, date=, time=, level=, module=, body=);
+# since named parameters are used the order of the fields is flexible
+# the formatting of each field can be changed also
+# e.g. to completely hide a field: {module:.0}
+# See: https://doc.rust-lang.org/std/fmt/#syntax
+
+# {date}    the calendar day
+# {time}    the calendar time
+# {level}   the level for the entry
+# {module}  the module path originating the entry
+# {body}    the message body
+log_format = "{date} {time} {level} [{module}] {body}"
+date_format = "%Y-%m-%d"
+time_format = "%H:%M:%S%:z"

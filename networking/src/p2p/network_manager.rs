@@ -51,7 +51,7 @@ pub struct NetworkManager {
     public_key: String,
     secret_key: String,
     proof_of_work_stamp: String,
-    tokio_runtime: Runtime,
+    tokio_runtime: Option<Runtime>,
 }
 
 impl NetworkManager {
@@ -81,7 +81,7 @@ impl NetworkManager {
             public_key,
             secret_key,
             proof_of_work_stamp,
-            tokio_runtime: Runtime::new().unwrap()
+            tokio_runtime: Some(Runtime::new().unwrap())
         }
     }
 
@@ -93,7 +93,7 @@ impl NetworkManager {
             &self.public_key,
             &self.secret_key,
             &self.proof_of_work_stamp,
-            self.tokio_runtime.executor(),
+            self.tokio_runtime.as_ref().unwrap().executor(),
         ).unwrap()
     }
 }
@@ -105,13 +105,14 @@ impl Actor for NetworkManager {
         let listener_port = self.listener_port;
         let myself = ctx.myself();
 
-        self.tokio_runtime.spawn(async move {
+        self.tokio_runtime.as_ref().unwrap().spawn(async move {
             begin_listen_incoming(listener_port, myself).await;
         });
     }
 
     fn post_stop(&mut self) {
-        self.tokio_runtime.stop();
+        let runtime = self.tokio_runtime.take().unwrap();
+        runtime.shutdown_now();
     }
 
 
@@ -144,7 +145,7 @@ impl Receive<ConnectToPeer> for NetworkManager {
         let peer= self.create_peer(&ctx.system);
         let system = ctx.system.clone();
 
-        self.tokio_runtime.spawn(async move {
+        self.tokio_runtime.as_ref().unwrap().spawn(async move {
             match TcpStream::connect(&msg.address).await {
                 Ok(stream) => {
                     peer.tell(Bootstrap::outgoing(stream, msg.address), None);
