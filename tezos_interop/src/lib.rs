@@ -30,3 +30,4 @@
 /// assert_eq!("Hello world!", &result);
 /// ```
 pub mod runtime;
+pub mod ffi;

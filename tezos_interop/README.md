@@ -24,3 +24,6 @@ Valid values are:
 * `tzreal` will build forked version of the Tezos repository.
   * `UPDATE_GIT_SUBMODULES` (default `true`) is used to skip git update of Tezos repository.
   * `TEZOS_BASE_DIR` is used to change location of Tezos repository on file system.
+
+### Running Ocaml runtime
+`STORAGE_DATA_DIR` environment variable is used to specify directory where tezos storage stores data (contex/store). 

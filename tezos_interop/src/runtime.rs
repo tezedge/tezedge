@@ -1,3 +1,4 @@
+use std::env;
 use std::future::Future;
 use std::pin::Pin;
 use std::ptr;
@@ -12,15 +13,38 @@ use lazy_static::lazy_static;
 lazy_static! {
     /// Because ocaml runtime should be accessed only by a single thread
     /// we will create the `OCAML_ENV` singleton.
-    static ref OCAML_ENV: OcamlEnvironment = initialize_environment();
+    static ref OCAML_ENV: OcamlEnvironment = initialize_environment(OcamlRuntimeConfiguration::new());
+}
+
+/// Holds configuration for ocaml runtime - e.g. arguments which are passed to caml_startup
+struct OcamlRuntimeConfiguration {
+    storage_data_dir: String
+}
+
+impl OcamlRuntimeConfiguration {
+    /// Creates configuration from
+    fn new() -> Self {
+        let storage_data_dir = match env::var("STORAGE_DATA_DIR") {
+            Ok(value) => value,
+            _ => panic!("System variable '{}' should be set!", "STORAGE_DATA_DIR")
+        };
+        OcamlRuntimeConfiguration {
+            storage_data_dir
+        }
+    }
 }
 
 /// This function will start ocaml runtime.
 /// Ocaml runtime should always be called from a single thread.
-pub fn start_ocaml_runtime() {
-    let mut ptr = ptr::null_mut();
-    let argv: *mut *mut u8 = &mut ptr;
+fn start_ocaml_runtime(ocaml_cfg: &OcamlRuntimeConfiguration) {
     unsafe {
+        let mut data_dir = format!("--data-dir {}", ocaml_cfg.storage_data_dir);
+
+        let argv: *mut *mut u8 = [
+            data_dir.as_mut_str().as_mut_ptr(),
+            ptr::null_mut()
+        ].as_mut_ptr();
+
         caml_startup(argv);
     }
 }
@@ -99,7 +123,6 @@ struct SharedState {
 /// only a single instance of `OcamlThreadExecutor` running because ocaml runtime
 /// is not designed to be accessed from multiple threads.
 struct OcamlThreadExecutor {
-
     /// Receiver is used to receive tasks which will be then executed
     /// in the ocaml runtime.
     ready_tasks: Receiver<OcamlTask>
@@ -122,13 +145,11 @@ impl OcamlThreadExecutor {
 /// Spawns ocaml task. Spawning is simply sending ocaml task into the sender queue `spawned_tasks`.
 /// Ocaml tasks are then received and executed by the `OcamlThreadExecutor` singleton.
 struct OcamlTaskSpawner {
-
     /// Sender is used to send tasks to the `OcamlThreadExecutor`.
     spawned_tasks: Arc<Mutex<Sender<OcamlTask>>>
 }
 
 impl OcamlTaskSpawner {
-
     /// Spawns ocaml task. Spawning is simply sending ocaml task into the sender queue `spawned_tasks`.
     /// Ocaml tasks are then received and executed by the `OcamlThreadExecutor` singleton.
     pub fn spawn(&self, task: OcamlTask) -> Result<(), SendError<OcamlTask>> {
@@ -142,12 +163,12 @@ struct OcamlEnvironment {
 }
 
 /// Create the environment and initialize ocaml runtime.
-fn initialize_environment() -> OcamlEnvironment {
+fn initialize_environment(ocaml_cfg: OcamlRuntimeConfiguration) -> OcamlEnvironment {
     let (task_tx, task_rx) = channel();
     let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
     let executor = OcamlThreadExecutor { ready_tasks: task_rx };
     std::thread::spawn(move || {
-        start_ocaml_runtime();
+        start_ocaml_runtime(&ocaml_cfg);
         executor.run()
     });
 
