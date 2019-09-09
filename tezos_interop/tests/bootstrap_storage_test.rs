@@ -1,5 +1,4 @@
 use tezos_interop::ffi;
-use tezos_interop::ffi::apply_block;
 
 // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
 static BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";

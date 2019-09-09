@@ -15,11 +15,28 @@
 
 //        TODO: moznost inicializacie runtimu pre rozne storage - lazy_static
 
+//        TODO: od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
+
 use log::warn;
 use ocaml::{Array, Str};
 
 use crate::runtime;
 use crate::runtime::OcamlResult;
+
+pub fn get_current_block_header(block_header_hash: String) -> OcamlResult<String> {
+    runtime::spawn(move || {
+        let ocaml_function = ocaml::named_value("get_current_block_header").expect("function 'get_current_block_header' is not registered");
+        match ocaml_function.call_exn::<Str>(block_header_hash.as_str().into()) {
+            Ok(result) => {
+                let ocaml_result: Str = result.into();
+                ocaml_result.as_str().to_string()
+            }
+            Err(e) => {
+                panic!("No current block header is set, at least genesis should be set! Reason: {:?}", e)
+            }
+        }
+    })
+}
 
 pub fn get_block_header(block_header_hash: String) -> OcamlResult<Option<String>> {
     runtime::spawn(move || {
