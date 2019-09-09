@@ -81,7 +81,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
-                msg.peer.tell(SendMessage::new(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(genesis_chain_id())).into()), None);
+                msg.peer.tell(SendMessage::new(GetCurrentBranchMessage::new(genesis_chain_id()).into()), None);
                 self.peers.insert(msg.peer.uri().clone(), msg.peer);
             },
             NetworkChannelMsg::PeerMessageReceived(received) => {

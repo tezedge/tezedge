@@ -4,17 +4,18 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 
+use crate::p2p::encoding::advertise::AdvertiseMessage;
 use crate::p2p::encoding::block_header::{BlockHeaderMessage, GetBlockHeadersMessage};
 use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
 use crate::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
 use crate::p2p::encoding::operation::{GetOperationsMessage, OperationMessage};
-use crate::p2p::encoding::protocol::{GetProtocolsMessage, ProtocolMessage};
 use crate::p2p::encoding::operations_for_blocks::{GetOperationsForBlocksMessage, OperationsForBlocksMessage};
+use crate::p2p::encoding::protocol::{GetProtocolsMessage, ProtocolMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PeerMessage {
     Disconnect,
-//    Advertise,      // TODO
+    Advertise(AdvertiseMessage),
 //    SwapRequest,    // TODO
 //    SwapAck,        // TODO
     Bootstrap,
@@ -35,6 +36,9 @@ pub enum PeerMessage {
     OperationsForBlocks(OperationsForBlocksMessage),
 }
 
+
+
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PeerMessageResponse {
     pub messages: Vec<PeerMessage>,
@@ -49,6 +53,7 @@ impl HasEncoding for PeerMessageResponse {
                     TagMap::new(&[
                         Tag::new(0x01, "Disconnect", Encoding::Unit),
                         Tag::new(0x02, "Bootstrap", Encoding::Unit),
+                        Tag::new(0x03, "Advertise", AdvertiseMessage::encoding()),
                         Tag::new(0x10, "GetCurrentBranch", GetCurrentBranchMessage::encoding()),
                         Tag::new(0x11, "CurrentBranch", CurrentBranchMessage::encoding()),
                         Tag::new(0x13, "GetCurrentHead", GetCurrentHeadMessage::encoding()),
@@ -73,3 +78,16 @@ impl From<PeerMessage> for PeerMessageResponse {
         PeerMessageResponse { messages: vec![peer_message] }
     }
 }
+
+macro_rules! into_peer_message_response {
+    ($m:ident,$v:ident) => {
+        impl From<$m> for PeerMessageResponse {
+            fn from(msg: $m) -> Self {
+                PeerMessage::$v(msg).into()
+            }
+        }
+    }
+}
+
+into_peer_message_response!(AdvertiseMessage, Advertise);
+into_peer_message_response!(GetCurrentBranchMessage, GetCurrentBranch);

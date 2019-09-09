@@ -1,3 +1,4 @@
+pub mod advertise;
 pub mod operation;
 pub mod version;
 pub mod connection;
@@ -13,6 +14,7 @@ pub mod peer;
 
 pub mod prelude {
     pub use super::ack::AckMessage;
+    pub use super::advertise::AdvertiseMessage;
     pub use super::block_header::{BlockHeader, BlockHeaderMessage, GetBlockHeadersMessage};
     pub use super::connection::ConnectionMessage;
     pub use super::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
