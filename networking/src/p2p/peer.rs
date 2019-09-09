@@ -335,9 +335,9 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
                 trace!("Msg: {}", hex::encode(&msg));
                 match PeerMessageResponse::from_bytes(msg) {
                     Ok(msg) => {
-                        let broadcast_message = rx_run.load(Ordering::Relaxed);
-                        if broadcast_message {
-                            debug!("Message parsed successfully");
+                        let should_broadcast_message = rx_run.load(Ordering::Relaxed);
+                        if should_broadcast_message {
+                            trace!("Message parsed successfully");
                             event_channel.tell(
                                 Publish {
                                     msg: PeerMessageReceived {

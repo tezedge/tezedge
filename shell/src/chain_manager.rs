@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-use log::debug;
+use log::{debug, warn};
 use riker::actors::*;
 
 use networking::p2p::binary_message::MessageHashError;
@@ -11,7 +11,7 @@ use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::block_storage::BlockStorage;
 use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 
-use crate::{remove_terminated_actor, subscribe_to_actor_terminated, subscribe_to_network_events};
+use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 
 const PEER_QUEUE_MAX: usize = 10;
 
@@ -78,7 +78,13 @@ impl Receive<SystemEvent> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
-        remove_terminated_actor(&msg, &mut self.peers)
+        if let SystemEvent::ActorTerminated(evt) = msg {
+            if let Some(mut peer) = self.peers.remove(evt.actor.uri()) {
+                peer.queued_blocks
+                    .drain()
+                    .for_each(|block_hash| self.chain.schedule_block_hash(block_hash));
+            }
+        }
     }
 }
 
@@ -93,19 +99,17 @@ impl Receive<CheckChainCompleteness> for ChainManager {
             debug!("Chain is not complete");
             peers.iter_mut()
                 .for_each(|(_, peer)| {
-                    let rr_delta = peer.rr_delta();
-                    if (rr_delta < PEER_QUEUE_MAX) && !chain.missing_blocks.is_empty() {
-                        let limit = PEER_QUEUE_MAX - rr_delta;
-                        let get_block_headers = chain.move_to_queue(limit);
+                    let peer_queue_capacity = peer.queue_capacity();
+                    if peer_queue_capacity != 0 {
+                        let get_block_headers = chain.move_to_queue(peer_queue_capacity);
                         if !get_block_headers.is_empty() {
                             debug!("Requesting {} blocks from peer {}", get_block_headers.len(), &peer.peer_ref);
+                            peer.queued_blocks.extend(get_block_headers.clone());
                             let msg = GetBlockHeadersMessage { get_block_headers };
                             tell_peer(msg.into(), peer);
                         }
                     }
                 })
-        } else {
-            debug!("Chain is complete");
         }
     }
 }
@@ -113,7 +117,7 @@ impl Receive<CheckChainCompleteness> for ChainManager {
 impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
@@ -123,9 +127,11 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                 self.peers.insert(peer.peer_ref.uri().clone(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
-                match self.peers.get_mut(received.peer.uri()) {
+                let ChainManager { peers, chain, .. } = self;
+
+                match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
-                        peer.inc_response();
+                        peer.response_last = Instant::now();
 
                         let messages = &received.message.messages;
                         messages.iter()
@@ -133,15 +139,21 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
                                     message.current_branch.history.iter()
-                                        .for_each(|block_hash| self.chain.schedule_block_hash(block_hash.clone()))
+                                        .for_each(|block_hash| chain.schedule_block_hash(block_hash.clone()))
                                 }
                                 PeerMessage::GetCurrentBranch(_) => {
                                     debug!("Current branch requested by peer: {}", &received.peer);
                                     // .. ignore
                                 }
                                 PeerMessage::BlockHeader(message) => {
-                                    debug!("Received block header from peer: {}", &received.peer);
-                                    self.chain.insert_block_header(message.block_header.clone()).expect("Failed to store block header");
+                                    let block_hash = chain.insert_block_header(message.block_header.clone()).expect("Failed to store block header");
+                                    if peer.queued_blocks.remove(&block_hash) {
+                                        debug!("Received block header from peer: {}", &received.peer);
+                                        ctx.myself().tell(CheckChainCompleteness, None);
+                                    } else {
+                                        warn!("Received unexpected block header from peer: {}", &received.peer);
+                                        ctx.system.stop(received.peer.clone());
+                                    }
                                 }
                                 _ => debug!("Ignored message: {:?}", message)
                             })
@@ -160,9 +172,8 @@ pub fn genesis_chain_id() -> Vec<u8> {
 
 struct PeerState {
     peer_ref: PeerRef,
-    request_count: usize,
+    queued_blocks: HashSet<BlockHash>,
     request_last: Instant,
-    response_count: usize,
     response_last: Instant,
 }
 
@@ -170,26 +181,15 @@ impl PeerState {
     fn new(peer_ref: PeerRef) -> Self {
         PeerState {
             peer_ref,
-            request_count: 0,
+            queued_blocks: HashSet::new(),
             request_last: Instant::now(),
-            response_count: 0,
             response_last: Instant::now(),
         }
     }
 
-    fn inc_request(&mut self) {
-        self.request_count += 1;
-        self.request_last = Instant::now();
-    }
-
-    fn inc_response(&mut self) {
-        self.response_count += 1;
-        self.response_last = Instant::now();
-    }
-
-    fn rr_delta(&self) -> usize {
-        if self.response_count > self.request_count {
-            self.response_count - self.request_count
+    fn queue_capacity(&self) -> usize {
+        if self.queued_blocks.len() < PEER_QUEUE_MAX {
+            PEER_QUEUE_MAX - self.queued_blocks.len()
         } else {
             0
         }
@@ -209,7 +209,7 @@ impl ChainState {
         }
     }
 
-    pub fn insert_block_header(&mut self, block: BlockHeader) -> Result<(), MessageHashError> {
+    pub fn insert_block_header(&mut self, block: BlockHeader) -> Result<BlockHash, MessageHashError> {
         // check if we already have seen predecessor
         if !self.block_store.is_present(&block.predecessor) {
             // block was not seen before
@@ -219,7 +219,7 @@ impl ChainState {
         let block_hash = self.block_store.insert(block)?;
         // remove from missing blocks
         self.missing_blocks.remove(&block_hash);
-        Ok(())
+        Ok(block_hash)
     }
 
     pub fn schedule_block_hash(&mut self, block_hash: BlockHash) {
@@ -237,5 +237,5 @@ impl ChainState {
 
 fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
     peer.peer_ref.tell(SendMessage::new(msg), None);
-    peer.inc_request();
+    peer.request_last = Instant::now();
 }

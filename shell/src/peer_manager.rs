@@ -11,7 +11,7 @@ use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::network_manager::{ConnectToPeer, NetworkManagerRef};
 use networking::p2p::peer::PeerRef;
 
-use crate::{remove_terminated_actor, subscribe_to_actor_terminated, subscribe_to_network_events};
+use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 
 /// Check peer threshold
 #[derive(Clone, Debug)]
@@ -101,7 +101,9 @@ impl Receive<SystemEvent> for PeerManager {
     type Msg = PeerManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
-        remove_terminated_actor(&msg, &mut self.peers)
+        if let SystemEvent::ActorTerminated(evt) = msg {
+            self.peers.remove(evt.actor.uri());
+        }
     }
 }
 

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use riker::actors::*;
 
 use networking::p2p::network_channel::NetworkChannelTopic;
@@ -29,10 +27,4 @@ where
             actor: Box::new(myself),
             topic: NetworkChannelTopic::NetworkEvents.into(),
         }, None);
-}
-
-pub(crate) fn remove_terminated_actor<T>(msg: &SystemEvent, actors: &mut HashMap<ActorUri, T>) {
-    if let SystemEvent::ActorTerminated(evt) = msg {
-        actors.remove(evt.actor.uri());
-    }
 }
