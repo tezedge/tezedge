@@ -13,6 +13,8 @@
 
 //        TODO: error handling pre apply_block
 
+//        TODO: moznost inicializacie runtimu pre rozne storage - lazy_static
+
 use log::warn;
 use ocaml::{Array, Str};
 
@@ -35,11 +37,12 @@ pub fn get_block_header(block_header_hash: String) -> OcamlResult<Option<String>
     })
 }
 
-pub fn apply_block(block_header_hash: String, operations: Vec<Vec<String>>) -> OcamlResult<String> {
+pub fn apply_block(block_header_hash: String, block_header: String, operations: Vec<Vec<String>>) -> OcamlResult<String> {
     runtime::spawn(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
-        let ocaml_result: Str = ocaml_function.call2::<Str, Array>(
+        let ocaml_result: Str = ocaml_function.call3::<Str, Str, Array>(
             block_header_hash.as_str().into(),
+            block_header.as_str().into(),
             operations_to_ocaml_array(operations),
         ).unwrap().into();
         ocaml_result.as_str().to_string()
