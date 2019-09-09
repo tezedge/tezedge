@@ -35,13 +35,6 @@ pub struct ConnectToPeer {
     pub address: SocketAddr
 }
 
-/// Lookup for remote peers via DNS query
-#[derive(Clone, Debug)]
-pub struct DnsLookup {
-    /// List of bootstrap DNS host names
-    urls: Vec<String>
-}
-
 pub type NetworkManagerRef = ActorRef<NetworkManagerMsg>;
 
 #[actor(BlacklistIpAddress, WhitelistIpAddress, AcceptPeer, ConnectToPeer)]

@@ -68,7 +68,7 @@ impl From<StreamError> for PeerError {
     }
 }
 
-
+/// Bootstrap peer
 #[derive(Clone, Debug)]
 pub struct Bootstrap {
     stream: Arc<Mutex<Option<TcpStream>>>,
@@ -86,6 +86,7 @@ impl Bootstrap {
     }
 }
 
+/// Send message to peer
 #[derive(Clone, Debug)]
 pub struct SendMessage {
     /// Message is wrapped in `Arc` to avoid excessive cloning.
