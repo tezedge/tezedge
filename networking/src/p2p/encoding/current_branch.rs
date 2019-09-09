@@ -9,18 +9,8 @@ use crate::p2p::encoding::block_header::BlockHeader;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CurrentBranchMessage {
-    chain_id: ChainId,
-    current_branch: CurrentBranch,
-}
-
-impl CurrentBranchMessage {
-    pub fn get_chain_id(&self) -> &ChainId {
-        &self.chain_id
-    }
-
-    pub fn get_current_branch(&self) -> &CurrentBranch {
-        &self.current_branch
-    }
+    pub chain_id: ChainId,
+    pub current_branch: CurrentBranch,
 }
 
 impl HasEncoding for CurrentBranchMessage {
@@ -35,20 +25,8 @@ impl HasEncoding for CurrentBranchMessage {
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CurrentBranch {
-    current_head: BlockHeader,
-    history: Vec<BlockHash>,
-}
-
-impl CurrentBranch {
-
-    pub fn get_current_head(&self) -> &BlockHeader {
-        &self.current_head
-    }
-
-    #[allow(dead_code)]
-    pub fn get_history(&self) -> &Vec<BlockHash> {
-        &self.history
-    }
+    pub current_head: BlockHeader,
+    pub history: Vec<BlockHash>,
 }
 
 impl HasEncoding for CurrentBranch {
@@ -68,16 +46,12 @@ impl HasEncoding for CurrentBranch {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetCurrentBranchMessage {
-    chain_id: ChainId,
+    pub chain_id: ChainId,
 }
 
 impl GetCurrentBranchMessage {
     pub fn new(chain_id: ChainId) -> Self {
         GetCurrentBranchMessage { chain_id }
-    }
-
-    pub fn get_chain_id(&self) -> &ChainId {
-        &self.chain_id
     }
 }
 

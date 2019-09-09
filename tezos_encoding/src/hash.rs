@@ -40,6 +40,7 @@ impl HashType {
         }
     }
 
+    /// Size of hash in bytes
     pub fn size(&self) -> usize {
         match self {
             HashType::ChainId => 4,
@@ -66,6 +67,7 @@ impl HashEncoding {
         self.0.size()
     }
 
+    /// Convert hash byte representation into string.
     pub fn bytes_to_string(&self, data: &[u8]) -> String {
         assert_eq!(self.0.size(), data.len(), "Expected data length is {} but instead found {}", self.0.size(), data.len());
         let mut hash = vec![];
@@ -74,6 +76,7 @@ impl HashEncoding {
         hash.to_base58check()
     }
 
+    /// Convert string representation of the hash to bytes form.
     pub fn string_to_bytes(&self, data: &str) -> Result<Hash, FromBase58CheckError> {
         let mut hash = data.from_base58check()?;
         let expected_len = self.0.size() + self.0.prefix().len();

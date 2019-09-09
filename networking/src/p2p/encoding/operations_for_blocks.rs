@@ -9,18 +9,8 @@ use std::rc::Rc;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OperationsForBlock {
-    hash: BlockHash,
-    validation_pass: i8
-}
-
-impl OperationsForBlock {
-    pub fn hash(&self) -> &BlockHash {
-        &self.hash
-    }
-
-    pub fn validation_pass(&self) -> i8 {
-        self.validation_pass
-    }
+    pub hash: BlockHash,
+    pub validation_pass: i8
 }
 
 impl HasEncoding for OperationsForBlock {
@@ -35,23 +25,9 @@ impl HasEncoding for OperationsForBlock {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OperationsForBlocksMessage {
-    operations_for_block: OperationsForBlock,
-    operation_hashes_path: Path,
-    operations: Vec<Operation>
-}
-
-impl OperationsForBlocksMessage {
-    pub fn operations_for_block(&self) -> &OperationsForBlock {
-        &self.operations_for_block
-    }
-
-    pub fn operation_hashes_path(&self) -> &Path {
-        &self.operation_hashes_path
-    }
-
-    pub fn operations(&self) -> &Vec<Operation> {
-        &self.operations
-    }
+    pub operations_for_block: OperationsForBlock,
+    pub operation_hashes_path: Path,
+    pub operations: Vec<Operation>
 }
 
 impl HasEncoding for OperationsForBlocksMessage {
@@ -67,18 +43,8 @@ impl HasEncoding for OperationsForBlocksMessage {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PathRight {
-    left: Hash,
-    path: Path,
-}
-
-impl PathRight {
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn left(&self) -> &Hash {
-        &self.left
-    }
+    pub left: Hash,
+    pub path: Path,
 }
 
 impl HasEncoding for PathRight {
@@ -92,18 +58,8 @@ impl HasEncoding for PathRight {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PathLeft {
-    path: Path,
-    right: Hash
-}
-
-impl PathLeft {
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn right(&self) -> &Hash {
-        &self.right
-    }
+    pub path: Path,
+    pub right: Hash
 }
 
 impl HasEncoding for PathLeft {
@@ -136,13 +92,7 @@ fn path_encoding() -> Encoding {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetOperationsForBlocksMessage {
-    get_operations_for_blocks: Vec<OperationsForBlock>
-}
-
-impl GetOperationsForBlocksMessage {
-    pub fn get_operations_for_blocks(&self) -> &Vec<OperationsForBlock> {
-        &self.get_operations_for_blocks
-    }
+    pub get_operations_for_blocks: Vec<OperationsForBlock>
 }
 
 impl HasEncoding for GetOperationsForBlocksMessage {

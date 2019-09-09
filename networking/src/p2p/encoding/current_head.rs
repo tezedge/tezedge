@@ -8,25 +8,9 @@ use super::mempool::Mempool;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CurrentHeadMessage {
-    chain_id: ChainId,
-    current_block_header: BlockHeader,
-    current_mempool: Mempool
-}
-
-#[allow(dead_code)]
-impl CurrentHeadMessage {
-
-    pub fn get_chain_id(&self) -> &ChainId {
-        &self.chain_id
-    }
-
-    pub fn get_current_block_header(&self) -> &BlockHeader {
-        &self.current_block_header
-    }
-
-    pub fn get_current_mempool(&self) -> &Mempool {
-        &self.current_mempool
-    }
+    pub chain_id: ChainId,
+    pub current_block_header: BlockHeader,
+    pub current_mempool: Mempool
 }
 
 impl HasEncoding for CurrentHeadMessage {
@@ -42,14 +26,7 @@ impl HasEncoding for CurrentHeadMessage {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetCurrentHeadMessage {
-    chain_id: ChainId,
-}
-
-impl GetCurrentHeadMessage {
-    #[allow(dead_code)]
-    pub fn new(chain_id: ChainId) -> Self {
-        GetCurrentHeadMessage { chain_id }
-    }
+    pub chain_id: ChainId,
 }
 
 impl HasEncoding for GetCurrentHeadMessage {
