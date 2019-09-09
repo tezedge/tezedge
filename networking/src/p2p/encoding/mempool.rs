@@ -5,23 +5,8 @@ use tezos_encoding::hash::{HashEncoding, HashType, OperationHash};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Mempool {
-    known_valid: Vec<OperationHash>,
-    pending: Vec<OperationHash>,
-}
-
-#[allow(dead_code)]
-impl Mempool {
-    pub fn new() -> Self {
-        Mempool { pending: Vec::new(), known_valid: Vec::new() }
-    }
-
-    pub fn get_known_valid(&self) -> &Vec<OperationHash> {
-        &self.known_valid
-    }
-
-    pub fn get_pending(&self) -> &Vec<OperationHash> {
-        &self.pending
-    }
+    pub known_valid: Vec<OperationHash>,
+    pub pending: Vec<OperationHash>,
 }
 
 impl HasEncoding for Mempool {

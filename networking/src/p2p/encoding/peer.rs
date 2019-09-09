@@ -79,15 +79,23 @@ impl From<PeerMessage> for PeerMessageResponse {
     }
 }
 
-macro_rules! into_peer_message_response {
+macro_rules! into_peer_message {
     ($m:ident,$v:ident) => {
         impl From<$m> for PeerMessageResponse {
             fn from(msg: $m) -> Self {
                 PeerMessage::$v(msg).into()
             }
         }
+
+        impl From<$m> for PeerMessage {
+            fn from(msg: $m) -> Self {
+                PeerMessage::$v(msg)
+            }
+        }
     }
 }
 
-into_peer_message_response!(AdvertiseMessage, Advertise);
-into_peer_message_response!(GetCurrentBranchMessage, GetCurrentBranch);
+into_peer_message!(AdvertiseMessage, Advertise);
+into_peer_message!(GetCurrentBranchMessage, GetCurrentBranch);
+into_peer_message!(GetBlockHeadersMessage, GetBlockHeaders);
+into_peer_message!(GetCurrentHeadMessage, GetCurrentHead);

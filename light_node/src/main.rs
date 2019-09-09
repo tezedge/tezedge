@@ -55,7 +55,7 @@ fn main() {
         network_manager.clone(),
         &configuration::ENV.p2p.bootstrap_lookup_addresses,
         &configuration::ENV.initial_peers,
-        Threshold::new(1, 30))
+        Threshold::new(2, 30))
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone());
 

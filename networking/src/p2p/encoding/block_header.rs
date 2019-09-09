@@ -14,7 +14,7 @@ pub struct BlockHeaderMessage {
 impl HasEncoding for BlockHeaderMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("block_header", BlockHeader::encoding()),
         ])
     }
 }
@@ -22,13 +22,7 @@ impl HasEncoding for BlockHeaderMessage {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBlockHeadersMessage {
-    get_block_headers: Vec<BlockHash>,
-}
-
-impl GetBlockHeadersMessage {
-    pub fn get_block_headers(&self) -> &Vec<BlockHash> {
-        &self.get_block_headers
-    }
+    pub get_block_headers: Vec<BlockHash>,
 }
 
 impl HasEncoding for GetBlockHeadersMessage {
@@ -42,28 +36,15 @@ impl HasEncoding for GetBlockHeadersMessage {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockHeader {
-    level: i32,
-    proto: u8,
-    predecessor: BlockHash,
-    timestamp: i64,
-    validation_pass: u8,
-    operations_hash: OperationListListHash,
-    fitness: Vec<Vec<u8>>,
-    context: ContextHash,
-    protocol_data: Vec<u8>
-}
-
-#[allow(dead_code)]
-impl BlockHeader {
-    pub fn get_level(&self) -> i32 { self.level}
-    pub fn get_proto(&self) -> u8 { self.proto }
-    pub fn get_predecessor(&self) -> &BlockHash { &self.predecessor }
-    pub fn get_timestamp(&self) -> i64 { self.timestamp }
-    pub fn get_validation_pass(&self) -> u8 { self.validation_pass }
-    pub fn get_operations_hash(&self) -> &OperationListListHash { &self.operations_hash }
-    pub fn get_fitness(&self) -> &Vec<Vec<u8>> { &self.fitness }
-    pub fn get_context(&self) -> &ContextHash { &self.context }
-    pub fn get_protocol_data(&self) -> &Vec<u8> { &self.protocol_data }
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: BlockHash,
+    pub timestamp: i64,
+    pub validation_pass: u8,
+    pub operations_hash: OperationListListHash,
+    pub fitness: Vec<Vec<u8>>,
+    pub context: ContextHash,
+    pub protocol_data: Vec<u8>
 }
 
 impl HasEncoding for BlockHeader {

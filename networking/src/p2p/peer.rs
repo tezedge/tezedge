@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use failure::{Error, Fail};
 use futures::lock::Mutex;
-use log::{debug, info, warn};
+use log::{trace, debug, info, warn};
 use riker::actors::*;
 use tokio::net::TcpStream;
 use tokio::runtime::TaskExecutor;
@@ -332,6 +332,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
     while rx_run.load(Ordering::Relaxed) {
         match rx.read_message().await {
             Ok(msg) => {
+                trace!("Msg: {}", hex::encode(&msg));
                 match PeerMessageResponse::from_bytes(msg) {
                     Ok(msg) => {
                         let broadcast_message = rx_run.load(Ordering::Relaxed);

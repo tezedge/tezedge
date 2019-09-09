@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use std::net::SocketAddr;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AdvertiseMessage {

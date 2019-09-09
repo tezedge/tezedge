@@ -40,6 +40,7 @@ impl HashType {
         }
     }
 
+    /// Size of hash in bytes
     pub fn size(&self) -> usize {
         match self {
             HashType::ChainId => 4,
