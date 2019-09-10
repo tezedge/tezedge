@@ -261,7 +261,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
         &Nonce::random().get_bytes(),
         vec![supported_version()]);
     let connection_message_sent = {
-        let connection_message_bytes = BinaryChunk::from_bytes(connection_message.as_bytes()?.drain(..))?;
+        let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match msg_tx.write_message(&connection_message_bytes).await {
             Ok(_) => connection_message_bytes,
             Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Failed to transfer connection message" })

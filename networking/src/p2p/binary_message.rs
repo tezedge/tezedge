@@ -16,8 +16,11 @@ use tezos_encoding::ser;
 
 use crate::p2p::binary_message::MessageHashError::SerializationError;
 
-pub const MESSAGE_LENGTH_FIELD_SIZE: usize = 2;
-pub const CONTENT_LENGTH_MAX: usize =  0xFFFF - 0x0F;
+/// Size in bytes of the content length field
+pub const CONTENT_LENGTH_FIELD_BYTES: usize = 2;
+/// Max allowed message length in bytes
+pub const CONTENT_LENGTH_MAX: usize = u16::max_value() as usize;
+
 
 /// Trait for binary encoding to implement.
 ///
@@ -57,7 +60,7 @@ pub struct BinaryChunk(Vec<u8>);
 impl BinaryChunk {
 
     /// Create new `BinaryChunk` from input content.
-    pub fn from_bytes(content: impl ExactSizeIterator<Item=u8>) -> Result<BinaryChunk, BinaryChunkError> {
+    pub fn from_content(content: &[u8]) -> Result<BinaryChunk, BinaryChunkError> {
         if content.len() <= CONTENT_LENGTH_MAX {
             // add length
             let mut bytes = vec![];
@@ -79,7 +82,7 @@ impl BinaryChunk {
 
     /// Gets only contents data
     pub fn contents(&self) -> &[u8] {
-        &self.0[MESSAGE_LENGTH_FIELD_SIZE..]
+        &self.0[CONTENT_LENGTH_FIELD_BYTES..]
     }
 }
 
@@ -103,40 +106,17 @@ impl TryFrom<Vec<u8>> for BinaryChunk {
     type Error = BinaryChunkError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        if value.len() < MESSAGE_LENGTH_FIELD_SIZE {
+        if value.len() < CONTENT_LENGTH_FIELD_BYTES {
             Err(BinaryChunkError::MissingSizeInformation)
-        } else if value.len() <= (CONTENT_LENGTH_MAX + MESSAGE_LENGTH_FIELD_SIZE) {
-            let expected_length = value[0..MESSAGE_LENGTH_FIELD_SIZE].to_vec().into_buf().get_u16_be() as usize;
-            if (expected_length + MESSAGE_LENGTH_FIELD_SIZE) == value.len() {
+        } else if value.len() <= (CONTENT_LENGTH_MAX + CONTENT_LENGTH_FIELD_BYTES) {
+            let expected_content_length = value[0..CONTENT_LENGTH_FIELD_BYTES].to_vec().into_buf().get_u16_be() as usize;
+            if (expected_content_length + CONTENT_LENGTH_FIELD_BYTES) == value.len() {
                 Ok(BinaryChunk(value))
             } else {
-                Err(BinaryChunkError::IncorrectSizeInformation { expected: expected_length, actual: value.len() })
+                Err(BinaryChunkError::IncorrectSizeInformation { expected: expected_content_length, actual: value.len() })
             }
         } else {
             Err(BinaryChunkError::OverflowError)
-        }
-    }
-}
-
-/// Produces list of [`BinaryChunk`] from [`Vec<u8>`].
-pub struct BinaryChunkProducer(Vec<u8>);
-
-impl From<Vec<u8>> for BinaryChunkProducer {
-    fn from(data: Vec<u8>) -> Self {
-        BinaryChunkProducer(data)
-    }
-}
-
-impl Iterator for BinaryChunkProducer {
-    type Item = BinaryChunk;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.0.is_empty() {
-            None
-        } else if self.0.len() < CONTENT_LENGTH_MAX {
-            Some(BinaryChunk::from_bytes(self.0.drain(0..)).expect("Failed to create binary chunk"))
-        } else {
-            Some(BinaryChunk::from_bytes(self.0.drain(0..CONTENT_LENGTH_MAX)).expect("Failed to create binary chunk"))
         }
     }
 }

@@ -13,8 +13,11 @@ use tokio::net::TcpStream;
 use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
 
-use crate::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, MESSAGE_LENGTH_FIELD_SIZE};
+use crate::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
 use crate::p2p::peer::PeerId;
+
+/// Max allowed content length in bytes when taking into account extra data added by encryption
+pub const CONTENT_LENGTH_MAX: usize = crate::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
 
 /// This is common error that might happen when communicating with peer over the network.
 #[derive(Debug, Fail)]
@@ -110,8 +113,8 @@ impl MessageReader {
 
     /// Read 2 bytes containing total length of the message contents from the network stream.
     /// Total length is encoded as u big endian u16.
-    async fn read_message_length_bytes(&mut self) -> io::Result<[u8; MESSAGE_LENGTH_FIELD_SIZE]> {
-        let mut msg_len_bytes: [u8; MESSAGE_LENGTH_FIELD_SIZE] = [0; MESSAGE_LENGTH_FIELD_SIZE];
+    async fn read_message_length_bytes(&mut self) -> io::Result<[u8; CONTENT_LENGTH_FIELD_BYTES]> {
+        let mut msg_len_bytes: [u8; CONTENT_LENGTH_FIELD_BYTES] = [0; CONTENT_LENGTH_FIELD_BYTES];
         self.stream.read_exact(&mut msg_len_bytes).await?;
         Ok(msg_len_bytes)
     }
@@ -159,16 +162,17 @@ impl EncryptedMessageWriter {
         let message_bytes = message.as_bytes()?;
         trace!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
 
-        // encrypt
-        let mut message_bytes_encrypted = match encrypt(&message_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
-            Ok(msg) => msg,
-            Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
-        };
-        trace!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes_encrypted));
+        for chunk_content_bytes in message_bytes.chunks(CONTENT_LENGTH_MAX) {
+            // encrypt
+            let message_bytes_encrypted = match encrypt(chunk_content_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
+                Ok(msg) => msg,
+                Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
+            };
 
-        // send
-        let chunk = BinaryChunk::from_bytes(message_bytes_encrypted.drain(..))?;
-        self.tx.write_message(&chunk).await?;
+            // send
+            let chunk = BinaryChunk::from_content(&message_bytes_encrypted)?;
+            self.tx.write_message(&chunk).await?;
+        }
 
         Ok(())
     }
