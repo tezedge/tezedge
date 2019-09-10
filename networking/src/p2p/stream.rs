@@ -1,19 +1,24 @@
+use std::convert::TryInto;
 use std::io;
 
-use bytes::{BufMut, IntoBuf};
 use bytes::Buf;
-use failure::Fail;
+use bytes::IntoBuf;
+use failure::{Error, Fail};
 use log::trace;
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
 use tokio::net::TcpStream;
 
-use crypto::crypto_box::{encrypt, decrypt, PrecomputedKey, CryptoError};
+use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
+use tezos_encoding::binary_reader::BinaryReaderError;
 
-use crate::p2p::binary_message::{BinaryMessage, MESSAGE_LENGTH_FIELD_SIZE, RawBinaryMessage};
+use crate::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
 use crate::p2p::peer::PeerId;
+
+/// Max allowed content length in bytes when taking into account extra data added by encryption
+pub const CONTENT_LENGTH_MAX: usize = crate::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
 
 /// This is common error that might happen when communicating with peer over the network.
 #[derive(Debug, Fail)]
@@ -30,10 +35,14 @@ pub enum StreamError {
     SerializationError {
         error: tezos_encoding::ser::Error
     },
+    #[fail(display = "Message de-serialization error")]
+    DeserializationError {
+        error: BinaryReaderError
+    },
     #[fail(display = "Network error: {}", message)]
     NetworkError {
         message: &'static str,
-        error: io::Error,
+        error: Error,
     },
 }
 
@@ -45,9 +54,21 @@ impl From<tezos_encoding::ser::Error> for StreamError {
 
 impl From<std::io::Error> for StreamError {
     fn from(error: std::io::Error) -> Self {
-        StreamError::NetworkError { error, message: "Network error" }
+        StreamError::NetworkError { error: error.into(), message: "Stream error" }
     }
 }
+
+impl From<BinaryChunkError> for StreamError {
+    fn from(error: BinaryChunkError) -> Self {
+        StreamError::NetworkError { error: error.into(), message: "Binary chunk error" }
+    }
+}
+impl From<BinaryReaderError> for StreamError {
+    fn from(error: BinaryReaderError) -> Self {
+        StreamError::DeserializationError { error: error.into() }
+    }
+}
+
 
 /// Holds read and write parts of the message stream.
 pub struct MessageStream {
@@ -85,7 +106,7 @@ impl MessageReader {
 
     /// Read message from network and return message contents in a form of bytes.
     /// Each message is prefixed by a 2 bytes indicating total length of the message.
-    pub async fn read_message(&mut self) -> Result<RawBinaryMessage, StreamError> {
+    pub async fn read_message(&mut self) -> Result<BinaryChunk, StreamError> {
         // read encoding length (2 bytes)
         let msg_len_bytes = self.read_message_length_bytes().await?;
         // copy bytes containing encoding length to raw encoding buffer
@@ -98,13 +119,13 @@ impl MessageReader {
         self.stream.read_exact(&mut msg_content_bytes).await?;
         all_recv_bytes.extend(&msg_content_bytes);
 
-        Ok(all_recv_bytes.into())
+        Ok(all_recv_bytes.try_into()?)
     }
 
     /// Read 2 bytes containing total length of the message contents from the network stream.
     /// Total length is encoded as u big endian u16.
-    async fn read_message_length_bytes(&mut self) -> io::Result<[u8; MESSAGE_LENGTH_FIELD_SIZE]> {
-        let mut msg_len_bytes: [u8; MESSAGE_LENGTH_FIELD_SIZE] = [0; MESSAGE_LENGTH_FIELD_SIZE];
+    async fn read_message_length_bytes(&mut self) -> io::Result<[u8; CONTENT_LENGTH_FIELD_BYTES]> {
+        let mut msg_len_bytes: [u8; CONTENT_LENGTH_FIELD_BYTES] = [0; CONTENT_LENGTH_FIELD_BYTES];
         self.stream.read_exact(&mut msg_len_bytes).await?;
         Ok(msg_len_bytes)
     }
@@ -123,16 +144,8 @@ impl MessageWriter {
     ///
     /// In case all bytes are successfully written to network stream a raw binary
     /// message is returned as a result.
-    pub async fn write_message<'a>(&'a mut self, bytes: &'a [u8]) -> Result<RawBinaryMessage, StreamError> {
-        // add length
-        let mut msg_with_length = vec![];
-        // adds MESSAGE_LENGTH_FIELD_SIZE - 2 bytes with length of encoding
-        msg_with_length.put_u16_be(bytes.len() as u16);
-        msg_with_length.put(bytes);
-
-        // write serialized encoding bytes
-        self.stream.write_all(&msg_with_length).await?;
-        Ok(msg_with_length.into())
+    pub async fn write_message(&mut self, bytes: &BinaryChunk) -> Result<(), StreamError> {
+        Ok(self.stream.write_all(bytes.raw()).await?)
     }
 }
 
@@ -160,15 +173,17 @@ impl EncryptedMessageWriter {
         let message_bytes = message.as_bytes()?;
         trace!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
 
-        // encrypt
-        let message_encrypted = match encrypt(&message_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
-            Ok(msg) => msg,
-            Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
-        };
-        trace!("Message (enc) to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_encrypted));
+        for chunk_content_bytes in message_bytes.chunks(CONTENT_LENGTH_MAX) {
+            // encrypt
+            let message_bytes_encrypted = match encrypt(chunk_content_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
+                Ok(msg) => msg,
+                Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
+            };
 
-        // send
-        self.tx.write_message(&message_encrypted).await?;
+            // send
+            let chunk = BinaryChunk::from_content(&message_bytes_encrypted)?;
+            self.tx.write_message(&chunk).await?;
+        }
 
         Ok(())
     }
@@ -199,18 +214,40 @@ impl EncryptedMessageReader {
         EncryptedMessageReader { rx, precomputed_key, nonce_remote, peer_id }
     }
 
-    pub async fn read_message(&mut self) -> Result<Vec<u8>, StreamError> {
-        // read
-        let message_encrypted = self.rx.read_message().await?;
+    pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
+    where
+        M: BinaryMessage
+    {
+        let mut input_remaining = 0;
+        let mut input_data = vec![];
 
-        // decrypt
-        match decrypt(message_encrypted.get_contents(), &self.nonce_fetch_increment(), &self.precomputed_key) {
-            Ok(message) => {
-                trace!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
-                Ok(message)
-            }
-            Err(error) => {
-                Err(StreamError::FailedToDecryptMessage { error })
+        loop {
+            // read
+            let message_encrypted = self.rx.read_message().await?;
+
+            // decrypt
+            match decrypt(message_encrypted.content(), &self.nonce_fetch_increment(), &self.precomputed_key) {
+                Ok(mut message_decrypted) => {
+                    trace!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message_decrypted));
+                    if input_remaining >= message_decrypted.len() {
+                        input_remaining -= message_decrypted.len();
+                    } else {
+                        input_remaining = 0;
+                    }
+
+                    input_data.append(&mut message_decrypted);
+
+                    if input_remaining == 0 {
+                        match M::from_bytes(input_data.clone()) {
+                            Ok(message) => return Ok(message),
+                            Err(BinaryReaderError::Underflow { bytes }) => input_remaining += bytes,
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                }
+                Err(error) => {
+                    return Err(StreamError::FailedToDecryptMessage { error })
+                }
             }
         }
     }

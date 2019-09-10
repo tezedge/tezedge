@@ -3,6 +3,7 @@ use sodiumoxide::crypto::box_;
 
 use super::nonce::Nonce;
 
+pub const BOX_ZERO_BYTES: usize = 32;
 const CRYPTO_KEY_SIZE: usize = 32;
 const NONCE_SIZE: usize = 24;
 

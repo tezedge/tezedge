@@ -2,10 +2,11 @@ use std::error::{self, Error as StdError};
 use std::fmt;
 use std::io;
 use std::slice::Iter;
-use std::string;
-use serde::de::{self, Deserialize, DeserializeSeed, Error as SerdeError, Visitor, IntoDeserializer};
+
+use serde::de::{self, Deserialize, DeserializeSeed, Error as SerdeError, IntoDeserializer, Visitor};
 use serde::forward_to_deserialize_any;
 
+use crate::binary_reader::BinaryReaderError;
 use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
 
@@ -62,16 +63,6 @@ impl From<hex::FromHexError> for Error {
         }
     }
 }
-
-impl From<string::FromUtf8Error> for Error {
-    fn from(from: string::FromUtf8Error) -> Self {
-        Error {
-            message: format!("Error decoding UTF-8 string. Reason: {:?}", from),
-        }
-    }
-}
-
-
 
 pub struct Deserializer<'de> {
     input: &'de Value,
@@ -509,9 +500,9 @@ impl<'de, 'a> de::VariantAccess<'de> for EnumDeserializer<'a, 'de> {
 ///
 /// This conversion can fail if the structure of the `Value` does not match the
 /// structure expected by `D`.
-pub fn from_value<'de, D: Deserialize<'de>>(value: &'de Value) -> Result<D, Error> {
+pub fn from_value<'de, D: Deserialize<'de>>(value: &'de Value) -> Result<D, BinaryReaderError> {
     let mut de = Deserializer::new(value);
-    D::deserialize(&mut de)
+    Ok(D::deserialize(&mut de)?)
 }
 
 

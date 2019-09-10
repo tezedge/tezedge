@@ -167,7 +167,7 @@ pub enum Encoding {
     /// not prefixed by anything in binary, encoded as the concatenation of all the element in binary
     Obj(Schema),
     /// Is the collection of fields.
-    /// prefixed its length in bytes, encoded as the concatenation of all the element in binary
+    /// prefixed its length in bytes (4 Bytes), encoded as the concatenation of all the element in binary
     Dynamic(Box<Encoding>),
     /// Represents fixed size block in binary encoding.
     Sized(usize, Box<Encoding>),

@@ -3,11 +3,11 @@ use std::io::Cursor;
 
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::de;
+use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
+use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::encoding::version::Version;
-use crate::p2p::binary_message::{BinaryMessage, RawBinaryMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConnectionMessage {
@@ -43,11 +43,11 @@ impl ConnectionMessage {
 
 // TODO: Replace this by impl TryFrom with a bounded generic parameter
 //       after https://github.com/rust-lang/rust/issues/50133 is resolved.
-impl TryFrom<RawBinaryMessage> for ConnectionMessage {
-    type Error = de::Error;
+impl TryFrom<BinaryChunk> for ConnectionMessage {
+    type Error = BinaryReaderError;
 
-    fn try_from(value: RawBinaryMessage) -> Result<Self, Self::Error> {
-        let cursor = Cursor::new(value.get_contents());
+    fn try_from(value: BinaryChunk) -> Result<Self, Self::Error> {
+        let cursor = Cursor::new(value.content());
         ConnectionMessage::from_bytes(cursor.into_inner().to_vec())
     }
 }

@@ -5,15 +5,16 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use failure::{Error, Fail};
 use futures::lock::Mutex;
-use log::{trace, debug, info, warn};
+use log::{debug, info, trace, warn};
 use riker::actors::*;
 use tokio::net::TcpStream;
 use tokio::runtime::TaskExecutor;
 
 use crypto::crypto_box::precompute;
 use crypto::nonce::{self, Nonce, NoncePair};
+use tezos_encoding::binary_reader::BinaryReaderError;
 
-use super::binary_message::{BinaryMessage, RawBinaryMessage};
+use super::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use super::encoding::prelude::*;
 use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerCreated, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -40,7 +41,7 @@ enum PeerError {
     },
     #[fail(display = "Message deserialization error")]
     DeserializationError {
-        error: tezos_encoding::de::Error
+        error: BinaryReaderError
     },
 }
 
@@ -50,8 +51,8 @@ impl From<tezos_encoding::ser::Error> for PeerError {
     }
 }
 
-impl From<tezos_encoding::de::Error> for PeerError {
-    fn from(error: tezos_encoding::de::Error) -> Self {
+impl From<BinaryReaderError> for PeerError {
+    fn from(error: BinaryReaderError) -> Self {
         PeerError::DeserializationError { error }
     }
 }
@@ -65,6 +66,12 @@ impl From<std::io::Error> for PeerError {
 impl From<StreamError> for PeerError {
     fn from(error: StreamError) -> Self {
         PeerError::NetworkError { error: error.into(), message: "Stream error" }
+    }
+}
+
+impl From<BinaryChunkError> for PeerError {
+    fn from(error: BinaryChunkError) -> Self {
+        PeerError::NetworkError { error: error.into(), message: "Binary chunk error" }
     }
 }
 
@@ -211,7 +218,7 @@ impl Receive<Bootstrap> for Peer {
                     system.stop(myself);
                 }
                 Err(e) => {
-                    warn!("Connection to peer failed: {}", e);
+                    warn!("Connection to peer failed: {:?}.", e);
                     system.stop(myself);
                 }
             }
@@ -255,9 +262,9 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
         &Nonce::random().get_bytes(),
         vec![supported_version()]);
     let connection_message_sent = {
-        let as_bytes = connection_message.as_bytes()?;
-        match msg_tx.write_message(&as_bytes).await {
-            Ok(bytes) => bytes,
+        let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
+        match msg_tx.write_message(&connection_message_bytes).await {
+            Ok(_) => connection_message_bytes,
             Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Failed to transfer connection message" })
         }
     };
@@ -291,14 +298,14 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     msg_tx.write_message(&metadata).await?;
 
     // receive metadata
-    let metadata_received = MetadataMessage::from_bytes(msg_rx.read_message().await?)?;
+    let metadata_received = msg_rx.read_message::<MetadataMessage>().await?;
     debug!("Received remote peer metadata - disable_mempool: {}, private_node: {}", metadata_received.disable_mempool, metadata_received.private_node);
 
     // send ack
     msg_tx.write_message(&AckMessage::Ack).await?;
 
     // receive ack
-    let ack_received = AckMessage::from_bytes(msg_rx.read_message().await?)?;
+    let ack_received = msg_rx.read_message().await?;
 
     match ack_received {
         AckMessage::Ack => {
@@ -317,8 +324,8 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 ///
 /// local_nonce is used for writing crypto messages to other peers
 /// remote_nonce is used for reading crypto messages from other peers
-fn generate_nonces(sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, incoming: bool) -> NoncePair {
-    nonce::generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
+fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: bool) -> NoncePair {
+    nonce::generate_nonces(sent_msg.raw(), recv_msg.raw(), incoming)
 }
 
 /// Return supported network protocol version
@@ -331,28 +338,19 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
     info!("Starting accepting messages from peer: {}", rx.peer_id());
 
     while rx_run.load(Ordering::Relaxed) {
-        match rx.read_message().await {
+        match rx.read_message::<PeerMessageResponse>().await {
             Ok(msg) => {
-                trace!("Msg: {}", hex::encode(&msg));
-                match PeerMessageResponse::from_bytes(msg) {
-                    Ok(msg) => {
-                        let should_broadcast_message = rx_run.load(Ordering::Relaxed);
-                        if should_broadcast_message {
-                            trace!("Message parsed successfully");
-                            event_channel.tell(
-                                Publish {
-                                    msg: PeerMessageReceived {
-                                        peer: myself.clone(),
-                                        message: Arc::new(msg),
-                                    }.into(),
-                                    topic: NetworkChannelTopic::NetworkEvents.into(),
-                                }, Some(myself.clone().into()));
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to process received message: {:?}", e);
-                        break;
-                    }
+                let should_broadcast_message = rx_run.load(Ordering::Relaxed);
+                if should_broadcast_message {
+                    trace!("Message parsed successfully");
+                    event_channel.tell(
+                        Publish {
+                            msg: PeerMessageReceived {
+                                peer: myself.clone(),
+                                message: Arc::new(msg),
+                            }.into(),
+                            topic: NetworkChannelTopic::NetworkEvents.into(),
+                        }, Some(myself.clone().into()));
                 }
             }
             Err(e) => {
