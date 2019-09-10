@@ -12,8 +12,9 @@ use tokio::runtime::TaskExecutor;
 
 use crypto::crypto_box::precompute;
 use crypto::nonce::{self, Nonce, NoncePair};
+use tezos_encoding::binary_reader::BinaryReaderError;
 
-use super::binary_message::{BinaryChunkError, BinaryChunk, BinaryMessage};
+use super::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use super::encoding::prelude::*;
 use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerCreated, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -40,7 +41,7 @@ enum PeerError {
     },
     #[fail(display = "Message deserialization error")]
     DeserializationError {
-        error: tezos_encoding::de::Error
+        error: BinaryReaderError
     },
 }
 
@@ -50,8 +51,8 @@ impl From<tezos_encoding::ser::Error> for PeerError {
     }
 }
 
-impl From<tezos_encoding::de::Error> for PeerError {
-    fn from(error: tezos_encoding::de::Error) -> Self {
+impl From<BinaryReaderError> for PeerError {
+    fn from(error: BinaryReaderError) -> Self {
         PeerError::DeserializationError { error }
     }
 }
@@ -297,14 +298,14 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     msg_tx.write_message(&metadata).await?;
 
     // receive metadata
-    let metadata_received = MetadataMessage::from_bytes(msg_rx.read_message().await?)?;
+    let metadata_received = msg_rx.read_message::<MetadataMessage>().await?;
     debug!("Received remote peer metadata - disable_mempool: {}, private_node: {}", metadata_received.disable_mempool, metadata_received.private_node);
 
     // send ack
     msg_tx.write_message(&AckMessage::Ack).await?;
 
     // receive ack
-    let ack_received = AckMessage::from_bytes(msg_rx.read_message().await?)?;
+    let ack_received = msg_rx.read_message().await?;
 
     match ack_received {
         AckMessage::Ack => {
@@ -337,28 +338,19 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
     info!("Starting accepting messages from peer: {}", rx.peer_id());
 
     while rx_run.load(Ordering::Relaxed) {
-        match rx.read_message().await {
+        match rx.read_message::<PeerMessageResponse>().await {
             Ok(msg) => {
-                trace!("Msg: {}", hex::encode(&msg));
-                match PeerMessageResponse::from_bytes(msg) {
-                    Ok(msg) => {
-                        let should_broadcast_message = rx_run.load(Ordering::Relaxed);
-                        if should_broadcast_message {
-                            trace!("Message parsed successfully");
-                            event_channel.tell(
-                                Publish {
-                                    msg: PeerMessageReceived {
-                                        peer: myself.clone(),
-                                        message: Arc::new(msg),
-                                    }.into(),
-                                    topic: NetworkChannelTopic::NetworkEvents.into(),
-                                }, Some(myself.clone().into()));
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to process received message: {:?}", e);
-                        break;
-                    }
+                let should_broadcast_message = rx_run.load(Ordering::Relaxed);
+                if should_broadcast_message {
+                    trace!("Message parsed successfully");
+                    event_channel.tell(
+                        Publish {
+                            msg: PeerMessageReceived {
+                                peer: myself.clone(),
+                                message: Arc::new(msg),
+                            }.into(),
+                            topic: NetworkChannelTopic::NetworkEvents.into(),
+                        }, Some(myself.clone().into()));
                 }
             }
             Err(e) => {

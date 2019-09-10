@@ -1,13 +1,12 @@
-use bytes::{Buf, IntoBuf, BufMut};
+use bytes::{Buf, BufMut, IntoBuf};
 use failure::_core::convert::TryFrom;
 use failure::Fail;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crypto::blake2b;
-use tezos_encoding::binary_reader::BinaryReader;
+use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::binary_writer::BinaryWriter;
-use tezos_encoding::de;
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::hash::Hash;
@@ -32,7 +31,7 @@ pub trait BinaryMessage: Sized {
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error>;
 
     /// Create new struct from bytes.
-    fn from_bytes(buf: Vec<u8>) -> Result<Self, de::Error>;
+    fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError>;
 }
 
 impl<T> BinaryMessage for T
@@ -44,7 +43,7 @@ impl<T> BinaryMessage for T
     }
 
     /// Create new struct from bytes.
-    fn from_bytes(buf: Vec<u8>) -> Result<Self, de::Error> {
+    fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError> {
         let reader = BinaryReader::new();
         let value = reader.read(buf, &Self::encoding())?;
         deserialize_from_value(&value)
@@ -80,8 +79,8 @@ impl BinaryChunk {
         &self.0
     }
 
-    /// Gets only contents data
-    pub fn contents(&self) -> &[u8] {
+    /// Get content of the message
+    pub fn content(&self) -> &[u8] {
         &self.0[CONTENT_LENGTH_FIELD_BYTES..]
     }
 }

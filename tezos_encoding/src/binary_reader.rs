@@ -1,11 +1,40 @@
 use bitvec::{Bits, BitVec};
 use bytes::{Buf, IntoBuf};
+use failure::Fail;
 use serde::de::Error as SerdeError;
 
 use crate::bit_utils::{BitReverse, BitTrim, ToBytes};
-use crate::de::Error;
+use crate::de;
 use crate::encoding::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
+
+#[derive(Debug, Fail)]
+pub enum BinaryReaderError {
+    #[fail(display = "Input underflow, missing {} bytes", bytes)]
+    Underflow {
+        bytes: usize
+    },
+    #[fail(display = "Input overflow, excess of {} bytes", bytes)]
+    Overflow {
+        bytes: usize
+    },
+    #[fail(display = "Message de-serialization error")]
+    DeserializationError {
+        error: crate::de::Error
+    },
+}
+
+impl From<crate::de::Error> for BinaryReaderError {
+    fn from(error: crate::de::Error) -> Self {
+        BinaryReaderError::DeserializationError { error }
+    }
+}
+
+impl From<std::string::FromUtf8Error> for BinaryReaderError {
+    fn from(from: std::string::FromUtf8Error) -> Self {
+        BinaryReaderError::DeserializationError { error: de::Error::custom(format!("Error decoding UTF-8 string. Reason: {:?}", from)) }
+    }
+}
 
 
 macro_rules! safe {
@@ -14,14 +43,14 @@ macro_rules! safe {
         if $buf.remaining() >= size_of::<$sz>() {
             $buf.$foo()
         } else {
-            return Result::Err(Error::custom(format!("Error at line {}: Unable to fetch value. Remaining capacity must be at least {:?} bytes.", line!(), size_of::<$sz>())))
+            return Result::Err(BinaryReaderError::Underflow { bytes: (size_of::<$sz>() - $buf.remaining()) })
          }
     }};
     ($buf:ident, $sz:expr, $exp:expr) => {{
         if $buf.remaining() >= $sz {
             $exp
         } else {
-            return Result::Err(Error::custom(format!("Error at line {}: Unable to fetch value. Remaining capacity must be at least {:?} bytes.", line!(), $sz)))
+            return Result::Err(BinaryReaderError::Underflow { bytes: ($sz - $buf.remaining()) })
          }
     }};
 
@@ -35,14 +64,22 @@ impl BinaryReader {
         BinaryReader {}
     }
 
-    pub fn read(&self, buf: Vec<u8>, encoding: &Encoding) -> Result<Value, Error> {
-        match encoding {
-            Encoding::Obj(schema) => self.decode_record(&mut buf.into_buf(), schema),
-            _ => self.decode_value(&mut buf.into_buf(), encoding)
+    pub fn read(&self, buf: Vec<u8>, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
+        let mut buf = buf.into_buf();
+
+        let result = match encoding {
+            Encoding::Obj(schema) => self.decode_record(&mut buf, schema),
+            _ => self.decode_value(&mut buf, encoding)
+        }?;
+
+        if buf.remaining() == 0 {
+            Ok(result)
+        } else {
+            Err(BinaryReaderError::Overflow { bytes: buf.remaining() })
         }
     }
 
-    fn decode_record(&self, buf: &mut dyn Buf, schema: &[Field]) -> Result<Value, Error> {
+    fn decode_record(&self, buf: &mut dyn Buf, schema: &[Field]) -> Result<Value, BinaryReaderError> {
         let mut values = vec![];
         for field in schema {
             let name = field.get_name();
@@ -52,7 +89,7 @@ impl BinaryReader {
         Ok(Value::Record(values))
     }
 
-    fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, Error> {
+    fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
         match encoding {
             Encoding::Unit => Ok(Value::Unit),
             Encoding::Int8 => Ok(Value::Int8(safe!(buf, get_i8, i8))),
@@ -69,7 +106,7 @@ impl BinaryReader {
                 match b {
                     types::BYTE_VAL_TRUE => Ok(Value::Bool(true)),
                     types::BYTE_VAL_FALSE => Ok(Value::Bool(false)),
-                    _ => Err(Error::custom(format!("Vas expecting 0xFF or 0x00 but instead got {:X}", b)))
+                    _ => Err(de::Error::custom(format!("Vas expecting 0xFF or 0x00 but instead got {:X}", b)).into())
                 }
             }
             Encoding::String => {
@@ -98,7 +135,7 @@ impl BinaryReader {
                 let tag_id = match tag_sz  {
                     /*u8*/  1 => Ok(u16::from(safe!(buf, get_u8, u8))),
                     /*u16*/ 2 => Ok(safe!(buf, get_u16_be, u16)),
-                    _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
+                    _ => Err(de::Error::custom(format!("Unsupported tag size {}", tag_sz)))
                 }?;
 
                 match tag_map.find_by_id(tag_id) {
@@ -106,7 +143,7 @@ impl BinaryReader {
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
                     },
-                    None => Err(Error::custom(format!("No tag found for id: 0x{:X}", tag_id)))
+                    None => Err(de::Error::custom(format!("No tag found for id: 0x{:X}", tag_id)).into())
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -129,7 +166,7 @@ impl BinaryReader {
                         Ok(Value::Option(Some(Box::new(v))))
                     }
                     types::BYTE_VAL_NONE => Ok(Value::Option(None)),
-                    _ => Err(Error::custom(format!("Unexpected option value {:X}", is_present_byte)))
+                    _ => Err(de::Error::custom(format!("Unexpected option value {:X}", is_present_byte)).into())
                 }
             }
             Encoding::Obj(schema_inner) => {
@@ -203,7 +240,7 @@ impl BinaryReader {
             }
             Encoding::Uint32
             | Encoding::RangedInt
-            | Encoding::RangedFloat => Err(Error::custom(format!("Unsupported encoding {:?}", encoding)))
+            | Encoding::RangedFloat => Err(de::Error::custom(format!("Unsupported encoding {:?}", encoding)).into())
         }
     }
 }

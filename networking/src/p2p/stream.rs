@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 
 use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
+use tezos_encoding::binary_reader::BinaryReaderError;
 
 use crate::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
 use crate::p2p::peer::PeerId;
@@ -33,6 +34,10 @@ pub enum StreamError {
     #[fail(display = "Message serialization error")]
     SerializationError {
         error: tezos_encoding::ser::Error
+    },
+    #[fail(display = "Message de-serialization error")]
+    DeserializationError {
+        error: BinaryReaderError
     },
     #[fail(display = "Network error: {}", message)]
     NetworkError {
@@ -58,6 +63,12 @@ impl From<BinaryChunkError> for StreamError {
         StreamError::NetworkError { error: error.into(), message: "Binary chunk error" }
     }
 }
+impl From<BinaryReaderError> for StreamError {
+    fn from(error: BinaryReaderError) -> Self {
+        StreamError::DeserializationError { error: error.into() }
+    }
+}
+
 
 /// Holds read and write parts of the message stream.
 pub struct MessageStream {
@@ -203,18 +214,40 @@ impl EncryptedMessageReader {
         EncryptedMessageReader { rx, precomputed_key, nonce_remote, peer_id }
     }
 
-    pub async fn read_message(&mut self) -> Result<Vec<u8>, StreamError> {
-        // read
-        let message_encrypted = self.rx.read_message().await?;
+    pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
+    where
+        M: BinaryMessage
+    {
+        let mut input_remaining = 0;
+        let mut input_data = vec![];
 
-        // decrypt
-        match decrypt(message_encrypted.contents(), &self.nonce_fetch_increment(), &self.precomputed_key) {
-            Ok(message) => {
-                trace!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message));
-                Ok(message)
-            }
-            Err(error) => {
-                Err(StreamError::FailedToDecryptMessage { error })
+        loop {
+            // read
+            let message_encrypted = self.rx.read_message().await?;
+
+            // decrypt
+            match decrypt(message_encrypted.content(), &self.nonce_fetch_increment(), &self.precomputed_key) {
+                Ok(mut message_decrypted) => {
+                    trace!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message_decrypted));
+                    if input_remaining >= message_decrypted.len() {
+                        input_remaining -= message_decrypted.len();
+                    } else {
+                        input_remaining = 0;
+                    }
+
+                    input_data.append(&mut message_decrypted);
+
+                    if input_remaining == 0 {
+                        match M::from_bytes(input_data.clone()) {
+                            Ok(message) => return Ok(message),
+                            Err(BinaryReaderError::Underflow { bytes }) => input_remaining += bytes,
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                }
+                Err(error) => {
+                    return Err(StreamError::FailedToDecryptMessage { error })
+                }
             }
         }
     }
