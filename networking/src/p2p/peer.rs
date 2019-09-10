@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use failure::{Error, Fail};
 use futures::lock::Mutex;
-use log::{trace, debug, info, warn};
+use log::{debug, info, trace, warn};
 use riker::actors::*;
 use tokio::net::TcpStream;
 use tokio::runtime::TaskExecutor;
@@ -13,7 +13,7 @@ use tokio::runtime::TaskExecutor;
 use crypto::crypto_box::precompute;
 use crypto::nonce::{self, Nonce, NoncePair};
 
-use super::binary_message::{BinaryMessage, RawBinaryMessage};
+use super::binary_message::{BinaryChunkError, BinaryChunk, BinaryMessage};
 use super::encoding::prelude::*;
 use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerCreated, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -65,6 +65,12 @@ impl From<std::io::Error> for PeerError {
 impl From<StreamError> for PeerError {
     fn from(error: StreamError) -> Self {
         PeerError::NetworkError { error: error.into(), message: "Stream error" }
+    }
+}
+
+impl From<BinaryChunkError> for PeerError {
+    fn from(error: BinaryChunkError) -> Self {
+        PeerError::NetworkError { error: error.into(), message: "Binary chunk error" }
     }
 }
 
@@ -211,7 +217,7 @@ impl Receive<Bootstrap> for Peer {
                     system.stop(myself);
                 }
                 Err(e) => {
-                    warn!("Connection to peer failed: {}", e);
+                    warn!("Connection to peer failed: {:?}.", e);
                     system.stop(myself);
                 }
             }
@@ -255,9 +261,9 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
         &Nonce::random().get_bytes(),
         vec![supported_version()]);
     let connection_message_sent = {
-        let as_bytes = connection_message.as_bytes()?;
-        match msg_tx.write_message(&as_bytes).await {
-            Ok(bytes) => bytes,
+        let connection_message_bytes = BinaryChunk::from_bytes(connection_message.as_bytes()?.drain(..))?;
+        match msg_tx.write_message(&connection_message_bytes).await {
+            Ok(_) => connection_message_bytes,
             Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Failed to transfer connection message" })
         }
     };
@@ -317,8 +323,8 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 ///
 /// local_nonce is used for writing crypto messages to other peers
 /// remote_nonce is used for reading crypto messages from other peers
-fn generate_nonces(sent_msg: &RawBinaryMessage, recv_msg: &RawBinaryMessage, incoming: bool) -> NoncePair {
-    nonce::generate_nonces(sent_msg.get_raw(), recv_msg.get_raw(), incoming)
+fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: bool) -> NoncePair {
+    nonce::generate_nonces(sent_msg.raw(), recv_msg.raw(), incoming)
 }
 
 /// Return supported network protocol version
