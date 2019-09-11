@@ -22,11 +22,9 @@
 ///     })
 /// }
 ///
-/// async fn call_ocaml_hello_world() -> String {
-///     ocaml_fn_echo("Hello world!".into()).await
-/// }
-///
-/// let result = futures::executor::block_on(call_ocaml_hello_world());
+/// let result = futures::executor::block_on(
+///     ocaml_fn_echo("Hello world!".into())
+/// );
 /// assert_eq!("Hello world!", &result);
 /// ```
 pub mod runtime;

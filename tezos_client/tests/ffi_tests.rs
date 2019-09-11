@@ -12,6 +12,8 @@ fn can_call_ocaml_fn_get_block_header_not_found() {
 
 #[test]
 fn test_call_ocaml_fn_get_current_block_header() {
+    // TODO: init storage a test current headu
+
     let chain_id = "TODO:chain_id:NetXgtSLGNJvNye";
 
     let current_head = ffi::get_current_block_header(chain_id.to_string());
