@@ -1,5 +1,8 @@
-pub mod test_data {
+use std::env;
+use std::fs;
+use std::path::Path;
 
+pub mod test_data {
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
     pub static BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";
     pub static BLOCK_HEADER_LEVEL_1: &str = include_str!("resources/block_header_level1.bytes");
@@ -35,3 +38,14 @@ pub mod test_data {
     }
 }
 
+pub fn prepare_empty_dir(dir_name: &str) -> String {
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let path = Path::new(out_dir.as_str())
+        .join(Path::new(dir_name))
+        .to_path_buf();
+    if path.exists() {
+        fs::remove_dir_all(path.clone()).unwrap();
+    }
+    fs::create_dir(path.clone()).unwrap();
+    String::from(path.to_str().unwrap())
+}

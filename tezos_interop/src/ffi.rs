@@ -16,17 +16,35 @@
 //        TODO: moznost inicializacie runtimu pre rozne storage - lazy_static
 
 //        TODO: od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
+//TODO: zmenit za reaalne chain_id a current_head_hash cez encodingy
 
 use log::warn;
-use ocaml::{Array, Str};
+use ocaml::{Array, Str, Tuple};
 
 use crate::runtime;
 use crate::runtime::OcamlResult;
 
-pub fn get_current_block_header(block_header_hash: String) -> OcamlResult<String> {
+pub fn init_storage(storage_data_dir: String) -> OcamlResult<(String, String)> {
+    runtime::spawn(move || {
+        let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");
+        match ocaml_function.call_exn::<Str>(storage_data_dir.as_str().into()) {
+            Ok(result) => {
+                let ocaml_result: Tuple = result.into();
+                let chain_id: Str = ocaml_result.get(0).unwrap().into();
+                let current_block_header_hash: Str = ocaml_result.get(1).unwrap().into();
+                (chain_id.as_str().to_string(), current_block_header_hash.as_str().to_string())
+            }
+            Err(e) => {
+                panic!("Storage in directory '{}' initialization failed! Reason: {:?}", storage_data_dir, e)
+            }
+        }
+    })
+}
+
+pub fn get_current_block_header(chain_id: String) -> OcamlResult<String> {
     runtime::spawn(move || {
         let ocaml_function = ocaml::named_value("get_current_block_header").expect("function 'get_current_block_header' is not registered");
-        match ocaml_function.call_exn::<Str>(block_header_hash.as_str().into()) {
+        match ocaml_function.call_exn::<Str>(chain_id.as_str().into()) {
             Ok(result) => {
                 let ocaml_result: Str = result.into();
                 ocaml_result.as_str().to_string()

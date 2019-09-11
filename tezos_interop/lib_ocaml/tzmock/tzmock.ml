@@ -3,7 +3,7 @@ exception Ffi_error of string
 let genesis_for_alphanet = "00000000008fcf233671b6a04fcf679d2a381c2544ea6c1ea29ba6157776ed8424affa610d000000005c0157b0000e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a80000000085d3c506cb24f739ca2b9146a7173c65ae8fdac981ccbd359ae27aa9539f2ed0"
 let current_head = ref genesis_for_alphanet
 
-let health_check = fun x: string -> "UP - " ^ x
+let echo = fun x: string -> x
 
 let get_current_block_header _chain_id =
     !current_head
@@ -27,7 +27,7 @@ let apply_block (block_header_hash: string) (block_header : string) (_operations
         | "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627" -> "lvl 3, fit 5, prio 12, 1 ops"
         | _ -> raise (Ffi_error (Printf.sprintf "unknown header: %s" block_header_hash))
 
-let _ = Callback.register "health_check" health_check
+let _ = Callback.register "echo" echo
 let _ = Callback.register "get_current_block_header" get_current_block_header
 let _ = Callback.register "get_block_header" get_block_header
 let _ = Callback.register "apply_block" apply_block

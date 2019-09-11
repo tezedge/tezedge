@@ -189,17 +189,3 @@ pub fn spawn<F, T>(f: F) -> OcamlResult<T>
 
     result_future
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn can_complete_future_with_return_value() {
-        let ocaml_future = spawn(|| {
-            "Hello runtime!"
-        });
-        let ocaml_result = futures::executor::block_on(ocaml_future);
-        assert_eq!("Hello runtime!", ocaml_result)
-    }
-}
