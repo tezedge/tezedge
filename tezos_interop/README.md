@@ -26,4 +26,4 @@ Valid values are:
   * `TEZOS_BASE_DIR` is used to change location of Tezos repository on file system.
 
 ### Running Ocaml runtime
-`STORAGE_DATA_DIR` environment variable is used to specify directory where tezos storage stores data (contex/store). 
+`OCAML_LOG_ENABLED` (default false) environment variable which turn on/off logging in Tezos OCaml runtime.

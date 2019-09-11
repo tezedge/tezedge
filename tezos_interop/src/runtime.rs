@@ -18,18 +18,18 @@ lazy_static! {
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to caml_startup
 struct OcamlRuntimeConfiguration {
-    storage_data_dir: String
+    log_enabled: bool
 }
 
 impl OcamlRuntimeConfiguration {
     /// Creates configuration from
     fn new() -> Self {
-        let storage_data_dir = match env::var("STORAGE_DATA_DIR") {
-            Ok(value) => value,
-            _ => panic!("System variable '{}' should be set!", "STORAGE_DATA_DIR")
-        };
+        let log_enabled:bool = env::var("OCAML_LOG_ENABLED")
+            .unwrap_or("false".to_string())
+            .parse()
+            .unwrap();
         OcamlRuntimeConfiguration {
-            storage_data_dir
+            log_enabled
         }
     }
 }
@@ -38,7 +38,7 @@ impl OcamlRuntimeConfiguration {
 /// Ocaml runtime should always be called from a single thread.
 fn start_ocaml_runtime(ocaml_cfg: &OcamlRuntimeConfiguration) {
     unsafe {
-        let mut data_dir = format!("--data-dir {}", ocaml_cfg.storage_data_dir);
+        let mut data_dir = format!("--log-enabled {}", ocaml_cfg.log_enabled);
 
         let argv: *mut *mut u8 = [
             data_dir.as_mut_str().as_mut_ptr(),
