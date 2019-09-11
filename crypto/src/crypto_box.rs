@@ -1,23 +1,112 @@
-use failure::{Error, Fail};
+use failure::Fail;
+use hex::{FromHex, FromHexError};
 use sodiumoxide::crypto::box_;
 
 use super::nonce::Nonce;
+use std::ops::Deref;
 
 pub const BOX_ZERO_BYTES: usize = 32;
 const CRYPTO_KEY_SIZE: usize = 32;
 const NONCE_SIZE: usize = 24;
 
-pub type PublicKey = box_::PublicKey;
-pub type SecretKey = box_::SecretKey;
-pub type PrecomputedKey = box_::PrecomputedKey;
+#[derive(Clone, PartialEq)]
+pub struct PublicKey(box_::PublicKey);
 
-pub trait FromHexString {
-    type Type: Sized;
-    fn from_hex_str(hex: &str) -> Result<Self::Type, Error>;
+impl AsRef<box_::PublicKey> for PublicKey {
+    fn as_ref(&self) -> &box_::PublicKey {
+        &self.0
+    }
 }
 
-pub fn precompute(pk_as_hex_string: &str, sk_as_hex_string: &str) -> Result<PrecomputedKey, Error> {
-    Ok(box_::precompute(&PublicKey::from_hex_str(pk_as_hex_string)?, &SecretKey::from_hex_str(sk_as_hex_string)?))
+impl Deref for PublicKey {
+    type Target = box_::PublicKey;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromHex for PublicKey {
+    type Error = FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let bytes = hex::decode(hex)?;
+        let mut arr = [0u8; CRYPTO_KEY_SIZE];
+        arr.copy_from_slice(&bytes);
+        Ok(PublicKey(box_::PublicKey(arr)))
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct SecretKey(box_::SecretKey);
+
+impl AsRef<box_::SecretKey> for SecretKey {
+    fn as_ref(&self) -> &box_::SecretKey {
+        &self.0
+    }
+}
+
+impl Deref for SecretKey {
+    type Target = box_::SecretKey;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromHex for SecretKey {
+    type Error = FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let bytes = hex::decode(hex)?;
+        let mut arr = [0u8; CRYPTO_KEY_SIZE];
+        arr.copy_from_slice(&bytes);
+        Ok(SecretKey(box_::SecretKey(arr)))
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct PrecomputedKey(box_::PrecomputedKey);
+
+impl FromHex for PrecomputedKey {
+    type Error = FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let bytes = hex::decode(hex)?;
+        let mut arr = [0u8; CRYPTO_KEY_SIZE];
+        arr.copy_from_slice(&bytes);
+        Ok(PrecomputedKey(box_::PrecomputedKey(arr)))
+    }
+}
+
+impl AsRef<box_::PrecomputedKey> for PrecomputedKey {
+    fn as_ref(&self) -> &box_::PrecomputedKey {
+        &self.0
+    }
+}
+
+impl Deref for PrecomputedKey {
+    type Target = box_::PrecomputedKey;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+
+#[derive(Debug, Fail)]
+pub enum CryptoError {
+    #[fail(display = "invalid nonce size: {}", _0)]
+    InvalidNonceSize(usize),
+    #[fail(display = "failed to decrypt")]
+    FailedToDecrypt,
+}
+
+pub fn precompute(pk_as_hex_string: &str, sk_as_hex_string: &str) -> Result<PrecomputedKey, FromHexError> {
+    Ok(PrecomputedKey(box_::precompute(&*PublicKey::from_hex(pk_as_hex_string)?, &*SecretKey::from_hex(sk_as_hex_string)?)))
 }
 
 pub fn encrypt(msg: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8>, CryptoError> {
@@ -27,7 +116,7 @@ pub fn encrypt(msg: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8
         nonce_arr.copy_from_slice(&nonce_bytes);
         let box_nonce = box_::Nonce(nonce_arr);
 
-        Ok(box_::seal_precomputed(msg, &box_nonce, pck))
+        Ok(box_::seal_precomputed(msg, &box_nonce, &*pck))
     } else {
         Err(CryptoError::InvalidNonceSize(nonce_bytes.len()))
     }
@@ -49,46 +138,6 @@ pub fn decrypt(enc: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8
     }
 }
 
-impl FromHexString for PublicKey {
-    type Type = PublicKey;
-
-    fn from_hex_str(hex: &str) -> Result<PublicKey, Error> {
-        let bytes = hex::decode(hex)?;
-        let mut arr = [0u8; CRYPTO_KEY_SIZE];
-        arr.copy_from_slice(&bytes);
-        Ok(box_::PublicKey(arr))
-    }
-}
-
-impl FromHexString for SecretKey {
-    type Type = SecretKey;
-
-    fn from_hex_str(hex: &str) -> Result<SecretKey, Error> {
-        let bytes = hex::decode(hex)?;
-        let mut arr = [0u8; CRYPTO_KEY_SIZE];
-        arr.copy_from_slice(&bytes);
-        Ok(box_::SecretKey(arr))
-    }
-}
-
-impl FromHexString for PrecomputedKey {
-    type Type = PrecomputedKey;
-
-    fn from_hex_str(hex: &str) -> Result<PrecomputedKey, Error> {
-        let bytes = hex::decode(hex)?;
-        let mut arr = [0u8; CRYPTO_KEY_SIZE];
-        arr.copy_from_slice(&bytes);
-        Ok(box_::PrecomputedKey(arr))
-    }
-}
-
-#[derive(Debug, Fail)]
-pub enum CryptoError {
-    #[fail(display = "invalid nonce size: {}", _0)]
-    InvalidNonceSize(usize),
-    #[fail(display = "failed to decrypt")]
-    FailedToDecrypt,
-}
 
 #[cfg(test)]
 mod tests {
