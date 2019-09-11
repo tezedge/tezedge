@@ -4,14 +4,15 @@ use std::time::{Duration, Instant};
 use log::{debug, warn};
 use riker::actors::*;
 
-use networking::p2p::binary_message::MessageHashError;
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::block_storage::BlockStorage;
-use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
+use storage::block_state::BlockState;
+use tezos_encoding::hash::{HashEncoding, HashType, ToHashRef, HashRef};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
+use storage::operations_state::OperationsState;
+use storage::BlockHeaderWithHash;
 
 const PEER_QUEUE_MAX: usize = 10;
 
@@ -24,8 +25,10 @@ pub struct ChainManager {
     event_channel: ChannelRef<NetworkChannelMsg>,
     /// Holds the state of all peers
     peers: HashMap<ActorUri, PeerState>,
-    /// Holds state of the chain
-    chain: ChainState,
+    /// Holds state of the block chain
+    block_state: BlockState,
+    /// Holds state of the operations
+    operations_state: OperationsState,
 }
 
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
@@ -44,7 +47,7 @@ impl ChainManager {
     }
 
     fn new(event_channel: ChannelRef<NetworkChannelMsg>) -> Self {
-        ChainManager { event_channel, chain: ChainState::new(), peers: HashMap::new() }
+        ChainManager { event_channel, block_state: BlockState::new(), operations_state: OperationsState::new(), peers: HashMap::new() }
     }
 }
 
@@ -82,7 +85,7 @@ impl Receive<SystemEvent> for ChainManager {
             if let Some(mut peer) = self.peers.remove(evt.actor.uri()) {
                 peer.queued_blocks
                     .drain()
-                    .for_each(|block_hash| self.chain.schedule_block_hash(block_hash));
+                    .for_each(|block_hash| self.block_state.schedule_block_hash(block_hash));
             }
         }
     }
@@ -93,19 +96,19 @@ impl Receive<CheckChainCompleteness> for ChainManager {
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
         debug!("Checking chain state");
-        let ChainManager { peers, chain, .. } = self;
+        let ChainManager { peers, block_state, .. } = self;
 
-        if !chain.missing_blocks.is_empty() {
+        if block_state.has_missing_blocks() {
             debug!("Chain is not complete");
             peers.iter_mut()
                 .for_each(|(_, peer)| {
-                    let peer_queue_capacity = peer.queue_capacity();
-                    if peer_queue_capacity != 0 {
-                        let get_block_headers = chain.move_to_queue(peer_queue_capacity);
+                    let available_capacity = peer.available_queue_capacity();
+                    if available_capacity > 0 {
+                        let get_block_headers = block_state.move_to_queue(available_capacity);
                         if !get_block_headers.is_empty() {
                             debug!("Requesting {} blocks from peer {}", get_block_headers.len(), &peer.peer_ref);
                             peer.queued_blocks.extend(get_block_headers.clone());
-                            let msg = GetBlockHeadersMessage { get_block_headers };
+                            let msg = GetBlockHeadersMessage { get_block_headers: get_block_headers.iter().map(HashRef::get_hash).collect() };
                             tell_peer(msg.into(), peer);
                         }
                     }
@@ -127,7 +130,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                 self.peers.insert(peer.peer_ref.uri().clone(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
-                let ChainManager { peers, chain, .. } = self;
+                let ChainManager { peers, block_state, operations_state, .. } = self;
 
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
@@ -139,16 +142,22 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
                                     message.current_branch.history.iter()
-                                        .for_each(|block_hash| chain.schedule_block_hash(block_hash.clone()))
+                                        .map(|block_hash| block_hash.clone().to_hash_ref())
+                                        .for_each(|block_hash| block_state.schedule_block_hash(block_hash));
+                                    // trigger CheckChainCompleteness
+                                    ctx.myself().tell(CheckChainCompleteness, None);
                                 }
                                 PeerMessage::GetCurrentBranch(_) => {
                                     debug!("Current branch requested by peer: {}", &received.peer);
                                     // .. ignore
                                 }
                                 PeerMessage::BlockHeader(message) => {
-                                    let block_hash = chain.insert_block_header(message.block_header.clone()).expect("Failed to store block header");
-                                    if peer.queued_blocks.remove(&block_hash) {
+                                    let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
+                                    block_state.insert_block_header(block_header.clone());
+                                    if peer.queued_blocks.remove(&block_header.hash) {
                                         debug!("Received block header from peer: {}", &received.peer);
+                                        operations_state.insert_block_header(&block_header);
+                                        // trigger CheckChainCompleteness
                                         ctx.myself().tell(CheckChainCompleteness, None);
                                     } else {
                                         warn!("Received unexpected block header from peer: {}", &received.peer);
@@ -172,7 +181,7 @@ pub fn genesis_chain_id() -> Vec<u8> {
 
 struct PeerState {
     peer_ref: PeerRef,
-    queued_blocks: HashSet<BlockHash>,
+    queued_blocks: HashSet<HashRef>,
     request_last: Instant,
     response_last: Instant,
 }
@@ -187,7 +196,7 @@ impl PeerState {
         }
     }
 
-    fn queue_capacity(&self) -> usize {
+    fn available_queue_capacity(&self) -> usize {
         if self.queued_blocks.len() < PEER_QUEUE_MAX {
             PEER_QUEUE_MAX - self.queued_blocks.len()
         } else {
@@ -196,44 +205,7 @@ impl PeerState {
     }
 }
 
-struct ChainState {
-    block_store: BlockStorage,
-    missing_blocks: HashSet<BlockHash>,
-}
 
-impl ChainState {
-    pub fn new() -> Self {
-        ChainState {
-            block_store: BlockStorage::new(),
-            missing_blocks: HashSet::new(),
-        }
-    }
-
-    pub fn insert_block_header(&mut self, block: BlockHeader) -> Result<BlockHash, MessageHashError> {
-        // check if we already have seen predecessor
-        if !self.block_store.is_present(&block.predecessor) {
-            // block was not seen before
-            self.missing_blocks.insert(block.predecessor.clone());
-        }
-        // store block
-        let block_hash = self.block_store.insert(block)?;
-        // remove from missing blocks
-        self.missing_blocks.remove(&block_hash);
-        Ok(block_hash)
-    }
-
-    pub fn schedule_block_hash(&mut self, block_hash: BlockHash) {
-        if !self.block_store.is_present(&block_hash) {
-            self.missing_blocks.insert(block_hash);
-        }
-    }
-
-    pub fn move_to_queue(&mut self, n: usize) -> Vec<BlockHash> {
-        self.missing_blocks.drain()
-            .take(n)
-            .collect()
-    }
-}
 
 fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
     peer.peer_ref.tell(SendMessage::new(msg), None);

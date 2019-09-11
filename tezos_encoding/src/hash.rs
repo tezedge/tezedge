@@ -1,4 +1,6 @@
-use crypto::base58::{ToBase58Check, FromBase58Check, FromBase58CheckError};
+use std::sync::Arc;
+
+use crypto::base58::{FromBase58Check, FromBase58CheckError, ToBase58Check};
 
 mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
@@ -85,6 +87,35 @@ impl HashEncoding {
         Ok(hash)
     }
 }
+
+
+#[derive(Clone, Hash, PartialEq, PartialOrd, Debug, Eq)]
+pub struct HashRef {
+    hash: Arc<Hash>,
+}
+
+impl HashRef {
+    pub fn new(hash: Hash) -> Self {
+        HashRef { hash: Arc::new(hash) }
+    }
+
+    pub fn get_hash(&self) -> Hash {
+        (*self.hash).clone()
+    }
+}
+
+pub trait ToHashRef {
+    fn to_hash_ref(self) -> HashRef;
+}
+
+
+
+impl<T: AsRef<[u8]>> ToHashRef for T {
+    fn to_hash_ref(self) -> HashRef {
+        HashRef::new(self.as_ref().to_vec())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
