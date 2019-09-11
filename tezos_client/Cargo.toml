@@ -1,0 +1,13 @@
+[package]
+name = "tezos_client"
+version = "0.1.0"
+authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
+edition = "2018"
+
+[dependencies]
+log = "0.4.8"
+
+# local dependencies
+networking = { path = "../networking" }
+tezos_encoding = { path = "../tezos_encoding" }
+tezos_interop = { path = "../tezos_interop" }

@@ -1520,6 +1520,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezos_client"
+version = "0.1.0"
+dependencies = [
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "networking 0.1.0",
+ "tezos_encoding 0.1.0",
+ "tezos_interop 0.1.0",
+]
+
+[[package]]
 name = "tezos_encoding"
 version = "0.1.0"
 dependencies = [
