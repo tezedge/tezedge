@@ -3,6 +3,7 @@ members = [
     "crypto",
     "tezos_interop",
     "tezos_encoding",
+    "tezos_client",
     "networking",
     "shell",
     "storage",
