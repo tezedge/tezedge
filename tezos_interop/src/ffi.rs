@@ -11,12 +11,14 @@
 //        TODO: operations VecVecString - zmenit na realnu strukturu: OperationsListList alebo len Operations - este uvidime
 //        TODO: vyskusat ci sa neda Array zmenit na List a ci to zafunguje potom aj v list ocaml?
 
-//        TODO: error handling pre apply_block
+//        TODO: error handling pre apply_block - opravite ffi:runtime
 
 //        TODO: moznost inicializacie runtimu pre rozne storage - lazy_static
 
 //        TODO: od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
 //TODO: zmenit za reaalne chain_id a current_head_hash cez encodingy
+
+// TODO: spravit benches pre bootstrap test a zoptimalizovat ocaml s logovanim a bez logovania
 
 use log::warn;
 use ocaml::{Array, Str, Tuple};
