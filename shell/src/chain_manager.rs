@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
@@ -11,10 +12,11 @@ use storage::block_state::BlockState;
 use tezos_encoding::hash::{HashEncoding, HashType, ToHashRef, HashRef};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
-use storage::operations_state::OperationsState;
+use storage::operations_state::{OperationsState, MissingOperations};
 use storage::BlockHeaderWithHash;
 
-const PEER_QUEUE_MAX: usize = 10;
+const PEER_QUEUE_MAX: usize = 15;
+const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
@@ -83,9 +85,11 @@ impl Receive<SystemEvent> for ChainManager {
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
         if let SystemEvent::ActorTerminated(evt) = msg {
             if let Some(mut peer) = self.peers.remove(evt.actor.uri()) {
-                peer.queued_blocks
+                peer.queued_block_headers
                     .drain()
                     .for_each(|block_hash| self.block_state.schedule_block_hash(block_hash));
+
+                self.operations_state.return_from_queue(peer.queued_operations.drain().map(|(_, op)| op))
             }
         }
     }
@@ -95,22 +99,39 @@ impl Receive<CheckChainCompleteness> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
-        debug!("Checking chain state");
-        let ChainManager { peers, block_state, .. } = self;
+        let ChainManager { peers, block_state, operations_state, .. } = self;
 
         if block_state.has_missing_blocks() {
-            debug!("Chain is not complete");
+            peers.iter_mut()
+                .for_each(|(_, peer)| {
+                    let available_capacity = cmp::min(peer.available_queue_capacity(), BLOCK_HEADERS_BATCH_SIZE);
+                    if available_capacity > 0 {
+                        let missing_block_headers = block_state.move_to_queue(available_capacity);
+                        if !missing_block_headers.is_empty() {
+                            debug!("Requesting {} block headers from peer {}", missing_block_headers.len(), &peer.peer_ref);
+                            peer.queued_block_headers.extend(missing_block_headers.clone());
+                            let msg = GetBlockHeadersMessage { get_block_headers: missing_block_headers.iter().map(HashRef::get_hash).collect() };
+                            tell_peer(msg.into(), peer);
+                        }
+                    }
+                })
+        }
+
+        if operations_state.has_missing_operations() {
             peers.iter_mut()
                 .for_each(|(_, peer)| {
                     let available_capacity = peer.available_queue_capacity();
                     if available_capacity > 0 {
-                        let get_block_headers = block_state.move_to_queue(available_capacity);
-                        if !get_block_headers.is_empty() {
-                            debug!("Requesting {} blocks from peer {}", get_block_headers.len(), &peer.peer_ref);
-                            peer.queued_blocks.extend(get_block_headers.clone());
-                            let msg = GetBlockHeadersMessage { get_block_headers: get_block_headers.iter().map(HashRef::get_hash).collect() };
-                            tell_peer(msg.into(), peer);
-                        }
+                        let missing_operations = operations_state.move_to_queue(available_capacity);
+                        debug!("Requesting {} operations from peer {}", missing_operations.len(), &peer.peer_ref);
+                        missing_operations.iter()
+                            .for_each(|operations| {
+                                peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
+                                let msg = GetOperationsForBlocksMessage {
+                                    get_operations_for_blocks: operations.into()
+                                };
+                                tell_peer(msg.into(), peer);
+                            });
                     }
                 })
         }
@@ -154,7 +175,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
                                     block_state.insert_block_header(block_header.clone());
-                                    if peer.queued_blocks.remove(&block_header.hash) {
+                                    if peer.queued_block_headers.remove(&block_header.hash) {
                                         debug!("Received block header from peer: {}", &received.peer);
                                         operations_state.insert_block_header(&block_header);
                                         // trigger CheckChainCompleteness
@@ -163,6 +184,33 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                         warn!("Received unexpected block header from peer: {}", &received.peer);
                                         ctx.system.stop(received.peer.clone());
                                     }
+                                }
+                                PeerMessage::OperationsForBlocks(operations) => {
+                                    let block_hash = operations.operations_for_block.hash.clone().to_hash_ref();
+                                    let mut operations_completed = false;
+                                    match peer.queued_operations.get_mut(&block_hash) {
+                                        Some(missing_operations) => {
+                                            if missing_operations.validation_passes.remove(&operations.operations_for_block.validation_pass) {
+                                                debug!("Received operations vp #{} from peer: {}", operations.operations_for_block.validation_pass, &received.peer);
+                                                operations_completed = missing_operations.validation_passes.is_empty();
+                                                operations_state.insert_operations(operations.clone());
+                                                // trigger CheckChainCompleteness
+                                                ctx.myself().tell(CheckChainCompleteness, None);
+                                            } else {
+                                                warn!("Received unexpected validation pass from peer: {}", &received.peer);
+                                                ctx.system.stop(received.peer.clone());
+                                            }
+                                        },
+                                        None => {
+                                            warn!("Received unexpected operations from peer: {}", &received.peer);
+                                            ctx.system.stop(received.peer.clone());
+                                        }
+                                    }
+                                    if operations_completed {
+                                        peer.queued_operations.remove(&block_hash);
+                                    }
+
+
                                 }
                                 _ => debug!("Ignored message: {:?}", message)
                             })
@@ -181,7 +229,8 @@ pub fn genesis_chain_id() -> Vec<u8> {
 
 struct PeerState {
     peer_ref: PeerRef,
-    queued_blocks: HashSet<HashRef>,
+    queued_block_headers: HashSet<HashRef>,
+    queued_operations: HashMap<HashRef, MissingOperations>,
     request_last: Instant,
     response_last: Instant,
 }
@@ -190,15 +239,17 @@ impl PeerState {
     fn new(peer_ref: PeerRef) -> Self {
         PeerState {
             peer_ref,
-            queued_blocks: HashSet::new(),
+            queued_block_headers: HashSet::new(),
+            queued_operations: HashMap::new(),
             request_last: Instant::now(),
             response_last: Instant::now(),
         }
     }
 
     fn available_queue_capacity(&self) -> usize {
-        if self.queued_blocks.len() < PEER_QUEUE_MAX {
-            PEER_QUEUE_MAX - self.queued_blocks.len()
+        let queued_count = self.queued_block_headers.len() + self.queued_operations.len();
+        if queued_count < PEER_QUEUE_MAX {
+            PEER_QUEUE_MAX - queued_count
         } else {
             0
         }

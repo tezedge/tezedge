@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use networking::p2p::encoding::prelude::*;
@@ -36,7 +36,7 @@ impl Operations {
         self.values.iter().all(Option::is_some)
     }
 
-    pub fn get_missing_validation_passes(&self) -> Vec<i8> {
+    pub fn get_missing_validation_passes(&self) -> HashSet<i8> {
         self.values.iter().enumerate()
             .filter(|(_, value)| value.is_none())
             .map(|(idx, _)| idx as i8)

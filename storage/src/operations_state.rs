@@ -1,10 +1,11 @@
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{HashRef, ToHashRef};
 
-use crate::operations_storage::OperationsStorage;
 use crate::BlockHeaderWithHash;
+use crate::operations_storage::OperationsStorage;
 
 pub struct OperationsState {
     storage: OperationsStorage,
@@ -57,9 +58,50 @@ impl OperationsState {
             })
             .collect()
     }
+
+    pub fn return_from_queue<Q: Iterator<Item=MissingOperations>>(&mut self, operations: Q) {
+        operations
+            .for_each(|op| {
+                self.missing_operations_for_blocks.insert(op.block_hash);
+            })
+    }
+
+    pub fn has_missing_operations(&self) -> bool {
+        !self.missing_operations_for_blocks.is_empty()
+    }
 }
 
+#[derive(Clone)]
 pub struct MissingOperations {
     pub block_hash: HashRef,
-    pub validation_passes: Vec<i8>
+    pub validation_passes: HashSet<i8>
+}
+
+impl PartialEq for MissingOperations {
+    fn eq(&self, other: &Self) -> bool {
+        self.block_hash == other.block_hash
+    }
+}
+
+impl Eq for MissingOperations {}
+
+impl Hash for MissingOperations {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.block_hash.hash(state);
+    }
+}
+
+
+impl From<&MissingOperations> for Vec<OperationsForBlock> {
+    fn from(ops: &MissingOperations) -> Self {
+        ops.validation_passes
+            .iter()
+            .map(|vp| {
+                OperationsForBlock {
+                    hash: ops.block_hash.get_hash(),
+                    validation_pass: *vp
+                }
+            })
+            .collect()
+    }
 }
