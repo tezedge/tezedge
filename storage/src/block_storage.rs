@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use networking::p2p::encoding::prelude::*;
-use networking::p2p::binary_message::{MessageHash, MessageHashError};
-use tezos_encoding::hash::BlockHash;
+use tezos_encoding::hash::HashRef;
+
+use crate::BlockHeaderWithHash;
 
 /// Structure for representing in-memory db for - just for demo purposes.
-pub struct BlockStorage(HashMap<BlockHash, BlockHeader>);
+pub struct BlockStorage(HashMap<HashRef, BlockHeaderWithHash>);
 
 impl BlockStorage {
 
@@ -13,17 +13,15 @@ impl BlockStorage {
         BlockStorage(HashMap::new())
     }
 
-    pub fn insert(&mut self, block: BlockHeader) -> Result<BlockHash, MessageHashError> {
-        let key = block.message_hash()?;
-        self.0.insert(key.clone(), block);
-        Ok(key)
+    pub fn insert(&mut self, block: BlockHeaderWithHash) {
+        self.0.insert(block.hash.clone(), block);
     }
 
-    pub fn get(&self, block_hash: &[u8]) -> Option<&BlockHeader> {
+    pub fn get(&self, block_hash: &HashRef) -> Option<&BlockHeaderWithHash> {
         self.0.get(block_hash)
     }
 
-    pub fn is_present(&self, block_hash: &[u8]) -> bool {
+    pub fn is_present(&self, block_hash: &HashRef) -> bool {
         self.0.contains_key(block_hash)
     }
 }

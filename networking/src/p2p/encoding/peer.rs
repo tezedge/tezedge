@@ -99,3 +99,4 @@ into_peer_message!(AdvertiseMessage, Advertise);
 into_peer_message!(GetCurrentBranchMessage, GetCurrentBranch);
 into_peer_message!(GetBlockHeadersMessage, GetBlockHeaders);
 into_peer_message!(GetCurrentHeadMessage, GetCurrentHead);
+into_peer_message!(GetOperationsForBlocksMessage, GetOperationsForBlocks);

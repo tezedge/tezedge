@@ -7,7 +7,7 @@ use tezos_encoding::hash::{BlockHash, HashEncoding, HashType, Hash};
 use crate::p2p::encoding::operation::Operation;
 use std::rc::Rc;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OperationsForBlock {
     pub hash: BlockHash,
     pub validation_pass: i8
@@ -23,7 +23,7 @@ impl HasEncoding for OperationsForBlock {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OperationsForBlocksMessage {
     pub operations_for_block: OperationsForBlock,
     pub operation_hashes_path: Path,
@@ -41,7 +41,7 @@ impl HasEncoding for OperationsForBlocksMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PathRight {
     pub left: Hash,
     pub path: Path,
@@ -56,7 +56,7 @@ impl HasEncoding for PathRight {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PathLeft {
     pub path: Path,
     pub right: Hash
@@ -71,7 +71,7 @@ impl HasEncoding for PathLeft {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Path {
     Left(Box<PathLeft>),
     Right(Box<PathRight>),
