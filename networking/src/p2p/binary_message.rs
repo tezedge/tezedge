@@ -42,7 +42,6 @@ impl<T> BinaryMessage for T
         writer.write(self, &Self::encoding())
     }
 
-    /// Create new struct from bytes.
     fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError> {
         let reader = BinaryReader::new();
         let value = reader.read(buf, &Self::encoding())?;
@@ -160,5 +159,27 @@ impl<T: BinaryMessage> MessageHash for T {
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
         Ok(blake2b::digest(&bytes))
+    }
+}
+
+/// Trait for converting messages from/to HEX string
+pub trait Hexable {
+    /// Produce HEX string from the struct.
+    fn as_hex(&self) -> String;
+
+    /// Create new struct from HEX string.
+    fn from_hex(hex: String) -> Self;
+}
+
+impl<T: BinaryMessage> Hexable for T {
+
+    fn as_hex(&self) -> String {
+        self.as_bytes()
+            .map(|bm| hex::encode(bm))
+            .unwrap()
+    }
+
+    fn from_hex(hex: String) -> T {
+        Self::from_bytes(hex::decode(hex).unwrap()).unwrap()
     }
 }
