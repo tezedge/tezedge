@@ -200,7 +200,11 @@ fn initialize_environment(ocaml_cfg: OcamlRuntimeConfiguration) -> OcamlEnvironm
     OcamlEnvironment { spawner }
 }
 
-/// Run a function in ocaml runtime and return a result.
+/// Run a function in ocaml runtime and return a result future.
+///
+/// # Arguments
+///
+/// * `f` - the function will be executed in ocaml thread context
 pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     where
         F: FnOnce() -> T + 'static + Send,
@@ -213,4 +217,17 @@ pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     OCAML_ENV.spawner.spawn(task).expect("Failed to spawn task");
 
     result_future
+}
+
+/// Synchronously execute provided function
+///
+/// # Arguments
+///
+/// * `f` - the function will be executed in ocaml thread context
+pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
+    where
+        F: FnOnce() -> T + 'static + Send,
+        T: 'static + Send
+{
+    futures::executor::block_on(spawn(f))
 }
