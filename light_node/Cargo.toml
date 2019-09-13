@@ -24,3 +24,4 @@ crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
+tezos_client = { path = "../tezos_client" }

@@ -28,6 +28,7 @@ pub struct Environment {
     pub identity_json_file_path: Option<PathBuf>,
     pub log_message_contents: bool,
     pub bootstrap_db_path: PathBuf,
+    pub tezos_data_dir: PathBuf,
 }
 
 impl Environment {
@@ -77,6 +78,12 @@ impl Environment {
                 .takes_value(true)
                 .default_value("bootstrap_db")
                 .help("Path to bootstrap database directory. Default: bootstrap_db"))
+            .arg(Arg::with_name("tezos-data-dir")
+                .short("d")
+                .long("tezos-data-dir")
+                .takes_value(true)
+                .required(true)
+                .help("A directory for Tezos OCaml runtime storage (context/store)"))
             .get_matches();
 
         Environment {
@@ -110,6 +117,9 @@ impl Environment {
                 ).unwrap_or(Vec::new()),
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
+            tezos_data_dir: args.value_of("tezos-data-dir")
+                .map(PathBuf::from)
+                .unwrap(),
             log_message_contents: args.value_of("log-message-contents")
                 .unwrap()
                 .parse::<bool>()
