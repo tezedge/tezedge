@@ -3,21 +3,28 @@ use std::sync::Arc;
 
 use log::trace;
 
-use tezos_encoding::hash::{HashRef, ToHashRef};
+use tezos_encoding::hash::{HashRef, ToHashRef, ChainId, BlockHash};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_storage::{BlockStorage, BlockStorageDatabase};
+use crate::block_storage::BlockStorage;
+use crate::BlockHeaderWithHash;
+use std::sync::{Arc, Mutex};
 
 pub struct BlockState {
     storage: BlockStorage,
     missing_blocks: HashSet<HashRef>,
+    current_head: Arc<Mutex<HashRef>>,
+    current_chain_id: HashRef,
 }
 
 impl BlockState {
-    pub fn new(db: Arc<BlockStorageDatabase>) -> Self {
+    pub fn new(db: Arc<BlockStorageDatabase>, chain_id: ChainId, current_head: BlockHash) -> Self {
         BlockState {
             storage: BlockStorage::new(db),
             missing_blocks: HashSet::new(),
+            current_head: Arc::new(Mutex::new(current_head.to_hash_ref())),
+            current_chain_id: chain_id.to_hash_ref()
         }
     }
 
@@ -50,5 +57,9 @@ impl BlockState {
 
     pub fn has_missing_blocks(&self) -> bool {
         !self.missing_blocks.is_empty()
+    }
+
+    pub fn get_current_chain_id(&self) -> ChainId {
+        self.current_chain_id.get_hash()
     }
 }

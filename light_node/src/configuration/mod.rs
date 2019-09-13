@@ -28,7 +28,7 @@ pub struct Environment {
     pub identity_json_file_path: Option<PathBuf>,
     pub log_message_contents: bool,
     pub bootstrap_db_path: PathBuf,
-    pub tezos_data_dir: PathBuf,
+    pub tezos_data_dir: String,
 }
 
 impl Environment {
@@ -118,8 +118,8 @@ impl Environment {
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
             tezos_data_dir: args.value_of("tezos-data-dir")
-                .map(PathBuf::from)
-                .unwrap(),
+                .unwrap()
+                .to_string(),
             log_message_contents: args.value_of("log-message-contents")
                 .unwrap()
                 .parse::<bool>()

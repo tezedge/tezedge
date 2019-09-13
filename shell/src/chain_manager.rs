@@ -10,7 +10,8 @@ use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
-use tezos_encoding::hash::{HashEncoding, HashRef, HashType, ToHashRef};
+use tezos_encoding::hash::{ToHashRef, HashRef};
+use tezos_client::client;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 
@@ -35,9 +36,9 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_data_dir: String) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (event_channel, rocks_db)),
+            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_data_dir)),
             ChainManager::name())
     }
 
@@ -47,10 +48,11 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((event_channel, rocks_db): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>)) -> Self {
+    fn new((event_channel, rocks_db, tezos_data_dir): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, String)) -> Self {
+        let (chain_id, current_head_hash) = client::init_storage(tezos_data_dir);
         ChainManager {
             event_channel,
-            block_state: BlockState::new(rocks_db.clone()),
+            block_state: BlockState::new(rocks_db.clone(), chain_id, current_head_hash),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new()
         }
@@ -151,17 +153,17 @@ impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+        let ChainManager { peers, block_state, operations_state, .. } = self;
+
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
                 let mut peer = PeerState::new(msg.peer);
-                tell_peer(GetCurrentBranchMessage::new(genesis_chain_id()).into(), &mut peer);
+                tell_peer(GetCurrentBranchMessage::new(block_state.get_current_chain_id()).into(), &mut peer);
                 // store peer
                 self.peers.insert(peer.peer_ref.uri().clone(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
-                let ChainManager { peers, block_state, operations_state, .. } = self;
-
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
                         peer.response_last = Instant::now();
@@ -230,10 +232,6 @@ impl Receive<NetworkChannelMsg> for ChainManager {
             _ => (),
         }
     }
-}
-
-pub fn genesis_chain_id() -> Vec<u8> {
-    HashEncoding::new(HashType::ChainId).string_to_bytes("NetXgtSLGNJvNye").unwrap()
 }
 
 struct PeerState {
