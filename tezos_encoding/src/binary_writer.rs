@@ -637,7 +637,7 @@ mod tests {
 
         let mut writer = BinaryWriter::new();
         let writer_result = writer.write(&record, &record_encoding);
-        assert_eq!(true, writer_result.is_ok());
+        assert!(writer_result.is_ok());
 
         let expected_writer_result = hex::decode("00000020ff0000000500000020000000080000000c00000022ffa1aaeac40b4028ae147ae147ae0200000012000000014100010001000000014200020000").expect("Failed to decode");
         assert_eq!(expected_writer_result, writer_result.unwrap());
