@@ -595,6 +595,7 @@ dependencies = [
  "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
  "shell 0.1.0",
  "storage 0.1.0",
+ "tezos_client 0.1.0",
  "tezos_encoding 0.1.0",
  "tokio 0.2.0-alpha.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
