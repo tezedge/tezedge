@@ -11,7 +11,7 @@ use tezos_interop::ffi;
 pub fn init_storage(storage_data_dir: String) -> (ChainId, BlockHash) {
     let (chain_id, current_block_header_hash) = futures::executor::block_on(
         ffi::init_storage(storage_data_dir)
-    );
+    ).unwrap(); // TODO: error handling
     (
         hex::decode(chain_id).unwrap(),
         hex::decode(current_block_header_hash).unwrap(),
@@ -21,14 +21,14 @@ pub fn init_storage(storage_data_dir: String) -> (ChainId, BlockHash) {
 pub fn get_current_block_header(chain_id: &ChainId) -> BlockHeader {
     let current_block_header = futures::executor::block_on(
         ffi::get_current_block_header(hex::encode(chain_id))
-    );
+    ).unwrap(); // TODO: error handling
     BlockHeader::from_hex(current_block_header)
 }
 
 pub fn get_block_header(block_header_hash: &BlockHash) -> Option<BlockHeader> {
     let block_header = futures::executor::block_on(
         ffi::get_block_header(hex::encode(block_header_hash))
-    );
+    ).unwrap(); // TODO: error handling
     block_header.map(|bh| BlockHeader::from_hex(bh))
 }
 
@@ -45,7 +45,7 @@ pub fn apply_block(
             block_header.as_hex(),
             to_hex_vec(operations),
         )
-    );
+    ).unwrap(); // TODO: error handling
 
     // TODO: what to return? validation_result? context_hash? context?
     // TODO: returning just validation_message now
