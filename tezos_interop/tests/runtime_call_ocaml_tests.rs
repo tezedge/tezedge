@@ -1,23 +1,25 @@
-use ocaml::Str;
 use tezos_interop::runtime;
+use tezos_interop::runtime::OcamlError;
 
 #[test]
-fn can_complete_future_with_return_value() {
-    let ocaml_future = runtime::spawn(|| {
-        "Hello runtime!"
-    });
-    let ocaml_result = futures::executor::block_on(ocaml_future);
-    assert_eq!("Hello runtime!", ocaml_result)
+fn can_complete_future_with_return_value() -> Result<(), OcamlError> {
+    let ocaml_result = runtime::execute(|| "Hello runtime!")?;
+    Ok(assert_eq!("Hello runtime!", ocaml_result))
 }
 
 #[test]
-fn can_call_ocaml_fn_echo() {
-    let arg = "Hello ocaml!";
-    let ocaml_future = runtime::spawn(move || {
-        let ocaml_function = ocaml::named_value("echo").expect("function 'echo' not registered");
-        let ocaml_result: Str = ocaml_function.call::<Str>(arg.into()).unwrap().into();
-        ocaml_result.as_str().to_string()
+fn can_complete_future_with_unregistered_function() {
+    let res = runtime::execute(|| {
+        let _ = ocaml::named_value("__non_existing_fn")
+            .expect("function '__non_existing_fn' is not registered");
     });
-    let ocaml_result = futures::executor::block_on(ocaml_future);
-    assert_eq!("Hello ocaml!", &ocaml_result)
+    assert!(res.is_err())
+}
+
+#[test]
+fn can_complete_future_with_error() {
+    let res = runtime::execute(|| {
+        panic!("Error occurred");
+    });
+    assert!(res.is_err())
 }

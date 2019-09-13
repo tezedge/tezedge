@@ -1,3 +1,5 @@
+use std::error;
+use std::fmt;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
@@ -9,6 +11,7 @@ use std::task::{Context, Poll, Waker};
 use ocaml::core::callback::caml_startup;
 
 use lazy_static::lazy_static;
+use std::panic::AssertUnwindSafe;
 
 lazy_static! {
     /// Because ocaml runtime should be accessed only by a single thread
@@ -49,13 +52,32 @@ fn start_ocaml_runtime(ocaml_cfg: &OcamlRuntimeConfiguration) {
     }
 }
 
-/// The result received from ocaml side.
+/// Ocaml execution error
+pub struct OcamlError;
+
+impl error::Error for OcamlError { }
+
+impl fmt::Display for OcamlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Ocaml error")
+    }
+}
+
+impl fmt::Debug for OcamlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Ocaml error")
+    }
+}
+
+type TaskResultHolder<T> = Arc<Mutex<Option<Result<T, OcamlError>>>>;
+
+/// The future for the result received from ocaml side.
 /// Value is not available immediately but caller will have to await for it.
 pub struct OcamlResult<T>
     where T: Send
 {
     /// will contain result of `OcamlTask`
-    result: Arc<Mutex<Option<T>>>,
+    result: TaskResultHolder<T>,
     /// shared state between `OcamlTask` and `OcamlResult`
     state: Arc<Mutex<SharedState>>,
 }
@@ -64,7 +86,7 @@ pub struct OcamlResult<T>
 impl<T> Future for OcamlResult<T>
     where T: Send
 {
-    type Output = T;
+    type Output = Result<T, OcamlError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut result = self.result.lock().unwrap();
@@ -98,7 +120,7 @@ impl OcamlTask {
     /// * `f` - the function will be executed in ocaml thread context
     /// * `f_result_holder` - will hold result of the `f` after `f`'s completion
     /// * `shared_state` - shared state between `OcamlTask` and `OcamlResult`
-    fn new<F, T>(f: F, f_result_holder: Arc<Mutex<Option<T>>>, shared_state: Arc<Mutex<SharedState>>) -> OcamlTask
+    fn new<F, T>(f: F, f_result_holder: TaskResultHolder<T>, shared_state: Arc<Mutex<SharedState>>) -> OcamlTask
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static
@@ -106,7 +128,10 @@ impl OcamlTask {
         OcamlTask {
             op: Box::new(move || {
                 let mut result = f_result_holder.lock().unwrap();
-                *result = Some(f());
+                match std::panic::catch_unwind(AssertUnwindSafe(|| f())) {
+                    Ok(f_result) => *result = Some(Ok(f_result)),
+                    Err(_) => *result = Some(Err(OcamlError))
+                }
             }),
             state: shared_state,
         }
@@ -175,7 +200,11 @@ fn initialize_environment(ocaml_cfg: OcamlRuntimeConfiguration) -> OcamlEnvironm
     OcamlEnvironment { spawner }
 }
 
-/// Run a function in ocaml runtime and return a result.
+/// Run a function in ocaml runtime and return a result future.
+///
+/// # Arguments
+///
+/// * `f` - the function will be executed in ocaml thread context
 pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     where
         F: FnOnce() -> T + 'static + Send,
@@ -188,4 +217,17 @@ pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     OCAML_ENV.spawner.spawn(task).expect("Failed to spawn task");
 
     result_future
+}
+
+/// Synchronously execute provided function
+///
+/// # Arguments
+///
+/// * `f` - the function will be executed in ocaml thread context
+pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
+    where
+        F: FnOnce() -> T + 'static + Send,
+        T: 'static + Send
+{
+    futures::executor::block_on(spawn(f))
 }

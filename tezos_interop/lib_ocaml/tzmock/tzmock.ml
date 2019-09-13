@@ -17,7 +17,7 @@ let get_block_header block_header_hash =
     | "4a1cd74b27753224400dda2308dba12577072aee3a947e5525fcf9af242db3fd" ->
         raise (Ffi_error (Printf.sprintf "no header found for hash: %s" block_header_hash))
     | "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a" ->
-        raise (Ffi_error (Printf.sprintf "no header found for hash: %s" block_header_hash))
+        ""
     | _ ->
         raise (Ffi_error (Printf.sprintf "no header found for hash: %s" block_header_hash))
 
@@ -31,6 +31,7 @@ let apply_block (block_header_hash: string) (block_header : string) (_operations
         | "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627" -> "lvl 3, fit 5, prio 12, 1 ops"
         | _ -> raise (Ffi_error (Printf.sprintf "unknown header: %s" block_header_hash))
 
+let _ = Callback.register_exception "ffi_error" (Ffi_error "Error")
 let _ = Callback.register "echo" echo
 let _ = Callback.register "init_storage" init_storage
 let _ = Callback.register "get_current_block_header" get_current_block_header
