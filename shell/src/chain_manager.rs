@@ -8,12 +8,10 @@ use riker::actors::*;
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::block_state::BlockState;
-use tezos_encoding::hash::{HashEncoding, HashType, ToHashRef, HashRef};
+use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
+use tezos_encoding::hash::{HashEncoding, HashRef, HashType, ToHashRef};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
-use storage::operations_state::{OperationsState, MissingOperations};
-use storage::BlockHeaderWithHash;
 
 const PEER_QUEUE_MAX: usize = 15;
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;

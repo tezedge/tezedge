@@ -3,11 +3,11 @@ use networking::p2p::encoding::prelude::BlockHeader;
 use tezos_encoding::hash::{HashRef, ToHashRef};
 use std::sync::Arc;
 
-pub mod block_storage;
-pub mod operations_storage;
+//mod persistent;
+mod block_storage;
+mod operations_storage;
 pub mod operations_state;
 pub mod block_state;
-pub mod persistent;
 
 
 #[derive(Clone)]
@@ -24,3 +24,6 @@ impl BlockHeaderWithHash {
         })
     }
 }
+
+pub use block_state::BlockState;
+pub use operations_state::{OperationsState, MissingOperations};

@@ -57,6 +57,10 @@ opam update
 opam install dune
 ```
 
+Install libs required to build RocksDB package:
+```
+sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers
+```
 
 Building
 --------
