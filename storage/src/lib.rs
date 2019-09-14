@@ -3,7 +3,7 @@ use networking::p2p::encoding::prelude::BlockHeader;
 use tezos_encoding::hash::{HashRef, ToHashRef};
 use std::sync::Arc;
 
-//mod persistent;
+mod persistent;
 mod block_storage;
 mod operations_storage;
 pub mod operations_state;

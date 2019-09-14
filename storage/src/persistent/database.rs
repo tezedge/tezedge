@@ -1,35 +1,79 @@
-use rocksdb::{DB, ReadOptions, WriteOptions};
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
 
-use crate::persistent::schema::{Schema, SchemaError, SchemaIterator};
+use failure::Fail;
+use rocksdb::{DB, Error, Options, WriteOptions};
 
-pub trait DatabaseWithScheme {
-    fn put<S: Schema>(&self, key: &S::Key, value: &S::Value) -> Result<(), SchemaError>;
+use crate::persistent::schema::{Codec, Schema, SchemaError};
 
-    fn get<S: Schema>(&self, key: &S::Key) -> Result<Option<S::Value>, SchemaError>;
+/// Possible errors for schema
+#[derive(Debug, Fail)]
+pub enum DBError {
+    #[fail(display = "Schema error")]
+    SchemaError {
+        error: SchemaError
+    },
+    #[fail(display = "RocksDB error")]
+    RocksDBError {
+        error: Error
+    },
+    #[fail(display = "Column family {} is missing", name)]
+    MissingColumnFamily {
+        name: &'static str
+    }
 }
 
-impl DatabaseWithScheme for DB {
-    fn put<S: Schema>(&self, key: &S::Key, value: &S::Value) -> Result<(), SchemaError> {
+impl From<SchemaError> for DBError {
+    fn from(error: SchemaError) -> Self {
+        DBError::SchemaError { error }
+    }
+}
+
+impl From<Error> for DBError {
+    fn from(error: Error) -> Self {
+        DBError::RocksDBError { error }
+    }
+}
+
+
+pub trait DatabaseWithSchema {
+    fn put<S: Schema>(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
+
+    fn get<S: Schema>(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
+}
+
+impl DatabaseWithSchema for DB {
+    fn put<S: Schema>(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let cf_handle = self.get_cf_handle(S::COLUMN_FAMILY_NAME)?;
+        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
+            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
 
-        self.put_cf_opt(cf_handle, &key, &value, &default_write_options())
-            .map_err(convert_rocksdb_err)
+        self.put_cf_opt(cf, &key, &value, &default_write_options())
+            .map_err(DBError::from)
     }
 
-    fn get<S: Schema>(&self, key: &S::Key) -> Result<Option<S::Value>, SchemaError> {
+    fn get<S: Schema>(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
         let key = key.encode()?;
-        let cf_handle = self.get_cf_handle(S::COLUMN_FAMILY_NAME)?;
+        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
+            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
 
-        self.get_cf(cf_handle, &k)
+        self.get_cf(cf, &key)
+            .map_err(DBError::from)?
             .map(|value| S::Value::decode(&value))
             .transpose()
+            .map_err(DBError::from)
     }
 }
 
 fn default_write_options() -> WriteOptions {
-    let mut opts = WriteOptions::new();
+    let mut opts = WriteOptions::default();
     opts.set_sync(true);
+    opts
+}
+
+fn default_family_options() -> Options {
+    let mut opts = Options::default();
+    opts.create_if_missing(true);
     opts
 }
