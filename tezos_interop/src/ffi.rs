@@ -1,15 +1,3 @@
-//        TODO: dopisat docs poriadne, ked sa utrasie rozhranie
-
-//        TODO: doriesit logovanie v ruste
-//        TODO: setup storu pre testy
-
-//        TODO: error handling pre apply_block - opravite ffi:runtime
-
-//        TODO: od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
-//TODO: zmenit za reaalne chain_id a current_head_hash cez encodingy
-
-// TODO: spravit benches pre bootstrap test a zoptimalizovat ocaml s logovanim a bez logovania
-
 use ocaml::{Array, Str, Tuple};
 
 use crate::runtime;

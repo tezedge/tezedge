@@ -3,6 +3,16 @@ use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
 
+//        TODO: doladit error handling, ked to budeme realne srobovat do chain_managera
+//        TODO: priznak do storage, ze mame block zapisany v tezos-ocaml-storage
+//        TODO: spravit benches pre bootstrap test a zoptimalizovat ocaml s logovanim a bez logovania
+//        TODO: jira - od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
+//        TODO: jira - Tezos_validation.Block_validation.apply
+//        TODO: jira - podpora pre test_chain
+//        TODO: jira - overit proof_of_work_stamp pri bootstrape
+//        TODO: jira - pre generovanie identity
+
+/// Initializes storage for Tezos ocaml storage in chosen directory
 pub fn init_storage(storage_data_dir: String) -> (ChainId, BlockHash) {
     let (chain_id, current_block_header_hash) = ffi::init_storage(storage_data_dir)
         .expect("Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!");
@@ -24,12 +34,17 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Option<BlockHeader> {
     block_header.map(|bh| BlockHeader::from_hex(bh))
 }
 
+/// Applies new block to Tezos ocaml storage, means:
+/// - block and operations are decoded by the protocol
+/// - block and operations data are correctly stored in Tezos chain/storage
+/// - new current head is evaluated
+/// - returns validation_result.message
 pub fn apply_block(
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<OperationsForBlocksMessage>) -> String {
 
-    // TODO: kontrola ze mame pre vsetky validaion_pass OperationForBlock, aby sme zbytocne nevolali ocaml
+    // TODO: check for completness validaion_pass OperationForBlock
 
     let validation_result = ffi::apply_block(
             hex::encode(block_header_hash),
