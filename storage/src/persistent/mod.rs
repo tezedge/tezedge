@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use rocksdb::{DB, Options};
+use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
 pub use database::{DatabaseWithSchema, DBError};
 pub use schema::{Codec, Schema, SchemaError};
@@ -11,13 +11,12 @@ pub use schema::{Codec, Schema, SchemaError};
 pub mod schema;
 pub mod database;
 
-pub fn open_db<P, I, N>(path: P, cfs: I) -> Result<DB, DBError>
+pub fn open_db<P, I>(path: P, cfs: I) -> Result<DB, DBError>
 where
     P: AsRef<Path>,
-    I: IntoIterator<Item = N>,
-    N: AsRef<str>,
+    I: IntoIterator<Item = ColumnFamilyDescriptor>,
 {
-    DB::open_cf(&default_db_options(), path, cfs)
+    DB::open_cf_descriptors(&default_db_options(), path, cfs)
         .map_err(DBError::from)
 }
 

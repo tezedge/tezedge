@@ -3,6 +3,7 @@
 
 use failure::Fail;
 use tezos_encoding::hash::HashRef;
+use rocksdb::ColumnFamilyDescriptor;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -25,6 +26,8 @@ pub trait Schema {
     type Key: Codec;
 
     type Value: Codec;
+
+    fn cf_descriptor() -> ColumnFamilyDescriptor;
 }
 
 impl Codec for HashRef {

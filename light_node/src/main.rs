@@ -40,9 +40,9 @@ fn main() {
     let identity = identity.unwrap();
 
     let schemas = vec![
-        <BlockStorage as Schema>::COLUMN_FAMILY_NAME
+        BlockStorage::cf_descriptor()
     ];
-    let rocks_db = open_db(&configuration::ENV.bootstrap_db_path, &schemas)
+    let rocks_db = open_db(&configuration::ENV.bootstrap_db_path, schemas)
         .expect(&format!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path));
 
     let actor_system = ActorSystem::new().expect("Failed to create actor system");
