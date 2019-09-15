@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
+use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
+
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::HashRef;
+use tezos_encoding::hash::{HashRef, HashType, BlockHash};
 
 use crate::BlockHeaderWithHash;
+use crate::persistent::{Schema, Codec, SchemaError};
 
 pub struct Operations {
     pub(crate) block_hash: HashRef,
@@ -74,3 +77,53 @@ impl OperationsStorage {
     }
 }
 
+enum KeyType {
+    Meta,
+    Message {
+        validation_pass: u8
+    }
+}
+
+struct OperationKey {
+    block_hash: BlockHash,
+    key_type: KeyType
+}
+
+impl Codec for OperationKey {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        let block_hash_size = HashType::BlockHash.size();
+        let block_hash = bytes[0..block_hash_size].to_vec();
+        let key_type = match bytes[block_hash_size] {
+            0 => KeyType::Meta,
+            1 => KeyType::Message { validation_pass: block_hash[block_hash_size + 1] }
+            _ => SchemaError::DecodeError
+        };
+        Ok(OperationKey { block_hash, key_type })
+    }
+
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        let mut value = self.block_hash.clone();
+        match self.key_type {
+            KeyType::Meta => value.push(0),
+            KeyType::Message { validation_pass } => {
+                value.push(1);
+                value.push(validation_pass);
+            }
+        }
+        Ok(value)
+    }
+}
+
+impl Schema for OperationsStorage {
+    const COLUMN_FAMILY_NAME: &'static str = "operations_storage";
+    type Key = OperationKey;
+    type Value = ();
+
+    fn cf_descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = Options::default();
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(HashType::BlockHash.size()));
+        cf_opts.set_memtable_prefix_bloom_ratio(0.2);
+        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, cf_opts)
+    }
+
+}
