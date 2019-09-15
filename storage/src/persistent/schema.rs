@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Fail;
+use tezos_encoding::hash::HashRef;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -26,3 +27,12 @@ pub trait Schema {
     type Value: Codec;
 }
 
+impl Codec for HashRef {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        Ok(HashRef::new(bytes.to_vec()))
+    }
+
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        Ok(self.get_hash())
+    }
+}

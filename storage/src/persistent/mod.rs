@@ -17,11 +17,13 @@ where
     I: IntoIterator<Item = N>,
     N: AsRef<str>,
 {
+    DB::open_cf(&default_db_options(), path, cfs)
+        .map_err(DBError::from)
+}
 
+fn default_db_options() -> Options {
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
-
-    DB::open_cf(&db_opts, path, cfs)
-        .map_err(DBError::from)
+    db_opts
 }

@@ -1,28 +1,38 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 
 use tezos_encoding::hash::HashRef;
 
 use crate::BlockHeaderWithHash;
+use crate::persistent::{DatabaseWithSchema, Schema};
+
+pub type BlockStorageDatabase = dyn DatabaseWithSchema<BlockStorage> + Sync + Send;
 
 /// Structure for representing in-memory db for - just for demo purposes.
-pub struct BlockStorage(HashMap<HashRef, BlockHeaderWithHash>);
+pub struct BlockStorage {
+    db: Arc<BlockStorageDatabase>
+}
 
 impl BlockStorage {
 
-    pub fn new() -> Self {
-        BlockStorage(HashMap::new())
+    pub fn new(db: Arc<BlockStorageDatabase>) -> Self {
+        BlockStorage { db }
     }
 
     pub fn insert(&mut self, block: BlockHeaderWithHash) {
-        self.0.insert(block.hash.clone(), block);
+        self.db.put(&block.hash, &block).unwrap();
     }
 
-    pub fn get(&self, block_hash: &HashRef) -> Option<&BlockHeaderWithHash> {
-        self.0.get(block_hash)
+    pub fn get(&self, block_hash: &HashRef) -> Option<BlockHeaderWithHash> {
+        self.db.get(block_hash).unwrap()
     }
 
-    pub fn is_present(&self, block_hash: &HashRef) -> bool {
-        self.0.contains_key(block_hash)
+    pub fn contains(&self, block_hash: &HashRef) -> bool {
+        self.get(block_hash).is_some()
     }
 }
 
+impl Schema for BlockStorage {
+    const COLUMN_FAMILY_NAME: &'static str = "block_storage";
+    type Key = HashRef;
+    type Value = BlockHeaderWithHash;
+}

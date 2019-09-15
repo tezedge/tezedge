@@ -53,10 +53,6 @@ impl OperationsStorage {
         OperationsStorage(HashMap::new())
     }
 
-    pub fn contains_block_hash(&self, block_hash: &HashRef) -> bool {
-        self.0.contains_key(block_hash)
-    }
-
     pub fn initialize_operations(&mut self, block_header: &BlockHeaderWithHash) {
         let operations = Operations {
             block_hash: block_header.hash.clone(),
@@ -73,7 +69,7 @@ impl OperationsStorage {
         self.0.get(block_hash)
     }
 
-    pub fn is_present(&self, block_hash: &HashRef) -> bool {
+    pub fn contains(&self, block_hash: &HashRef) -> bool {
         self.0.contains_key(block_hash)
     }
 }

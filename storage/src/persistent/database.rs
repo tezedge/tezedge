@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Fail;
-use rocksdb::{DB, Error, Options, WriteOptions};
+use rocksdb::{DB, Error, WriteOptions};
 
 use crate::persistent::schema::{Codec, Schema, SchemaError};
 
@@ -36,14 +36,14 @@ impl From<Error> for DBError {
 }
 
 
-pub trait DatabaseWithSchema {
-    fn put<S: Schema>(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
+pub trait DatabaseWithSchema<S: Schema> {
+    fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
-    fn get<S: Schema>(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
+    fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
 }
 
-impl DatabaseWithSchema for DB {
-    fn put<S: Schema>(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
+impl<S: Schema> DatabaseWithSchema<S> for DB {
+    fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
         let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
@@ -53,7 +53,7 @@ impl DatabaseWithSchema for DB {
             .map_err(DBError::from)
     }
 
-    fn get<S: Schema>(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
+    fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
         let key = key.encode()?;
         let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
             .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
@@ -69,11 +69,5 @@ impl DatabaseWithSchema for DB {
 fn default_write_options() -> WriteOptions {
     let mut opts = WriteOptions::default();
     opts.set_sync(true);
-    opts
-}
-
-fn default_family_options() -> Options {
-    let mut opts = Options::default();
-    opts.create_if_missing(true);
     opts
 }

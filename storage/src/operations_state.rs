@@ -22,7 +22,7 @@ impl OperationsState {
     }
 
     pub fn insert_block_header(&mut self, block_header: &BlockHeaderWithHash) {
-        if !self.storage.is_present(&block_header.hash) {
+        if !self.storage.contains(&block_header.hash) {
             self.storage.initialize_operations(block_header);
             self.missing_operations_for_blocks.insert(block_header.hash.clone());
         }
@@ -39,7 +39,7 @@ impl OperationsState {
     }
 
     pub fn schedule_block_hash(&mut self, block_hash: HashRef) {
-        if !self.storage.is_present(&block_hash) {
+        if !self.storage.contains(&block_hash) {
             self.missing_operations_for_blocks.insert(block_hash);
         }
     }

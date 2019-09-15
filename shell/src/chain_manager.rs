@@ -1,5 +1,6 @@
 use std::cmp;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use log::{debug, warn};
@@ -34,9 +35,9 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, event_channel),
+            Props::new_args(ChainManager::new, (event_channel, rocks_db)),
             ChainManager::name())
     }
 
@@ -46,8 +47,13 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new(event_channel: ChannelRef<NetworkChannelMsg>) -> Self {
-        ChainManager { event_channel, block_state: BlockState::new(), operations_state: OperationsState::new(), peers: HashMap::new() }
+    fn new((event_channel, rocks_db): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>)) -> Self {
+        ChainManager {
+            event_channel,
+            block_state: BlockState::new(rocks_db),
+            operations_state: OperationsState::new(),
+            peers: HashMap::new()
+        }
     }
 }
 
