@@ -1,12 +1,12 @@
 use std::sync::Arc;
-use serde::{Serialize, Deserialize};
+
 use failure::Fail;
 
 pub use block_state::BlockState;
-use networking::p2p::binary_message::{MessageHash, MessageHashError};
+use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use networking::p2p::encoding::prelude::BlockHeader;
 pub use operations_state::{MissingOperations, OperationsState};
-use tezos_encoding::hash::{HashRef, ToHashRef};
+use tezos_encoding::hash::{HashRef, ToHashRef, HashType};
 
 use crate::persistent::{Codec, DBError, SchemaError};
 
@@ -17,10 +17,10 @@ pub mod operations_state;
 pub mod block_state;
 
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct BlockHeaderWithHash {
-    pub header: Arc<BlockHeader>,
     pub hash: HashRef,
+    pub header: Arc<BlockHeader>,
 }
 
 impl BlockHeaderWithHash {
@@ -35,13 +35,16 @@ impl BlockHeaderWithHash {
 /// Codec for `BlockHeaderWithHash`
 impl Codec for BlockHeaderWithHash {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        bincode::deserialize(bytes)
-            .map_err(|_| SchemaError::DecodeError)
+        let hash = HashRef::decode(&bytes[0..HashType::BlockHash.size()])?;
+        let header = BlockHeader::from_bytes(bytes[HashType::BlockHash.size()..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
+        Ok(BlockHeaderWithHash { hash, header: Arc::new(header) })
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        bincode::serialize(self)
-            .map_err(|_| SchemaError::DecodeError)
+        let mut result = vec![];
+        result.extend(&self.hash.encode()?);
+        result.extend(self.header.as_bytes().map_err(|_| SchemaError::EncodeError)?);
+        Ok(result)
     }
 }
 
@@ -64,8 +67,6 @@ impl From<DBError> for StorageError {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::FromIterator;
-
     use failure::Error;
 
     use tezos_encoding::hash::{HashEncoding, HashType};

@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options, SliceTransform};
-use serde::{Deserialize, Serialize};
 
+use networking::p2p::binary_message::BinaryMessage;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{HashRef, HashType};
 
@@ -72,13 +72,13 @@ impl Codec for OperationKey {
 
 impl Codec for OperationsForBlocksMessage {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        bincode::deserialize(bytes)
+        OperationsForBlocksMessage::from_bytes(bytes.to_vec())
             .map_err(|_| SchemaError::DecodeError)
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        bincode::serialize(self)
-            .map_err(|_| SchemaError::DecodeError)
+        self.as_bytes()
+            .map_err(|_| SchemaError::EncodeError)
     }
 }
 
@@ -192,7 +192,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
     result
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Meta {
     validation_passes: u8,
     is_validation_pass_present: Vec<u8>,
@@ -231,8 +231,6 @@ impl Codec for Meta {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::FromIterator;
-
     use failure::Error;
 
     use tezos_encoding::hash::HashEncoding;

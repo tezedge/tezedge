@@ -30,7 +30,7 @@ impl BlockStorage {
 
     pub fn contains(&self, block_hash: &HashRef) -> Result<bool, StorageError> {
         self.get(block_hash)
-            .map_err(|e| e.into())
+            .map_err(StorageError::from)
             .map(|v| v.is_some())
     }
 }

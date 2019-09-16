@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::{debug, warn};
+use log::{trace, debug, warn};
 use riker::actors::*;
 
 use networking::p2p::encoding::prelude::*;
@@ -130,15 +130,17 @@ impl Receive<CheckChainCompleteness> for ChainManager {
                     let available_capacity = peer.available_queue_capacity();
                     if available_capacity > 0 {
                         let missing_operations = operations_state.move_to_queue(available_capacity).expect("Failed to move to queue");
-                        debug!("Requesting {} operations from peer {}", missing_operations.len(), &peer.peer_ref);
-                        missing_operations.iter()
-                            .for_each(|operations| {
-                                peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
-                                let msg = GetOperationsForBlocksMessage {
-                                    get_operations_for_blocks: operations.into()
-                                };
-                                tell_peer(msg.into(), peer);
-                            });
+                        if !missing_operations.is_empty() {
+                            debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
+                            missing_operations.iter()
+                                .for_each(|operations| {
+                                    peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
+                                    let msg = GetOperationsForBlocksMessage {
+                                        get_operations_for_blocks: operations.into()
+                                    };
+                                    tell_peer(msg.into(), peer);
+                                });
+                        }
                     }
                 })
         }

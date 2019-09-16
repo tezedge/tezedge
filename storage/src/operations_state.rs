@@ -2,11 +2,13 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use log::debug;
+
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::HashRef;
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::operations_storage::{OperationsMetaStorage, OperationsStorage, OperationsStorageDatabase, OperationsMetaStorageDatabase};
+use crate::operations_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase};
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,
@@ -38,6 +40,7 @@ impl OperationsState {
 
         self.meta_storage.insert(message)?;
         if self.meta_storage.is_complete(&hash_ref)? {
+            debug!("Block {:?} has complete operations", &hash_ref);
             self.missing_operations_for_blocks.remove(&hash_ref);
         }
         Ok(())
@@ -60,6 +63,8 @@ impl OperationsState {
         for op in operations {
             if !self.meta_storage.is_complete(&op.block_hash)? {
                 self.missing_operations_for_blocks.insert(op.block_hash);
+            } else {
+                debug!("Will not re-queue block {:?} because it has complete operations", &op.block_hash);
             }
         }
         Ok(())
