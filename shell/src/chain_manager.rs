@@ -219,7 +219,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
 
 
                                 }
-                                _ => debug!("Ignored message: {:?}", message)
+                                _ => trace!("Ignored message: {:?}", message)
                             })
                     }
                     None => debug!("Received message for non-existing peer: {}", &received.peer)

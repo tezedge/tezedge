@@ -2,6 +2,7 @@
 extern crate lazy_static;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use log::{error, info};
 use riker::actors::*;
@@ -11,9 +12,9 @@ use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::{PeerManager, Threshold};
-use storage::persistent::{open_db, Schema};
 use storage::block_storage::BlockStorage;
-use std::sync::Arc;
+use storage::operations_storage::{OperationsMetaStorage, OperationsStorage};
+use storage::persistent::{open_db, Schema};
 
 mod configuration;
 
@@ -40,7 +41,9 @@ fn main() {
     let identity = identity.unwrap();
 
     let schemas = vec![
-        BlockStorage::cf_descriptor()
+        BlockStorage::cf_descriptor(),
+        OperationsStorage::cf_descriptor(),
+        OperationsMetaStorage::cf_descriptor(),
     ];
     let rocks_db = open_db(&configuration::ENV.bootstrap_db_path, schemas)
         .expect(&format!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path));

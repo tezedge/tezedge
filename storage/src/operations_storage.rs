@@ -1,17 +1,14 @@
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-use bytes::{Buf, BufMut, IntoBuf};
-use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform, MergeOperands};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{BlockHash, HashRef, HashType};
+use tezos_encoding::hash::{HashRef, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{Codec, Schema, SchemaError, DatabaseWithSchema};
-use std::sync::Arc;
-use std::convert::TryFrom;
+use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
 
 pub type OperationsStorageDatabase = dyn DatabaseWithSchema<OperationsStorage> + Sync + Send;
 
@@ -44,7 +41,6 @@ impl Schema for OperationsStorage {
         let mut cf_opts = Options::default();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(HashType::BlockHash.size()));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
-        cf_opts.set_merge_operator("operations_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, cf_opts)
     }
 }
@@ -69,7 +65,7 @@ impl Codec for OperationKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut value = Vec::with_capacity(HashType::BlockHash.size() + 1);
         value.extend(&*self.block_hash.hash);
-        value[HashType::BlockHash.size()] = self.validation_pass;
+        value.push(self.validation_pass);
         Ok(value)
     }
 }
@@ -87,21 +83,7 @@ impl Codec for OperationsForBlocksMessage {
 }
 
 
-fn merge_meta_value(new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut MergeOperands) -> Option<Vec<u8>> {
 
-    let mut result: Vec<u8> = Vec::with_capacity(operands.size_hint().0);
-    existing_val.map(|v| {
-        for e in v {
-            result.push(*e)
-        }
-    });
-    for op in operands {
-        for e in op {
-            result.push(*e)
-        }
-    }
-    Some(result)
-}
 
 /// Convenience type for operation meta storage database
 pub type OperationsMetaStorageDatabase = dyn DatabaseWithSchema<OperationsMetaStorage> + Sync + Send;
@@ -180,38 +162,86 @@ impl Schema for OperationsMetaStorage {
     const COLUMN_FAMILY_NAME: &'static str = "operations_meta_storage";
     type Key = HashRef;
     type Value = Meta;
+
+    fn cf_descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = Options::default();
+        cf_opts.set_merge_operator("operations_meta_storage_merge_operator", merge_meta_value, None);
+        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, cf_opts)
+    }
+}
+
+fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut MergeOperands) -> Option<Vec<u8>> {
+    let mut result = existing_val.map(|v| v.to_vec());
+
+    for op in operands {
+        match result {
+            Some(ref mut val) => {
+                assert_eq!(val.len(), op.len(), "Value length is fixed. expected={}, found={}", val.len(), op.len());
+                assert_ne!(0, val.len(), "Value cannot have zero size");
+                assert_eq!(val[0], op[0], "Value of validation passes cannot change");
+
+                let validation_passes = val[0] as usize;
+                for i in 1..=validation_passes {
+                    val[i] |= op[i]
+                }
+            },
+            None => result = Some(op.to_vec())
+        }
+    }
+
+    result
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Meta {
-    is_validation_pass_present: Vec<u8>,
     validation_passes: u8,
+    is_validation_pass_present: Vec<u8>,
     is_complete: bool
 }
 
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        bincode::deserialize(bytes)
-            .map_err(|_| SchemaError::DecodeError)
+        if bytes.len() > 0 {
+            let validation_passes = bytes[0];
+            if bytes.len() == ((validation_passes as usize) + 2) {
+                let is_complete_pos = validation_passes as usize + 1;
+                let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
+                let is_complete = bytes[is_complete_pos] != 0;
+                Ok(Meta { validation_passes, is_validation_pass_present, is_complete })
+            } else {
+                Err(SchemaError::DecodeError)
+            }
+        } else {
+            Err(SchemaError::DecodeError)
+        }
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        bincode::serialize(self)
-            .map_err(|_| SchemaError::DecodeError)
+        if (self.validation_passes as usize) == self.is_validation_pass_present.len() {
+            let mut result = vec![];
+            result.push(self.validation_passes);
+            result.extend(&self.is_validation_pass_present);
+            result.push(self.is_complete as u8);
+            Ok(result)
+        } else {
+            Err(SchemaError::EncodeError)
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::iter::FromIterator;
+
     use failure::Error;
+
     use tezos_encoding::hash::HashEncoding;
 
     use super::*;
-    use std::iter::FromIterator;
 
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
-        let expected = OperationKey::Message {
+        let expected = OperationKey {
             block_hash: HashRef::new(HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?),
             validation_pass: 4,
         };
@@ -228,43 +258,49 @@ mod tests {
             validation_passes: 5
         };
         let encoded_bytes = expected.encode()?;
-        let decoded = OperationValue::decode(&encoded_bytes)?;
+        let decoded = Meta::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
     }
 
 
     #[test]
-    fn mergetest() {
+    fn merge_meta_value_test() {
         use rocksdb::{Options, DB};
 
         let path = "_opstorage_mergetest";
         let mut opts = Options::default();
         opts.create_if_missing(true);
-        opts.set_merge_operator("test operator", test_provided_merge, None);
+        opts.create_missing_column_families(true);
+        opts.set_merge_operator("test operator", merge_meta_value, None);
         {
-            let db = DB::open(&opts, path).unwrap();
-            let p = db.put(b"k1", b"a");
-            assert!(p.is_ok());
-            let _ = db.merge(b"k1", b"b");
-            let _ = db.merge(b"k1", b"c");
-            let _ = db.merge(b"k1", b"d");
-            let _ = db.merge(b"k1", b"efg");
-            let m = db.merge(b"k1", b"h");
+            let t = true as u8;
+            let f = false as u8;
+
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let k = HashRef::new(vec![3, 1, 3, 3, 7]);
+            let mut v = Meta {
+                is_complete: false,
+                is_validation_pass_present: vec![f; 5],
+                validation_passes: 5,
+            };
+            let p = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
+            v.is_validation_pass_present[2] = t;
+            let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            v.is_validation_pass_present[2] = f;
+            v.is_validation_pass_present[3] = t;
+            let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            v.is_validation_pass_present[3] = f;
+            let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            let m = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             assert!(m.is_ok());
-            match db.get(b"k1") {
-                Ok(Some(value)) => match value.to_utf8() {
-                    Some(v) => println!("retrieved utf8 value: {}", v),
-                    None => println!("did not read valid utf-8 out of the db"),
+            match OperationsMetaStorageDatabase::get(&db, &k) {
+                Ok(Some(value)) => {
+                    assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                 },
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
             }
-
-            assert!(m.is_ok());
-            let r = db.get(b"k1");
-            assert!(r.unwrap().unwrap().to_utf8().unwrap() == "abcdefgh");
-            assert!(db.delete(b"k1").is_ok());
-            assert!(db.get(b"k1").unwrap().is_none());
         }
         assert!(DB::destroy(&opts, path).is_ok());
     }

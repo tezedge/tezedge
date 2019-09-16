@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{HashRef, ToHashRef};
+use tezos_encoding::hash::HashRef;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::operations_storage::{OperationsMetaStorage, OperationsStorage, OperationsStorageDatabase, OperationsMetaStorageDatabase};

@@ -4,7 +4,6 @@ use tezos_encoding::hash::HashRef;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{DatabaseWithSchema, Schema};
-use rocksdb::{ColumnFamilyDescriptor, Options};
 
 pub type BlockStorageDatabase = dyn DatabaseWithSchema<BlockStorage> + Sync + Send;
 
