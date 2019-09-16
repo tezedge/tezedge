@@ -13,11 +13,12 @@ use tezos_interop::ffi;
 //        TODO: jira - pre generovanie identity
 
 /// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String) -> (ChainId, BlockHash) {
-    let (chain_id, current_block_header_hash) = ffi::init_storage(storage_data_dir)
+pub fn init_storage(storage_data_dir: String) -> (ChainId, BlockHash, BlockHash) {
+    let (chain_id, genesis_block_header_hash, current_block_header_hash) = ffi::init_storage(storage_data_dir)
         .expect("Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!");
     (
         hex::decode(chain_id).unwrap(),
+        hex::decode(genesis_block_header_hash).unwrap(),
         hex::decode(current_block_header_hash).unwrap(),
     )
 }
