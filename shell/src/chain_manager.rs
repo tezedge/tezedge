@@ -50,10 +50,10 @@ impl ChainManager {
     }
 
     fn new((event_channel, tezos_data_dir): (ChannelRef<NetworkChannelMsg>, String)) -> Self {
-        let (chain_id, current_head_hash) = client::init_storage(tezos_data_dir);
+        let (chain_id, genesis_block_header_hash, current_head_hash) = client::init_storage(tezos_data_dir);
         ChainManager {
             event_channel,
-            block_state: BlockState::new(chain_id, current_head_hash),
+            block_state: BlockState::new(chain_id, genesis_block_header_hash, current_head_hash),
             operations_state: OperationsState::new(),
             peers: HashMap::new()
         }

@@ -9,15 +9,17 @@ use std::sync::{Arc, Mutex};
 pub struct BlockState {
     storage: BlockStorage,
     missing_blocks: HashSet<HashRef>,
+    genesis: HashRef,
     current_head: Arc<Mutex<HashRef>>,
     current_chain_id: HashRef,
 }
 
 impl BlockState {
-    pub fn new(chain_id: ChainId, current_head: BlockHash) -> Self {
+    pub fn new(chain_id: ChainId, genesis: BlockHash, current_head: BlockHash) -> Self {
         BlockState {
             storage: BlockStorage::new(),
             missing_blocks: HashSet::new(),
+            genesis: genesis.to_hash_ref(),
             current_head: Arc::new(Mutex::new(current_head.to_hash_ref())),
             current_chain_id: chain_id.to_hash_ref()
         }
