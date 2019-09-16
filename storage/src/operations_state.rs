@@ -1,11 +1,12 @@
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{HashRef, ToHashRef};
 
-use crate::BlockHeaderWithHash;
-use crate::operations_storage::OperationsStorage;
+use crate::{BlockHeaderWithHash, StorageError};
+use crate::operations_storage::{OperationsStorage, OperationsStorageDatabase};
 
 pub struct OperationsState {
     storage: OperationsStorage,
@@ -14,32 +15,32 @@ pub struct OperationsState {
 
 impl OperationsState {
 
-    pub fn new() -> Self {
+    pub fn new(db: Arc<OperationsStorageDatabase>) -> Self {
         OperationsState {
-            storage: OperationsStorage::new(),
+            storage: OperationsStorage::new(db),
             missing_operations_for_blocks: HashSet::new(),
         }
     }
 
-    pub fn insert_block_header(&mut self, block_header: &BlockHeaderWithHash) {
-        if !self.storage.contains(&block_header.hash) {
-            self.storage.initialize_operations(block_header);
+    pub fn insert_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+        if !self.storage.contains_operations(&block_header.hash)? {
             self.missing_operations_for_blocks.insert(block_header.hash.clone());
+            self.storage.initialize(block_header)?;
         }
+        Ok(())
     }
 
-    pub fn insert_operations(&mut self, message: OperationsForBlocksMessage) {
-        let block_hash = (&message.operations_for_block.hash).to_hash_ref();
-        if let Some(operations) = self.storage.get_operations_mut(&block_hash) {
-            operations.insert(message);
-            if operations.is_complete() {
-                self.missing_operations_for_blocks.remove(&operations.block_hash);
-            }
+    pub fn insert_operations(&mut self, message: OperationsForBlocksMessage) -> Result<(), StorageError> {
+        let hash_ref = HashRef::new(message.operations_for_block.hash.clone());
+        self.storage.insert(message)?;
+        if self.storage.is_complete(&hash_ref) {
+            self.missing_operations_for_blocks.remove(&hash_ref);
         }
+        Ok(())
     }
 
     pub fn schedule_block_hash(&mut self, block_hash: HashRef) {
-        if !self.storage.contains(&block_hash) {
+        if !self.storage.contains_operations(&block_hash) {
             self.missing_operations_for_blocks.insert(block_hash);
         }
     }

@@ -5,7 +5,10 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
+bincode = "1.1.4"
+bytes = "0.4.12"
 failure = "0.1.5"
 rocksdb = "0.12.3"
+serde = { version = "1.0.101", features = ["derive"] }
 networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos_encoding" }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tezos_encoding::hash::HashRef;
 
-use crate::BlockHeaderWithHash;
+use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{DatabaseWithSchema, Schema};
 use rocksdb::{ColumnFamilyDescriptor, Options};
 
@@ -19,16 +19,20 @@ impl BlockStorage {
         BlockStorage { db }
     }
 
-    pub fn insert(&mut self, block: BlockHeaderWithHash) {
-        self.db.put(&block.hash, &block).unwrap();
+    pub fn insert(&mut self, block: BlockHeaderWithHash) -> Result<(), StorageError> {
+        self.db.put(&block.hash, &block)
+            .map_err(|e| e.into())
     }
 
-    pub fn get(&self, block_hash: &HashRef) -> Option<BlockHeaderWithHash> {
-        self.db.get(block_hash).unwrap()
+    pub fn get(&self, block_hash: &HashRef) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        self.db.get(block_hash)
+            .map_err(|e| e.into())
     }
 
-    pub fn contains(&self, block_hash: &HashRef) -> bool {
-        self.get(block_hash).is_some()
+    pub fn contains(&self, block_hash: &HashRef) -> Result<bool, StorageError> {
+        self.get(block_hash)
+            .map_err(|e| e.into())
+            .map(|v| v.is_some())
     }
 }
 

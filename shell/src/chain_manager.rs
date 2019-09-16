@@ -168,7 +168,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                     debug!("Received current branch from peer: {}", &received.peer);
                                     message.current_branch.history.iter()
                                         .map(|block_hash| block_hash.clone().to_hash_ref())
-                                        .for_each(|block_hash| block_state.schedule_block_hash(block_hash));
+                                        .for_each(|block_hash| block_state.schedule_block_hash(block_hash)?);
                                     // trigger CheckChainCompleteness
                                     ctx.myself().tell(CheckChainCompleteness, None);
                                 }
@@ -178,7 +178,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                 }
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
-                                    block_state.insert_block_header(block_header.clone());
+                                    block_state.insert_block_header(block_header.clone())?;
                                     if peer.queued_block_headers.remove(&block_header.hash) {
                                         debug!("Received block header from peer: {}", &received.peer);
                                         operations_state.insert_block_header(&block_header);

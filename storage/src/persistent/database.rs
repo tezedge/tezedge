@@ -9,11 +9,11 @@ use crate::persistent::schema::{Codec, Schema, SchemaError};
 /// Possible errors for schema
 #[derive(Debug, Fail)]
 pub enum DBError {
-    #[fail(display = "Schema error")]
+    #[fail(display = "Schema error: {}", error)]
     SchemaError {
         error: SchemaError
     },
-    #[fail(display = "RocksDB error")]
+    #[fail(display = "RocksDB error: {}", error)]
     RocksDBError {
         error: Error
     },
@@ -39,6 +39,8 @@ impl From<Error> for DBError {
 pub trait DatabaseWithSchema<S: Schema> {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
+    fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
+
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
 }
 
@@ -50,6 +52,16 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
             .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
 
         self.put_cf_opt(cf, &key, &value, &default_write_options())
+            .map_err(DBError::from)
+    }
+
+    fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
+        let key = key.encode()?;
+        let value = value.encode()?;
+        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
+            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+
+        self.merge_cf_opt(cf, &key, &value, &default_write_options())
             .map_err(DBError::from)
     }
 

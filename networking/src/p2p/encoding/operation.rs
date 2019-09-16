@@ -20,7 +20,7 @@ impl HasEncoding for OperationMessage {
 
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct Operation {
     branch: BlockHash,
     data: Vec<u8>,
