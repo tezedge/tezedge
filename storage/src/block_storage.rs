@@ -40,8 +40,4 @@ impl Schema for BlockStorage {
     const COLUMN_FAMILY_NAME: &'static str = "block_storage";
     type Key = HashRef;
     type Value = BlockHeaderWithHash;
-
-    fn cf_descriptor() -> ColumnFamilyDescriptor {
-        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, Options::default())
-    }
 }

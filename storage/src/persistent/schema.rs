@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Fail;
+use rocksdb::{ColumnFamilyDescriptor, Options};
+
 use tezos_encoding::hash::HashRef;
-use rocksdb::ColumnFamilyDescriptor;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -27,7 +28,9 @@ pub trait Schema {
 
     type Value: Codec;
 
-    fn cf_descriptor() -> ColumnFamilyDescriptor;
+    fn cf_descriptor() -> ColumnFamilyDescriptor {
+        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, Options::default())
+    }
 }
 
 impl Codec for HashRef {

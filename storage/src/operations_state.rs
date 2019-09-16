@@ -6,65 +6,63 @@ use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{HashRef, ToHashRef};
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::operations_storage::{OperationsStorage, OperationsStorageDatabase};
+use crate::operations_storage::{OperationsMetaStorage, OperationsStorage, OperationsStorageDatabase, OperationsMetaStorageDatabase};
 
 pub struct OperationsState {
-    storage: OperationsStorage,
+    operations_storage: OperationsStorage,
+    meta_storage: OperationsMetaStorage,
     missing_operations_for_blocks: HashSet<HashRef>,
 }
 
 impl OperationsState {
 
-    pub fn new(db: Arc<OperationsStorageDatabase>) -> Self {
+    pub fn new(db: Arc<OperationsStorageDatabase>, meta_db: Arc<OperationsMetaStorageDatabase>) -> Self {
         OperationsState {
-            storage: OperationsStorage::new(db),
+            operations_storage: OperationsStorage::new(db),
+            meta_storage: OperationsMetaStorage::new(meta_db),
             missing_operations_for_blocks: HashSet::new(),
         }
     }
 
     pub fn insert_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
-        if !self.storage.contains_operations(&block_header.hash)? {
+        if !self.meta_storage.contains(&block_header.hash)? {
             self.missing_operations_for_blocks.insert(block_header.hash.clone());
-            self.storage.initialize(block_header)?;
+            self.meta_storage.initialize(block_header)?;
         }
         Ok(())
     }
 
-    pub fn insert_operations(&mut self, message: OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn insert_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let hash_ref = HashRef::new(message.operations_for_block.hash.clone());
-        self.storage.insert(message)?;
-        if self.storage.is_complete(&hash_ref) {
+        self.operations_storage.insert(message)?;
+
+        self.meta_storage.insert(message)?;
+        if self.meta_storage.is_complete(&hash_ref)? {
             self.missing_operations_for_blocks.remove(&hash_ref);
         }
         Ok(())
     }
 
-    pub fn schedule_block_hash(&mut self, block_hash: HashRef) {
-        if !self.storage.contains_operations(&block_hash) {
-            self.missing_operations_for_blocks.insert(block_hash);
-        }
-    }
-
-    pub fn move_to_queue(&mut self, n: usize) -> Vec<MissingOperations> {
-        let OperationsState { storage, missing_operations_for_blocks } = self;
-        missing_operations_for_blocks
+    pub fn move_to_queue(&mut self, n: usize) -> Result<Vec<MissingOperations>, StorageError> {
+        let OperationsState { meta_storage, missing_operations_for_blocks, .. } = self;
+        let res = missing_operations_for_blocks
             .drain()
             .take(n)
-            .filter_map(|block_hash| match storage.get_operations(&block_hash) {
-                Some(operations) => Some(MissingOperations {
-                    block_hash: operations.block_hash.clone(),
-                    validation_passes: operations.get_missing_validation_passes()
-                }),
-                None => None
+            .map(|block_hash| MissingOperations {
+                block_hash: block_hash.clone(),
+                validation_passes: meta_storage.get_missing_validation_passes(&block_hash).expect("Failed to get missing validation passes")
             })
-            .collect()
+            .collect();
+        Ok(res)
     }
 
-    pub fn return_from_queue<Q: Iterator<Item=MissingOperations>>(&mut self, operations: Q) {
-        operations
-            .for_each(|op| {
+    pub fn return_from_queue<Q: Iterator<Item=MissingOperations>>(&mut self, operations: Q) -> Result<(), StorageError>{
+        for op in operations {
+            if !self.meta_storage.is_complete(&op.block_hash)? {
                 self.missing_operations_for_blocks.insert(op.block_hash);
-            })
+            }
+        }
+        Ok(())
     }
 
     pub fn has_missing_operations(&self) -> bool {

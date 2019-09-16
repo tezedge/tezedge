@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use crypto::base58::{FromBase58Check, FromBase58CheckError, ToBase58Check};
 
 mod prefix_bytes {
@@ -89,7 +91,7 @@ impl HashEncoding {
 }
 
 
-#[derive(Clone, Hash, PartialEq, PartialOrd, Debug, Eq)]
+#[derive(Clone, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Debug, Eq)]
 pub struct HashRef {
     pub hash: Arc<Hash>,
 }

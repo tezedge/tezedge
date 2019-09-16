@@ -34,9 +34,9 @@ impl BlockState {
 
     pub fn schedule_block_hash(&mut self, block_hash: HashRef) -> Result<(), StorageError> {
         if !self.storage.contains(&block_hash)? {
-            self.missing_blocks.insert(block_hash)?;
+            self.missing_blocks.insert(block_hash);
         }
-        OK(())
+        Ok(())
     }
 
     pub fn move_to_queue(&mut self, n: usize) -> Vec<HashRef> {

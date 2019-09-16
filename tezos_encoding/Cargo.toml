@@ -14,7 +14,7 @@ futures-preview = "0.3.0-alpha.18"
 hex = "0.3.2"
 num-bigint = "0.2.2"
 num-traits = "0.2.8"
-serde = { version = "1.0.101", features = ["derive"] }
+serde = { version = "1.0.101", features = ["derive", "rc"] }
 serde_json = "1.0.40"
 # local dependencies
 crypto = { path = "../crypto" }

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use serde::{Serialize, Deserialize};
 use failure::Fail;
 
 pub use block_state::BlockState;
@@ -17,7 +17,7 @@ pub mod operations_state;
 pub mod block_state;
 
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct BlockHeaderWithHash {
     pub header: Arc<BlockHeader>,
     pub hash: HashRef,
@@ -32,6 +32,7 @@ impl BlockHeaderWithHash {
     }
 }
 
+/// Codec for `BlockHeaderWithHash`
 impl Codec for BlockHeaderWithHash {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         bincode::deserialize(bytes)
@@ -53,8 +54,6 @@ pub enum StorageError {
     },
     #[fail(display = "Key is missing in storage")]
     MissingKey,
-    #[fail(display = "Unexpected value found in storage")]
-    UnexpectedValue
 }
 
 impl From<DBError> for StorageError {

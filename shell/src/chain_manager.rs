@@ -50,8 +50,8 @@ impl ChainManager {
     fn new((event_channel, rocks_db): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>)) -> Self {
         ChainManager {
             event_channel,
-            block_state: BlockState::new(rocks_db),
-            operations_state: OperationsState::new(),
+            block_state: BlockState::new(rocks_db.clone()),
+            operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new()
         }
     }
@@ -91,9 +91,12 @@ impl Receive<SystemEvent> for ChainManager {
             if let Some(mut peer) = self.peers.remove(evt.actor.uri()) {
                 peer.queued_block_headers
                     .drain()
-                    .for_each(|block_hash| self.block_state.schedule_block_hash(block_hash));
+                    .for_each(|block_hash| {
+                        self.block_state.schedule_block_hash(block_hash).expect("Failed to re-schedule block hash");
+                    });
 
                 self.operations_state.return_from_queue(peer.queued_operations.drain().map(|(_, op)| op))
+                    .expect("Failed to return to queue")
             }
         }
     }
@@ -126,7 +129,7 @@ impl Receive<CheckChainCompleteness> for ChainManager {
                 .for_each(|(_, peer)| {
                     let available_capacity = peer.available_queue_capacity();
                     if available_capacity > 0 {
-                        let missing_operations = operations_state.move_to_queue(available_capacity);
+                        let missing_operations = operations_state.move_to_queue(available_capacity).expect("Failed to move to queue");
                         debug!("Requesting {} operations from peer {}", missing_operations.len(), &peer.peer_ref);
                         missing_operations.iter()
                             .for_each(|operations| {
@@ -168,7 +171,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                     debug!("Received current branch from peer: {}", &received.peer);
                                     message.current_branch.history.iter()
                                         .map(|block_hash| block_hash.clone().to_hash_ref())
-                                        .for_each(|block_hash| block_state.schedule_block_hash(block_hash)?);
+                                        .for_each(|block_hash| block_state.schedule_block_hash(block_hash).expect("Failed to schedule block"));
                                     // trigger CheckChainCompleteness
                                     ctx.myself().tell(CheckChainCompleteness, None);
                                 }
@@ -178,10 +181,10 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                 }
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
-                                    block_state.insert_block_header(block_header.clone())?;
+                                    block_state.insert_block_header(block_header.clone()).expect("Failed to insert block header");
                                     if peer.queued_block_headers.remove(&block_header.hash) {
                                         debug!("Received block header from peer: {}", &received.peer);
-                                        operations_state.insert_block_header(&block_header);
+                                        operations_state.insert_block_header(&block_header).expect("Failed to insert block header");
                                         // trigger CheckChainCompleteness
                                         ctx.myself().tell(CheckChainCompleteness, None);
                                     } else {
@@ -197,7 +200,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
                                             if missing_operations.validation_passes.remove(&operations.operations_for_block.validation_pass) {
                                                 debug!("Received operations vp #{} from peer: {}", operations.operations_for_block.validation_pass, &received.peer);
                                                 operations_completed = missing_operations.validation_passes.is_empty();
-                                                operations_state.insert_operations(operations.clone());
+                                                operations_state.insert_operations(&operations).expect("Failed to insert operations");
                                                 // trigger CheckChainCompleteness
                                                 ctx.myself().tell(CheckChainCompleteness, None);
                                             } else {
