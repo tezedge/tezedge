@@ -279,4 +279,41 @@ mod tests {
         let decoded = OperationValue::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
     }
+
+
+    #[test]
+    fn mergetest() {
+        use rocksdb::{Options, DB};
+
+        let path = "_opstorage_mergetest";
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.set_merge_operator("test operator", test_provided_merge, None);
+        {
+            let db = DB::open(&opts, path).unwrap();
+            let p = db.put(b"k1", b"a");
+            assert!(p.is_ok());
+            let _ = db.merge(b"k1", b"b");
+            let _ = db.merge(b"k1", b"c");
+            let _ = db.merge(b"k1", b"d");
+            let _ = db.merge(b"k1", b"efg");
+            let m = db.merge(b"k1", b"h");
+            assert!(m.is_ok());
+            match db.get(b"k1") {
+                Ok(Some(value)) => match value.to_utf8() {
+                    Some(v) => println!("retrieved utf8 value: {}", v),
+                    None => println!("did not read valid utf-8 out of the db"),
+                },
+                Err(_) => println!("error reading value"),
+                _ => panic!("value not present"),
+            }
+
+            assert!(m.is_ok());
+            let r = db.get(b"k1");
+            assert!(r.unwrap().unwrap().to_utf8().unwrap() == "abcdefgh");
+            assert!(db.delete(b"k1").is_ok());
+            assert!(db.get(b"k1").unwrap().is_none());
+        }
+        assert!(DB::destroy(&opts, path).is_ok());
+    }
 }
