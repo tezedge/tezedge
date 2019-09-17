@@ -3,59 +3,76 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn run_builder(lib_dir: &PathBuf) {
-    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("docker".to_string());
+const REMOTE_LIB_URL: &str = "https://gitlab.com/simplestaking/tezos/uploads/f5b3bbbc4f7ff2cd111a304c8b8245c3/libtezos-ffi.so";
+
+fn run_builder(build_chain: &str) {
 
     match build_chain.as_ref() {
         "local" => {
-            // $ opam config exec make
-            Command::new("opam")
-                .args(&["config", "exec", "make"])
-                .current_dir(lib_dir)
+            // $ pushd lib_tezos && make clean all && popd
+            Command::new("make")
+                .args(&["clean", "all"])
+                .current_dir("lib_tezos")
                 .status()
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "docker" => {
-            // $ docker build -t lib_ocaml -f ../../docker/Dockerfile .
+            // $ pushd lib_tezos && docker build -t lib_tezos -f ../docker/Dockerfile . && popd
             Command::new("docker")
-                .args(&["build", "-t", "lib_ocaml", "-f", "../../docker/Dockerfile", "."])
-                .current_dir(&lib_dir)
+                .args(&["build", "-t", "lib_tezos", "-f", "../docker/Dockerfile", "."])
+                .current_dir("lib_tezos")
                 .status()
                 .expect("Couldn't run docker build.");
 
-            // $ docker run -w /home/appuser/build --name lib_ocaml lib_ocaml make
+            // $ docker run -w /home/appuser/build --name lib_tezos lib_tezos make
             Command::new("docker")
-                .args(&["run", "-w", "/home/appuser/build", "--name", "lib_ocaml", "lib_ocaml", "make"])
+                .args(&["run", "-w", "/home/appuser/build", "--name", "lib_tezos", "lib_tezos", "make"])
                 .status()
                 .expect("Couldn't run build process inside of the docker container.");
 
-            // $ docker cp lib_ocaml:/home/appuser/build/artifacts <lib_dir>/artifacts
+            // $ docker cp lib_tezos:/home/appuser/build/artifacts/. lib_tezos/artifacts
             Command::new("docker")
-                .args(&["cp", "lib_ocaml:/home/appuser/build/artifacts/.", lib_dir.join("artifacts").as_os_str().to_str().unwrap()])
+                .args(&["cp", "lib_tezos:/home/appuser/build/artifacts/.", Path::new("lib_tezos").join("artifacts").as_os_str().to_str().unwrap()])
                 .status()
                 .expect("Couldn't copy files from container to host.");
 
-            // $ docker container rm lib_ocaml
+            // $ docker container rm lib_tezos
             Command::new("docker")
-                .args(&["container", "rm", "lib_ocaml"])
+                .args(&["container", "rm", "lib_tezos"])
                 .status()
                 .expect("Couldn't remove the docker container.");
+        }
+        "remote" => {
+            std::fs::create_dir_all("lib_tezos/artifacts").expect("Failed to create directory");
+
+            // $ curl <remote_url> --output lib_tezos/artifacts/libtezos.o
+            Command::new("curl")
+                .args(&[REMOTE_LIB_URL, "--output", Path::new("lib_tezos").join("artifacts").join("libtezos.o").as_os_str().to_str().unwrap()])
+                .status()
+                .expect("Couldn't retrieve compiled tezos binary.");
+
+            // $ pushd lib_tezos/artifacts && ar qs libtezos.a libtezos.o && popd
+            Command::new("ar")
+                .args(&["qs", "libtezos.a", "libtezos.o"])
+                .current_dir(Path::new("lib_tezos").join("artifacts").as_os_str().to_str().unwrap())
+                .status()
+                .expect("Couldn't run ar.");
         }
         _ => unimplemented!("cargo:warning=Invalid OCaml build chain '{}' .", build_chain)
     };
 }
 
-fn update_git_submodules(lib_dir: &PathBuf) {
-    // git submodule update --init --remote
+fn update_git_submodules() {
+    // pushd lib_tezos && git submodule update --init --remote src && popd
     Command::new("git")
         .args(&["submodule", "update", "--init", "--remote"])
-        .current_dir(lib_dir)
+        .current_dir(Path::new("lib_tezos").as_os_str().to_str().unwrap())
         .status()
         .expect("Couldn't update git submodules.");
 }
 
-fn rerun_if_ocaml_file_changes(lib_dir: &PathBuf) {
-    fs::read_dir(lib_dir.as_path())
+fn rerun_if_ocaml_file_changes() {
+    fs::read_dir(Path::new("lib_tezos"))
         .unwrap()
         .filter_map(Result::ok)
         .map(|dir_entry| dir_entry.path())
@@ -66,15 +83,14 @@ fn rerun_if_ocaml_file_changes(lib_dir: &PathBuf) {
 }
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
+    update_git_submodules();
 
-    let lib_name = env::var("OCAML_LIB").unwrap_or("tzmock".to_string());
-    let lib_dir = Path::new("lib_ocaml").join(&lib_name);
-    update_git_submodules(&lib_dir);
-    run_builder(&lib_dir);
+    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("remote".to_string());
+    run_builder(&build_chain);
 
     // copy artifact files to OUT_DIR location
-    let artifacts_dir_items = fs::read_dir(lib_dir.join("artifacts").as_path()).unwrap().filter_map(Result::ok)
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let artifacts_dir_items = fs::read_dir(Path::new("lib_tezos").join("artifacts").as_path()).unwrap().filter_map(Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(|path| path.is_file())
         .collect::<Vec<PathBuf>>();
@@ -86,9 +102,9 @@ fn main() {
         println!("cargo:warning=No files were copied over from artifacts directory.")
     }
 
-    rerun_if_ocaml_file_changes(&lib_dir);
+    rerun_if_ocaml_file_changes();
 
     println!("cargo:rustc-link-search={}", &out_dir);
-    println!("cargo:rustc-link-lib=dylib={}", &lib_name);
+    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
 }

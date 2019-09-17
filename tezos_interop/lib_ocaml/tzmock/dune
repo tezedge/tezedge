@@ -1,4 +1,0 @@
-(executables
-  (names tzmock)
-  (modes object shared_object)
-)
