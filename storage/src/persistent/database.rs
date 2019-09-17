@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
+use std::marker::PhantomData;
+
 use failure::Fail;
-use rocksdb::{DB, Error, WriteOptions};
+use rocksdb::{DB, DBIterator, Error, WriteOptions};
 
 use crate::persistent::schema::{Codec, Schema, SchemaError};
 
@@ -42,6 +44,8 @@ pub trait DatabaseWithSchema<S: Schema> {
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
+
+    fn iter(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError>;
 }
 
 impl<S: Schema> DatabaseWithSchema<S> for DB {
@@ -76,6 +80,19 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
             .transpose()
             .map_err(DBError::from)
     }
+
+    fn iter(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
+        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
+            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+
+        let iter = match mode {
+            IteratorMode::Start => self.iterator_cf(cf, rocksdb::IteratorMode::End),
+            IteratorMode::End => self.iterator_cf(cf, rocksdb::IteratorMode::End),
+            IteratorMode::From(key, direction) => self.iterator_cf(cf, rocksdb::IteratorMode::From(&key.encode()?, direction.into()))
+        };
+
+        Ok(IteratorWithSchema(iter?, PhantomData))
+    }
 }
 
 fn default_write_options() -> WriteOptions {
@@ -83,3 +100,36 @@ fn default_write_options() -> WriteOptions {
     opts.set_sync(false);
     opts
 }
+
+pub struct IteratorWithSchema<'a, S: Schema>(DBIterator<'a>, PhantomData<S>);
+
+impl<'a, S: Schema> Iterator for IteratorWithSchema<'a, S>
+{
+    type Item = Result<(S::Key, S::Value), SchemaError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+            .map(|(k, v)| Ok((S::Key::decode(&k)?, S::Value::decode(&v)?)))
+    }
+}
+
+pub enum Direction {
+    Forward,
+    Reverse,
+}
+
+impl From<Direction> for rocksdb::Direction {
+    fn from(direction: Direction) -> Self {
+        match direction {
+            Direction::Forward => rocksdb::Direction::Forward,
+            Direction::Reverse => rocksdb::Direction::Reverse,
+        }
+    }
+}
+
+pub enum IteratorMode<'a, S: Schema> {
+    Start,
+    End,
+    From(&'a S::Key, Direction),
+}
+
