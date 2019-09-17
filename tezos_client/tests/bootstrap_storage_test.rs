@@ -1,13 +1,14 @@
 use networking::p2p::binary_message::{Hexable, MessageHash};
 use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
+use tezos_client::client::TezosStorageInitInfo;
 
 mod common;
 
 #[test]
 fn test_bootstrap_empty_storage_with_first_three_blocks() {
     // init empty storage for test
-    let (chain_id, genesis_block_header_hash, current_block_header_hash) = client::init_storage(
+    let TezosStorageInitInfo {chain_id, genesis_block_header_hash, current_block_header_hash} = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage")
     );
 

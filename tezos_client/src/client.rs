@@ -4,6 +4,7 @@ use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
+use tezos_interop::ffi::OcamlStorageInitInfo;
 
 #[derive(Debug, Fail)]
 pub enum ApplyBlockError {
@@ -11,6 +12,24 @@ pub enum ApplyBlockError {
     IncompleteOperations,
     #[fail(display = "failed to apply block")]
     FailedToApplyBlock,
+    #[fail(display = "Unknown predecessor")]
+    UnknownPredecessor,
+}
+
+pub struct TezosStorageInitInfo {
+    pub chain_id: ChainId,
+    pub genesis_block_header_hash: BlockHash,
+    pub current_block_header_hash: BlockHash
+}
+
+impl TezosStorageInitInfo {
+    fn new(storage_init_info: OcamlStorageInitInfo) -> Self {
+        TezosStorageInitInfo {
+            chain_id: hex::decode(storage_init_info.chain_id).unwrap(),
+            genesis_block_header_hash: hex::decode(storage_init_info.genesis_block_header_hash).unwrap(),
+            current_block_header_hash: hex::decode(storage_init_info.current_block_header_hash).unwrap(),
+        }
+    }
 }
 
 //        TODO: priznak do storage, ze mame block zapisany v tezos-ocaml-storage
@@ -23,14 +42,10 @@ pub enum ApplyBlockError {
 //        TODO: jira - pre generovanie identity
 
 /// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String) -> (ChainId, BlockHash, BlockHash) {
-    let (chain_id, genesis_block_header_hash, current_block_header_hash) = ffi::init_storage(storage_data_dir)
+pub fn init_storage(storage_data_dir: String) -> TezosStorageInitInfo {
+    let ocaml_storage_init_info = ffi::init_storage(storage_data_dir)
         .expect("Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!");
-    (
-        hex::decode(chain_id).unwrap(),
-        hex::decode(genesis_block_header_hash).unwrap(),
-        hex::decode(current_block_header_hash).unwrap(),
-    )
+    TezosStorageInitInfo::new(ocaml_storage_init_info)
 }
 
 pub fn get_current_block_header(chain_id: &ChainId) -> BlockHeader {

@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use log::trace;
 
@@ -7,9 +7,6 @@ use tezos_encoding::hash::{HashRef, ToHashRef, ChainId, BlockHash};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_storage::{BlockStorage, BlockStorageDatabase};
-use crate::block_storage::BlockStorage;
-use crate::BlockHeaderWithHash;
-use std::sync::{Arc, Mutex};
 
 pub struct BlockState {
     storage: BlockStorage,

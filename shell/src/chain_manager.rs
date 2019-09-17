@@ -49,10 +49,15 @@ impl ChainManager {
     }
 
     fn new((event_channel, rocks_db, tezos_data_dir): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, String)) -> Self {
-        let (chain_id, genesis_block_header_hash, current_head_hash) = client::init_storage(tezos_data_dir);
+        let tezos_storage_init_info = client::init_storage(tezos_data_dir);
         ChainManager {
             event_channel,
-            block_state: BlockState::new(rocks_db.clone(), chain_id, genesis_block_header_hash, current_head_hash),
+            block_state: BlockState::new(
+                rocks_db.clone(),
+                tezos_storage_init_info.chain_id,
+                tezos_storage_init_info.genesis_block_header_hash,
+                tezos_storage_init_info.current_block_header_hash
+            ),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new()
         }

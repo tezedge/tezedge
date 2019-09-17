@@ -1,4 +1,5 @@
 use tezos_interop::ffi;
+use tezos_interop::ffi::OcamlStorageInitInfo;
 
 mod common;
 
@@ -7,7 +8,7 @@ pub const CHAIN_ID: &str = "8eceda2f";
 #[test]
 fn test_init_storage() {
     // init empty storage for test
-    let (chain_id, genesis_block_header_hash, current_block_header_hash) = prepare_empty_storage("test_storage_01");
+    let OcamlStorageInitInfo {chain_id, genesis_block_header_hash, current_block_header_hash} = prepare_empty_storage("test_storage_01");
     assert_eq!(false, current_block_header_hash.is_empty());
 
     // has current head (genesis)
@@ -36,10 +37,10 @@ fn test_fn_get_block_header_not_found_return_none() {
 }
 
 /// Initializes empty dir for ocaml storage
-pub fn prepare_empty_storage(dir_name: &str) -> (String, String, String) {
+pub fn prepare_empty_storage(dir_name: &str) -> OcamlStorageInitInfo {
     // init empty storage for test
     let storage_data_dir_path = common::prepare_empty_dir(dir_name);
-    let (chain_id, genesis_block_header_hash, current_block_header_hash) = ffi::init_storage(storage_data_dir_path.to_string()).unwrap();
-    assert_eq!(CHAIN_ID, &chain_id);
-    (chain_id, genesis_block_header_hash, current_block_header_hash)
+    let storage_init_info = ffi::init_storage(storage_data_dir_path.to_string()).unwrap();
+    assert_eq!(CHAIN_ID, &storage_init_info.chain_id);
+    storage_init_info
 }

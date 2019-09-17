@@ -3,7 +3,13 @@ use ocaml::{Array, Str, Tuple};
 use crate::runtime;
 use crate::runtime::OcamlError;
 
-pub fn init_storage(storage_data_dir: String) -> Result<(String, String, String), OcamlError> {
+pub struct OcamlStorageInitInfo {
+    pub chain_id: String,
+    pub genesis_block_header_hash: String,
+    pub current_block_header_hash: String
+}
+
+pub fn init_storage(storage_data_dir: String) -> Result<OcamlStorageInitInfo, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");
         match ocaml_function.call_exn::<Str>(storage_data_dir.as_str().into()) {
@@ -12,11 +18,11 @@ pub fn init_storage(storage_data_dir: String) -> Result<(String, String, String)
                 let chain_id: Str = ocaml_result.get(0).unwrap().into();
                 let genesis_block_header_hash: Str = ocaml_result.get(1).unwrap().into();
                 let current_block_header_hash: Str = ocaml_result.get(2).unwrap().into();
-                (
-                    chain_id.as_str().to_string(),
-                    genesis_block_header_hash.as_str().to_string(),
-                    current_block_header_hash.as_str().to_string()
-                )
+                OcamlStorageInitInfo {
+                    chain_id: chain_id.as_str().to_string(),
+                    genesis_block_header_hash: genesis_block_header_hash.as_str().to_string(),
+                    current_block_header_hash: current_block_header_hash.as_str().to_string()
+                }
             }
             Err(e) => {
                 panic!("Storage in directory '{}' initialization failed! Reason: {:?}", storage_data_dir, e)
