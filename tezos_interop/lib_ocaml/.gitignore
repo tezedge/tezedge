@@ -1,6 +1,0 @@
-# dune build output
-/*/.merlin
-/*/_build
-/*/artifacts
-*.a
-*.o
