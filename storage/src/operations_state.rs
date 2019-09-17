@@ -73,6 +73,10 @@ impl OperationsState {
     pub fn has_missing_operations(&self) -> bool {
         !self.missing_operations_for_blocks.is_empty()
     }
+
+    pub fn get_operations(&mut self, block_hash: &HashRef) -> Option<&Operations> {
+        self.storage.get_operations(&block_hash)
+    }
 }
 
 #[derive(Clone)]
