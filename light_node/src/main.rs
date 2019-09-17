@@ -57,7 +57,11 @@ fn main() {
         &configuration::ENV.initial_peers,
         Threshold::new(2, 30))
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone());
+    let _ = ChainManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        configuration::ENV.tezos_data_dir.clone()
+    );
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;

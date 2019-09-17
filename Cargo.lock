@@ -1234,6 +1234,7 @@ dependencies = [
  "networking 0.1.0",
  "riker 0.3.2 (git+https://github.com/riker-rs/riker)",
  "storage 0.1.0",
+ "tezos_client 0.1.0",
  "tezos_encoding 0.1.0",
 ]
 
