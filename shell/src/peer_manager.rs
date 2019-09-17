@@ -18,7 +18,7 @@ use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 #[derive(Clone, Debug)]
 pub struct CheckPeerCount;
 
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Threshold {
     low: usize,
     high: usize,
