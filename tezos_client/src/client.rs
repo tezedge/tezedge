@@ -1,12 +1,22 @@
+use failure::Fail;
+
 use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
 
-//        TODO: doladit error handling, ked to budeme realne srobovat do chain_managera
+#[derive(Debug, Fail)]
+pub enum ApplyBlockError {
+    #[fail(display = "incomplete operations")]
+    IncompleteOperations,
+    #[fail(display = "failed to apply block")]
+    FailedToApplyBlock,
+}
+
 //        TODO: priznak do storage, ze mame block zapisany v tezos-ocaml-storage
 //        TODO: spravit benches pre bootstrap test a zoptimalizovat ocaml s logovanim a bez logovania
 //        TODO: jira - od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
+//                   - Return supported network protocol version
 //        TODO: jira - Tezos_validation.Block_validation.apply
 //        TODO: jira - podpora pre test_chain
 //        TODO: jira - overit proof_of_work_stamp pri bootstrape
@@ -43,29 +53,40 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Option<BlockHeader> {
 pub fn apply_block(
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
-    operations: &Vec<OperationsForBlocksMessage>) -> String {
+    operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<String, ApplyBlockError> {
 
-    // TODO: check for completness validaion_pass OperationForBlock
+    // TODO: ApplyBlockError::IncompleteOperations check for completness validaion_pass OperationForBlock
 
     let validation_result = ffi::apply_block(
-            hex::encode(block_header_hash),
-            block_header.as_hex(),
-            to_hex_vec(operations)
-    ).expect("Ffi 'apply_block' failed! Something is wrong!");
+        hex::encode(block_header_hash),
+        block_header.as_hex(),
+        to_hex_vec(operations),
+    );
 
-    // TODO: what to return? validation_result? context_hash? context?
-    // TODO: returning just validation_message now
-    validation_result
+    match validation_result {
+        Ok(validation_result) => {
+            // TODO: what to return? validation_result? context_hash? context?
+            // TODO: returning just validation_message now
+            Ok(validation_result)
+        },
+        Err(_) => Err(ApplyBlockError::FailedToApplyBlock)
+    }
 }
 
-fn to_hex_vec(block_operations: &Vec<OperationsForBlocksMessage>) -> Vec<Vec<String>> {
+fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Option<Vec<String>>> {
     block_operations
         .into_iter()
         .map(|bo| {
-            bo.operations
-                .iter()
-                .map(|op| op.as_hex())
-                .collect()
+            if let Some(bo_ops) = bo {
+                Some(
+                    bo_ops.operations
+                        .iter()
+                        .map(|op| op.as_hex())
+                        .collect()
+                )
+            } else {
+                None
+            }
         })
         .collect()
 }

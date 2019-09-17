@@ -49,7 +49,7 @@ pub fn get_block_header(block_header_hash: String) -> Result<Option<String>, Oca
     })
 }
 
-pub fn apply_block(block_header_hash: String, block_header: String, operations: Vec<Vec<String>>) -> Result<String, OcamlError> {
+pub fn apply_block(block_header_hash: String, block_header: String, operations: Vec<Option<Vec<String>>>) -> Result<String, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
         let ocaml_result: Str = ocaml_function.call3::<Str, Str, Array>(
@@ -61,20 +61,25 @@ pub fn apply_block(block_header_hash: String, block_header: String, operations: 
     })
 }
 
-fn operations_to_ocaml_array(operations: Vec<Vec<String>>) -> Array {
+fn operations_to_ocaml_array(operations: Vec<Option<Vec<String>>>) -> Array {
     let mut operations_for_ocaml = Array::new(operations.len());
 
     operations.iter()
         .enumerate()
-        .for_each(|(ops_idx, ops)| {
-            let mut ops_array = Array::new(ops.len());
-            ops.iter()
-                .enumerate()
-                .for_each(|(op_idx, op)| {
-                    ops_array
-                        .set(op_idx, Str::from(op.as_str()).into())
-                        .expect("Failed to add operation to Array!");
-                });
+        .for_each(|(ops_idx, ops_option)| {
+            let ops_array = if let Some(ops) = ops_option {
+                let mut ops_array = Array::new(ops.len());
+                ops.iter()
+                    .enumerate()
+                    .for_each(|(op_idx, op)| {
+                        ops_array
+                            .set(op_idx, Str::from(op.as_str()).into())
+                            .expect("Failed to add operation to Array!");
+                    });
+                ops_array
+            } else {
+                Array::new(0)
+            };
             operations_for_ocaml
                 .set(ops_idx, ops_array.into())
                 .expect("Failed to add operations to Array!");

@@ -29,7 +29,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::block_header_level1_operations(),
         ),
     );
-    assert_eq!("activate PsddFKi32cMJ", &validation_result);
+    assert_eq!("activate PsddFKi32cMJ", &validation_result.unwrap());
 
     // check current head changed to level 1
     let current_header = client::get_current_block_header(&chain_id);
@@ -44,7 +44,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::block_header_level2_operations(),
         ),
     );
-    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &validation_result);
+    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &validation_result.unwrap());
 
     // check current head changed to level 2
     let current_header = client::get_current_block_header(&chain_id);
@@ -59,7 +59,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::block_header_level3_operations(),
         ),
     );
-    assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &validation_result);
+    assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &validation_result.unwrap());
 
     // check current head changed to level 3
     let current_header = client::get_current_block_header(&chain_id);
@@ -105,7 +105,7 @@ mod test_data {
         ]
     }
 
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<OperationsForBlocksMessage> {
+    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<Option<OperationsForBlocksMessage>> {
         hex_operations
             .into_iter()
             .map(|bo| {
@@ -113,15 +113,16 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_hex(op))
                     .collect();
-
-                OperationsForBlocksMessage {
-                    operation_hashes_path: Path::Op,
-                    operations_for_block: OperationsForBlock {
-                        validation_pass: 4,
-                        hash: hex::decode(block_hash.clone()).unwrap() as BlockHash,
-                    },
-                    operations: ops,
-                }
+                Some (
+                    OperationsForBlocksMessage {
+                        operation_hashes_path: Path::Op,
+                        operations_for_block: OperationsForBlock {
+                            validation_pass: 4,
+                            hash: hex::decode(block_hash.clone()).unwrap() as BlockHash,
+                        },
+                        operations: ops,
+                    }
+                )
             })
             .collect()
     }
