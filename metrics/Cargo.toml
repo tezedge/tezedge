@@ -1,0 +1,14 @@
+[package]
+name = "metrics"
+version = "0.1.0"
+authors = ["Martin Lacko <mrt.lacko@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+storage = { path = "../storage" }
+failure = "0.1.5"
+rocksdb = "0.12.3"
+chrono = "0.4"
+ws = "*"
+riker = { git = "https://github.com/riker-rs/riker" }
+tokio = "0.2.0-alpha.4"
