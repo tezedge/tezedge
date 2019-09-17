@@ -80,6 +80,6 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
 
 fn default_write_options() -> WriteOptions {
     let mut opts = WriteOptions::default();
-    opts.set_sync(true);
+    opts.set_sync(false);
     opts
 }

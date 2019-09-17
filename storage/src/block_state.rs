@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use log::debug;
+use log::trace;
 
 use tezos_encoding::hash::{HashRef, ToHashRef};
 
@@ -36,7 +36,7 @@ impl BlockState {
         if !self.storage.contains(&block_hash)? {
             self.missing_blocks.insert(block_hash);
         } else {
-            debug!("Block {:?} is already present in storage", &block_hash);
+            trace!("Block {:?} is already present in storage", &block_hash);
         }
         Ok(())
     }

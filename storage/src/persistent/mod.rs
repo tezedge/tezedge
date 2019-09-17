@@ -22,8 +22,6 @@ where
 
 fn default_db_options() -> Options {
     let mut db_opts = Options::default();
-    db_opts.set_max_write_buffer_number(1024);
-    db_opts.set_min_write_buffer_number_to_merge(16);
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
     db_opts

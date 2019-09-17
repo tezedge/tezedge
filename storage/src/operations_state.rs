@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use log::debug;
+use log::trace;
 
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::HashRef;
@@ -40,7 +40,7 @@ impl OperationsState {
 
         self.meta_storage.insert(message)?;
         if self.meta_storage.is_complete(&hash_ref)? {
-            debug!("Block {:?} has complete operations", &hash_ref);
+            trace!("Block {:?} has complete operations", &hash_ref);
             self.missing_operations_for_blocks.remove(&hash_ref);
         }
         Ok(())
@@ -64,7 +64,7 @@ impl OperationsState {
             if !self.meta_storage.is_complete(&op.block_hash)? {
                 self.missing_operations_for_blocks.insert(op.block_hash);
             } else {
-                debug!("Will not re-queue block {:?} because it has complete operations", &op.block_hash);
+                trace!("Will not re-queue block {:?} because it has complete operations", &op.block_hash);
             }
         }
         Ok(())

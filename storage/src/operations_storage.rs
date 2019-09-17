@@ -28,7 +28,7 @@ impl OperationsStorage {
             validation_pass: message.operations_for_block.validation_pass as u8
         };
         self.db.put(&key, &message)
-            .map_err(|e| e.into())
+            .map_err(StorageError::from)
     }
 }
 
@@ -104,7 +104,7 @@ impl OperationsMetaStorage {
                 is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
                 is_complete: false
             }
-        ).map_err(|e| e.into())
+        ).map_err(StorageError::from)
     }
 
     pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
@@ -118,7 +118,7 @@ impl OperationsMetaStorage {
                 meta.is_validation_pass_present[validation_pass as usize] = true as u8;
                 meta.is_complete = meta.is_validation_pass_present.iter().all(|v| *v == (true as u8));
                 self.db.merge(&block_hash, &meta)
-                    .map_err(|e| e.into())
+                    .map_err(StorageError::from)
             }
             None => Err(StorageError::MissingKey),
         }
@@ -181,9 +181,13 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
                 assert_eq!(val[0], op[0], "Value of validation passes cannot change");
 
                 let validation_passes = val[0] as usize;
+                // merge `is_validation_pass_present`
                 for i in 1..=validation_passes {
                     val[i] |= op[i]
                 }
+                // merge `is_complete`
+                let is_complete_idx = validation_passes + 1;
+                val[is_complete_idx] |= op[is_complete_idx];
             },
             None => result = Some(op.to_vec())
         }
@@ -265,7 +269,7 @@ mod tests {
     fn merge_meta_value_test() {
         use rocksdb::{Options, DB};
 
-        let path = "_opstorage_mergetest";
+        let path = "__opstorage_mergetest";
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
@@ -289,12 +293,14 @@ mod tests {
             v.is_validation_pass_present[3] = t;
             let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             v.is_validation_pass_present[3] = f;
+            v.is_complete = true;
             let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             let m = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             assert!(m.is_ok());
             match OperationsMetaStorageDatabase::get(&db, &k) {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
+                    assert!(value.is_complete);
                 },
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
