@@ -30,6 +30,10 @@ impl OperationsStorage {
         self.db.put(&key, &message)
             .map_err(StorageError::from)
     }
+
+    pub fn get_operations(&mut self, block_hash: &HashRef) -> Result<Vec<Option<OperationsForBlocksMessage>>, StorageError>  {
+        unimplemented!()
+    }
 }
 
 impl Schema for OperationsStorage {

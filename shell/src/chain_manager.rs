@@ -10,7 +10,6 @@ use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
-use tezos_encoding::hash::{ToHashRef, HashRef};
 use tezos_client::client;
 use tezos_encoding::hash::{HashRef, ToHashRef};
 
@@ -254,14 +253,14 @@ impl Receive<ApplyBlockToChain> for ChainManager {
         let ChainManager {block_state, operations_state, .. } = self;
 
         let block_hash = msg.block_hash;
-        let block = block_state.get_block(&block_hash).expect("Block header should be present in storage");
+        let block = block_state.get_block(&block_hash).expect("Block header should be present in storage").unwrap();
         let operations = operations_state.get_operations(&block_hash).expect("Operations should be present in storage");
 
         // try to apply block to chain
         let result = client::apply_block(
             block_hash.get_hash().as_ref(),
             block.header.as_ref(),
-            operations.values.as_ref(),
+            operations.as_ref(),
         );
 
         match result {

@@ -62,7 +62,7 @@ impl BlockState {
         self.current_chain_id.get_hash()
     }
 
-    pub fn get_block(&self, block_hash: &HashRef) -> Option<&BlockHeaderWithHash> {
+    pub fn get_block(&self, block_hash: &HashRef) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.storage.get(&block_hash)
     }
 }

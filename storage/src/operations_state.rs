@@ -74,8 +74,8 @@ impl OperationsState {
         !self.missing_operations_for_blocks.is_empty()
     }
 
-    pub fn get_operations(&mut self, block_hash: &HashRef) -> Option<&Operations> {
-        self.storage.get_operations(&block_hash)
+    pub fn get_operations(&mut self, block_hash: &HashRef) -> Result<Vec<Option<OperationsForBlocksMessage>>, StorageError> {
+        self.operations_storage.get_operations(&block_hash)
     }
 }
 
