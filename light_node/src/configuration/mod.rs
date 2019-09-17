@@ -27,6 +27,7 @@ pub struct Environment {
     pub initial_peers: Vec<SocketAddr>,
     pub identity_json_file_path: Option<PathBuf>,
     pub log_message_contents: bool,
+    pub bootstrap_db_path: PathBuf,
 }
 
 impl Environment {
@@ -70,6 +71,12 @@ impl Environment {
                 .takes_value(true)
                 .default_value("true")
                 .help("Log message contents. Default: true"))
+            .arg(Arg::with_name("bootstrap-db-path")
+                .short("B")
+                .long("bootstrap-db-path")
+                .takes_value(true)
+                .default_value("bootstrap_db")
+                .help("Path to bootstrap database directory. Default: bootstrap_db"))
             .get_matches();
 
         Environment {
@@ -107,6 +114,10 @@ impl Environment {
                 .unwrap()
                 .parse::<bool>()
                 .expect("Was expecting value of log-message-contents"),
+            bootstrap_db_path: args.value_of("bootstrap-db-path")
+                .unwrap_or_default()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path")
         }
     }
 }

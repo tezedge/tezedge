@@ -5,5 +5,9 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
+bytes = "0.4.12"
+failure = "0.1.5"
+log = "0.4.8"
+rocksdb = "0.12.3"
 networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos_encoding" }

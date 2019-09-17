@@ -91,7 +91,7 @@ impl HashEncoding {
 
 #[derive(Clone, Hash, PartialEq, PartialOrd, Debug, Eq)]
 pub struct HashRef {
-    hash: Arc<Hash>,
+    pub hash: Arc<Hash>,
 }
 
 impl HashRef {
@@ -107,8 +107,6 @@ impl HashRef {
 pub trait ToHashRef {
     fn to_hash_ref(self) -> HashRef;
 }
-
-
 
 impl<T: AsRef<[u8]>> ToHashRef for T {
     fn to_hash_ref(self) -> HashRef {

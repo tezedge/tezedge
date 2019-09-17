@@ -34,7 +34,7 @@ impl HasEncoding for GetBlockHeadersMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct BlockHeader {
     pub level: i32,
     pub proto: u8,
