@@ -4,6 +4,7 @@ use tezos_encoding::hash::HashRef;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{DatabaseWithSchema, Schema};
+use crate::persistent::database::{IteratorWithSchema, IteratorMode};
 
 pub type BlockStorageDatabase = dyn DatabaseWithSchema<BlockStorage> + Sync + Send;
 
@@ -20,18 +21,23 @@ impl BlockStorage {
 
     pub fn insert(&mut self, block: BlockHeaderWithHash) -> Result<(), StorageError> {
         self.db.put(&block.hash, &block)
-            .map_err(|e| e.into())
+            .map_err(StorageError::from)
     }
 
     pub fn get(&self, block_hash: &HashRef) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.db.get(block_hash)
-            .map_err(|e| e.into())
+            .map_err(StorageError::from)
     }
 
     pub fn contains(&self, block_hash: &HashRef) -> Result<bool, StorageError> {
         self.get(block_hash)
             .map_err(StorageError::from)
             .map(|v| v.is_some())
+    }
+
+    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+        self.db.iter(mode)
+            .map_err(StorageError::from)
     }
 }
 
