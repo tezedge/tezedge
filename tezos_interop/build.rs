@@ -43,8 +43,6 @@ fn run_builder(build_chain: &str) {
                 .expect("Couldn't remove the docker container.");
         }
         "remote" => {
-            std::fs::create_dir_all("lib_tezos/artifacts").expect("Failed to create directory");
-
             // $ curl <remote_url> --output lib_tezos/artifacts/libtezos.o
             Command::new("curl")
                 .args(&[REMOTE_LIB_URL, "--output", Path::new("lib_tezos").join("artifacts").join("libtezos.o").as_os_str().to_str().unwrap()])
@@ -89,12 +87,19 @@ fn main() {
         update_git_submodules();
     }
 
+    // ensure lib_tezos/artifacts directory exists
+    let artifacts_dir_items = Path::new("lib_tezos").join("artifacts");
+    if !artifacts_dir_items.exists() {
+        fs::create_dir_all(&artifacts_dir_items).expect("Failed to create artifacts directory!");
+    }
+
     let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("remote".to_string());
     run_builder(&build_chain);
 
     // copy artifact files to OUT_DIR location
     let out_dir = env::var("OUT_DIR").unwrap();
-    let artifacts_dir_items = fs::read_dir(Path::new("lib_tezos").join("artifacts").as_path()).unwrap().filter_map(Result::ok)
+
+    let artifacts_dir_items = fs::read_dir(artifacts_dir_items).unwrap().filter_map(Result::ok)
         .map(|dir_entry| dir_entry.path())
         .filter(|path| path.is_file())
         .collect::<Vec<PathBuf>>();
