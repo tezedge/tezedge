@@ -38,12 +38,8 @@ impl BlockState {
 
         // store block
         self.block_storage.insert(&block_header)?;
-
         // update meta
-//        match self.meta_storage.get(&block_header.header.predecessor) {
-            // TODO: implement
-//        }
-
+        self.meta_storage.insert(&block_header)?;
         // remove from missing blocks
         self.missing_blocks.remove(&block_header.hash);
 

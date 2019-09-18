@@ -5,7 +5,7 @@ use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 use tezos_encoding::hash::BlockHash;
 
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
-use crate::StorageError;
+use crate::{StorageError, BlockHeaderWithHash};
 
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
 
@@ -20,7 +20,43 @@ impl BlockMetaStorage {
         BlockMetaStorage { db }
     }
 
-    pub fn insert(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
+    pub fn insert(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+        // create/update record for block
+        match self.get(&block_header.hash)?.as_mut() {
+            Some(meta) => {
+                meta.predecessor = Some(block_header.header.predecessor.clone());
+                self.put(&block_header.hash, &meta)?;
+            },
+            None => {
+                let meta = Meta {
+                    is_processed: false,
+                    predecessor: Some(block_header.header.predecessor.clone()),
+                    successor: None
+                };
+                self.put(&block_header.hash, &meta)?;
+            }
+        }
+
+        // create/update record for block predecessor
+        match self.get(&block_header.header.predecessor)?.as_mut() {
+            Some(meta) => {
+                meta.successor = Some(block_header.hash.clone());
+                self.put(&block_header.header.predecessor, &meta)?;
+            },
+            None => {
+                let meta = Meta {
+                    is_processed: false,
+                    predecessor: None,
+                    successor: Some(block_header.hash.clone())
+                };
+                self.put(&block_header.header.predecessor, &meta)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.db.put(block_hash, meta)
             .map_err(StorageError::from)
     }
@@ -58,9 +94,9 @@ macro_rules! has_successor {
 /// Meta information for the block
 #[derive(Clone, PartialEq, Debug)]
 pub struct Meta {
-    predecessor: Option<BlockHash>,
-    successor: Option<BlockHash>,
-    is_processed: bool,
+    pub predecessor: Option<BlockHash>,
+    pub successor: Option<BlockHash>,
+    pub is_processed: bool,
 }
 
 /// Codec for `Meta`
