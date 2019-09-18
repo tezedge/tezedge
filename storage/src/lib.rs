@@ -15,6 +15,7 @@ pub mod block_storage;
 pub mod operations_storage;
 pub mod operations_state;
 pub mod block_state;
+pub mod block_meta_storage;
 
 
 #[derive(PartialEq, Clone, Debug)]

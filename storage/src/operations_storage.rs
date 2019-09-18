@@ -247,6 +247,8 @@ impl Codec for Meta {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use failure::Error;
 
     use tezos_encoding::hash::HashEncoding;
@@ -282,6 +284,9 @@ mod tests {
         use rocksdb::{Options, DB};
 
         let path = "__opstorage_mergetest";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
