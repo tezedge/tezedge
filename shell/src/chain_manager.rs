@@ -11,6 +11,7 @@ use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
+use tezos_encoding::hash::{HashEncoding, HashType, BlockHash};
 use tezos_encoding::hash::{ToHashRef, HashRef};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
@@ -53,6 +54,7 @@ impl ChainManager {
         let tezos_storage_init_info = tezos_storage_init_info.clone();
         ChainManager {
             event_channel,
+            block_state: BlockState::new(rocks_db.clone(), rocks_db.clone()),
             block_state: BlockState::new(
                 rocks_db.clone(),
                 tezos_storage_init_info.chain_id.clone(),
@@ -76,7 +78,7 @@ impl ChainManager {
                         if !missing_block_headers.is_empty() {
                             debug!("Requesting {} block headers from peer {}", missing_block_headers.len(), &peer.peer_ref);
                             peer.queued_block_headers.extend(missing_block_headers.clone());
-                            let msg = GetBlockHeadersMessage { get_block_headers: missing_block_headers.iter().map(HashRef::get_hash).collect() };
+                            let msg = GetBlockHeadersMessage { get_block_headers: missing_block_headers };
                             tell_peer(msg.into(), peer);
                         }
                     }
@@ -126,7 +128,7 @@ impl ChainManager {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
                                     let block_hashes = message.current_branch.history.iter()
-                                        .map(|block_hash| block_hash.clone().to_hash_ref());
+                                        .map(|block_hash| block_hash.clone());
                                     for block_hash in block_hashes {
                                         block_state.schedule_block_hash(block_hash)?
                                     }
@@ -151,7 +153,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::OperationsForBlocks(operations) => {
-                                    let block_hash = operations.operations_for_block.hash.clone().to_hash_ref();
+                                    let block_hash = operations.operations_for_block.hash.clone();
                                     let mut operations_completed = false;
                                     match peer.queued_operations.get_mut(&block_hash) {
                                         Some(missing_operations) => {
@@ -264,8 +266,8 @@ impl Receive<NetworkChannelMsg> for ChainManager {
 
 struct PeerState {
     peer_ref: PeerRef,
-    queued_block_headers: HashSet<HashRef>,
-    queued_operations: HashMap<HashRef, MissingOperations>,
+    queued_block_headers: HashSet<BlockHash>,
+    queued_operations: HashMap<BlockHash, MissingOperations>,
     request_last: Instant,
     response_last: Instant,
 }

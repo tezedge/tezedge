@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tezos_encoding::hash::HashRef;
+use tezos_encoding::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{DatabaseWithSchema, Schema};
@@ -19,17 +19,17 @@ impl BlockStorage {
         BlockStorage { db }
     }
 
-    pub fn insert(&mut self, block: BlockHeaderWithHash) -> Result<(), StorageError> {
-        self.db.put(&block.hash, &block)
+    pub fn insert(&mut self, block: &BlockHeaderWithHash) -> Result<(), StorageError> {
+        self.db.put(&block.hash, block)
             .map_err(StorageError::from)
     }
 
-    pub fn get(&self, block_hash: &HashRef) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+    pub fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.db.get(block_hash)
             .map_err(StorageError::from)
     }
 
-    pub fn contains(&self, block_hash: &HashRef) -> Result<bool, StorageError> {
+    pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.get(block_hash)
             .map_err(StorageError::from)
             .map(|v| v.is_some())
@@ -43,6 +43,6 @@ impl BlockStorage {
 
 impl Schema for BlockStorage {
     const COLUMN_FAMILY_NAME: &'static str = "block_storage";
-    type Key = HashRef;
+    type Key = BlockHash;
     type Value = BlockHeaderWithHash;
 }

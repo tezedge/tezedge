@@ -5,7 +5,7 @@ use std::sync::Arc;
 use log::trace;
 
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::HashRef;
+use tezos_encoding::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::operations_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase};
@@ -14,7 +14,7 @@ use crate::persistent::database::IteratorMode;
 pub struct OperationsState {
     operations_storage: OperationsStorage,
     meta_storage: OperationsMetaStorage,
-    missing_operations_for_blocks: HashSet<HashRef>,
+    missing_operations_for_blocks: HashSet<BlockHash>,
 }
 
 impl OperationsState {
@@ -36,13 +36,13 @@ impl OperationsState {
     }
 
     pub fn insert_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        let hash_ref = HashRef::new(message.operations_for_block.hash.clone());
+        let hash_ref = &message.operations_for_block.hash;
         self.operations_storage.insert(message)?;
 
         self.meta_storage.insert(message)?;
-        if self.meta_storage.is_complete(&hash_ref)? {
-            trace!("Block {:?} has complete operations", &hash_ref);
-            self.missing_operations_for_blocks.remove(&hash_ref);
+        if self.meta_storage.is_complete(hash_ref)? {
+            trace!("Block {:?} has complete operations", hash_ref);
+            self.missing_operations_for_blocks.remove(hash_ref);
         }
         Ok(())
     }
@@ -90,7 +90,7 @@ impl OperationsState {
 
 #[derive(Clone)]
 pub struct MissingOperations {
-    pub block_hash: HashRef,
+    pub block_hash: BlockHash,
     pub validation_passes: HashSet<i8>
 }
 
@@ -115,7 +115,7 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
             .iter()
             .map(|vp| {
                 OperationsForBlock {
-                    hash: ops.block_hash.get_hash(),
+                    hash: ops.block_hash.clone(),
                     validation_pass: *vp
                 }
             })

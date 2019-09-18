@@ -5,7 +5,7 @@ use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options, SliceTransform};
 
 use networking::p2p::binary_message::BinaryMessage;
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{HashRef, HashType};
+use tezos_encoding::hash::{BlockHash, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
@@ -25,7 +25,7 @@ impl OperationsStorage {
 
     pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
-            block_hash: HashRef::new(message.operations_for_block.hash.clone()),
+            block_hash: message.operations_for_block.hash.clone(),
             validation_pass: message.operations_for_block.validation_pass as u8
         };
         self.db.put(&key, &message)
@@ -51,21 +51,21 @@ impl Schema for OperationsStorage {
 /// * bytes layout: `[block_hash(32)][validation_pass(1)]`
 #[derive(Debug, PartialEq)]
 pub struct OperationKey {
-    block_hash: HashRef,
+    block_hash: BlockHash,
     validation_pass: u8,
 }
 
 impl Codec for OperationKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         Ok(OperationKey {
-            block_hash: HashRef::new(bytes[0..HashType::BlockHash.size()].to_vec()),
+            block_hash: bytes[0..HashType::BlockHash.size()].to_vec(),
             validation_pass: bytes[HashType::BlockHash.size()]
         })
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut value = Vec::with_capacity(HashType::BlockHash.size() + 1);
-        value.extend(&*self.block_hash.hash);
+        value.extend(&self.block_hash);
         value.push(self.validation_pass);
         Ok(value)
     }
@@ -109,7 +109,7 @@ impl OperationsMetaStorage {
     }
 
     pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        let block_hash =  HashRef::new(message.operations_for_block.hash.clone());
+        let block_hash =  message.operations_for_block.hash.clone();
 
         match self.db.get(&block_hash)? {
             Some(mut meta) => {
@@ -125,7 +125,7 @@ impl OperationsMetaStorage {
         }
     }
 
-    pub fn get_missing_validation_passes(&mut self, block_hash: &HashRef) -> Result<HashSet<i8>, StorageError> {
+    pub fn get_missing_validation_passes(&mut self, block_hash: &BlockHash) -> Result<HashSet<i8>, StorageError> {
         match self.db.get(block_hash)? {
             Some(meta) => {
                 let result  = if meta.is_complete {
@@ -142,7 +142,7 @@ impl OperationsMetaStorage {
         }
     }
 
-    pub fn is_complete(&self, block_hash: &HashRef) -> Result<bool, StorageError> {
+    pub fn is_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         match self.db.get(block_hash)? {
             Some(Meta { is_complete, .. }) => {
                 Ok(is_complete)
@@ -152,7 +152,7 @@ impl OperationsMetaStorage {
     }
 
 
-    pub fn contains(&self, block_hash: &HashRef) -> Result<bool, StorageError> {
+    pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.db.get(block_hash)
             .map(|v| v.is_some())
             .map_err(StorageError::from)
@@ -166,7 +166,7 @@ impl OperationsMetaStorage {
 
 impl Schema for OperationsMetaStorage {
     const COLUMN_FAMILY_NAME: &'static str = "operations_meta_storage";
-    type Key = HashRef;
+    type Key = BlockHash;
     type Value = Meta;
 
     fn cf_descriptor() -> ColumnFamilyDescriptor {
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = OperationKey {
-            block_hash: HashRef::new(HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?),
+            block_hash: HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
             validation_pass: 4,
         };
         let encoded_bytes = expected.encode()?;
@@ -296,7 +296,7 @@ mod tests {
             let f = false as u8;
 
             let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
-            let k = HashRef::new(vec![3, 1, 3, 3, 7]);
+            let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
