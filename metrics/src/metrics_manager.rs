@@ -1,42 +1,62 @@
-use tokio::TaskExecutor;
-use std::collections::HashMap;
-use riker::actor::{ActorUri, ActorRefFactory, Props,Context};
+use crate::ws_server::{WsClient, WsServer};
+use ws::{WebSocket, Sender as WsSender};
+use riker::actor::*;
+use std::thread::Builder;
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
+use std::sync::{Arc, atomic::AtomicUsize};
+
+pub type MetricsManagerRef = ActorRef<NetworkChannelMsg>;
 
 pub struct MetricsManager {
-    executor: TaskExecutor,
-    ws_port: u16,
-    protocol_name: String,
-    peers: HashSet<ActorUri>,
-    clients: HashMap<>
+    socket_port: u16,
+    event_channel: ChannelRef<NetworkChannelMsg>,
+    broadcaster: WsSender,
+    connected_clients: Arc<AtomicUsize>,
 }
 
 impl MetricsManager {
-    pub fn actor(sys: &impl ActorRefFactory, executor, ws_port, protocol_name) {
-        sys.actor_of(Props::new_args(Self::new, (executor, ws_port, protocol_name)), Self::name())
-    }
-
     fn name() -> &'static str {
-        "metrics-manager"
+        "metrics_manager"
     }
 
-    fn new((executor, ws_port, protocol_name): (TaskExecutor, u16, String)) -> Self {
+    fn new((event_channel, socket_port): (ChannelRef<NetworkChannelMsg>, u16)) -> Self {
+        let connected_clients = Arc::new(AtomicUsize::new(0));
+        let ws_server = WebSocket::new(WsServer::new(connected_clients.clone()))
+            .expect("Unable to create websocket server");
+        let broadcaster = ws_server.broadcaster();
+        Builder::new().name("ws_metrics_server".to_owned()).spawn(move || {
+            ws_server.run()
+        });
+
+
         Self {
-            executor,
-            ws_port,
-            protocol_name,
-            peers: HashSet::with_capacity(15),  // TODO: map this to threshold for better sub-optimal results
+            socket_port,
+            event_channel,
+            broadcaster,
+            connected_clients,
         }
+    }
+
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, socket_port: u16) -> Result<MetricsManagerRef, CreateError> {
+        sys.actor_of(
+            Props::new_args(Self::new, (event_channel, socket_port)),
+            Self::name(),
+        )
     }
 }
 
 impl Actor for MetricsManager {
-    type Msg = MetricsManagerMsg;
+    type Msg = NetworkChannelMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        let myself = ctx.myself();
+        // Listen for all network events
+        self.event_channel.tell(Subscribe {
+            actor: Box::new(ctx.myself()),
+            topic: NetworkChannelTopic::NetworkEvents.into(),
+        }, None);
+    }
 
-        self.executor.spawn(async move {
-            handle_ws_connections(self.ws_port.clone(), ctx.myself()).await;
-        });
+    fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, _sender: Option<BasicActorRef>) {
+        unimplemented!()
     }
 }
