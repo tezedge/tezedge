@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::{trace, debug, warn};
+use log::{trace, debug, info, warn};
 use riker::actors::*;
 
 use networking::p2p::encoding::prelude::*;
@@ -63,6 +63,12 @@ impl Actor for ChainManager {
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
         subscribe_to_network_events(&self.event_channel, ctx.myself());
+
+        info!("Hydrating block state");
+        self.block_state.hydrate().expect("Failed to hydrate block state");
+        info!("Hydrating operations state");
+        self.operations_state.hydrate().expect("Failed to hydrate operations state");
+        info!("Hydrating completed successfully");
 
         ctx.schedule::<Self::Msg, _>(
             Duration::from_secs(15),

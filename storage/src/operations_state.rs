@@ -9,6 +9,7 @@ use tezos_encoding::hash::HashRef;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::operations_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase};
+use crate::persistent::database::IteratorMode;
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,
@@ -73,6 +74,18 @@ impl OperationsState {
     pub fn has_missing_operations(&self) -> bool {
         !self.missing_operations_for_blocks.is_empty()
     }
+
+    pub fn hydrate(&mut self) -> Result<(), StorageError> {
+        let OperationsState { meta_storage, missing_operations_for_blocks, .. } = self;
+        for (key, value) in meta_storage.iter(IteratorMode::Start)? {
+            if !value?.is_complete() {
+                missing_operations_for_blocks.insert(key?);
+            }
+        }
+
+        Ok(())
+    }
+
 }
 
 #[derive(Clone)]
