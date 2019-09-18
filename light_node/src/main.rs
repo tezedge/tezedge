@@ -45,8 +45,8 @@ fn main() {
         OperationsStorage::cf_descriptor(),
         OperationsMetaStorage::cf_descriptor(),
     ];
-    let rocks_db = open_db(&configuration::ENV.bootstrap_db_path, schemas)
-        .expect(&format!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path));
+    let rocks_db = Arc::new(open_db(&configuration::ENV.bootstrap_db_path, schemas)
+        .expect(&format!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path)));
 
     let actor_system = ActorSystem::new().expect("Failed to create actor system");
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
@@ -70,7 +70,7 @@ fn main() {
         &configuration::ENV.initial_peers,
         configuration::ENV.peer_threshold)
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), Arc::new(rocks_db));
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), rocks_db.clone());
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;
@@ -84,6 +84,7 @@ fn main() {
         });
         prog.await;
         let _ = actor_system.shutdown().await;
+        rocks_db.flush().expect("Failed to flush database");
     });
 }
 

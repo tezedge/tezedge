@@ -9,6 +9,7 @@ use tezos_encoding::hash::{HashRef, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
+use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type OperationsStorageDatabase = dyn DatabaseWithSchema<OperationsStorage> + Sync + Send;
 
@@ -156,6 +157,11 @@ impl OperationsMetaStorage {
             .map(|v| v.is_some())
             .map_err(StorageError::from)
     }
+
+    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+        self.db.iter(mode)
+            .map_err(StorageError::from)
+    }
 }
 
 impl Schema for OperationsMetaStorage {
@@ -201,6 +207,12 @@ pub struct Meta {
     validation_passes: u8,
     is_validation_pass_present: Vec<u8>,
     is_complete: bool
+}
+
+impl Meta {
+    pub fn is_complete(&self) -> bool {
+        self.is_complete
+    }
 }
 
 impl Codec for Meta {
