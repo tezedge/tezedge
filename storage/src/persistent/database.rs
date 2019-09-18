@@ -86,7 +86,7 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
             .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
 
         let iter = match mode {
-            IteratorMode::Start => self.iterator_cf(cf, rocksdb::IteratorMode::End),
+            IteratorMode::Start => self.iterator_cf(cf, rocksdb::IteratorMode::Start),
             IteratorMode::End => self.iterator_cf(cf, rocksdb::IteratorMode::End),
             IteratorMode::From(key, direction) => self.iterator_cf(cf, rocksdb::IteratorMode::From(&key.encode()?, direction.into()))
         };
@@ -105,11 +105,11 @@ pub struct IteratorWithSchema<'a, S: Schema>(DBIterator<'a>, PhantomData<S>);
 
 impl<'a, S: Schema> Iterator for IteratorWithSchema<'a, S>
 {
-    type Item = Result<(S::Key, S::Value), SchemaError>;
+    type Item = (Result<S::Key, SchemaError>, Result<S::Value, SchemaError>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
-            .map(|(k, v)| Ok((S::Key::decode(&k)?, S::Value::decode(&v)?)))
+            .map(|(k, v)| (S::Key::decode(&k), S::Value::decode(&v)))
     }
 }
 

@@ -65,6 +65,12 @@ impl From<DBError> for StorageError {
     }
 }
 
+impl From<SchemaError> for StorageError {
+    fn from(error: SchemaError) -> Self {
+        StorageError::DBError { error: error.into() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use failure::Error;

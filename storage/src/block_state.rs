@@ -7,6 +7,7 @@ use tezos_encoding::hash::{HashRef, ToHashRef};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_storage::{BlockStorage, BlockStorageDatabase};
+use crate::persistent::database::IteratorMode;
 
 pub struct BlockState {
     storage: BlockStorage,
@@ -50,5 +51,17 @@ impl BlockState {
 
     pub fn has_missing_blocks(&self) -> bool {
         !self.missing_blocks.is_empty()
+    }
+
+    pub fn hydrate(&mut self) -> Result<(), StorageError> {
+        let BlockState { storage, missing_blocks } = self;
+        for (_key, value) in storage.iter(IteratorMode::Start)? {
+            let predecessor_block_hash = value?.header.predecessor.clone().to_hash_ref();
+            if !storage.contains(&predecessor_block_hash)? {
+                missing_blocks.insert(predecessor_block_hash);
+            }
+        }
+
+        Ok(())
     }
 }
