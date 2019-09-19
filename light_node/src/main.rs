@@ -12,8 +12,7 @@ use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
-use storage::block_storage::BlockStorage;
-use storage::operations_storage::{OperationsMetaStorage, OperationsStorage};
+use storage::{BlockStorage, BlockMetaStorage, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
 use metrics::MetricsManager;
@@ -52,6 +51,7 @@ fn main() {
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
+        BlockMetaStorage::cf_descriptor(),
         OperationsStorage::cf_descriptor(),
         OperationsMetaStorage::cf_descriptor(),
     ];

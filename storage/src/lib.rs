@@ -6,7 +6,10 @@ pub use block_state::BlockState;
 use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use networking::p2p::encoding::prelude::BlockHeader;
 pub use operations_state::{MissingOperations, OperationsState};
-use tezos_encoding::hash::{HashType, BlockHash};
+pub use crate::block_meta_storage::BlockMetaStorage;
+pub use crate::block_storage::BlockStorage;
+pub use crate::operations_storage::{OperationsMetaStorage, OperationsStorage};
+use tezos_encoding::hash::{BlockHash, HashType};
 
 use crate::persistent::{Codec, DBError, SchemaError};
 

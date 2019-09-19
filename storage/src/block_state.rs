@@ -67,11 +67,10 @@ impl BlockState {
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        let BlockState { block_storage, missing_blocks, .. } = self;
-        for (_key, value) in block_storage.iter(IteratorMode::Start)? {
-            let predecessor_block_hash = value?.header.predecessor.clone();
-            if !block_storage.contains(&predecessor_block_hash)? {
-                missing_blocks.insert(predecessor_block_hash);
+        let BlockState { meta_storage, missing_blocks, .. } = self;
+        for (key, value) in meta_storage.iter(IteratorMode::Start)? {
+            if value?.predecessor.is_none() {
+                missing_blocks.insert(key?);
             }
         }
 

@@ -4,8 +4,9 @@ use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
 use tezos_encoding::hash::BlockHash;
 
+use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
-use crate::{StorageError, BlockHeaderWithHash};
+use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
 
@@ -66,6 +67,10 @@ impl BlockMetaStorage {
             .map_err(StorageError::from)
     }
 
+    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+        self.db.iter(mode)
+            .map_err(StorageError::from)
+    }
 }
 
 const BLOCK_LEN: usize = 32;
