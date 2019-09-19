@@ -1,12 +1,18 @@
-use crate::ws_server::{WsClient, WsServer};
+use crate::ws_server::WsServer;
 use ws::{WebSocket, Sender as WsSender};
-use riker::actor::*;
+use riker::{actor::*, system::Timer};
 use std::thread::Builder;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
 use std::sync::{Arc, atomic::AtomicUsize};
+use std::time::Duration;
+use log::*;
 
-pub type MetricsManagerRef = ActorRef<NetworkChannelMsg>;
+#[derive(Clone, Debug)]
+pub struct BroadcastSignal;
 
+pub type MetricsManagerRef = ActorRef<MetricsManagerMsg>;
+
+#[actor(BroadcastSignal, NetworkChannelMsg)]
 pub struct MetricsManager {
     socket_port: u16,
     event_channel: ChannelRef<NetworkChannelMsg>,
@@ -24,9 +30,13 @@ impl MetricsManager {
         let ws_server = WebSocket::new(WsServer::new(connected_clients.clone()))
             .expect("Unable to create websocket server");
         let broadcaster = ws_server.broadcaster();
+
         Builder::new().name("ws_metrics_server".to_owned()).spawn(move || {
-            ws_server.run()
-        });
+            let socket = ws_server.bind(("localhost", socket_port))
+                .expect("Unable to start websocket server");
+            socket.run();
+        }).expect("Failed to spawn websocket thread");
+        info!("Starting websocket server at port: {}", socket_port);
 
 
         Self {
@@ -46,17 +56,43 @@ impl MetricsManager {
 }
 
 impl Actor for MetricsManager {
-    type Msg = NetworkChannelMsg;
+    type Msg = MetricsManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        // Listen for all network events
+// Listen for all network events
         self.event_channel.tell(Subscribe {
             actor: Box::new(ctx.myself()),
             topic: NetworkChannelTopic::NetworkEvents.into(),
         }, None);
+
+        // Every second send yourself a message to broadcast the metrics to all connected clients
+        ctx.schedule(Duration::from_secs(1),
+                     Duration::from_secs(1),
+                     ctx.myself(), None,
+                     BroadcastSignal);
     }
 
-    fn recv(&mut self, _ctx: &Context<Self::Msg>, _msg: Self::Msg, _sender: Option<BasicActorRef>) {
-        unimplemented!()
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
+        self.receive(ctx, msg, sender);
     }
+}
+
+impl Receive<BroadcastSignal> for MetricsManager {
+    type Msg = MetricsManagerMsg;
+
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: BroadcastSignal, _sender: Sender) {
+        use std::sync::atomic::Ordering::Relaxed;
+        if self.connected_clients.load(Relaxed) > 0 {
+            // There are clients connected to the WebSocket
+            // TODO: Send actual metrics data.
+            self.broadcaster.send("{ health: \"ok\" }")
+                .expect("Failed to broadcast");
+        }
+    }
+}
+
+impl Receive<NetworkChannelMsg> for MetricsManager {
+    type Msg = MetricsManagerMsg;
+
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: NetworkChannelMsg, _sender: Sender) {}
 }

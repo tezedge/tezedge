@@ -1,2 +1,4 @@
-pub mod ws_server;
-pub mod metrics_manager;
+mod ws_server;
+mod metrics_manager;
+
+pub use metrics_manager::MetricsManager;

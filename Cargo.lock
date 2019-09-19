@@ -750,6 +750,7 @@ dependencies = [
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metrics 0.1.0",
  "networking 0.1.0",
  "riker 0.3.2 (git+https://github.com/riker-rs/riker)",
  "rocksdb 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -824,6 +825,7 @@ version = "0.1.0"
 dependencies = [
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "networking 0.1.0",
  "riker 0.3.2 (git+https://github.com/riker-rs/riker)",
  "rocksdb 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)",
