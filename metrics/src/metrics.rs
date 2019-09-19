@@ -10,9 +10,8 @@ pub struct PeerMetrics {
     current_transfer_speed: f32,
 }
 
-struct PeerMonitor {
+pub(crate) struct PeerMonitor {
     identifier: String,
-    is_connected: bool,
     total_transferred: usize,
     current_transferred: usize,
     last_update: Instant,
@@ -24,20 +23,11 @@ impl PeerMonitor {
         let now = Instant::now();
         Self {
             identifier,
-            is_connected: true,
             total_transferred: 0,
             current_transferred: 0,
             last_update: now.clone(),
             first_update: now,
         }
-    }
-
-    pub fn connected(&mut self) {
-        self.is_connected = true;
-    }
-
-    pub fn disconnected(&mut self) {
-        self.is_connected = false;
     }
 
     pub fn avg_speed(&self) -> f32 {
