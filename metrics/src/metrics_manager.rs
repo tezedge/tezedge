@@ -59,13 +59,13 @@ impl Actor for MetricsManager {
     type Msg = MetricsManagerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-// Listen for all network events
+        // Listen for all network events
         self.event_channel.tell(Subscribe {
             actor: Box::new(ctx.myself()),
             topic: NetworkChannelTopic::NetworkEvents.into(),
         }, None);
 
-        // Every second send yourself a message to broadcast the metrics to all connected clients
+        // Every second, send yourself a message to broadcast the metrics to all connected clients
         ctx.schedule(Duration::from_secs(1),
                      Duration::from_secs(1),
                      ctx.myself(), None,
@@ -84,9 +84,10 @@ impl Receive<BroadcastSignal> for MetricsManager {
         use std::sync::atomic::Ordering::Relaxed;
         if self.connected_clients.load(Relaxed) > 0 {
             // There are clients connected to the WebSocket
-            // TODO: Send actual metrics data.
-            self.broadcaster.send("{ health: \"ok\" }")
-                .expect("Failed to broadcast");
+            // TODO: Send metrics data
+            if let Err(err) = self.broadcaster.send("{ health: \"ok\" }") {
+                warn!("Failed broadcast message: {}", err);
+            }
         }
     }
 }
