@@ -15,10 +15,12 @@ use shell::peer_manager::PeerManager;
 use storage::block_storage::BlockStorage;
 use storage::operations_storage::{OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
+use metrics::MetricsManager;
 
 mod configuration;
 
 fn main() {
+    let actor_system = ActorSystem::new().expect("Failed to create actor system");
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
             let tezos_default_identity: PathBuf = configuration::tezos_node::get_default_tezos_identity_json_file_path().unwrap();
@@ -48,7 +50,6 @@ fn main() {
     let rocks_db = Arc::new(open_db(&configuration::ENV.bootstrap_db_path, schemas)
         .expect(&format!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path)));
 
-    let actor_system = ActorSystem::new().expect("Failed to create actor system");
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -71,6 +72,7 @@ fn main() {
         configuration::ENV.peer_threshold)
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), rocks_db.clone());
+    let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;
