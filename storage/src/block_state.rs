@@ -60,7 +60,7 @@ impl BlockState {
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        let BlockState { storage, missing_blocks } = self;
+        let BlockState { storage, missing_blocks , ..} = self;
         for (_key, value) in storage.iter(IteratorMode::Start)? {
             let predecessor_block_hash = value?.header.predecessor.clone().to_hash_ref();
             if !storage.contains(&predecessor_block_hash)? {

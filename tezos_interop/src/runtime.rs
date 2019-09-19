@@ -30,7 +30,7 @@ impl OcamlRuntimeConfiguration {
         let log_enabled:bool = env::var("OCAML_LOG_ENABLED")
             .unwrap_or("false".to_string())
             .parse()
-            .unwrap();
+            .expect("Invalid value specified for OCAML_LOG_ENABLED");
         OcamlRuntimeConfiguration {
             log_enabled
         }

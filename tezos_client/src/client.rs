@@ -74,7 +74,7 @@ pub fn apply_block(
 
     let validation_result = ffi::apply_block(
         hex::encode(block_header_hash),
-        block_header.as_hex(),
+        block_header.to_hex(),
         to_hex_vec(operations),
     );
 
@@ -96,7 +96,7 @@ fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec
                 Some(
                     bo_ops.operations
                         .iter()
-                        .map(|op| op.as_hex())
+                        .map(|op| op.to_hex())
                         .collect()
                 )
             } else {

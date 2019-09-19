@@ -165,7 +165,7 @@ impl<T: BinaryMessage> MessageHash for T {
 /// Trait for converting messages from/to HEX string
 pub trait Hexable {
     /// Produce HEX string from the struct.
-    fn as_hex(&self) -> String;
+    fn to_hex(&self) -> String;
 
     /// Create new struct from HEX string.
     fn from_hex(hex: String) -> Self;
@@ -173,7 +173,7 @@ pub trait Hexable {
 
 impl<T: BinaryMessage> Hexable for T {
 
-    fn as_hex(&self) -> String {
+    fn to_hex(&self) -> String {
         self.as_bytes()
             .map(|bm| hex::encode(bm))
             .unwrap()

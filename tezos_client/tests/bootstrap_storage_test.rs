@@ -19,7 +19,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
 
     let genesis_header = client::get_block_header(&genesis_block_header_hash);
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().as_hex(), current_header.as_hex());
+    assert_eq!(genesis_header.unwrap().to_hex(), current_header.to_hex());
 
     // apply first block - level 0
     let validation_result = client::apply_block(

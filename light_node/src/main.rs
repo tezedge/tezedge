@@ -37,10 +37,15 @@ fn main() {
 
     let identity = configuration::tezos_node::load_identity(identity_json_file_path);
     if let Err(e) = identity {
-        error!("Failed to load identity. Reason: {:?}", e);
-        return;
+        panic!("Failed to load identity. Reason: {:?}", e);
     }
     let identity = identity.unwrap();
+
+    let tezos_data_dir = &configuration::ENV.tezos_data_dir;
+    if !tezos_data_dir.exists() && !tezos_data_dir.is_dir() {
+        panic!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir);
+    }
+    let tezos_data_dir = tezos_data_dir.to_str().unwrap().to_string();
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
@@ -75,7 +80,7 @@ fn main() {
         &actor_system,
         network_channel.clone(),
         rocks_db.clone(),
-        configuration::ENV.tezos_data_dir.clone()
+        tezos_data_dir
     );
     let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
 

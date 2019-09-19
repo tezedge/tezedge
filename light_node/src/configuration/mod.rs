@@ -31,7 +31,7 @@ pub struct Environment {
     pub log_message_contents: bool,
     pub bootstrap_db_path: PathBuf,
     pub peer_threshold: Threshold,
-    pub tezos_data_dir: String
+    pub tezos_data_dir: PathBuf
 }
 
 impl Environment {
@@ -132,7 +132,8 @@ impl Environment {
                 .map(PathBuf::from),
             tezos_data_dir: args.value_of("tezos-data-dir")
                 .unwrap()
-                .to_string(),
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path"),
             log_message_contents: args.value_of("log-message-contents")
                 .unwrap()
                 .parse::<bool>()
