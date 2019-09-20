@@ -162,24 +162,58 @@ impl<T: BinaryMessage> MessageHash for T {
     }
 }
 
+/// Message hash error
+#[derive(Debug, Fail)]
+pub enum MessageHexableError {
+    #[fail(display = "Message to hex serialization error")]
+    ToHexSerializationError {
+        error: ser::Error
+    },
+    #[fail(display = "Message from hex serialization error")]
+    FromHexSerializationError {
+        error: hex::FromHexError
+    },
+    #[fail(display = "Message from binary serialization error")]
+    FromBinarySerializationError {
+        error: BinaryReaderError
+    },
+}
+
+impl From<ser::Error> for MessageHexableError {
+    fn from(error: ser::Error) -> Self {
+        MessageHexableError::ToHexSerializationError { error }
+    }
+}
+
+impl From<hex::FromHexError> for MessageHexableError {
+    fn from(error: hex::FromHexError) -> Self {
+        MessageHexableError::FromHexSerializationError { error }
+    }
+}
+
 /// Trait for converting messages from/to HEX string
-pub trait Hexable {
+pub trait Hexable: Sized {
     /// Produce HEX string from the struct.
-    fn to_hex(&self) -> String;
+    fn to_hex(&self) -> Result<String, MessageHexableError>;
 
     /// Create new struct from HEX string.
-    fn from_hex(hex: String) -> Self;
+    fn from_hex(hex: String) -> Result<Self, MessageHexableError>;
 }
 
 impl<T: BinaryMessage> Hexable for T {
 
-    fn to_hex(&self) -> String {
-        self.as_bytes()
-            .map(|bm| hex::encode(bm))
-            .unwrap()
+    fn to_hex(&self) -> Result<String, MessageHexableError> {
+        let bytes = self.as_bytes()?;
+        Ok(hex::encode(bytes))
     }
 
-    fn from_hex(hex: String) -> T {
-        Self::from_bytes(hex::decode(hex).unwrap()).unwrap()
+    fn from_hex(hex: String) -> Result<Self, MessageHexableError> {
+        let bytes = hex::decode(hex)?;
+        match Self::from_bytes(bytes) {
+            Ok(m) => Ok(m),
+            Err(e) => Err(MessageHexableError::FromBinarySerializationError {
+                error: e
+            })
+        }
     }
 }

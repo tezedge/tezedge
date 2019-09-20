@@ -2,69 +2,164 @@ use networking::p2p::binary_message::{Hexable, MessageHash};
 use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
 use tezos_client::client::TezosStorageInitInfo;
+use tezos_interop::ffi::ApplyBlockError;
 
 mod common;
 
 #[test]
 fn test_bootstrap_empty_storage_with_first_three_blocks() {
     // init empty storage for test
-    let TezosStorageInitInfo {chain_id, genesis_block_header_hash, current_block_header_hash} = client::init_storage(
-        common::prepare_empty_dir("bootstrap_test_storage")
-    );
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+        common::prepare_empty_dir("bootstrap_test_storage_01")
+    ).unwrap();
 
     // current head must be set (genesis)
-    let current_header = client::get_current_block_header(&chain_id);
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
     assert_eq!(0, current_header.level);
     assert_eq!(current_block_header_hash, current_header.message_hash().unwrap());
 
-    let genesis_header = client::get_block_header(&genesis_block_header_hash);
+    let genesis_header = client::get_block_header(&genesis_block_header_hash).unwrap();
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().to_hex(), current_header.to_hex());
+    assert_eq!(genesis_header.unwrap().to_hex().unwrap(), current_header.to_hex().unwrap());
 
     // apply first block - level 0
-    let validation_result = client::apply_block(
+    let apply_block_result = client::apply_block(
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1).unwrap(),
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string()),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string()).unwrap(),
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
         ),
     );
-    assert_eq!("activate PsddFKi32cMJ", &validation_result.unwrap());
+    assert_eq!("activate PsddFKi32cMJ", &apply_block_result.unwrap().validation_result_message);
 
     // check current head changed to level 1
-    let current_header = client::get_current_block_header(&chain_id);
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
     assert_eq!(1, current_header.level);
 
     // apply second block - level 2
-    let validation_result = client::apply_block(
+    let apply_block_result = client::apply_block(
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2).unwrap(),
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string()),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string()).unwrap(),
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         ),
     );
-    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &validation_result.unwrap());
+    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.unwrap().validation_result_message);
 
     // check current head changed to level 2
-    let current_header = client::get_current_block_header(&chain_id);
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
     assert_eq!(2, current_header.level);
 
     // apply third block - level 3
-    let validation_result = client::apply_block(
+    let apply_block_result = client::apply_block(
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3).unwrap(),
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string()),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string()).unwrap(),
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
         ),
     );
-    assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &validation_result.unwrap());
+    assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.unwrap().validation_result_message);
 
     // check current head changed to level 3
-    let current_header = client::get_current_block_header(&chain_id);
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
     assert_eq!(3, current_header.level);
+}
+
+#[test]
+fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor() {
+    // init empty storage for test
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+        common::prepare_empty_dir("bootstrap_test_storage_02")
+    ).unwrap();
+
+    // current head must be set (genesis)
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
+    assert_eq!(0, current_header.level);
+    assert_eq!(current_block_header_hash, current_header.message_hash().unwrap());
+
+    let genesis_header = client::get_block_header(&genesis_block_header_hash).unwrap();
+    assert!(genesis_header.is_some());
+    assert_eq!(genesis_header.unwrap().to_hex().unwrap(), current_header.to_hex().unwrap());
+
+    // apply second block - level 2
+    let apply_block_result = client::apply_block(
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2).unwrap(),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_2,
+            test_data::block_header_level2_operations(),
+        ),
+    );
+    assert!(apply_block_result.is_err());
+    assert_eq!(ApplyBlockError::UnknownPredecessor, apply_block_result.unwrap_err());
+}
+
+#[test]
+fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations() {
+    // init empty storage for test
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+        common::prepare_empty_dir("bootstrap_test_storage_03")
+    ).unwrap();
+
+    // current head must be set (genesis)
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
+    assert_eq!(0, current_header.level);
+    assert_eq!(current_block_header_hash, current_header.message_hash().unwrap());
+
+    let genesis_header = client::get_block_header(&genesis_block_header_hash).unwrap();
+    assert!(genesis_header.is_some());
+    assert_eq!(genesis_header.unwrap().to_hex().unwrap(), current_header.to_hex().unwrap());
+
+    // apply second block - level 3 has validation_pass = 4
+    let apply_block_result = client::apply_block(
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3).unwrap(),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string()).unwrap(),
+        vec![None].as_ref(),
+    );
+    assert!(apply_block_result.is_err());
+    assert_eq!(ApplyBlockError::IncompleteOperations { expected: 4, actual: 1 }, apply_block_result.unwrap_err());
+}
+
+#[test]
+fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations() {
+    // init empty storage for test
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+        common::prepare_empty_dir("bootstrap_test_storage_04")
+    ).unwrap();
+
+    // current head must be set (genesis)
+    let current_header = client::get_current_block_header(&chain_id).unwrap();
+    assert_eq!(0, current_header.level);
+    assert_eq!(current_block_header_hash, current_header.message_hash().unwrap());
+
+    let genesis_header = client::get_block_header(&genesis_block_header_hash).unwrap();
+    assert!(genesis_header.is_some());
+    assert_eq!(genesis_header.unwrap().to_hex().unwrap(), current_header.to_hex().unwrap());
+
+    // apply second block - level 1 ok
+    let apply_block_result = client::apply_block(
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1).unwrap(),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        ),
+    );
+    assert!(apply_block_result.is_ok());
+
+    // apply second block - level 2 with operations for level 3
+    let apply_block_result = client::apply_block(
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2).unwrap(),
+        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_3,
+            test_data::block_header_level3_operations(),
+        ),
+    );
+    assert!(apply_block_result.is_err());
 }
 
 mod test_data {
@@ -112,9 +207,9 @@ mod test_data {
             .map(|bo| {
                 let ops = bo
                     .into_iter()
-                    .map(|op| Operation::from_hex(op))
+                    .map(|op| Operation::from_hex(op).unwrap())
                     .collect();
-                Some (
+                Some(
                     OperationsForBlocksMessage {
                         operation_hashes_path: Path::Op,
                         operations_for_block: OperationsForBlock {

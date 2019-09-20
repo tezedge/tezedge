@@ -1,25 +1,16 @@
-use failure::Fail;
+use log::error;
 
 use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
-use tezos_interop::ffi::OcamlStorageInitInfo;
+use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlStorageInitError, OcamlStorageInitInfo};
 
-#[derive(Debug, Fail)]
-pub enum ApplyBlockError {
-    #[fail(display = "incomplete operations")]
-    IncompleteOperations,
-    #[fail(display = "failed to apply block")]
-    FailedToApplyBlock,
-    #[fail(display = "Unknown predecessor")]
-    UnknownPredecessor,
-}
-
+/// Struct represent init information about Tezos OCaml storage
 pub struct TezosStorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,
-    pub current_block_header_hash: BlockHash
+    pub current_block_header_hash: BlockHash,
 }
 
 impl TezosStorageInitInfo {
@@ -32,32 +23,59 @@ impl TezosStorageInitInfo {
     }
 }
 
-//        TODO: priznak do storage, ze mame block zapisany v tezos-ocaml-storage
-//        TODO: spravit benches pre bootstrap test a zoptimalizovat ocaml s logovanim a bez logovania
-//        TODO: jira - od coho zavisi konfiguracia alphanet vs mainnet vs zeronet: storage a genesis?
-//                   - Return supported network protocol version
-//        TODO: jira - Tezos_validation.Block_validation.apply
-//        TODO: jira - podpora pre test_chain
-//        TODO: jira - overit proof_of_work_stamp pri bootstrape
-//        TODO: jira - pre generovanie identity
-
 /// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String) -> TezosStorageInitInfo {
-    let ocaml_storage_init_info = ffi::init_storage(storage_data_dir)
-        .expect("Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!");
-    TezosStorageInitInfo::new(ocaml_storage_init_info)
+pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {
+    match ffi::init_storage(storage_data_dir) {
+        Ok(result) => Ok(TezosStorageInitInfo::new(result?)),
+        Err(e) => {
+            error!("Init ocaml storage failed! Reason: {:?}", e);
+            Err(OcamlStorageInitError::InitializeError {
+                message: "Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!".to_string()
+            })
+        }
+    }
 }
 
-pub fn get_current_block_header(chain_id: &ChainId) -> BlockHeader {
-    let current_block_header = ffi::get_current_block_header(hex::encode(chain_id))
-        .expect("Ffi 'get_current_block_header' failed! Current head must be set all the time, if not, something is wrong!");
-    BlockHeader::from_hex(current_block_header)
+/// Get current header block from storage
+pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, BlockHeaderError> {
+    match ffi::get_current_block_header(hex::encode(chain_id)) {
+        Ok(result) => {
+            match BlockHeader::from_hex(result?) {
+                Ok(header) => Ok(header),
+                Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
+            }
+        },
+        Err(e) => {
+            error!("Get current header failed! Reason: {:?}", e);
+            Err(BlockHeaderError::ReadError {
+                message: "Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!".to_string()
+            })
+        }
+    }
 }
 
-pub fn get_block_header(block_header_hash: &BlockHash) -> Option<BlockHeader> {
-    let block_header = ffi::get_block_header(hex::encode(block_header_hash))
-        .expect("Ffi 'get_block_header' failed! Something is wrong!");
-    block_header.map(|bh| BlockHeader::from_hex(bh))
+/// Get block header from storage or None
+pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHeader>, BlockHeaderError> {
+    match ffi::get_block_header(hex::encode(block_header_hash)) {
+        Ok(result) => {
+            let header = result?;
+            match header {
+                None => Ok(None),
+                Some(header) => {
+                    match BlockHeader::from_hex(header) {
+                        Ok(header) => Ok(Some(header)),
+                        Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
+                    }
+                }
+            }
+        },
+        Err(e) => {
+            error!("Get block header failed! Reason: {:?}", e);
+            Err(BlockHeaderError::ReadError {
+                message: "Ffi 'get_block_header' failed! Something is wrong!".to_string()
+            })
+        }
+    }
 }
 
 /// Applies new block to Tezos ocaml storage, means:
@@ -68,23 +86,33 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Option<BlockHeader> {
 pub fn apply_block(
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
-    operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<String, ApplyBlockError> {
+    operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
+    if (block_header.validation_pass as usize) != operations.len() {
+        return Err(ApplyBlockError::IncompleteOperations {
+            expected: block_header.validation_pass as usize,
+            actual: operations.len(),
+        });
+    }
 
-    // TODO: ApplyBlockError::IncompleteOperations check for completness validaion_pass OperationForBlock
+    let block_header = block_header.to_hex();
+    if let Err(_) = block_header {
+        return Err(ApplyBlockError::InvalidBlockHeaderData);
+    }
+    let block_header = block_header.unwrap();
+    let operations = to_hex_vec(operations);
 
-    let validation_result = ffi::apply_block(
+    match ffi::apply_block(
         hex::encode(block_header_hash),
-        block_header.to_hex(),
-        to_hex_vec(operations),
-    );
-
-    match validation_result {
-        Ok(validation_result) => {
-            // TODO: what to return? validation_result? context_hash? context?
-            // TODO: returning just validation_message now
-            Ok(validation_result)
-        },
-        Err(_) => Err(ApplyBlockError::FailedToApplyBlock)
+        block_header,
+        operations,
+    ) {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Apply block failed! Reason: {:?}", e);
+            Err(ApplyBlockError::FailedToApplyBlock {
+                message: "Unknown OcamlError".to_string()
+            })
+        }
     }
 }
 
@@ -96,7 +124,7 @@ fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec
                 Some(
                     bo_ops.operations
                         .iter()
-                        .map(|op| op.to_hex())
+                        .map(|op| op.to_hex().unwrap())
                         .collect()
                 )
             } else {

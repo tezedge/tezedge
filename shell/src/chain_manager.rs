@@ -11,9 +11,9 @@ use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
 use tezos_encoding::hash::{ToHashRef, HashRef};
-use tezos_client::client;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
+use tezos_client::client::TezosStorageInitInfo;
 
 const PEER_QUEUE_MAX: usize = 15;
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
@@ -36,9 +36,9 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_data_dir: String) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: Arc<TezosStorageInitInfo>) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_data_dir)),
+            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_storage_init_info)),
             ChainManager::name())
     }
 
@@ -48,15 +48,15 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((event_channel, rocks_db, tezos_data_dir): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, String)) -> Self {
-        let tezos_storage_init_info = client::init_storage(tezos_data_dir);
+    fn new((event_channel, rocks_db, tezos_storage_init_info): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, Arc<TezosStorageInitInfo>)) -> Self {
+        let tezos_storage_init_info = tezos_storage_init_info.clone();
         ChainManager {
             event_channel,
             block_state: BlockState::new(
                 rocks_db.clone(),
-                tezos_storage_init_info.chain_id,
-                tezos_storage_init_info.genesis_block_header_hash,
-                tezos_storage_init_info.current_block_header_hash
+                tezos_storage_init_info.chain_id.clone(),
+                tezos_storage_init_info.genesis_block_header_hash.clone(),
+                tezos_storage_init_info.current_block_header_hash.clone()
             ),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new()
