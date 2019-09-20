@@ -1,7 +1,11 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use riker::actors::*;
 
 use networking::p2p::network_channel::NetworkChannelTopic;
 
+pub mod chain_feeder;
 pub mod chain_manager;
 pub mod peer_manager;
 
