@@ -1,4 +1,4 @@
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived};
 use log::*;
 use ws::{WebSocket, Sender as WsSender};
 use riker::{
@@ -67,6 +67,17 @@ impl MetricsManager {
             Self::name(),
         )
     }
+
+    pub fn process_peer_message(&mut self, msg: PeerMessageReceived) {
+        use std::mem::size_of_val;
+
+        if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.name()) {
+            // TODO: Add proper sizes
+            monitor.incoming_bytes(size_of_val(&msg.message));
+        } else {
+            warn!("Missing monitor for peer: {}", msg.peer.name());
+        }
+    }
 }
 
 impl Actor for MetricsManager {
@@ -107,6 +118,8 @@ impl Receive<SystemEvent> for MetricsManager {
                     BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(evt.actor.name().to_owned())),
                     None,
                 );
+            } else {
+                warn!("Monitor for actor {}, was never set up.", evt.actor.name());
             }
         }
     }
@@ -130,7 +143,7 @@ impl Receive<BroadcastSignal> for MetricsManager {
                 Ok(serialized_msg) => if let Err(err) = self.broadcaster.send(serialized_msg) {
                     warn!("Failed to broadcast message: {}", err);
                 }
-                Err(err) => warn!("Failed to serailize message '{:?}': {}", conn_msg, err)
+                Err(err) => warn!("Failed to serialize message '{:?}': {}", conn_msg, err)
             }
         }
     }
@@ -140,7 +153,6 @@ impl Receive<NetworkChannelMsg> for MetricsManager {
     type Msg = MetricsManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
-        use std::mem::size_of_val;
         match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
                 // TODO: Add field to message with peer name / identifier
@@ -152,18 +164,8 @@ impl Receive<NetworkChannelMsg> for MetricsManager {
                     None,
                 );
             }
-            NetworkChannelMsg::PeerDisconnected(msg) => {
-                // Do we need this ?
-            }
             NetworkChannelMsg::PeerBootstrapped(msg) => {}
-            NetworkChannelMsg::PeerMessageReceived(msg) => {
-                if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.name()) {
-                    // TODO: Add proper sizes
-                    monitor.incoming_bytes(size_of_val(&msg.message));
-                } else {
-                    warn!("Missing monitor for peer: {}", msg.peer.name());
-                }
-            }
+            NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg),
         }
     }
 }

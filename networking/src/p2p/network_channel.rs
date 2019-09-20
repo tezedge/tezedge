@@ -13,10 +13,6 @@ pub struct PeerCreated {
     pub peer: PeerRef,
 }
 
-/// The peer has disconnected.
-#[derive(Clone, Debug)]
-pub struct PeerDisconnected;
-
 /// Peer has been bootstrapped.
 #[derive(Clone, Debug)]
 pub struct PeerBootstrapped {
@@ -27,27 +23,20 @@ pub struct PeerBootstrapped {
 #[derive(Clone, Debug)]
 pub struct PeerMessageReceived {
     pub peer: PeerRef,
-    pub message: Arc<PeerMessageResponse>
+    pub message: Arc<PeerMessageResponse>,
 }
 
 /// Network channel event message.
 #[derive(Clone, Debug)]
 pub enum NetworkChannelMsg {
     PeerCreated(PeerCreated),
-    PeerDisconnected(PeerDisconnected),
     PeerBootstrapped(PeerBootstrapped),
-    PeerMessageReceived(PeerMessageReceived)
+    PeerMessageReceived(PeerMessageReceived),
 }
 
 impl From<PeerCreated> for NetworkChannelMsg {
     fn from(msg: PeerCreated) -> Self {
         NetworkChannelMsg::PeerCreated(msg)
-    }
-}
-
-impl From<PeerDisconnected> for NetworkChannelMsg {
-    fn from(msg: PeerDisconnected) -> Self {
-        NetworkChannelMsg::PeerDisconnected(msg)
     }
 }
 
@@ -81,7 +70,6 @@ impl From<NetworkChannelTopic> for Topic {
 pub struct NetworkChannel(Channel<NetworkChannelMsg>);
 
 impl NetworkChannel {
-
     pub fn actor(fact: &impl ActorRefFactory) -> Result<ChannelRef<NetworkChannelMsg>, CreateError> {
         fact.actor_of(Props::new(NetworkChannel::new), NetworkChannel::name())
     }
