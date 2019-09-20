@@ -30,7 +30,7 @@ pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, Oc
         Err(e) => {
             error!("Init ocaml storage failed! Reason: {:?}", e);
             Err(OcamlStorageInitError::InitializeError {
-                message: "Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!".to_string()
+                message: format!("FFI 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
             })
         }
     }
@@ -48,7 +48,7 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
         Err(e) => {
             error!("Get current header failed! Reason: {:?}", e);
             Err(BlockHeaderError::ReadError {
-                message: "Ffi 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that!".to_string()
+                message: format!("FFI 'get_current_block_header' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
             })
         }
     }
@@ -64,7 +64,7 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHea
                 Some(header) => {
                     match BlockHeader::from_hex(header) {
                         Ok(header) => Ok(Some(header)),
-                        Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
+                        Err(e) => Err(BlockHeaderError::ReadError { message: format!("Decoding from hex failed! Reason: {:?}", e) })
                     }
                 }
             }
@@ -72,7 +72,7 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHea
         Err(e) => {
             error!("Get block header failed! Reason: {:?}", e);
             Err(BlockHeaderError::ReadError {
-                message: "Ffi 'get_block_header' failed! Something is wrong!".to_string()
+                message: format!("FFI 'get_block_header' failed! Something is wrong! Reason: {:?}", e)
             })
         }
     }
