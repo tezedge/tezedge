@@ -1,18 +1,15 @@
 use std::time::Instant;
-use serde::Serialize;
+use crate::messages::PeerMetrics;
 
-#[derive(Clone, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct PeerMetrics {
-    identifier: String,
-    transferred_bytes: usize,
-    average_transfer_speed: f32,
-    current_transfer_speed: f32,
-}
+/// General statistics about incoming transfer
+///
+pub(crate) struct IncomingTransferMonitor {}
 
+
+/// Peer specific details about transfer *FROM* peer.
 pub(crate) struct PeerMonitor {
-    identifier: String,
-    total_transferred: usize,
+    pub identifier: String,
+    pub total_transferred: usize,
     current_transferred: usize,
     last_update: Instant,
     first_update: Instant,
@@ -48,12 +45,12 @@ impl PeerMonitor {
     }
 
     pub fn snapshot(&mut self) -> PeerMetrics {
-        let ret = PeerMetrics {
-            identifier: self.identifier.clone(),
-            transferred_bytes: self.total_transferred,
-            average_transfer_speed: self.avg_speed(),
-            current_transfer_speed: self.current_speed(),
-        };
+        let ret = PeerMetrics::new(
+            self.identifier.clone(),
+            self.total_transferred,
+            self.avg_speed(),
+            self.current_speed(),
+        );
 
         self.current_transferred = 0;
         self.last_update = Instant::now();

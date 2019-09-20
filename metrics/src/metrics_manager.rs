@@ -1,21 +1,30 @@
-use crate::ws_server::WsServer;
-use ws::{WebSocket, Sender as WsSender};
-use riker::{actor::*, system::Timer};
-use std::thread::Builder;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic};
-use std::sync::{Arc, atomic::AtomicUsize};
-use std::time::Duration;
 use log::*;
-use std::collections::HashMap;
-use crate::metrics::{PeerMonitor, PeerMetrics};
-use networking::p2p::network_channel::NetworkChannelMsg::PeerCreated;
+use ws::{WebSocket, Sender as WsSender};
+use riker::{
+    system::SystemEvent, actor::*,
+    system::Timer, actors::SystemMsg,
+};
+use std::{
+    collections::HashMap, time::Duration,
+    sync::{Arc, atomic::AtomicUsize},
+    iter::FromIterator, thread::Builder,
+};
+use crate::{
+    monitors::PeerMonitor, ws_server::WsServer,
+    messages::PeerConnectionStatus,
+};
+
 
 #[derive(Clone, Debug)]
-pub struct BroadcastSignal;
+pub enum BroadcastSignal {
+    Transfer,
+    PeerUpdate(PeerConnectionStatus),
+}
 
 pub type MetricsManagerRef = ActorRef<MetricsManagerMsg>;
 
-#[actor(BroadcastSignal, NetworkChannelMsg)]
+#[actor(BroadcastSignal, NetworkChannelMsg, SystemEvent)]
 pub struct MetricsManager {
     _socket_port: u16,
     event_channel: ChannelRef<NetworkChannelMsg>,
@@ -34,6 +43,7 @@ impl MetricsManager {
         let ws_server = WebSocket::new(WsServer::new(connected_clients.clone()))
             .expect("Unable to create websocket server");
         let broadcaster = ws_server.broadcaster();
+        // let sender = ws_server
 
         Builder::new().name("ws_metrics_server".to_owned()).spawn(move || {
             let socket = ws_server.bind(("localhost", socket_port))
@@ -41,7 +51,6 @@ impl MetricsManager {
             socket.run().expect("Unable to run websocket server");
         }).expect("Failed to spawn websocket thread");
         info!("Starting websocket server at port: {}", socket_port);
-
 
         Self {
             _socket_port: socket_port,
@@ -74,33 +83,54 @@ impl Actor for MetricsManager {
         ctx.schedule(Duration::from_secs(1),
                      Duration::from_secs(1),
                      ctx.myself(), None,
-                     BroadcastSignal);
+                     BroadcastSignal::Transfer);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
         self.receive(ctx, msg, sender);
+    }
+
+    fn sys_recv(&mut self, ctx: &Context<Self::Msg>, msg: SystemMsg, sender: Option<BasicActorRef>) {
+        if let SystemMsg::Event(evt) = msg {
+            self.receive(ctx, evt, sender);
+        }
+    }
+}
+
+impl Receive<SystemEvent> for MetricsManager {
+    type Msg = MetricsManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Sender) {
+        if let SystemEvent::ActorTerminated(evt) = msg {
+            if let Some(_monitor) = self.peer_monitors.remove(evt.actor.name()) {
+                ctx.myself.tell(
+                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(evt.actor.name().to_owned())),
+                    None,
+                );
+            }
+        }
     }
 }
 
 impl Receive<BroadcastSignal> for MetricsManager {
     type Msg = MetricsManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: BroadcastSignal, _sender: Sender) {
-        use serde_json::to_string;
+    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
+        use serde_json;
+        use crate::messages::Message;
         use std::sync::atomic::Ordering::Relaxed;
 
         if self.connected_clients.load(Relaxed) > 0 {
-            // There are clients connected to the WebSocket
-            let snapshot_data: HashMap<&String, PeerMetrics> = self.peer_monitors.iter_mut()
-                .map(|(k, v)| {
-                    (k, v.snapshot())
-                }).collect();
-            if let Ok(message) = to_string(&snapshot_data) {
-                if let Err(err) = self.broadcaster.send(message) {
-                    warn!("Failed broadcast message: {}", err);
+            let conn_msg: Message = match msg {
+                BroadcastSignal::Transfer => self.peer_monitors.values_mut().collect(),
+                BroadcastSignal::PeerUpdate(msg) => msg.into(),
+            };
+
+            match serde_json::to_string(&conn_msg) {
+                Ok(serialized_msg) => if let Err(err) = self.broadcaster.send(serialized_msg) {
+                    warn!("Failed to broadcast message: {}", err);
                 }
-            } else {
-                warn!("Failed to serialize snapshot data");
+                Err(err) => warn!("Failed to serailize message '{:?}': {}", conn_msg, err)
             }
         }
     }
@@ -109,17 +139,21 @@ impl Receive<BroadcastSignal> for MetricsManager {
 impl Receive<NetworkChannelMsg> for MetricsManager {
     type Msg = MetricsManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         use std::mem::size_of_val;
         match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
                 // TODO: Add field to message with peer name / identifier
                 let peer_name = msg.peer.name().to_owned();
                 let monitor = PeerMonitor::new(peer_name.clone());
-                self.peer_monitors.insert(peer_name, monitor);
+                self.peer_monitors.insert(peer_name.clone(), monitor);
+                ctx.myself.tell(
+                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(peer_name)),
+                    None,
+                );
             }
             NetworkChannelMsg::PeerDisconnected(msg) => {
-                // TODO: Add field identifying disconnected peer
+                // Do we need this ?
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {}
             NetworkChannelMsg::PeerMessageReceived(msg) => {
