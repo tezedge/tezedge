@@ -45,7 +45,9 @@ pub trait DatabaseWithSchema<S: Schema> {
 
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
 
-    fn iter(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError>;
+    fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError>;
+
+    fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError>;
 }
 
 impl<S: Schema> DatabaseWithSchema<S> for DB {
@@ -81,7 +83,7 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
             .map_err(DBError::from)
     }
 
-    fn iter(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
+    fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
         let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
             .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
 
@@ -92,6 +94,14 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
         };
 
         Ok(IteratorWithSchema(iter?, PhantomData))
+    }
+
+    fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError> {
+        let key = key.encode()?;
+        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
+            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+
+        Ok(IteratorWithSchema(self.prefix_iterator_cf(cf, key)?, PhantomData))
     }
 }
 

@@ -40,7 +40,7 @@ impl BlockStorage {
     }
 
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.db.iter(mode)
+        self.db.iterator(mode)
             .map_err(StorageError::from)
     }
 }

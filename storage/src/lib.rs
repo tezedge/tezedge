@@ -5,15 +5,17 @@ use std::sync::Arc;
 
 use failure::Fail;
 
-pub use block_state::BlockState;
 use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use networking::p2p::encoding::prelude::BlockHeader;
-pub use operations_state::{MissingOperations, OperationsState};
+use tezos_encoding::hash::{BlockHash, HashType};
+
+pub use crate::block_state::BlockState;
+pub use crate::operations_state::{MissingOperations, OperationsState};
 pub use crate::block_meta_storage::BlockMetaStorage;
 pub use crate::block_storage::BlockStorage;
 pub use crate::operations_storage::OperationsStorage;
 pub use crate::operations_meta_storage::OperationsMetaStorage;
-use tezos_encoding::hash::{BlockHash, HashType};
+pub use crate::persistent::database::{IteratorMode, Direction};
 
 use crate::persistent::{Codec, DBError, SchemaError};
 

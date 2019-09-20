@@ -24,6 +24,22 @@ impl OperationsStorage {
         OperationsStorage { db }
     }
 
+    pub fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
+        let key = OperationKey {
+            block_hash: block_hash.clone(),
+            validation_pass: 0
+        };
+
+        let mut operations = vec![];
+        for (_key, value) in self.db.prefix_iterator(&key)? {
+            operations.push(value?);
+        }
+
+        operations.sort_by_key(|v| v.operations_for_block.validation_pass);
+
+        return Ok(operations)
+    }
+
     pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
             block_hash: message.operations_for_block.hash.clone(),
@@ -103,5 +119,57 @@ mod tests {
         let encoded_bytes = expected.encode()?;
         let decoded = OperationKey::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
+    }
+
+    #[test]
+    fn test_get_operations() -> Result<(), Error> {
+        use rocksdb::{Options, DB};
+
+        let path = "__op_storage_get_operations";
+        if std::path::Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsStorage::cf_descriptor()]).unwrap();
+            let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
+            let mut message = OperationsForBlocksMessage {
+                operations: vec![],
+                operation_hashes_path: Path::Op,
+                operations_for_block: OperationsForBlock {
+                    hash: block_hash.clone(),
+                    validation_pass: 0
+                }
+            };
+
+
+            let mut storage = OperationsStorage::new(Arc::new(db));
+            message.operations_for_block.validation_pass = 3;
+            storage.insert(&message)?;
+            message.operations_for_block.validation_pass = 1;
+            storage.insert(&message)?;
+            message.operations_for_block.validation_pass = 0;
+            storage.insert(&message)?;
+            message.operations_for_block.hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
+            message.operations_for_block.validation_pass = 1;
+            storage.insert(&message)?;
+            message.operations_for_block.hash = block_hash.clone();
+            message.operations_for_block.validation_pass = 2;
+            storage.insert(&message)?;
+            message.operations_for_block.hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
+            message.operations_for_block.validation_pass = 3;
+            storage.insert(&message)?;
+
+            let operations = storage.get_operations(&block_hash)?;
+            assert_eq!(4, operations.len(), "Was expecting vector of {} elements but instead found {}", 4, operations.len());
+            for i in 0..4 {
+                assert_eq!(i as i8, operations[i].operations_for_block.validation_pass, "Was expecting operation pass {} but found {}", i, operations[i].operations_for_block.validation_pass);
+                assert_eq!(block_hash, operations[i].operations_for_block.hash, "Block hash mismatch");
+            }
+        }
+        assert!(DB::destroy(&opts, path).is_ok());
+        Ok(())
     }
 }
