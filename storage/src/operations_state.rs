@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -8,7 +11,8 @@ use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::operations_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase};
+use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
+use crate::operations_storage::{OperationsStorage, OperationsStorageDatabase};
 use crate::persistent::database::IteratorMode;
 
 pub struct OperationsState {

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
@@ -11,6 +14,7 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
 
 /// Structure for representing in-memory db for - just for demo purposes.
+#[derive(Clone)]
 pub struct BlockMetaStorage {
     db: Arc<BlockMetaStorageDatabase>
 }

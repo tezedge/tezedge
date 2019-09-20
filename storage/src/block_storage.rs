@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::Arc;
 
 use tezos_encoding::hash::BlockHash;
@@ -9,6 +12,7 @@ use crate::persistent::database::{IteratorWithSchema, IteratorMode};
 pub type BlockStorageDatabase = dyn DatabaseWithSchema<BlockStorage> + Sync + Send;
 
 /// Structure for representing in-memory db for - just for demo purposes.
+#[derive(Clone)]
 pub struct BlockStorage {
     db: Arc<BlockStorageDatabase>
 }

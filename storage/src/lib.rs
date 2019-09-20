@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::Arc;
 
 use failure::Fail;
@@ -8,17 +11,19 @@ use networking::p2p::encoding::prelude::BlockHeader;
 pub use operations_state::{MissingOperations, OperationsState};
 pub use crate::block_meta_storage::BlockMetaStorage;
 pub use crate::block_storage::BlockStorage;
-pub use crate::operations_storage::{OperationsMetaStorage, OperationsStorage};
+pub use crate::operations_storage::OperationsStorage;
+pub use crate::operations_meta_storage::OperationsMetaStorage;
 use tezos_encoding::hash::{BlockHash, HashType};
 
 use crate::persistent::{Codec, DBError, SchemaError};
 
 pub mod persistent;
-pub mod block_storage;
 pub mod operations_storage;
+pub mod operations_meta_storage;
 pub mod operations_state;
-pub mod block_state;
+pub mod block_storage;
 pub mod block_meta_storage;
+pub mod block_state;
 
 
 #[derive(PartialEq, Clone, Debug)]
