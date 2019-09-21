@@ -7,18 +7,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use failure::Error;
-use log::{trace, debug, info, warn};
+use log::{debug, info, trace, warn};
 use riker::actors::*;
 
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
-use tezos_encoding::hash::{HashEncoding, HashType, BlockHash};
-use tezos_encoding::hash::{ToHashRef, HashRef};
+use tezos_client::client::TezosStorageInitInfo;
+use tezos_encoding::hash::BlockHash;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
-use tezos_client::client::TezosStorageInitInfo;
 
 const PEER_QUEUE_MAX: usize = 15;
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
@@ -57,13 +56,7 @@ impl ChainManager {
         let tezos_storage_init_info = tezos_storage_init_info.clone();
         ChainManager {
             event_channel,
-            block_state: BlockState::new(rocks_db.clone(), rocks_db.clone()),
-            block_state: BlockState::new(
-                rocks_db.clone(),
-                tezos_storage_init_info.chain_id.clone(),
-                tezos_storage_init_info.genesis_block_header_hash.clone(),
-                tezos_storage_init_info.current_block_header_hash.clone()
-            ),
+            block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &tezos_storage_init_info.chain_id),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new(),
         }
@@ -117,7 +110,7 @@ impl ChainManager {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
                 let mut peer = PeerState::new(msg.peer);
-                tell_peer(GetCurrentBranchMessage::new(block_state.get_current_chain_id()).into(), &mut peer);
+                tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), &mut peer);
                 // store peer
                 self.peers.insert(peer.peer_ref.uri().clone(), peer);
             }

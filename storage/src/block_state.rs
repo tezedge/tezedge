@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use log::trace;
 
-use tezos_encoding::hash::{HashRef, ToHashRef, ChainId, BlockHash};
+use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
@@ -17,21 +17,16 @@ pub struct BlockState {
     block_storage: BlockStorage,
     meta_storage: BlockMetaStorage,
     missing_blocks: HashSet<BlockHash>,
-    genesis: HashRef,
-    current_head: Arc<Mutex<HashRef>>,
-    current_chain_id: HashRef,
+    chain_id: ChainId,
 }
 
 impl BlockState {
-    pub fn new(db: Arc<BlockStorageDatabase>, meta_db: Arc<BlockMetaStorageDatabase>) -> Self {
-    pub fn new(db: Arc<BlockStorageDatabase>, chain_id: ChainId, genesis: BlockHash, current_head: BlockHash) -> Self {
+    pub fn new(db: Arc<BlockStorageDatabase>, meta_db: Arc<BlockMetaStorageDatabase>, chain_id: &ChainId) -> Self {
         BlockState {
             block_storage: BlockStorage::new(db),
             meta_storage: BlockMetaStorage::new(meta_db),
             missing_blocks: HashSet::new(),
-            genesis: genesis.to_hash_ref(),
-            current_head: Arc::new(Mutex::new(current_head.to_hash_ref())),
-            current_chain_id: chain_id.to_hash_ref()
+            chain_id: chain_id.clone()
         }
     }
 
@@ -70,17 +65,16 @@ impl BlockState {
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        let BlockState { meta_storage, missing_blocks, .. } = self;
-        for (key, value) in meta_storage.iter(IteratorMode::Start)? {
+        for (key, value) in self.meta_storage.iter(IteratorMode::Start)? {
             if value?.predecessor.is_none() {
-                missing_blocks.insert(key?);
+                self.missing_blocks.insert(key?);
             }
         }
 
         Ok(())
     }
 
-    pub fn get_current_chain_id(&self) -> ChainId {
-        self.current_chain_id.get_hash()
+    pub fn get_chain_id(&self) -> &ChainId {
+        &self.chain_id
     }
 }
