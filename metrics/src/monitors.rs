@@ -3,6 +3,7 @@ use crate::messages::PeerMetrics;
 
 /// General statistics about incoming transfer
 ///
+#[allow(dead_code)]
 pub(crate) struct IncomingTransferMonitor {}
 
 
@@ -35,6 +36,7 @@ impl PeerMonitor {
         self.current_transferred as f32 / self.last_update.elapsed().as_secs_f32()
     }
 
+    #[allow(dead_code)]
     pub fn transferred_bytes(&self) -> usize {
         self.total_transferred
     }

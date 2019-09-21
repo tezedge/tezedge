@@ -42,7 +42,6 @@ impl<T> BinaryMessage for T
         writer.write(self, &Self::encoding())
     }
 
-    /// Create new struct from bytes.
     fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError> {
         let reader = BinaryReader::new();
         let value = reader.read(buf, &Self::encoding())?;
@@ -160,5 +159,61 @@ impl<T: BinaryMessage> MessageHash for T {
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
         Ok(blake2b::digest(&bytes))
+    }
+}
+
+/// Message hash error
+#[derive(Debug, Fail)]
+pub enum MessageHexableError {
+    #[fail(display = "Message to hex serialization error")]
+    ToHexSerializationError {
+        error: ser::Error
+    },
+    #[fail(display = "Message from hex serialization error")]
+    FromHexSerializationError {
+        error: hex::FromHexError
+    },
+    #[fail(display = "Message from binary serialization error")]
+    FromBinarySerializationError {
+        error: BinaryReaderError
+    },
+}
+
+impl From<ser::Error> for MessageHexableError {
+    fn from(error: ser::Error) -> Self {
+        MessageHexableError::ToHexSerializationError { error }
+    }
+}
+
+impl From<hex::FromHexError> for MessageHexableError {
+    fn from(error: hex::FromHexError) -> Self {
+        MessageHexableError::FromHexSerializationError { error }
+    }
+}
+
+/// Trait for converting messages from/to HEX string
+pub trait Hexable: Sized {
+    /// Produce HEX string from the struct.
+    fn to_hex(&self) -> Result<String, MessageHexableError>;
+
+    /// Create new struct from HEX string.
+    fn from_hex(hex: String) -> Result<Self, MessageHexableError>;
+}
+
+impl<T: BinaryMessage> Hexable for T {
+
+    fn to_hex(&self) -> Result<String, MessageHexableError> {
+        let bytes = self.as_bytes()?;
+        Ok(hex::encode(bytes))
+    }
+
+    fn from_hex(hex: String) -> Result<Self, MessageHexableError> {
+        let bytes = hex::decode(hex)?;
+        match Self::from_bytes(bytes) {
+            Ok(m) => Ok(m),
+            Err(e) => Err(MessageHexableError::FromBinarySerializationError {
+                error: e
+            })
+        }
     }
 }

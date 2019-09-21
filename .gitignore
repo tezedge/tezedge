@@ -9,6 +9,7 @@
 
 # Idea project files
 .idea
+*.iml
 
 # Honggfuzz worspace
 /hfuzz_workspace

@@ -8,7 +8,7 @@ use riker::{
 use std::{
     collections::HashMap, time::Duration,
     sync::{Arc, atomic::AtomicUsize},
-    iter::FromIterator, thread::Builder,
+    thread::Builder,
 };
 use crate::{
     monitors::PeerMonitor, ws_server::WsServer,
@@ -129,7 +129,6 @@ impl Receive<BroadcastSignal> for MetricsManager {
     type Msg = MetricsManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
-        use serde_json;
         use crate::messages::Message;
         use std::sync::atomic::Ordering::Relaxed;
 
@@ -164,7 +163,7 @@ impl Receive<NetworkChannelMsg> for MetricsManager {
                     None,
                 );
             }
-            NetworkChannelMsg::PeerBootstrapped(msg) => {}
+            NetworkChannelMsg::PeerBootstrapped(_msg) => {}
             NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg),
         }
     }

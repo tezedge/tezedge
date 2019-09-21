@@ -9,7 +9,7 @@
 ///
 /// It can be then easily awaited in rust:
 ///
-/// ```rust,edition2018
+/// ```
 /// use tezos_interop::runtime::OcamlResult;
 /// use tezos_interop::runtime;
 /// use ocaml::{Str};
@@ -22,11 +22,10 @@
 ///     })
 /// }
 ///
-/// async fn call_ocaml_hello_world() -> String {
-///     ocaml_fn_echo("Hello world!".into()).await
-/// }
-///
-/// let result = futures::executor::block_on(call_ocaml_hello_world());
+/// let result = futures::executor::block_on(
+///     ocaml_fn_echo("Hello world!".into())
+/// ).unwrap();
 /// assert_eq!("Hello world!", &result);
 /// ```
 pub mod runtime;
+pub mod ffi;

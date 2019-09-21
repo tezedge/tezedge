@@ -26,7 +26,7 @@ Run
 **Run node** 
 
 ```
-cargo run  
+cargo run --tezos-data-dir /tmp/tezos-data-dir
 ```
 
 ![Preview1](../docs/images/bash_cargo_run.gif)
@@ -54,6 +54,12 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 ![Preview1](../docs/images/bash_chains_main_blocks_head.gif)
 
 # Run configuration
+
+**Tezos storage data directory**
+(Directory should already exists)
+```
+--tezos-data-dir /tmp/tezos-data-dir
+```
 
 **RPC port**
 ```
@@ -83,18 +89,12 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 
 **Disable JSON messages logging**
 ```
---logj false
+--log-message-contents false
 ```
-
-**Disable HEX messages logging**
-```
---logh false
-```
-
 
 e.g.:
 ```
-cargo run -- --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false
+cargo run -- --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false
 ```
 
 

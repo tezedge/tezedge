@@ -13,5 +13,12 @@ people who don't want to install OCaml. First run might take some time to comple
 * `local` use this option if you have OCaml already installed.
 * `remote` is used when precompiled linux binary should be used.
 
+##### Local OCaml development
+* `UPDATE_GIT_SUBMODULES` (default `true`) is used to skip git update of Tezos repository.
+* `TEZOS_BASE_DIR` (defalt `src`) is used to change location of Tezos repository on the file system for Makefile.
+
 Note: the first time you build using docker might take a long time because it's building ocaml image from scratch.
 In the future we will shorten this time by providing a prebuild docker image.
+
+### Running Ocaml runtime
+`OCAML_LOG_ENABLED` (default false) environment variable which turn on/off logging in Tezos OCaml runtime.

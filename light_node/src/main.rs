@@ -4,7 +4,7 @@ extern crate lazy_static;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use log::{error, info};
+use log::info;
 use riker::actors::*;
 use tokio::runtime::Runtime;
 
@@ -15,6 +15,7 @@ use shell::peer_manager::PeerManager;
 use storage::block_storage::BlockStorage;
 use storage::operations_storage::{OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
+use tezos_client::client;
 use metrics::MetricsManager;
 
 mod configuration;
@@ -37,10 +38,17 @@ fn main() {
 
     let identity = configuration::tezos_node::load_identity(identity_json_file_path);
     if let Err(e) = identity {
-        error!("Failed to load identity. Reason: {:?}", e);
-        return;
+        panic!("Failed to load identity. Reason: {:?}", e);
     }
     let identity = identity.unwrap();
+
+    let tezos_data_dir = &configuration::ENV.tezos_data_dir;
+    if !tezos_data_dir.exists() && !tezos_data_dir.is_dir() {
+        panic!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir);
+    }
+    let tezos_data_dir = tezos_data_dir.to_str().unwrap();
+    let tezos_storage_init_info = Arc::new(client::init_storage(tezos_data_dir.to_string())
+        .expect(&format!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir)));
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
@@ -71,7 +79,12 @@ fn main() {
         &configuration::ENV.initial_peers,
         configuration::ENV.peer_threshold)
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), rocks_db.clone());
+    let _ = ChainManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        rocks_db.clone(),
+        tezos_storage_init_info.clone()
+    );
     let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
 
     tokio_runtime.block_on(async move {

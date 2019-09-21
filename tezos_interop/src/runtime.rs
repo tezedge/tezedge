@@ -1,3 +1,6 @@
+use std::error;
+use std::fmt;
+use std::env;
 use std::future::Future;
 use std::pin::Pin;
 use std::ptr;
@@ -8,30 +11,73 @@ use std::task::{Context, Poll, Waker};
 use ocaml::core::callback::caml_startup;
 
 use lazy_static::lazy_static;
+use std::panic::AssertUnwindSafe;
 
 lazy_static! {
     /// Because ocaml runtime should be accessed only by a single thread
     /// we will create the `OCAML_ENV` singleton.
-    static ref OCAML_ENV: OcamlEnvironment = initialize_environment();
+    static ref OCAML_ENV: OcamlEnvironment = initialize_environment(OcamlRuntimeConfiguration::new());
+}
+
+/// Holds configuration for ocaml runtime - e.g. arguments which are passed to caml_startup
+struct OcamlRuntimeConfiguration {
+    log_enabled: bool
+}
+
+impl OcamlRuntimeConfiguration {
+    /// Creates configuration from
+    fn new() -> Self {
+        let log_enabled:bool = env::var("OCAML_LOG_ENABLED")
+            .unwrap_or("false".to_string())
+            .parse()
+            .expect("Invalid value specified for OCAML_LOG_ENABLED");
+        OcamlRuntimeConfiguration {
+            log_enabled
+        }
+    }
 }
 
 /// This function will start ocaml runtime.
 /// Ocaml runtime should always be called from a single thread.
-pub fn start_ocaml_runtime() {
-    let mut ptr = ptr::null_mut();
-    let argv: *mut *mut u8 = &mut ptr;
+fn start_ocaml_runtime(ocaml_cfg: &OcamlRuntimeConfiguration) {
     unsafe {
+        let mut data_dir = format!("--log-enabled {}", ocaml_cfg.log_enabled);
+
+        let argv: *mut *mut u8 = [
+            data_dir.as_mut_str().as_mut_ptr(),
+            ptr::null_mut()
+        ].as_mut_ptr();
+
         caml_startup(argv);
     }
 }
 
-/// The result received from ocaml side.
+/// Ocaml execution error
+pub struct OcamlError;
+
+impl error::Error for OcamlError { }
+
+impl fmt::Display for OcamlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Ocaml error")
+    }
+}
+
+impl fmt::Debug for OcamlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Ocaml error")
+    }
+}
+
+type TaskResultHolder<T> = Arc<Mutex<Option<Result<T, OcamlError>>>>;
+
+/// The future for the result received from ocaml side.
 /// Value is not available immediately but caller will have to await for it.
 pub struct OcamlResult<T>
     where T: Send
 {
     /// will contain result of `OcamlTask`
-    result: Arc<Mutex<Option<T>>>,
+    result: TaskResultHolder<T>,
     /// shared state between `OcamlTask` and `OcamlResult`
     state: Arc<Mutex<SharedState>>,
 }
@@ -40,7 +86,7 @@ pub struct OcamlResult<T>
 impl<T> Future for OcamlResult<T>
     where T: Send
 {
-    type Output = T;
+    type Output = Result<T, OcamlError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut result = self.result.lock().unwrap();
@@ -74,7 +120,7 @@ impl OcamlTask {
     /// * `f` - the function will be executed in ocaml thread context
     /// * `f_result_holder` - will hold result of the `f` after `f`'s completion
     /// * `shared_state` - shared state between `OcamlTask` and `OcamlResult`
-    fn new<F, T>(f: F, f_result_holder: Arc<Mutex<Option<T>>>, shared_state: Arc<Mutex<SharedState>>) -> OcamlTask
+    fn new<F, T>(f: F, f_result_holder: TaskResultHolder<T>, shared_state: Arc<Mutex<SharedState>>) -> OcamlTask
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static
@@ -82,7 +128,10 @@ impl OcamlTask {
         OcamlTask {
             op: Box::new(move || {
                 let mut result = f_result_holder.lock().unwrap();
-                *result = Some(f());
+                match std::panic::catch_unwind(AssertUnwindSafe(|| f())) {
+                    Ok(f_result) => *result = Some(Ok(f_result)),
+                    Err(_) => *result = Some(Err(OcamlError))
+                }
             }),
             state: shared_state,
         }
@@ -99,7 +148,6 @@ struct SharedState {
 /// only a single instance of `OcamlThreadExecutor` running because ocaml runtime
 /// is not designed to be accessed from multiple threads.
 struct OcamlThreadExecutor {
-
     /// Receiver is used to receive tasks which will be then executed
     /// in the ocaml runtime.
     ready_tasks: Receiver<OcamlTask>
@@ -122,13 +170,11 @@ impl OcamlThreadExecutor {
 /// Spawns ocaml task. Spawning is simply sending ocaml task into the sender queue `spawned_tasks`.
 /// Ocaml tasks are then received and executed by the `OcamlThreadExecutor` singleton.
 struct OcamlTaskSpawner {
-
     /// Sender is used to send tasks to the `OcamlThreadExecutor`.
     spawned_tasks: Arc<Mutex<Sender<OcamlTask>>>
 }
 
 impl OcamlTaskSpawner {
-
     /// Spawns ocaml task. Spawning is simply sending ocaml task into the sender queue `spawned_tasks`.
     /// Ocaml tasks are then received and executed by the `OcamlThreadExecutor` singleton.
     pub fn spawn(&self, task: OcamlTask) -> Result<(), SendError<OcamlTask>> {
@@ -142,19 +188,23 @@ struct OcamlEnvironment {
 }
 
 /// Create the environment and initialize ocaml runtime.
-fn initialize_environment() -> OcamlEnvironment {
+fn initialize_environment(ocaml_cfg: OcamlRuntimeConfiguration) -> OcamlEnvironment {
     let (task_tx, task_rx) = channel();
     let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
     let executor = OcamlThreadExecutor { ready_tasks: task_rx };
     std::thread::spawn(move || {
-        start_ocaml_runtime();
+        start_ocaml_runtime(&ocaml_cfg);
         executor.run()
     });
 
     OcamlEnvironment { spawner }
 }
 
-/// Run a function in ocaml runtime and return a result.
+/// Run a function in ocaml runtime and return a result future.
+///
+/// # Arguments
+///
+/// * `f` - the function will be executed in ocaml thread context
 pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     where
         F: FnOnce() -> T + 'static + Send,
@@ -167,4 +217,17 @@ pub fn spawn<F, T>(f: F) -> OcamlResult<T>
     OCAML_ENV.spawner.spawn(task).expect("Failed to spawn task");
 
     result_future
+}
+
+/// Synchronously execute provided function
+///
+/// # Arguments
+///
+/// * `f` - the function will be executed in ocaml thread context
+pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
+    where
+        F: FnOnce() -> T + 'static + Send,
+        T: 'static + Send
+{
+    futures::executor::block_on(spawn(f))
 }

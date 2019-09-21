@@ -394,7 +394,7 @@ mod tests {
 
         let mut writer = JsonWriter::new();
         let writer_result = writer.write(&record, &Encoding::Obj(record_schema));
-        assert_eq!(true, writer_result.is_ok());
+        assert!(writer_result.is_ok());
 
         let expected_writer_result = r#"{ "a": 32, "b": true, "t": "2019-03-21T00:10:11+00:00", "s": { "x": 5, "y": 32, "v": [12, 34] }, "p": "6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a", "c": "5c4d4aa1", "d": 12.34, "e": "Disconnected", "f": [{ "name": "A", "major": 1, "minor": 1 }, { "name": "B", "major": 2, "minor": 0 }], "h": "NetXgtSLGNJvNye" }"#;
         assert_eq!(expected_writer_result, writer_result.unwrap());
