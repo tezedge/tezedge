@@ -43,6 +43,7 @@ impl WsClient {
         Self { ws }
     }
 
+    #[allow(dead_code)]
     pub fn connection_id(&self) -> u32 {
         self.ws.connection_id()
     }
