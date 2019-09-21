@@ -1,3 +1,4 @@
+use std::stringify;
 use networking::p2p::binary_message::{Hexable, MessageHash};
 use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
@@ -6,7 +7,27 @@ use tezos_interop::ffi::ApplyBlockError;
 
 mod common;
 
+macro_rules! tezos_test {
+    ($f:expr) => ( (stringify!($f), $f) )
+}
+
 #[test]
+fn run_tests() {
+    // We cannot run tests in parallel, because tezos does not handle situation when multiple storage
+    // directories are initialized
+    let tests: [(&str, fn() -> Result<(), failure::Error>); 4] = [
+        tezos_test!(test_bootstrap_empty_storage_with_first_three_blocks),
+        tezos_test!(test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor),
+        tezos_test!(test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations),
+        tezos_test!(test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations)
+    ];
+
+    for (name, f) in tests.iter() {
+        let result = f();
+        assert!(result.is_ok(), "Tezos test {:?} failed with error: {:?}", name, &result);
+    }
+}
+
 fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
@@ -68,7 +89,6 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     Ok(assert_eq!(3, current_header.level))
 }
 
-#[test]
 fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
@@ -97,7 +117,6 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
     Ok(assert_eq!(ApplyBlockError::UnknownPredecessor, apply_block_result.unwrap_err()))
 }
 
-#[test]
 fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
@@ -123,7 +142,6 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
     Ok(assert_eq!(ApplyBlockError::IncompleteOperations { expected: 4, actual: 1 }, apply_block_result.unwrap_err()))
 }
 
-#[test]
 fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
