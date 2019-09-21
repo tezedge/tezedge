@@ -15,7 +15,7 @@ use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
 use tezos_client::client::TezosStorageInitInfo;
-use tezos_encoding::hash::BlockHash;
+use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 
@@ -40,9 +40,9 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: Arc<TezosStorageInitInfo>) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_storage_init_info)),
+            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_storage_init_info.chain_id.clone())),
             ChainManager::name())
     }
 
@@ -52,11 +52,10 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((event_channel, rocks_db, tezos_storage_init_info): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, Arc<TezosStorageInitInfo>)) -> Self {
-        let tezos_storage_init_info = tezos_storage_init_info.clone();
+    fn new((event_channel, rocks_db, chain_id): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, ChainId)) -> Self {
         ChainManager {
             event_channel,
-            block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &tezos_storage_init_info.chain_id),
+            block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &chain_id),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new(),
         }
