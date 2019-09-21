@@ -1,6 +1,9 @@
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived};
 use log::*;
 use ws::{WebSocket, Sender as WsSender};
+use networking::p2p::{
+    network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived},
+    encoding::peer::PeerMessage,
+};
 use riker::{
     system::SystemEvent, actor::*,
     system::Timer, actors::SystemMsg,
@@ -8,10 +11,10 @@ use riker::{
 use std::{
     collections::HashMap, time::Duration,
     sync::{Arc, atomic::AtomicUsize},
-    iter::FromIterator, thread::Builder,
+    thread::Builder,
 };
 use crate::{
-    monitors::PeerMonitor, ws_server::WsServer,
+    monitors::{PeerMonitor, BootstrapMonitor}, ws_server::WsServer,
     messages::PeerConnectionStatus,
 };
 
@@ -30,7 +33,9 @@ pub struct MetricsManager {
     event_channel: ChannelRef<NetworkChannelMsg>,
     broadcaster: WsSender,
     connected_clients: Arc<AtomicUsize>,
-    peer_monitors: HashMap<String, PeerMonitor>,
+    // Monitors
+    peer_monitors: HashMap<usize, PeerMonitor>,
+    bootstrap_monitor: BootstrapMonitor,
 }
 
 impl MetricsManager {
@@ -58,6 +63,7 @@ impl MetricsManager {
             broadcaster,
             connected_clients,
             peer_monitors: HashMap::new(),
+            bootstrap_monitor: BootstrapMonitor::new(),
         }
     }
 
@@ -71,7 +77,16 @@ impl MetricsManager {
     pub fn process_peer_message(&mut self, msg: PeerMessageReceived) {
         use std::mem::size_of_val;
 
-        if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.name()) {
+        // TODO: Add real message processing
+        // TODO: Add general statistics processing (ETA, blocks)
+
+        for message in &msg.message.messages {
+            match message {
+                _ => info!("Not implemented monitoring for: {:?}", msg),
+            }
+        }
+
+        if let Some(monitor) = self.peer_monitors.get_mut(&msg.peer.uri().uid) {
             // TODO: Add proper sizes
             monitor.incoming_bytes(size_of_val(&msg.message));
         } else {
@@ -113,7 +128,7 @@ impl Receive<SystemEvent> for MetricsManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Sender) {
         if let SystemEvent::ActorTerminated(evt) = msg {
-            if let Some(_monitor) = self.peer_monitors.remove(evt.actor.name()) {
+            if let Some(_monitor) = self.peer_monitors.remove(&evt.actor.uri().uid) {
                 ctx.myself.tell(
                     BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(evt.actor.name().to_owned())),
                     None,
@@ -129,7 +144,6 @@ impl Receive<BroadcastSignal> for MetricsManager {
     type Msg = MetricsManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
-        use serde_json;
         use crate::messages::Message;
         use std::sync::atomic::Ordering::Relaxed;
 
@@ -156,11 +170,11 @@ impl Receive<NetworkChannelMsg> for MetricsManager {
         match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
                 // TODO: Add field to message with peer name / identifier
-                let peer_name = msg.peer.name().to_owned();
-                let monitor = PeerMonitor::new(peer_name.clone());
-                self.peer_monitors.insert(peer_name.clone(), monitor);
+                let identifier = msg.peer.uri();
+                let monitor = PeerMonitor::new(identifier.clone());
+                self.peer_monitors.insert(identifier.uid, monitor);
                 ctx.myself.tell(
-                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(peer_name)),
+                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(format!("{}", identifier.uid))),
                     None,
                 );
             }

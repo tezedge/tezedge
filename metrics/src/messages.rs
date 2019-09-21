@@ -1,7 +1,9 @@
 use serde::Serialize;
 use crate::monitors::PeerMonitor;
 use std::iter::FromIterator;
-use networking::p2p::peer::Peer;
+
+// -------------------------- GENERAL METRICS -------------------------- //
+pub type IncomingTransferMetrics = ();
 
 // -------------------------- PEER TRANSFER STATS MESSAGE -------------------------- //
 #[derive(Clone, Serialize, Debug)]
