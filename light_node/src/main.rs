@@ -12,11 +12,11 @@ use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
-use storage::block_storage::BlockStorage;
-use storage::operations_storage::{OperationsMetaStorage, OperationsStorage};
+use storage::{BlockStorage, BlockMetaStorage, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
 use metrics::MetricsManager;
+use shell::chain_feeder::ChainFeeder;
 
 mod configuration;
 
@@ -47,11 +47,12 @@ fn main() {
         panic!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir);
     }
     let tezos_data_dir = tezos_data_dir.to_str().unwrap();
-    let tezos_storage_init_info = Arc::new(client::init_storage(tezos_data_dir.to_string())
-        .expect(&format!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir)));
+    let tezos_storage_init_info = client::init_storage(tezos_data_dir.to_string())
+        .expect(&format!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir));
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
+        BlockMetaStorage::cf_descriptor(),
         OperationsStorage::cf_descriptor(),
         OperationsMetaStorage::cf_descriptor(),
     ];
@@ -83,8 +84,9 @@ fn main() {
         &actor_system,
         network_channel.clone(),
         rocks_db.clone(),
-        tezos_storage_init_info.clone()
+        &tezos_storage_init_info
     );
+    let _ = ChainFeeder::actor(&actor_system, rocks_db.clone(), &tezos_storage_init_info);
     let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
 
     tokio_runtime.block_on(async move {

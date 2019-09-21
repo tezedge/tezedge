@@ -1,19 +1,23 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::{trace, debug, info, warn};
+use failure::Error;
+use log::{debug, info, trace, warn};
 use riker::actors::*;
 
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
-use tezos_encoding::hash::{ToHashRef, HashRef};
+use tezos_client::client::TezosStorageInitInfo;
+use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
-use tezos_client::client::TezosStorageInitInfo;
 
 const PEER_QUEUE_MAX: usize = 15;
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
@@ -36,9 +40,9 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: Arc<TezosStorageInitInfo>) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: ChannelRef<NetworkChannelMsg>, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_storage_init_info)),
+            Props::new_args(ChainManager::new, (event_channel, rocks_db, tezos_storage_init_info.chain_id.clone())),
             ChainManager::name())
     }
 
@@ -48,19 +52,137 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((event_channel, rocks_db, tezos_storage_init_info): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, Arc<TezosStorageInitInfo>)) -> Self {
-        let tezos_storage_init_info = tezos_storage_init_info.clone();
+    fn new((event_channel, rocks_db, chain_id): (ChannelRef<NetworkChannelMsg>, Arc<rocksdb::DB>, ChainId)) -> Self {
         ChainManager {
             event_channel,
-            block_state: BlockState::new(
-                rocks_db.clone(),
-                tezos_storage_init_info.chain_id.clone(),
-                tezos_storage_init_info.genesis_block_header_hash.clone(),
-                tezos_storage_init_info.current_block_header_hash.clone()
-            ),
+            block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &chain_id),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
-            peers: HashMap::new()
+            peers: HashMap::new(),
         }
+    }
+
+    fn check_chain_completeness(&mut self) -> Result<(), Error> {
+        let ChainManager { peers, block_state, operations_state, .. } = self;
+
+        if block_state.has_missing_blocks() {
+            peers.iter_mut()
+                .for_each(|(_, peer)| {
+                    let available_capacity = cmp::min(peer.available_queue_capacity(), BLOCK_HEADERS_BATCH_SIZE);
+                    if available_capacity > 0 {
+                        let missing_block_headers = block_state.move_to_queue(available_capacity);
+                        if !missing_block_headers.is_empty() {
+                            debug!("Requesting {} block headers from peer {}", missing_block_headers.len(), &peer.peer_ref);
+                            peer.queued_block_headers.extend(missing_block_headers.clone());
+                            let msg = GetBlockHeadersMessage { get_block_headers: missing_block_headers };
+                            tell_peer(msg.into(), peer);
+                        }
+                    }
+                })
+        }
+
+        if operations_state.has_missing_operations() {
+            for (_, peer) in peers.iter_mut() {
+                let available_capacity = peer.available_queue_capacity();
+                if available_capacity > 0 {
+                    let missing_operations = operations_state.move_to_queue(available_capacity)?;
+                    if !missing_operations.is_empty() {
+                        debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
+                        missing_operations.iter()
+                            .for_each(|operations| {
+                                peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
+                                let msg = GetOperationsForBlocksMessage {
+                                    get_operations_for_blocks: operations.into()
+                                };
+                                tell_peer(msg.into(), peer);
+                            });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn process_network_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: NetworkChannelMsg) -> Result<(), Error> {
+        let ChainManager { peers, block_state, operations_state, .. } = self;
+        match msg {
+            NetworkChannelMsg::PeerBootstrapped(msg) => {
+                debug!("Requesting current branch from peer: {}", &msg.peer);
+                let mut peer = PeerState::new(msg.peer);
+                tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), &mut peer);
+                // store peer
+                self.peers.insert(peer.peer_ref.uri().clone(), peer);
+            }
+            NetworkChannelMsg::PeerMessageReceived(received) => {
+                match peers.get_mut(received.peer.uri()) {
+                    Some(peer) => {
+                        peer.response_last = Instant::now();
+
+                        for message in &received.message.messages {
+                            match message {
+                                PeerMessage::CurrentBranch(message) => {
+                                    debug!("Received current branch from peer: {}", &received.peer);
+                                    let block_hashes = message.current_branch.history.iter()
+                                        .map(|block_hash| block_hash.clone());
+                                    for block_hash in block_hashes {
+                                        block_state.schedule_block_hash(block_hash)?
+                                    }
+                                    // trigger CheckChainCompleteness
+                                    ctx.myself().tell(CheckChainCompleteness, None);
+                                }
+                                PeerMessage::GetCurrentBranch(_) => {
+                                    debug!("Current branch requested by peer: {}", &received.peer);
+                                    // .. ignore
+                                }
+                                PeerMessage::BlockHeader(message) => {
+                                    let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
+                                    block_state.insert_block_header(block_header.clone())?;
+                                    if peer.queued_block_headers.remove(&block_header.hash) {
+                                        debug!("Received block header from peer: {}", &received.peer);
+                                        operations_state.insert_block_header(&block_header)?;
+                                        // trigger CheckChainCompleteness
+                                        ctx.myself().tell(CheckChainCompleteness, None);
+                                    } else {
+                                        warn!("Received unexpected block header from peer: {}", &received.peer);
+                                        ctx.system.stop(received.peer.clone());
+                                    }
+                                }
+                                PeerMessage::OperationsForBlocks(operations) => {
+                                    let block_hash = operations.operations_for_block.hash.clone();
+                                    let mut operations_completed = false;
+                                    match peer.queued_operations.get_mut(&block_hash) {
+                                        Some(missing_operations) => {
+                                            if missing_operations.validation_passes.remove(&operations.operations_for_block.validation_pass) {
+                                                debug!("Received operations vp #{} from peer: {}", operations.operations_for_block.validation_pass, &received.peer);
+                                                operations_completed = missing_operations.validation_passes.is_empty();
+                                                operations_state.insert_operations(&operations)?;
+                                                // trigger CheckChainCompleteness
+                                                ctx.myself().tell(CheckChainCompleteness, None);
+                                            } else {
+                                                warn!("Received unexpected validation pass from peer: {}", &received.peer);
+                                                ctx.system.stop(received.peer.clone());
+                                            }
+                                        }
+                                        None => {
+                                            warn!("Received unexpected operations from peer: {}", &received.peer);
+                                            ctx.system.stop(received.peer.clone());
+                                        }
+                                    }
+                                    if operations_completed {
+                                        peer.queued_operations.remove(&block_hash);
+                                    }
+                                }
+                                _ => trace!("Ignored message: {:?}", message)
+                            }
+                        }
+                    }
+                    None => debug!("Received message for non-existing peer: {}", &received.peer)
+                }
+            }
+            _ => (),
+        }
+
+        Ok(())
     }
 }
 
@@ -119,43 +241,9 @@ impl Receive<CheckChainCompleteness> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
-        let ChainManager { peers, block_state, operations_state, .. } = self;
-
-        if block_state.has_missing_blocks() {
-            peers.iter_mut()
-                .for_each(|(_, peer)| {
-                    let available_capacity = cmp::min(peer.available_queue_capacity(), BLOCK_HEADERS_BATCH_SIZE);
-                    if available_capacity > 0 {
-                        let missing_block_headers = block_state.move_to_queue(available_capacity);
-                        if !missing_block_headers.is_empty() {
-                            debug!("Requesting {} block headers from peer {}", missing_block_headers.len(), &peer.peer_ref);
-                            peer.queued_block_headers.extend(missing_block_headers.clone());
-                            let msg = GetBlockHeadersMessage { get_block_headers: missing_block_headers.iter().map(HashRef::get_hash).collect() };
-                            tell_peer(msg.into(), peer);
-                        }
-                    }
-                })
-        }
-
-        if operations_state.has_missing_operations() {
-            peers.iter_mut()
-                .for_each(|(_, peer)| {
-                    let available_capacity = peer.available_queue_capacity();
-                    if available_capacity > 0 {
-                        let missing_operations = operations_state.move_to_queue(available_capacity).expect("Failed to move to queue");
-                        if !missing_operations.is_empty() {
-                            debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
-                            missing_operations.iter()
-                                .for_each(|operations| {
-                                    peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
-                                    let msg = GetOperationsForBlocksMessage {
-                                        get_operations_for_blocks: operations.into()
-                                    };
-                                    tell_peer(msg.into(), peer);
-                                });
-                        }
-                    }
-                })
+        match self.check_chain_completeness() {
+            Ok(_) => (),
+            Err(e) => warn!("Failed to check chain completeness: {:?}", e),
         }
     }
 }
@@ -164,91 +252,17 @@ impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
-        let ChainManager { peers, block_state, operations_state, .. } = self;
-
-        match msg {
-            NetworkChannelMsg::PeerBootstrapped(msg) => {
-                debug!("Requesting current branch from peer: {}", &msg.peer);
-                let mut peer = PeerState::new(msg.peer);
-                tell_peer(GetCurrentBranchMessage::new(block_state.get_current_chain_id()).into(), &mut peer);
-                // store peer
-                self.peers.insert(peer.peer_ref.uri().clone(), peer);
-            }
-            NetworkChannelMsg::PeerMessageReceived(received) => {
-                match peers.get_mut(received.peer.uri()) {
-                    Some(peer) => {
-                        peer.response_last = Instant::now();
-
-                        let messages = &received.message.messages;
-                        messages.iter()
-                            .for_each(|message| match message {
-                                PeerMessage::CurrentBranch(message) => {
-                                    debug!("Received current branch from peer: {}", &received.peer);
-                                    message.current_branch.history.iter()
-                                        .map(|block_hash| block_hash.clone().to_hash_ref())
-                                        .for_each(|block_hash| block_state.schedule_block_hash(block_hash).expect("Failed to schedule block"));
-                                    // trigger CheckChainCompleteness
-                                    ctx.myself().tell(CheckChainCompleteness, None);
-                                }
-                                PeerMessage::GetCurrentBranch(_) => {
-                                    debug!("Current branch requested by peer: {}", &received.peer);
-                                    // .. ignore
-                                }
-                                PeerMessage::BlockHeader(message) => {
-                                    let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
-                                    block_state.insert_block_header(block_header.clone()).expect("Failed to insert block header");
-                                    if peer.queued_block_headers.remove(&block_header.hash) {
-                                        debug!("Received block header from peer: {}", &received.peer);
-                                        operations_state.insert_block_header(&block_header).expect("Failed to insert block header");
-                                        // trigger CheckChainCompleteness
-                                        ctx.myself().tell(CheckChainCompleteness, None);
-                                    } else {
-                                        warn!("Received unexpected block header from peer: {}", &received.peer);
-                                        ctx.system.stop(received.peer.clone());
-                                    }
-                                }
-                                PeerMessage::OperationsForBlocks(operations) => {
-                                    let block_hash = operations.operations_for_block.hash.clone().to_hash_ref();
-                                    let mut operations_completed = false;
-                                    match peer.queued_operations.get_mut(&block_hash) {
-                                        Some(missing_operations) => {
-                                            if missing_operations.validation_passes.remove(&operations.operations_for_block.validation_pass) {
-                                                debug!("Received operations vp #{} from peer: {}", operations.operations_for_block.validation_pass, &received.peer);
-                                                operations_completed = missing_operations.validation_passes.is_empty();
-                                                operations_state.insert_operations(&operations).expect("Failed to insert operations");
-                                                // trigger CheckChainCompleteness
-                                                ctx.myself().tell(CheckChainCompleteness, None);
-                                            } else {
-                                                warn!("Received unexpected validation pass from peer: {}", &received.peer);
-                                                ctx.system.stop(received.peer.clone());
-                                            }
-                                        },
-                                        None => {
-                                            warn!("Received unexpected operations from peer: {}", &received.peer);
-                                            ctx.system.stop(received.peer.clone());
-                                        }
-                                    }
-                                    if operations_completed {
-                                        peer.queued_operations.remove(&block_hash);
-                                    }
-
-
-                                }
-                                _ => trace!("Ignored message: {:?}", message)
-                            })
-                    }
-                    None => debug!("Received message for non-existing peer: {}", &received.peer)
-                }
-            }
-            _ => (),
+        match self.process_network_channel_message(ctx, msg) {
+            Ok(_) => (),
+            Err(e) => warn!("Failed to process network channel message: {:?}", e),
         }
     }
 }
 
 struct PeerState {
     peer_ref: PeerRef,
-    queued_block_headers: HashSet<HashRef>,
-    queued_operations: HashMap<HashRef, MissingOperations>,
+    queued_block_headers: HashSet<BlockHash>,
+    queued_operations: HashMap<BlockHash, MissingOperations>,
     request_last: Instant,
     response_last: Instant,
 }
@@ -273,7 +287,6 @@ impl PeerState {
         }
     }
 }
-
 
 
 fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {

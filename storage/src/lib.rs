@@ -1,32 +1,43 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::Arc;
 
 use failure::Fail;
 
-pub use block_state::BlockState;
 use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use networking::p2p::encoding::prelude::BlockHeader;
-pub use operations_state::{MissingOperations, OperationsState};
-use tezos_encoding::hash::{HashRef, ToHashRef, HashType};
+use tezos_encoding::hash::{BlockHash, HashType};
+
+pub use crate::block_state::BlockState;
+pub use crate::operations_state::{MissingOperations, OperationsState};
+pub use crate::block_meta_storage::BlockMetaStorage;
+pub use crate::block_storage::BlockStorage;
+pub use crate::operations_storage::OperationsStorage;
+pub use crate::operations_meta_storage::OperationsMetaStorage;
+pub use crate::persistent::database::{IteratorMode, Direction};
 
 use crate::persistent::{Codec, DBError, SchemaError};
 
 pub mod persistent;
-pub mod block_storage;
 pub mod operations_storage;
+pub mod operations_meta_storage;
 pub mod operations_state;
+pub mod block_storage;
+pub mod block_meta_storage;
 pub mod block_state;
 
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct BlockHeaderWithHash {
-    pub hash: HashRef,
+    pub hash: BlockHash,
     pub header: Arc<BlockHeader>,
 }
 
 impl BlockHeaderWithHash {
     pub fn new(block_header: BlockHeader) -> Result<Self, MessageHashError> {
         Ok(BlockHeaderWithHash {
-            hash: block_header.message_hash()?.to_hash_ref(),
+            hash: block_header.message_hash()?,
             header: Arc::new(block_header),
         })
     }
@@ -35,14 +46,14 @@ impl BlockHeaderWithHash {
 /// Codec for `BlockHeaderWithHash`
 impl Codec for BlockHeaderWithHash {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        let hash = HashRef::decode(&bytes[0..HashType::BlockHash.size()])?;
+        let hash = bytes[0..HashType::BlockHash.size()].to_vec();
         let header = BlockHeader::from_bytes(bytes[HashType::BlockHash.size()..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
         Ok(BlockHeaderWithHash { hash, header: Arc::new(header) })
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = vec![];
-        result.extend(&self.hash.encode()?);
+        result.extend(&self.hash);
         result.extend(self.header.as_bytes().map_err(|_| SchemaError::EncodeError)?);
         Ok(result)
     }
@@ -82,7 +93,7 @@ mod tests {
     #[test]
     fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
         let expected = BlockHeaderWithHash {
-            hash: HashRef::new(HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?),
+            hash: HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
             header: Arc::new(BlockHeader {
                 level: 34,
                 proto: 1,

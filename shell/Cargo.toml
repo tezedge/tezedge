@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 dns-lookup = "1.0.1"
+failure = "0.1.5"
 hex = "0.3.2"
 log = "0.4.8"
 riker = { git = "https://github.com/riker-rs/riker" }

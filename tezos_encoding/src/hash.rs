@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crypto::base58::{FromBase58Check, FromBase58CheckError, ToBase58Check};
 
 mod prefix_bytes {
@@ -85,32 +83,6 @@ impl HashEncoding {
         assert_eq!(expected_len, hash.len(), "Expected decoded length is {} but instead found {}", expected_len, hash.len());
         hash.drain(0..self.0.prefix().len());
         Ok(hash)
-    }
-}
-
-
-#[derive(Clone, Hash, PartialEq, PartialOrd, Debug, Eq)]
-pub struct HashRef {
-    pub hash: Arc<Hash>,
-}
-
-impl HashRef {
-    pub fn new(hash: Hash) -> Self {
-        HashRef { hash: Arc::new(hash) }
-    }
-
-    pub fn get_hash(&self) -> Hash {
-        (*self.hash).clone()
-    }
-}
-
-pub trait ToHashRef {
-    fn to_hash_ref(self) -> HashRef;
-}
-
-impl<T: AsRef<[u8]>> ToHashRef for T {
-    fn to_hash_ref(self) -> HashRef {
-        HashRef::new(self.as_ref().to_vec())
     }
 }
 

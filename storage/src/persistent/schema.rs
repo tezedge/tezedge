@@ -4,7 +4,7 @@
 use failure::Fail;
 use rocksdb::{ColumnFamilyDescriptor, Options};
 
-use tezos_encoding::hash::HashRef;
+use tezos_encoding::hash::Hash;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -33,12 +33,12 @@ pub trait Schema {
     }
 }
 
-impl Codec for HashRef {
+impl Codec for Hash {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        Ok(HashRef::new(bytes.to_vec()))
+        Ok(bytes.to_vec())
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        Ok(self.get_hash())
+        Ok(self.clone())
     }
 }
