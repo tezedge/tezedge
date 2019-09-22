@@ -239,14 +239,14 @@ impl EncryptedMessageReader {
 
                     if input_remaining == 0 {
                         match M::from_bytes(input_data.clone()) {
-                            Ok(message) => return Ok(message),
+                            Ok(message) => break Ok(message),
                             Err(BinaryReaderError::Underflow { bytes }) => input_remaining += bytes,
-                            Err(e) => return Err(e.into()),
+                            Err(e) => break Err(e.into()),
                         }
                     }
                 }
                 Err(error) => {
-                    return Err(StreamError::FailedToDecryptMessage { error })
+                    break Err(StreamError::FailedToDecryptMessage { error })
                 }
             }
         }

@@ -9,6 +9,7 @@ use tokio::runtime::TaskExecutor;
 
 use super::network_channel::NetworkChannelMsg;
 use super::peer::{Bootstrap, Peer, PeerRef};
+use std::sync::atomic::{Ordering, AtomicBool};
 
 /// Blacklist the IP address.
 #[derive(Clone, Debug)]
@@ -45,6 +46,9 @@ pub struct NetworkManager {
     public_key: String,
     secret_key: String,
     proof_of_work_stamp: String,
+    /// Message receiver boolean indicating whether
+    /// more connections should be accepted from network
+    rx_run: Arc<AtomicBool>,
 }
 
 impl NetworkManager {
@@ -75,6 +79,7 @@ impl NetworkManager {
             public_key,
             secret_key,
             proof_of_work_stamp,
+            rx_run: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -97,10 +102,15 @@ impl Actor for NetworkManager {
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         let listener_port = self.listener_port;
         let myself = ctx.myself();
+        let rx_run = self.rx_run.clone();
 
         self.tokio_executor.spawn(async move {
-            begin_listen_incoming(listener_port, myself).await;
+            begin_listen_incoming(listener_port, myself, rx_run).await;
         });
+    }
+
+    fn post_stop(&mut self) {
+        self.rx_run.store(false, Ordering::Relaxed);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -159,11 +169,11 @@ impl Receive<AcceptPeer> for NetworkManager {
 
 
 /// Start to listen for incoming connections indefinitely.
-async fn begin_listen_incoming(listener_port: u16, connection_manager: NetworkManagerRef) {
+async fn begin_listen_incoming(listener_port: u16, connection_manager: NetworkManagerRef, rx_run: Arc<AtomicBool>) {
     let listener_address = format!("127.0.0.1:{}", listener_port).parse::<SocketAddr>().unwrap();
     let mut listener = TcpListener::bind(&listener_address).await.unwrap();
 
-    loop {
+    while rx_run.load(Ordering::Relaxed) {
         let (stream, address) = listener.accept().await.unwrap();
         connection_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
     }
