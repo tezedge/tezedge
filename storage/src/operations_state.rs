@@ -31,15 +31,27 @@ impl OperationsState {
         }
     }
 
-    pub fn insert_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    /// Process block header.
+    ///
+    /// If block header is not already present in storage, return `true`.
+    ///
+    /// If block is already present in storage return `false`.
+    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
         if !self.meta_storage.contains(&block_header.hash)? {
             self.missing_operations_for_blocks.insert(block_header.hash.clone());
             self.meta_storage.initialize(block_header)?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
-    pub fn insert_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    /// Process block operations.
+    ///
+    /// If all block operations were processed return `true`.
+    ///
+    /// If there are still block operations to be processed return `false`.
+    pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
         let hash_ref = &message.operations_for_block.hash;
         self.operations_storage.insert(message)?;
 
@@ -47,8 +59,10 @@ impl OperationsState {
         if self.meta_storage.is_complete(hash_ref)? {
             trace!("Block {:?} has complete operations", hash_ref);
             self.missing_operations_for_blocks.remove(hash_ref);
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
     pub fn move_to_queue(&mut self, n: usize) -> Result<Vec<MissingOperations>, StorageError> {

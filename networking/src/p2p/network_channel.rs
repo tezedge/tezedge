@@ -69,8 +69,10 @@ impl From<NetworkChannelTopic> for Topic {
 /// This struct represents network bus where all network events must be published.
 pub struct NetworkChannel(Channel<NetworkChannelMsg>);
 
+pub type NetworkChannelRef = ChannelRef<NetworkChannelMsg>;
+
 impl NetworkChannel {
-    pub fn actor(fact: &impl ActorRefFactory) -> Result<ChannelRef<NetworkChannelMsg>, CreateError> {
+    pub fn actor(fact: &impl ActorRefFactory) -> Result<NetworkChannelRef, CreateError> {
         fact.actor_of(Props::new(NetworkChannel::new), NetworkChannel::name())
     }
 

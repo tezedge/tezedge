@@ -30,7 +30,7 @@ impl BlockState {
         }
     }
 
-    pub fn insert_block_header(&mut self, block_header: BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn process_block_header(&mut self, block_header: BlockHeaderWithHash) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.schedule_block_hash(block_header.header.predecessor.clone())?;
 
