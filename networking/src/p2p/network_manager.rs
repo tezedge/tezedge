@@ -170,11 +170,12 @@ impl Receive<AcceptPeer> for NetworkManager {
 
 /// Start to listen for incoming connections indefinitely.
 async fn begin_listen_incoming(listener_port: u16, connection_manager: NetworkManagerRef, rx_run: Arc<AtomicBool>) {
-    let listener_address = format!("127.0.0.1:{}", listener_port).parse::<SocketAddr>().unwrap();
-    let mut listener = TcpListener::bind(&listener_address).await.unwrap();
+    let listener_address = format!("127.0.0.1:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
+    let mut listener = TcpListener::bind(&listener_address).await.expect("Failed to bind to address");
 
     while rx_run.load(Ordering::Relaxed) {
-        let (stream, address) = listener.accept().await.unwrap();
-        connection_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
+        if let Ok((stream, address)) = listener.accept().await {
+            connection_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
+        }
     }
 }
