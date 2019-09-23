@@ -10,6 +10,7 @@ fn test_init_storage() {
     // init empty storage for test
     let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = prepare_empty_storage("test_storage_01");
     assert_eq!(false, current_block_header_hash.is_empty());
+    assert_eq!(genesis_block_header_hash, current_block_header_hash);
 
     // has current head (genesis)
     let current_head = ffi::get_current_block_header(chain_id.to_string()).unwrap().unwrap();
