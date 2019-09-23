@@ -45,9 +45,9 @@ impl PeerConnectionStatus {
 }
 
 // -------------------------- MONITOR MESSAGE -------------------------- //
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum Message {
+pub enum HandlerMessage {
     PeersMetrics {
         payload: Vec<PeerMetrics>
     },
@@ -57,7 +57,7 @@ pub enum Message {
     NotImplemented(String),
 }
 
-impl<'a> FromIterator<&'a mut PeerMonitor> for Message {
+impl<'a> FromIterator<&'a mut PeerMonitor> for HandlerMessage {
     fn from_iter<I: IntoIterator<Item=&'a mut PeerMonitor>>(monitors: I) -> Self {
         let mut payload = Vec::new();
         for monitor in monitors {
@@ -68,7 +68,7 @@ impl<'a> FromIterator<&'a mut PeerMonitor> for Message {
     }
 }
 
-impl From<PeerConnectionStatus> for Message {
+impl From<PeerConnectionStatus> for HandlerMessage {
     fn from(payload: PeerConnectionStatus) -> Self {
         Self::PeerStatus { payload }
     }

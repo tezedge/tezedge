@@ -1,5 +1,5 @@
 [package]
-name = "metrics"
+name = "monitoring"
 version = "0.1.0"
 authors = ["Martin Lacko <mrt.lacko@gmail.com>"]
 edition = "2018"

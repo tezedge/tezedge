@@ -15,7 +15,7 @@ use shell::peer_manager::PeerManager;
 use storage::block_storage::BlockStorage;
 use storage::operations_storage::{OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
-use metrics::MetricsManager;
+use monitoring::{Monitor, WebsocketHandler};
 
 mod configuration;
 
@@ -72,7 +72,9 @@ fn main() {
         configuration::ENV.peer_threshold)
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), rocks_db.clone());
-    let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
+    let ws_handler = WebsocketHandler::actor(&actor_system, 4927)
+        .expect("Unable to start websocket actor");
+    let _ = Monitor::actor(&actor_system, network_channel.clone(), ws_handler);
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;
