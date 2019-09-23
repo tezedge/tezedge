@@ -1,8 +1,9 @@
+use std::fmt;
 use log::error;
 
 use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, HashType, HashEncoding};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlStorageInitError, OcamlStorageInitInfo};
 
@@ -22,6 +23,18 @@ impl TezosStorageInitInfo {
         }
     }
 }
+
+impl fmt::Debug for TezosStorageInitInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let chain_hash_encoding = HashEncoding::new(HashType::ChainId);
+        let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
+        write!(f, "TezosStorageInitInfo {{ chain_id: {}, genesis_block_header_hash: {}, current_block_header_hash: {} }}",
+               chain_hash_encoding.bytes_to_string(&self.chain_id),
+               block_hash_encoding.bytes_to_string(&self.genesis_block_header_hash),
+               block_hash_encoding.bytes_to_string(&self.current_block_header_hash))
+    }
+}
+
 
 /// Initializes storage for Tezos ocaml storage in chosen directory
 pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {

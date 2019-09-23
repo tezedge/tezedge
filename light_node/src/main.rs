@@ -4,7 +4,7 @@ extern crate lazy_static;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use log::info;
+use log::{debug, info, error};
 use riker::actors::*;
 use tokio::runtime::Runtime;
 
@@ -39,17 +39,20 @@ fn main() {
 
     let identity = configuration::tezos_node::load_identity(identity_json_file_path);
     if let Err(e) = identity {
-        panic!("Failed to load identity. Reason: {:?}", e);
+        error!("Failed to load identity. Reason: {:?}", e);
+        return;
     }
     let identity = identity.unwrap();
 
     let tezos_data_dir = &configuration::ENV.tezos_data_dir;
     if !tezos_data_dir.exists() && !tezos_data_dir.is_dir() {
-        panic!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir);
+        error!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir);
+        return;
     }
     let tezos_data_dir = tezos_data_dir.to_str().unwrap();
     let tezos_storage_init_info = client::init_storage(tezos_data_dir.to_string())
         .expect(&format!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir));
+    debug!("Tezos init constants: {:?}", &tezos_storage_init_info);
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),

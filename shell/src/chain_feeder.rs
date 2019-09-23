@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use failure::Error;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use riker::actors::*;
 
 use storage::{BlockMetaStorage, BlockStorageReader, BlockStorage, OperationsMetaStorage, OperationsStorage};
 use tezos_client::client::{apply_block, TezosStorageInitInfo};
-use tezos_encoding::hash::BlockHash;
+use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 
 use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic};
 
@@ -28,11 +28,14 @@ pub struct ChainFeeder {
     operations_storage: OperationsStorage,
     operations_meta_storage: OperationsMetaStorage,
     current_head: BlockHash,
+
+    block_hash_encoding: HashEncoding,
 }
 
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
+
     pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo) -> Result<ChainFeederRef, CreateError> {
         sys.actor_of(
             Props::new_args(ChainFeeder::new, (shell_channel, rocks_db, tezos_init.current_block_header_hash.clone())),
@@ -52,34 +55,50 @@ impl ChainFeeder {
             block_meta_storage: BlockMetaStorage::new(rocks_db.clone()),
             operations_storage: OperationsStorage::new(rocks_db.clone()),
             operations_meta_storage: OperationsMetaStorage::new(rocks_db),
-            current_head
+            current_head,
+            block_hash_encoding: HashEncoding::new(HashType::BlockHash),
         }
     }
 
     fn feed_chain_to_protocol(&mut self, ctx: &Context<ChainFeederMsg>, block_hash: &BlockHash) -> Result<(), Error> {
-        if let Some(block_meta) = self.block_meta_storage.get(block_hash)? {
-            if block_meta.is_processed {
-                if let Some(successor) = block_meta.successor {
-                    self.feed_chain_to_protocol(ctx, &successor)?;
-                }
-            } else if let Some(block) = self.block_storage.get(block_hash)? {
-                if self.operations_meta_storage.is_complete(block_hash)? {
-                    let operations = self.operations_storage.get_operations(block_hash)?.drain(..)
-                        .map(|op| Some(op))
-                        .collect();
+        debug!("Looking for the block {} successor", self.block_hash_encoding.bytes_to_string(block_hash));
+        let mut successor_block_hash = None;
+        if let Some(block_meta) = self.block_meta_storage.get(&block_hash)? {
+            successor_block_hash = block_meta.successor;
+        }
 
-                    debug!("Applying block");
-                    apply_block(&block.hash, &block.header, &operations)?;
-                    // notify others that the block successfully applied
-                    self.shell_channel.tell(
-                        Publish {
-                            msg: BlockApplied {
-                                hash: block.hash.clone(),
-                                level: block.header.level
-                            }.into(),
-                            topic: ShellChannelTopic::ShellEvents.into(),
-                        }, Some(ctx.myself().into()));
-                    self.current_head = block_hash.clone();
+        match successor_block_hash.as_ref() {
+            Some(hash) => debug!("Found successor {}", self.block_hash_encoding.bytes_to_string(hash)),
+            None => debug!("No successor found")
+        }
+
+        while let Some(block_hash) = successor_block_hash.take() {
+
+            if let Some(block_meta) = self.block_meta_storage.get(&block_hash)? {
+                if block_meta.is_processed {
+                    successor_block_hash = block_meta.successor;
+                } else if let Some(block) = self.block_storage.get(&block_hash)? {
+                    if self.operations_meta_storage.is_complete(&block_hash)? {
+                        let operations = self.operations_storage.get_operations(&block_hash)?.drain(..)
+                            .map(|op| Some(op))
+                            .collect();
+
+                        info!("Applying block {}", self.block_hash_encoding.bytes_to_string(&block.hash));
+                        apply_block(&block.hash, &block.header, &operations)?;
+                        // notify others that the block successfully applied
+                        self.shell_channel.tell(
+                            Publish {
+                                msg: BlockApplied {
+                                    hash: block.hash.clone(),
+                                    level: block.header.level
+                                }.into(),
+                                topic: ShellChannelTopic::ShellEvents.into(),
+                            }, Some(ctx.myself().into()));
+                        // update current head
+                        self.current_head = block_hash.clone();
+
+                        successor_block_hash = block_meta.successor;
+                    }
                 }
             }
         }
