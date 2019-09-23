@@ -13,12 +13,12 @@ use riker::actors::*;
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::{BlockHeaderWithHash, BlockState, MissingOperations, OperationsState};
+use storage::{BlockHeaderWithHash, BlockState, BlockStorage, BlockStorageReader, MissingOperations, OperationsState, StorageError};
 use tezos_client::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
-use crate::shell_channel::{ShellChannelRef, BlockReceived, ShellChannelTopic, AllBlockOperationsReceived};
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelRef, ShellChannelTopic};
 
 const PEER_QUEUE_MAX: usize = 15;
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
@@ -34,6 +34,8 @@ pub struct ChainManager {
     shell_channel: ShellChannelRef,
     /// Holds the state of all peers
     peers: HashMap<ActorUri, PeerState>,
+    /// Block storage
+    block_storage: Box<dyn BlockStorageReader>,
     /// Holds state of the block chain
     block_state: BlockState,
     /// Holds state of the operations
@@ -59,6 +61,7 @@ impl ChainManager {
         ChainManager {
             network_channel,
             shell_channel,
+            block_storage: Box::new(BlockStorage::new(rocks_db.clone())),
             block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &chain_id),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new(),
@@ -108,7 +111,7 @@ impl ChainManager {
     }
 
     fn process_network_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: NetworkChannelMsg) -> Result<(), Error> {
-        let ChainManager { peers, block_state, operations_state, shell_channel, .. } = self;
+        let ChainManager { peers, block_state, operations_state, shell_channel, block_storage, .. } = self;
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
@@ -179,10 +182,12 @@ impl ChainManager {
                                                     ctx.myself().tell(CheckChainCompleteness, None);
 
                                                     // notify others that new all operations for block were received
+                                                    let block = block_storage.get(&block_hash)?.ok_or(StorageError::MissingKey)?;
                                                     shell_channel.tell(
                                                         Publish {
                                                             msg: AllBlockOperationsReceived {
-                                                                hash: block_hash.clone(),
+                                                                hash: block.hash,
+                                                                level: block.header.level
                                                             }.into(),
                                                             topic: ShellChannelTopic::ShellEvents.into(),
                                                         }, Some(ctx.myself().into()));

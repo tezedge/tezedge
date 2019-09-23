@@ -8,7 +8,7 @@ use failure::Error;
 use log::{debug, warn};
 use riker::actors::*;
 
-use storage::{BlockMetaStorage, BlockStorage, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockMetaStorage, BlockStorageReader, BlockStorage, OperationsMetaStorage, OperationsStorage};
 use tezos_client::client::{apply_block, TezosStorageInitInfo};
 use tezos_encoding::hash::BlockHash;
 
@@ -74,7 +74,8 @@ impl ChainFeeder {
                     self.shell_channel.tell(
                         Publish {
                             msg: BlockApplied {
-                                hash: block_hash.clone(),
+                                hash: block.hash.clone(),
+                                level: block.header.level
                             }.into(),
                             topic: ShellChannelTopic::ShellEvents.into(),
                         }, Some(ctx.myself().into()));

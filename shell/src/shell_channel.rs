@@ -5,6 +5,7 @@ use tezos_encoding::hash::BlockHash;
 #[derive(Clone, Debug)]
 pub struct BlockApplied {
     pub hash: BlockHash,
+    pub level: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -17,6 +18,7 @@ pub struct BlockReceived {
 #[derive(Clone, Debug)]
 pub struct AllBlockOperationsReceived {
     pub hash: BlockHash,
+    pub level: i32,
 }
 
 /// Shell channel event message.

@@ -10,7 +10,7 @@ use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
-use crate::block_storage::{BlockStorage, BlockStorageDatabase};
+use crate::block_storage::{BlockStorage, BlockStorageReader, BlockStorageDatabase};
 use crate::persistent::database::IteratorMode;
 
 pub struct BlockState {
