@@ -42,7 +42,7 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
             assert_eq!(hex::decode("8eceda2f")?, current_branch_message.chain_id);
 
             let current_head = &current_branch_message.current_branch.current_head;
-            assert_eq!(198392, current_head.level);
+            assert_eq!(198_392, current_head.level);
             assert_eq!(4, current_head.validation_pass);
 
             assert_eq!(hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?, current_head.predecessor);

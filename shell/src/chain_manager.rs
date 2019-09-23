@@ -129,8 +129,7 @@ impl ChainManager {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
-                                    let block_hashes = message.current_branch.history.iter()
-                                        .map(|block_hash| block_hash.clone());
+                                    let block_hashes = message.current_branch.history.iter().cloned();
                                     for block_hash in block_hashes {
                                         block_state.schedule_block_hash(block_hash)?
                                     }

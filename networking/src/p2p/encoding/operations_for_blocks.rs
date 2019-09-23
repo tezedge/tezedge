@@ -82,8 +82,8 @@ fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(&[
-            Tag::new(0xF0, "Left", Encoding::Lazy(Rc::new(|| PathLeft::encoding()))),
-            Tag::new(0x0F, "Right", Encoding::Lazy(Rc::new(|| PathRight::encoding()))),
+            Tag::new(0xF0, "Left", Encoding::Lazy(Rc::new(PathLeft::encoding))),
+            Tag::new(0x0F, "Right", Encoding::Lazy(Rc::new(PathRight::encoding))),
             Tag::new(0x00, "Op", Encoding::Unit),
         ])
     )

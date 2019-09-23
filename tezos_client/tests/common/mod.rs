@@ -8,8 +8,8 @@ pub fn prepare_empty_dir(dir_name: &str) -> String {
         .join(Path::new(dir_name))
         .to_path_buf();
     if path.exists() {
-        fs::remove_dir_all(&path).expect(&format!("Failed to delete directory: {:?}", &path));
+        fs::remove_dir_all(&path).unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
     }
-    fs::create_dir_all(&path).expect(&format!("Failed to create directory: {:?}", &path));
+    fs::create_dir_all(&path).unwrap_or_else(|_| panic!("Failed to create directory: {:?}", &path));
     String::from(path.to_str().unwrap())
 }

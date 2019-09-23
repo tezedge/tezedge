@@ -80,7 +80,7 @@ impl ChainFeeder {
                 } else if let Some(block) = self.block_storage.get(&block_hash)? {
                     if self.operations_meta_storage.is_complete(&block_hash)? {
                         let operations = self.operations_storage.get_operations(&block_hash)?.drain(..)
-                            .map(|op| Some(op))
+                            .map(Some)
                             .collect();
 
                         info!("Applying block {}", self.block_hash_encoding.bytes_to_string(&block.hash));

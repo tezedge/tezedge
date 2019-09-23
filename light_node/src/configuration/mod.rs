@@ -127,7 +127,7 @@ impl Environment {
                     .split(',')
                     .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
                     .collect()
-                ).unwrap_or(Vec::new()),
+                ).unwrap_or_default(),
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
             tezos_data_dir: args.value_of("tezos-data-dir")

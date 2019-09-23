@@ -65,7 +65,7 @@ impl From<BinaryChunkError> for StreamError {
 }
 impl From<BinaryReaderError> for StreamError {
     fn from(error: BinaryReaderError) -> Self {
-        StreamError::DeserializationError { error: error.into() }
+        StreamError::DeserializationError { error }
     }
 }
 

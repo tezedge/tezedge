@@ -131,7 +131,7 @@ pub fn apply_block(
 
 fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Option<Vec<String>>> {
     block_operations
-        .into_iter()
+        .iter()
         .map(|bo| {
             if let Some(bo_ops) = bo {
                 Some(

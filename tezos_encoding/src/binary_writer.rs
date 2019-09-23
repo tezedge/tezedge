@@ -439,7 +439,7 @@ mod tests {
         {
             let mut writer = BinaryWriter::new();
             let record = Record {
-                a: num_bigint::BigInt::from(165316510).into()
+                a: num_bigint::BigInt::from(165_316_510).into()
             };
             let writer_result = writer.write(&record, &record_encoding).unwrap();
             let expected_writer_result = hex::decode("9e9ed49d01").unwrap();
@@ -470,7 +470,7 @@ mod tests {
 
         let mut writer = BinaryWriter::new();
         let record = Record {
-            a: num_bigint::BigInt::from(-100000).into()
+            a: num_bigint::BigInt::from(-100_000).into()
         };
         let writer_result = writer.write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("e09a0c").unwrap();
@@ -543,7 +543,7 @@ mod tests {
             Field::new("messages",  Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))])
+                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))])
                 )
            )))
         ];
@@ -601,7 +601,7 @@ mod tests {
         let record = Record {
             a: 32,
             b: true,
-            c: Some(num_bigint::BigInt::from(1548569249).into()),
+            c: Some(num_bigint::BigInt::from(1_548_569_249).into()),
             d: 12.34,
             e: EnumType::Disconnected,
             f: vec![Version { name: "A".to_string(), major: 1, minor: 1 }, Version { name: "B".to_string(), major: 2, minor: 0 }],

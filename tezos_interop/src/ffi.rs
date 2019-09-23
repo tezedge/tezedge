@@ -218,5 +218,5 @@ fn parse_error_message(ffi_error: Value) -> Option<String> {
             return Some(error_message.as_str().to_string())
         }
     }
-    return None
+    None
 }

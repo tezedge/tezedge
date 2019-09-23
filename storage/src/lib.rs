@@ -98,7 +98,7 @@ mod tests {
                 level: 34,
                 proto: 1,
                 predecessor: HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
-                timestamp: 5635634,
+                timestamp: 5_635_634,
                 validation_pass: 4,
                 operations_hash: HashEncoding::new(HashType::OperationListListHash).string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?,
                 fitness: vec![vec![0, 0]],

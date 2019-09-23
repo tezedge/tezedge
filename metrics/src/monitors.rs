@@ -56,6 +56,6 @@ impl PeerMonitor {
 
         self.current_transferred = 0;
         self.last_update = Instant::now();
-        return ret;
+        ret
     }
 }

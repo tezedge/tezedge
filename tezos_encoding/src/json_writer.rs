@@ -1,4 +1,4 @@
-use chrono::prelude::*;
+use chrono::{TimeZone, Utc};
 use num_traits::Num;
 use serde::ser::{Error as SerdeError, Serialize};
 
@@ -305,11 +305,12 @@ impl JsonWriter {
 
 #[cfg(test)]
 mod tests {
-    use serde::{Serialize};
+    use serde::Serialize;
 
-    use super::*;
     use crate::hash::{HashEncoding, HashType};
     use crate::types::BigInt;
+
+    use super::*;
 
     #[test]
     fn can_serialize_complex_schema_to_binary() {
@@ -352,7 +353,7 @@ mod tests {
         let record = Record {
             a: 32,
             b: true,
-            c: Some(num_bigint::BigInt::from(1548569249).into()),
+            c: Some(num_bigint::BigInt::from(1_548_569_249).into()),
             d: 12.34,
             e: EnumType::Disconnected,
             f: vec![Version { name: "A".to_string(), major: 1, minor: 1 }, Version { name: "B".to_string(), major: 2, minor: 0 }],
@@ -363,7 +364,7 @@ mod tests {
             },
             h: hex::decode("8eceda2f").unwrap(),
             p: hex::decode("6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a").unwrap(),
-            t: 1553127011
+            t: 1_553_127_011
         };
 
         let version_schema = vec![

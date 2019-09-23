@@ -576,7 +576,7 @@ mod tests {
             ("p".to_string(), Value::Record(vec![
                 ("a".to_string(), Value::Int32(6)),
                 ("b".to_string(), Value::Option(Some(Box::new(Value::Bool(false))))),
-                ("c".to_string(), Value::Option(Some(Box::new(Value::Int64(4752163899))))),
+                ("c".to_string(), Value::Option(Some(Box::new(Value::Int64(4_752_163_899))))),
                 ("d".to_string(), Value::Float(123.4))
             ]))
         ]);
@@ -586,7 +586,7 @@ mod tests {
             p: Payload {
                 a: 6,
                 b: Some(false),
-                c: Some(4752163899),
+                c: Some(4_752_163_899),
                 d: 123.4
             }
         };

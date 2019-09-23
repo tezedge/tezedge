@@ -450,7 +450,7 @@ mod tests {
             p: Payload {
                 a: 6,
                 b: Some(false),
-                c: Some(4752163899),
+                c: Some(4_752_163_899),
                 d: 123.4
             }
         };

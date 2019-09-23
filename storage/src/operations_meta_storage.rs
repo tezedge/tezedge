@@ -145,7 +145,7 @@ impl Meta {
 
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        if bytes.len() > 0 {
+        if !bytes.is_empty() {
             let validation_passes = bytes[0];
             if bytes.len() == ((validation_passes as usize) + 2) {
                 let is_complete_pos = validation_passes as usize + 1;

@@ -37,7 +37,7 @@ impl OperationsStorage {
 
         operations.sort_by_key(|v| v.operations_for_block.validation_pass);
 
-        return Ok(operations)
+        Ok(operations)
     }
 
     pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {

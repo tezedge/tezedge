@@ -51,7 +51,7 @@ fn main() {
     }
     let tezos_data_dir = tezos_data_dir.to_str().unwrap();
     let tezos_storage_init_info = client::init_storage(tezos_data_dir.to_string())
-        .expect(&format!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir));
+        .unwrap_or_else(|_| panic!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir));
     debug!("Tezos init constants: {:?}", &tezos_storage_init_info);
 
     let schemas = vec![
@@ -61,7 +61,7 @@ fn main() {
         OperationsMetaStorage::cf_descriptor(),
     ];
     let rocks_db = Arc::new(open_db(&configuration::ENV.bootstrap_db_path, schemas)
-        .expect(&format!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path)));
+        .unwrap_or_else(|_| panic!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path)));
 
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
