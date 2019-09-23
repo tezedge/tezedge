@@ -14,6 +14,7 @@ use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::network_manager::{ConnectToPeer, NetworkManagerRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
+use rand::seq::SliceRandom;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 
@@ -134,14 +135,15 @@ impl Receive<CheckPeerCount> for PeerManager {
                 self.discover_peers();
             }
 
-            let addresses_to_connect = self.potential_peers.iter()
-                .take(self.threshold.low - self.peers.len())
-                .map(|address| address.clone())
-                .collect::<Vec<_>>();
-            addresses_to_connect.iter()
+            let num_required_peers = self.threshold.low - self.peers.len();
+            let mut addresses_to_connect = self.potential_peers.iter().cloned().collect::<Vec<SocketAddr>>();
+            // randomize peers as a security measurement
+            addresses_to_connect.shuffle(&mut rand::thread_rng());
+            addresses_to_connect
+                .drain(0..num_required_peers)
                 .for_each(|address| {
-                    self.potential_peers.remove(address);
-                    self.network.tell(ConnectToPeer { address: address.clone() }, ctx.myself().into())
+                    self.potential_peers.remove(&address);
+                    self.network.tell(ConnectToPeer { address }, ctx.myself().into())
                 });
         } else if self.peers.len() > self.threshold.high {
             warn!("Peer count is too high. Some peers will be stopped. actual={}, required={}", self.peers.len(), self.threshold.high);
