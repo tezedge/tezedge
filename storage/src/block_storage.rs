@@ -11,6 +11,12 @@ use crate::persistent::database::{IteratorWithSchema, IteratorMode};
 
 pub type BlockStorageDatabase = dyn DatabaseWithSchema<BlockStorage> + Sync + Send;
 
+pub trait BlockStorageReader: Sync + Send {
+    fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
+    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
+}
+
 /// Structure for representing in-memory db for - just for demo purposes.
 #[derive(Clone)]
 pub struct BlockStorage {
@@ -18,7 +24,6 @@ pub struct BlockStorage {
 }
 
 impl BlockStorage {
-
     pub fn new(db: Arc<BlockStorageDatabase>) -> Self {
         BlockStorage { db }
     }
@@ -28,20 +33,22 @@ impl BlockStorage {
             .map_err(StorageError::from)
     }
 
-    pub fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+        self.db.iterator(mode)
+            .map_err(StorageError::from)
+    }
+}
+
+impl BlockStorageReader for BlockStorage {
+    fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.db.get(block_hash)
             .map_err(StorageError::from)
     }
 
-    pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
+    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.get(block_hash)
             .map_err(StorageError::from)
             .map(|v| v.is_some())
-    }
-
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.db.iterator(mode)
-            .map_err(StorageError::from)
     }
 }
 

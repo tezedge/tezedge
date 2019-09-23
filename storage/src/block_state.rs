@@ -10,7 +10,7 @@ use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
-use crate::block_storage::{BlockStorage, BlockStorageDatabase};
+use crate::block_storage::{BlockStorage, BlockStorageReader, BlockStorageDatabase};
 use crate::persistent::database::IteratorMode;
 
 pub struct BlockState {
@@ -30,7 +30,7 @@ impl BlockState {
         }
     }
 
-    pub fn insert_block_header(&mut self, block_header: BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn process_block_header(&mut self, block_header: BlockHeaderWithHash) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.schedule_block_hash(block_header.header.predecessor.clone())?;
 

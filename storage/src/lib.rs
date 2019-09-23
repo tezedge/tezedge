@@ -12,7 +12,7 @@ use tezos_encoding::hash::{BlockHash, HashType};
 pub use crate::block_state::BlockState;
 pub use crate::operations_state::{MissingOperations, OperationsState};
 pub use crate::block_meta_storage::BlockMetaStorage;
-pub use crate::block_storage::BlockStorage;
+pub use crate::block_storage::{BlockStorageReader, BlockStorage};
 pub use crate::operations_storage::OperationsStorage;
 pub use crate::operations_meta_storage::OperationsMetaStorage;
 pub use crate::persistent::database::{IteratorMode, Direction};

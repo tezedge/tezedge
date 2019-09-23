@@ -17,6 +17,7 @@ use storage::persistent::{open_db, Schema};
 use tezos_client::client;
 use metrics::MetricsManager;
 use shell::chain_feeder::ChainFeeder;
+use shell::shell_channel::ShellChannel;
 
 mod configuration;
 
@@ -63,6 +64,8 @@ fn main() {
 
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
+    let shell_channel = ShellChannel::actor(&actor_system)
+        .expect("Failed to create shell channel");
     let network_manager = NetworkManager::actor(
         &actor_system,
         network_channel.clone(),
@@ -83,10 +86,11 @@ fn main() {
     let _ = ChainManager::actor(
         &actor_system,
         network_channel.clone(),
+        shell_channel.clone(),
         rocks_db.clone(),
         &tezos_storage_init_info
     );
-    let _ = ChainFeeder::actor(&actor_system, rocks_db.clone(), &tezos_storage_init_info);
+    let _ = ChainFeeder::actor(&actor_system, shell_channel, rocks_db.clone(), &tezos_storage_init_info);
     let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
 
     tokio_runtime.block_on(async move {
