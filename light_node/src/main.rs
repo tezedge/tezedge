@@ -56,13 +56,13 @@ fn main() {
     let identity = identity.unwrap();
 
     let tezos_data_dir = &configuration::ENV.tezos_data_dir;
-    if !tezos_data_dir.exists() && !tezos_data_dir.is_dir() {
+    if !(tezos_data_dir.exists() && tezos_data_dir.is_dir()) {
         shutdown_and_exit!(error!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir), actor_system);
     }
     let tezos_data_dir = tezos_data_dir.to_str().unwrap();
     let tezos_storage_init_info = match client::init_storage(tezos_data_dir.to_string()) {
         Ok(res) => res,
-        Err(_) => shutdown_and_exit!(error!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir), actor_system)
+        Err(e) => shutdown_and_exit!(error!("Failed to initialize Tezos OCaml storage in directory '{}'. Reason: {:?}", &tezos_data_dir, e), actor_system)
     };
 
     debug!("Tezos init constants: {:?}", &tezos_storage_init_info);
