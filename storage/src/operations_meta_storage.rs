@@ -26,35 +26,34 @@ impl OperationsMetaStorage {
         OperationsMetaStorage { db }
     }
 
-    pub fn initialize(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
-        self.db.put(&block_header.hash.clone(),
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+        self.put(&block_header.hash.clone(),
             &Meta {
                 validation_passes: block_header.header.validation_pass,
                 is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
                 is_complete: false
             }
-        ).map_err(StorageError::from)
+        )
     }
 
-    pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let block_hash =  message.operations_for_block.hash.clone();
 
-        match self.db.get(&block_hash)? {
+        match self.get(&block_hash)? {
             Some(mut meta) => {
                 let validation_pass = message.operations_for_block.validation_pass as u8;
 
                 // update validation passes and check if we have all operations
                 meta.is_validation_pass_present[validation_pass as usize] = true as u8;
                 meta.is_complete = meta.is_validation_pass_present.iter().all(|v| *v == (true as u8));
-                self.db.merge(&block_hash, &meta)
-                    .map_err(StorageError::from)
+                self.put(&block_hash, &meta)
             }
             None => Err(StorageError::MissingKey),
         }
     }
 
     pub fn get_missing_validation_passes(&mut self, block_hash: &BlockHash) -> Result<HashSet<i8>, StorageError> {
-        match self.db.get(block_hash)? {
+        match self.get(block_hash)? {
             Some(meta) => {
                 let result  = if meta.is_complete {
                     HashSet::new()
@@ -71,7 +70,7 @@ impl OperationsMetaStorage {
     }
 
     pub fn is_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        match self.db.get(block_hash)? {
+        match self.get(block_hash)? {
             Some(Meta { is_complete, .. }) => {
                 Ok(is_complete)
             }
@@ -79,6 +78,15 @@ impl OperationsMetaStorage {
         }
     }
 
+    pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
+        self.db.merge(block_hash, meta)
+            .map_err(StorageError::from)
+    }
+
+    pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
+        self.db.get(block_hash)
+            .map_err(StorageError::from)
+    }
 
     pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.db.get(block_hash)
@@ -141,6 +149,14 @@ impl Meta {
     pub fn is_complete(&self) -> bool {
         self.is_complete
     }
+
+    pub fn genesys_meta() -> Self {
+        Meta {
+            is_complete: true,
+            validation_passes: 0,
+            is_validation_pass_present: vec![]
+        }
+    }
 }
 
 impl Codec for Meta {
@@ -180,6 +196,7 @@ mod tests {
     use failure::Error;
 
     use super::*;
+    use tezos_encoding::hash::{HashEncoding, HashType};
 
     #[test]
     fn operations_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -193,6 +210,83 @@ mod tests {
         Ok(assert_eq!(expected, decoded))
     }
 
+    #[test]
+    fn genesys_ops_initialized_success() -> Result<(), Error> {
+        use rocksdb::DB;
+
+        let path = "__opmeta_genesystest";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let encoding = HashEncoding::new(HashType::BlockHash);
+
+            let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+            let v = Meta::genesys_meta();
+            let mut storage = OperationsMetaStorage::new(Arc::new(db));
+            storage.put(&k, &v)?;
+            match storage.get(&k)? {
+                Some(value) => {
+                    let expected = Meta {
+                        validation_passes: 0,
+                        is_validation_pass_present: vec![],
+                        is_complete: true
+                    };
+                    assert_eq!(expected, value);
+                },
+                _ => panic!("value not present"),
+            }
+        }
+        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+    }
+
+    #[test]
+    fn operations_meta_storage_test() -> Result<(), Error> {
+        use rocksdb::DB;
+
+        let path = "__opmeta_storagetest";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let t = true as u8;
+            let f = false as u8;
+
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let k = vec![3, 1, 3, 3, 7];
+            let mut v = Meta {
+                is_complete: false,
+                is_validation_pass_present: vec![f; 5],
+                validation_passes: 5,
+            };
+            let mut storage = OperationsMetaStorage::new(Arc::new(db));
+            storage.put(&k, &v)?;
+            v.is_validation_pass_present[2] = t;
+            storage.put(&k, &v)?;
+            v.is_validation_pass_present[2] = f;
+            v.is_validation_pass_present[3] = t;
+            storage.put(&k, &v)?;
+            v.is_validation_pass_present[3] = f;
+            v.is_complete = true;
+            storage.put(&k, &v)?;
+            storage.put(&k, &v)?;
+            match storage.get(&k)? {
+                Some(value) => {
+                    assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
+                    assert!(value.is_complete);
+                },
+                _ => panic!("value not present"),
+            }
+        }
+        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+    }
 
     #[test]
     fn merge_meta_value_test() {

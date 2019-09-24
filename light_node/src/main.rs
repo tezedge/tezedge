@@ -1,23 +1,26 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 #[macro_use]
 extern crate lazy_static;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use log::{debug, info, error};
+use log::{debug, error, info};
 use riker::actors::*;
 use tokio::runtime::Runtime;
 
+use metrics::MetricsManager;
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
+use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
-use storage::{BlockStorage, BlockMetaStorage, OperationsMetaStorage, OperationsStorage};
+use shell::shell_channel::ShellChannel;
+use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesys_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
-use metrics::MetricsManager;
-use shell::chain_feeder::ChainFeeder;
-use shell::shell_channel::ShellChannel;
 
 mod configuration;
 
@@ -75,8 +78,11 @@ fn main() {
         Err(_) => shutdown_and_exit!(error!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path), actor_system)
     };
 
-    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+    if let Err(e) = initialize_storage_with_genesys_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, rocks_db.clone()) {
+        shutdown_and_exit!(error!("Failed to initialize storage with genesys block. Reason: {}", e), actor_system);
+    }
 
+    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system)

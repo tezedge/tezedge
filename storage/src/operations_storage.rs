@@ -40,12 +40,16 @@ impl OperationsStorage {
         Ok(operations)
     }
 
-    pub fn insert(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
             block_hash: message.operations_for_block.hash.clone(),
             validation_pass: message.operations_for_block.validation_pass as u8
         };
-        self.db.put(&key, &message)
+        self.put(&key, &message)
+    }
+
+    pub fn put(&mut self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+        self.db.put(key, value)
             .map_err(StorageError::from)
     }
 }
@@ -147,20 +151,20 @@ mod tests {
 
             let mut storage = OperationsStorage::new(Arc::new(db));
             message.operations_for_block.validation_pass = 3;
-            storage.insert(&message)?;
+            storage.put_operations(&message)?;
             message.operations_for_block.validation_pass = 1;
-            storage.insert(&message)?;
+            storage.put_operations(&message)?;
             message.operations_for_block.validation_pass = 0;
-            storage.insert(&message)?;
+            storage.put_operations(&message)?;
             message.operations_for_block.hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
             message.operations_for_block.validation_pass = 1;
-            storage.insert(&message)?;
+            storage.put_operations(&message)?;
             message.operations_for_block.hash = block_hash.clone();
             message.operations_for_block.validation_pass = 2;
-            storage.insert(&message)?;
+            storage.put_operations(&message)?;
             message.operations_for_block.hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
             message.operations_for_block.validation_pass = 3;
-            storage.insert(&message)?;
+            storage.put_operations(&message)?;
 
             let operations = storage.get_operations(&block_hash)?;
             assert_eq!(4, operations.len(), "Was expecting vector of {} elements but instead found {}", 4, operations.len());

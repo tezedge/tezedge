@@ -39,7 +39,7 @@ impl OperationsState {
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
         if !self.meta_storage.contains(&block_header.hash)? {
             self.missing_operations_for_blocks.insert(block_header.hash.clone());
-            self.meta_storage.initialize(block_header)?;
+            self.meta_storage.put_block_header(block_header)?;
             Ok(true)
         } else {
             Ok(false)
@@ -53,9 +53,9 @@ impl OperationsState {
     /// If there are still block operations to be processed return `false`.
     pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
         let hash_ref = &message.operations_for_block.hash;
-        self.operations_storage.insert(message)?;
+        self.operations_storage.put_operations(message)?;
 
-        self.meta_storage.insert(message)?;
+        self.meta_storage.put_operations(message)?;
         if self.meta_storage.is_complete(hash_ref)? {
             trace!("Block {:?} has complete operations", hash_ref);
             self.missing_operations_for_blocks.remove(hash_ref);

@@ -25,7 +25,7 @@ impl BlockMetaStorage {
         BlockMetaStorage { db }
     }
 
-    pub fn insert(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {
@@ -34,7 +34,7 @@ impl BlockMetaStorage {
             },
             None => {
                 let meta = Meta {
-                    is_processed: false,
+                    is_applied: false,
                     predecessor: Some(block_header.header.predecessor.clone()),
                     successor: None
                 };
@@ -50,7 +50,7 @@ impl BlockMetaStorage {
             },
             None => {
                 let meta = Meta {
-                    is_processed: false,
+                    is_applied: false,
                     predecessor: None,
                     successor: Some(block_header.hash.clone())
                 };
@@ -62,7 +62,7 @@ impl BlockMetaStorage {
     }
 
     pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
-        self.db.put(block_hash, meta)
+        self.db.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
 
@@ -79,7 +79,7 @@ impl BlockMetaStorage {
 
 const BLOCK_LEN: usize = 32;
 
-const MASK_IS_PROCESSED: u8    = 0b0000_0001;
+const MASK_IS_APPLIED: u8    = 0b0000_0001;
 const MASK_HAS_SUCCESSOR: u8   = 0b0000_0010;
 const MASK_HAS_PREDECESSOR: u8 = 0b0000_0100;
 
@@ -90,8 +90,8 @@ const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + BLOCK_LEN;
 const BLANK_BLOCK_HASH: [u8; BLOCK_LEN] = [0; BLOCK_LEN];
 const META_LEN: usize = 1 + BLOCK_LEN + BLOCK_LEN;
 
-macro_rules! is_processed {
-    ($mask:expr) => {{ ($mask & MASK_IS_PROCESSED) != 0 }}
+macro_rules! is_applied {
+    ($mask:expr) => {{ ($mask & MASK_IS_APPLIED) != 0 }}
 }
 macro_rules! has_predecessor {
     ($mask:expr) => {{ ($mask & MASK_HAS_PREDECESSOR) != 0 }}
@@ -105,7 +105,17 @@ macro_rules! has_successor {
 pub struct Meta {
     pub predecessor: Option<BlockHash>,
     pub successor: Option<BlockHash>,
-    pub is_processed: bool,
+    pub is_applied: bool,
+}
+
+impl Meta {
+    pub fn genesys_meta(genesys_hash: &BlockHash) -> Self {
+        Meta {
+            is_applied: true, // we consider genesys as already applied
+            predecessor: Some(genesys_hash.clone()), // this is what we want
+            successor: None // we do not know (yet) successor of the genesys
+        }
+    }
 }
 
 /// Codec for `Meta`
@@ -115,11 +125,11 @@ impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if META_LEN == bytes.len() {
             let mask = bytes[IDX_MASK];
-            let is_processed = is_processed!(mask);
+            let is_processed = is_applied!(mask);
             let predecessor = if has_predecessor!(mask) { Some(bytes[IDX_PREDECESSOR..IDX_SUCCESSOR].to_vec()) } else { None };
             let successor = if has_successor!(mask) { Some(bytes[IDX_SUCCESSOR..META_LEN].to_vec()) } else { None };
 
-            Ok(Meta { predecessor, successor, is_processed })
+            Ok(Meta { predecessor, successor, is_applied: is_processed })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -127,8 +137,8 @@ impl Codec for Meta {
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut mask = 0u8;
-        if self.is_processed {
-            mask |= MASK_IS_PROCESSED;
+        if self.is_applied {
+            mask |= MASK_IS_APPLIED;
         }
         if self.predecessor.is_some() {
             mask |= MASK_HAS_PREDECESSOR;
@@ -201,11 +211,12 @@ mod tests {
     use failure::Error;
 
     use super::*;
+    use tezos_encoding::hash::{HashEncoding, HashType};
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
         let expected = Meta {
-            is_processed: false,
+            is_applied: false,
             predecessor: Some(vec![98; 32]),
             successor: Some(vec![21; 32])
         };
@@ -214,6 +225,86 @@ mod tests {
         Ok(assert_eq!(expected, decoded))
     }
 
+    #[test]
+    fn genesys_block_initialized_success() -> Result<(), Error> {
+        use rocksdb::DB;
+
+        let path = "__blockmeta_genesystest";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::cf_descriptor()]).unwrap();
+            let encoding = HashEncoding::new(HashType::BlockHash);
+
+            let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+            let v = Meta::genesys_meta(&k);
+            let mut storage = BlockMetaStorage::new(Arc::new(db));
+            storage.put(&k, &v)?;
+            match storage.get(&k)? {
+                Some(value) => {
+                    let expected = Meta {
+                        is_applied: true,
+                        predecessor: Some(k.clone()),
+                        successor: None
+                    };
+                    assert_eq!(expected, value);
+                },
+                _ => panic!("value not present"),
+            }
+        }
+        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+    }
+
+    #[test]
+    fn block_meta_storage_test() -> Result<(), Error> {
+        use rocksdb::DB;
+
+        let path = "__blockmeta_storagetest";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::cf_descriptor()]).unwrap();
+            let k = vec![44; 32];
+            let mut v = Meta {
+                is_applied: false,
+                predecessor: None,
+                successor: None
+            };
+            let mut storage = BlockMetaStorage::new(Arc::new(db));
+            storage.put(&k, &v)?;
+            let p = storage.get(&k)?;
+            assert!(p.is_some());
+            v.is_applied = true;
+            v.successor = Some(vec![21; 32]);
+            storage.put(&k, &v)?;
+            v.is_applied = false;
+            v.predecessor = Some(vec![98; 32]);
+            v.successor = None;
+            storage.put(&k, &v)?;
+            v.predecessor = None;
+            storage.put(&k, &v)?;
+            match storage.get(&k)? {
+                Some(value) => {
+                    let expected = Meta {
+                        is_applied: true,
+                        predecessor: Some(vec![98; 32]),
+                        successor: Some(vec![21; 32])
+                    };
+                    assert_eq!(expected, value);
+                },
+                _ => panic!("value not present"),
+            }
+        }
+        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+    }
 
     #[test]
     fn merge_meta_value_test() {
@@ -226,21 +317,20 @@ mod tests {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
-        opts.set_merge_operator("test operator", merge_meta_value, None);
         {
             let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::cf_descriptor()]).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
-                is_processed: false,
+                is_applied: false,
                 predecessor: None,
                 successor: None
             };
             let p = BlockMetaStorageDatabase::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
-            v.is_processed = true;
+            v.is_applied = true;
             v.successor = Some(vec![21; 32]);
             let _ = BlockMetaStorageDatabase::merge(&db, &k, &v);
-            v.is_processed = false;
+            v.is_applied = false;
             v.predecessor = Some(vec![98; 32]);
             v.successor = None;
             let _ = BlockMetaStorageDatabase::merge(&db, &k, &v);
@@ -250,7 +340,7 @@ mod tests {
             match BlockMetaStorageDatabase::get(&db, &k) {
                 Ok(Some(value)) => {
                     let expected = Meta {
-                        is_processed: true,
+                        is_applied: true,
                         predecessor: Some(vec![98; 32]),
                         successor: Some(vec![21; 32])
                     };

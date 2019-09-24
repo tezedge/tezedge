@@ -51,8 +51,8 @@ sudo chmod a+x /usr/local/bin/opam
 
 Then install required OCaml version and dune package manager:
 ```
-opam switch create 4.07.0
-opam switch set 4.07.0
+opam switch create 4.07.1
+opam switch set 4.07.1
 opam update
 opam install dune
 ```

@@ -74,8 +74,8 @@ impl ChainFeeder {
 
         while let Some(block_hash) = successor_block_hash.take() {
 
-            if let Some(block_meta) = self.block_meta_storage.get(&block_hash)? {
-                if block_meta.is_processed {
+            if let Some(mut block_meta) = self.block_meta_storage.get(&block_hash)? {
+                if block_meta.is_applied {
                     successor_block_hash = block_meta.successor;
                 } else if let Some(block) = self.block_storage.get(&block_hash)? {
                     if self.operations_meta_storage.is_complete(&block_hash)? {
@@ -85,6 +85,9 @@ impl ChainFeeder {
 
                         info!("Applying block {}", self.block_hash_encoding.bytes_to_string(&block.hash));
                         apply_block(&block.hash, &block.header, &operations)?;
+                        // mark block as applied
+                        block_meta.is_applied = true;
+                        self.block_meta_storage.put(&block.hash, &block_meta)?;
                         // notify others that the block successfully applied
                         self.shell_channel.tell(
                             Publish {

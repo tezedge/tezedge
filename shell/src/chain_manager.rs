@@ -76,7 +76,7 @@ impl ChainManager {
                 .for_each(|(_, peer)| {
                     let available_capacity = cmp::min(peer.available_queue_capacity(), BLOCK_HEADERS_BATCH_SIZE);
                     if available_capacity > 0 {
-                        let missing_block_headers = block_state.move_to_queue(available_capacity);
+                        let missing_block_headers = block_state.drain_missing_blocks(available_capacity);
                         if !missing_block_headers.is_empty() {
                             debug!("Requesting {} block headers from peer {}", missing_block_headers.len(), &peer.peer_ref);
                             peer.queued_block_headers.extend(missing_block_headers.clone());
@@ -129,9 +129,8 @@ impl ChainManager {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
-                                    let block_hashes = message.current_branch.history.iter().cloned();
-                                    for block_hash in block_hashes {
-                                        block_state.schedule_block_hash(block_hash)?
+                                    for block_hash in message.current_branch.history.iter().cloned().rev() {
+                                        block_state.push_missing_block(block_hash)?
                                     }
                                     // trigger CheckChainCompleteness
                                     ctx.myself().tell(CheckChainCompleteness, None);
@@ -209,7 +208,7 @@ impl ChainManager {
                             }
                         }
                     }
-                    None => debug!("Received message for non-existing peer: {}", &received.peer)
+                    None => debug!("Received message from non-existing peer: {}", &received.peer)
                 }
             }
             _ => (),
@@ -260,7 +259,7 @@ impl Receive<SystemEvent> for ChainManager {
                 peer.queued_block_headers
                     .drain()
                     .for_each(|block_hash| {
-                        self.block_state.schedule_block_hash(block_hash).expect("Failed to re-schedule block hash");
+                        self.block_state.push_missing_block(block_hash).expect("Failed to re-schedule block hash");
                     });
 
                 self.operations_state.return_from_queue(peer.queued_operations.drain().map(|(_, op)| op))

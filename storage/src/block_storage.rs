@@ -28,7 +28,7 @@ impl BlockStorage {
         BlockStorage { db }
     }
 
-    pub fn insert(&mut self, block: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn put_block_header(&mut self, block: &BlockHeaderWithHash) -> Result<(), StorageError> {
         self.db.put(&block.hash, block)
             .map_err(StorageError::from)
     }

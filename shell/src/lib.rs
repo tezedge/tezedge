@@ -33,3 +33,4 @@ where
             topic: NetworkChannelTopic::NetworkEvents.into(),
         }, None);
 }
+
