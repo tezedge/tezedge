@@ -8,6 +8,7 @@ use crate::runtime::OcamlError;
 pub struct OcamlStorageInitInfo {
     pub chain_id: String,
     pub genesis_block_header_hash: String,
+    pub genesis_block_header: String,
     pub current_block_header_hash: String,
 }
 
@@ -40,10 +41,12 @@ pub fn init_storage(storage_data_dir: String) -> Result<Result<OcamlStorageInitI
                 let ocaml_result: Tuple = result.into();
                 let chain_id: Str = ocaml_result.get(0).unwrap().into();
                 let genesis_block_header_hash: Str = ocaml_result.get(1).unwrap().into();
-                let current_block_header_hash: Str = ocaml_result.get(2).unwrap().into();
+                let genesis_block_header: Str = ocaml_result.get(2).unwrap().into();
+                let current_block_header_hash: Str = ocaml_result.get(3).unwrap().into();
                 Ok(OcamlStorageInitInfo {
                     chain_id: chain_id.as_str().to_string(),
                     genesis_block_header_hash: genesis_block_header_hash.as_str().to_string(),
+                    genesis_block_header: genesis_block_header.as_str().to_string(),
                     current_block_header_hash: current_block_header_hash.as_str().to_string(),
                 })
             }

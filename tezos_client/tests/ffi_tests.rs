@@ -8,8 +8,9 @@ pub const CHAIN_ID: &str = "8eceda2f";
 #[test]
 fn test_init_storage() {
     // init empty storage for test
-    let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = prepare_empty_storage("test_storage_01");
-    assert_eq!(false, current_block_header_hash.is_empty());
+    let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash } = prepare_empty_storage("test_storage_01");
+    assert!(!current_block_header_hash.is_empty());
+    assert!(!genesis_block_header.is_empty());
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
 
     // has current head (genesis)
@@ -22,6 +23,7 @@ fn test_init_storage() {
     // check header found
     assert!(block_header.is_some());
     assert_eq!(current_head, block_header.unwrap());
+    assert_eq!(current_head, genesis_block_header);
 }
 
 #[test]

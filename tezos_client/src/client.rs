@@ -1,9 +1,10 @@
 use std::fmt;
+
 use log::error;
 
 use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{BlockHash, ChainId, HashType, HashEncoding};
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlStorageInitError, OcamlStorageInitInfo};
 
@@ -11,16 +12,22 @@ use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, Oc
 pub struct TezosStorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,
+    pub genesis_block_header: BlockHeader,
     pub current_block_header_hash: BlockHash,
 }
 
 impl TezosStorageInitInfo {
-    fn new(storage_init_info: OcamlStorageInitInfo) -> Self {
-        TezosStorageInitInfo {
+    fn new(storage_init_info: OcamlStorageInitInfo) -> Result<Self, OcamlStorageInitError> {
+        let genesis_header = match BlockHeader::from_hex(storage_init_info.genesis_block_header) {
+            Ok(header) => header,
+            Err(e) => return Err(OcamlStorageInitError::InitializeError { message: format!("Decoding from hex failed! Reason: {:?}", e) })
+        };
+        Ok(TezosStorageInitInfo {
             chain_id: hex::decode(storage_init_info.chain_id).unwrap(),
             genesis_block_header_hash: hex::decode(storage_init_info.genesis_block_header_hash).unwrap(),
+            genesis_block_header: genesis_header,
             current_block_header_hash: hex::decode(storage_init_info.current_block_header_hash).unwrap(),
-        }
+        })
     }
 }
 
@@ -39,7 +46,7 @@ impl fmt::Debug for TezosStorageInitInfo {
 /// Initializes storage for Tezos ocaml storage in chosen directory
 pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {
     match ffi::init_storage(storage_data_dir) {
-        Ok(result) => Ok(TezosStorageInitInfo::new(result?)),
+        Ok(result) => Ok(TezosStorageInitInfo::new(result?)?),
         Err(e) => {
             error!("Init ocaml storage failed! Reason: {:?}", e);
             Err(OcamlStorageInitError::InitializeError {

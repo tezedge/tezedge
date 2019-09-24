@@ -32,7 +32,7 @@ fn run_tests() {
 
 fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure::Error> {
     // init empty storage for test
-    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_01")
     )?;
     // current hash must be equal to genesis
@@ -94,7 +94,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
 fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor() -> Result<(), failure::Error> {
     // init empty storage for test
-    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_02")
     )?;
     // current hash must be equal to genesis
@@ -123,7 +123,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
 
 fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations() -> Result<(), failure::Error> {
     // init empty storage for test
-    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_03")
     )?;
     // current hash must be equal to genesis
@@ -149,7 +149,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
 
 fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations() -> Result<(), failure::Error> {
     // init empty storage for test
-    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_04")
     )?;
     // current hash must be equal to genesis
@@ -189,7 +189,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
 fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_directory() -> Result<(), failure::Error> {
     let storage_data_dir = "bootstrap_test_storage_05";
     // init empty storage for test
-    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash } = client::init_storage(
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir(&storage_data_dir)
     )?;
     // current hash must be equal to genesis
