@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cmp;
 use std::sync::Arc;
 
 use tezos_encoding::hash::{BlockHash, ChainId};
@@ -12,7 +13,7 @@ use crate::persistent::database::IteratorMode;
 
 pub struct BlockState {
     block_storage: BlockStorage,
-    meta_storage: BlockMetaStorage,
+    block_meta_storage: BlockMetaStorage,
     missing_blocks: Vec<BlockHash>,
     chain_id: ChainId,
 }
@@ -21,7 +22,7 @@ impl BlockState {
     pub fn new(db: Arc<BlockStorageDatabase>, meta_db: Arc<BlockMetaStorageDatabase>, chain_id: &ChainId) -> Self {
         BlockState {
             block_storage: BlockStorage::new(db),
-            meta_storage: BlockMetaStorage::new(meta_db),
+            block_meta_storage: BlockMetaStorage::new(meta_db),
             missing_blocks: Vec::new(),
             chain_id: chain_id.clone()
         }
@@ -34,7 +35,7 @@ impl BlockState {
         // store block
         self.block_storage.put_block_header(&block_header)?;
         // update meta
-        self.meta_storage.put_block_header(&block_header)?;
+        self.block_meta_storage.put_block_header(&block_header)?;
 
         Ok(())
     }
@@ -48,7 +49,7 @@ impl BlockState {
 
     pub fn drain_missing_blocks(&mut self, n: usize) -> Vec<BlockHash> {
         self.missing_blocks
-            .drain(..n)
+            .drain(0..cmp::min(self.missing_blocks.len(), n))
             .collect()
     }
 
@@ -57,7 +58,7 @@ impl BlockState {
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        for (key, value) in self.meta_storage.iter(IteratorMode::Start)? {
+        for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
             if value?.predecessor.is_none() {
                 self.missing_blocks.push(key?);
             }

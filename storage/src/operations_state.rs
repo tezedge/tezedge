@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cmp;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -17,8 +18,8 @@ use crate::persistent::database::IteratorMode;
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,
-    meta_storage: OperationsMetaStorage,
-    missing_operations_for_blocks: HashSet<BlockHash>,
+    operations_meta_storage: OperationsMetaStorage,
+    missing_operations_for_blocks: Vec<BlockHash>,
 }
 
 impl OperationsState {
@@ -26,62 +27,54 @@ impl OperationsState {
     pub fn new(db: Arc<OperationsStorageDatabase>, meta_db: Arc<OperationsMetaStorageDatabase>) -> Self {
         OperationsState {
             operations_storage: OperationsStorage::new(db),
-            meta_storage: OperationsMetaStorage::new(meta_db),
-            missing_operations_for_blocks: HashSet::new(),
+            operations_meta_storage: OperationsMetaStorage::new(meta_db),
+            missing_operations_for_blocks: Vec::new(),
         }
     }
 
-    /// Process block header.
+    /// Process block header. This will create record in meta storage with
+    /// unseen operations for the block header.
     ///
     /// If block header is not already present in storage, return `true`.
     ///
     /// If block is already present in storage return `false`.
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
-        if !self.meta_storage.contains(&block_header.hash)? {
-            self.missing_operations_for_blocks.insert(block_header.hash.clone());
-            self.meta_storage.put_block_header(block_header)?;
+        if !self.operations_meta_storage.contains(&block_header.hash)? {
+            self.missing_operations_for_blocks.push(block_header.hash.clone());
+            self.operations_meta_storage.put_block_header(block_header)?;
             Ok(true)
         } else {
             Ok(false)
         }
     }
 
-    /// Process block operations.
+    /// Process block operations. This will mark operations in store for the block as seen.
     ///
     /// If all block operations were processed return `true`.
     ///
     /// If there are still block operations to be processed return `false`.
     pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
-        let hash_ref = &message.operations_for_block.hash;
         self.operations_storage.put_operations(message)?;
-
-        self.meta_storage.put_operations(message)?;
-        if self.meta_storage.is_complete(hash_ref)? {
-            trace!("Block {:?} has complete operations", hash_ref);
-            self.missing_operations_for_blocks.remove(hash_ref);
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        self.operations_meta_storage.put_operations(message)?;
+        self.operations_meta_storage.is_complete(&message.operations_for_block.hash)
     }
 
-    pub fn move_to_queue(&mut self, n: usize) -> Result<Vec<MissingOperations>, StorageError> {
-        let OperationsState { meta_storage, missing_operations_for_blocks, .. } = self;
+    pub fn drain_missing_operations(&mut self, n: usize) -> Result<Vec<MissingOperations>, StorageError> {
+        let OperationsState { operations_meta_storage, missing_operations_for_blocks, .. } = self;
         let res = missing_operations_for_blocks
-            .drain()
-            .take(n)
+            .drain(0..cmp::min(missing_operations_for_blocks.len(), n))
             .map(|block_hash| MissingOperations {
                 block_hash: block_hash.clone(),
-                validation_passes: meta_storage.get_missing_validation_passes(&block_hash).expect("Failed to get missing validation passes")
+                validation_passes: operations_meta_storage.get_missing_validation_passes(&block_hash).expect("Failed to get missing validation passes")
             })
             .collect();
         Ok(res)
     }
 
-    pub fn return_from_queue<Q: Iterator<Item=MissingOperations>>(&mut self, operations: Q) -> Result<(), StorageError>{
+    pub fn push_missing_operations<Q: Iterator<Item=MissingOperations>>(&mut self, operations: Q) -> Result<(), StorageError>{
         for op in operations {
-            if !self.meta_storage.is_complete(&op.block_hash)? {
-                self.missing_operations_for_blocks.insert(op.block_hash);
+            if !self.operations_meta_storage.is_complete(&op.block_hash)? {
+                self.missing_operations_for_blocks.push(op.block_hash);
             } else {
                 trace!("Will not re-queue block {:?} because it has complete operations", &op.block_hash);
             }
@@ -94,10 +87,10 @@ impl OperationsState {
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        let OperationsState { meta_storage, missing_operations_for_blocks, .. } = self;
-        for (key, value) in meta_storage.iter(IteratorMode::Start)? {
+        let OperationsState { operations_meta_storage, missing_operations_for_blocks, .. } = self;
+        for (key, value) in operations_meta_storage.iter(IteratorMode::Start)? {
             if !value?.is_complete() {
-                missing_operations_for_blocks.insert(key?);
+                missing_operations_for_blocks.push(key?);
             }
         }
 
@@ -106,7 +99,7 @@ impl OperationsState {
 
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MissingOperations {
     pub block_hash: BlockHash,
     pub validation_passes: HashSet<i8>

@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,8 +19,8 @@ use tezos_encoding::hash::{BlockHash, ChainId};
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelRef, ShellChannelTopic};
 
-const PEER_QUEUE_MAX: usize = 15;
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
+const OPERATIONS_BATCH_SIZE: usize = 10;
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
@@ -74,7 +73,7 @@ impl ChainManager {
         if block_state.has_missing_blocks() {
             peers.iter_mut()
                 .for_each(|(_, peer)| {
-                    let available_capacity = cmp::min(peer.available_queue_capacity(), BLOCK_HEADERS_BATCH_SIZE);
+                    let available_capacity = peer.available_block_queue_capacity();
                     if available_capacity > 0 {
                         let missing_block_headers = block_state.drain_missing_blocks(available_capacity);
                         if !missing_block_headers.is_empty() {
@@ -89,9 +88,9 @@ impl ChainManager {
 
         if operations_state.has_missing_operations() {
             for (_, peer) in peers.iter_mut() {
-                let available_capacity = peer.available_queue_capacity();
+                let available_capacity = peer.available_operations_queue_capacity();
                 if available_capacity > 0 {
-                    let missing_operations = operations_state.move_to_queue(available_capacity)?;
+                    let missing_operations = operations_state.drain_missing_operations(available_capacity)?;
                     if !missing_operations.is_empty() {
                         debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
                         missing_operations.iter()
@@ -262,7 +261,7 @@ impl Receive<SystemEvent> for ChainManager {
                         self.block_state.push_missing_block(block_hash).expect("Failed to re-schedule block hash");
                     });
 
-                self.operations_state.return_from_queue(peer.queued_operations.drain().map(|(_, op)| op))
+                self.operations_state.push_missing_operations(peer.queued_operations.drain().map(|(_, op)| op))
                     .expect("Failed to return to queue")
             }
         }
@@ -310,10 +309,19 @@ impl PeerState {
         }
     }
 
-    fn available_queue_capacity(&self) -> usize {
-        let queued_count = self.queued_block_headers.len() + self.queued_operations.len();
-        if queued_count < PEER_QUEUE_MAX {
-            PEER_QUEUE_MAX - queued_count
+    fn available_block_queue_capacity(&self) -> usize {
+        let queued_count = self.queued_block_headers.len();
+        if queued_count < BLOCK_HEADERS_BATCH_SIZE {
+            BLOCK_HEADERS_BATCH_SIZE - queued_count
+        } else {
+            0
+        }
+    }
+
+    fn available_operations_queue_capacity(&self) -> usize {
+        let queued_count = self.queued_operations.len();
+        if queued_count < OPERATIONS_BATCH_SIZE {
+            OPERATIONS_BATCH_SIZE - queued_count
         } else {
             0
         }
