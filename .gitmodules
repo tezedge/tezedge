@@ -1,4 +1,0 @@
-[submodule "tezos_interop/lib_tezos/src"]
-	path = tezos_interop/lib_tezos/src
-	url = https://gitlab.com/simplestaking/tezos.git
-	branch = alphanet-ffi
