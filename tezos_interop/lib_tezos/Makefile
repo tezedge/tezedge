@@ -15,5 +15,4 @@ build-deps:
 		cd ${TEZOS_BASE_DIR} && make build-deps
 
 clean:
-		cd ${TEZOS_BASE_DIR} && opam config exec -- make clean
 		rm -rf artifacts

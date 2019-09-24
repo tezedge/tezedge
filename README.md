@@ -32,8 +32,8 @@ curl https://sh.rustup.rs -sSf | sh
 
 Rust nightly is required to build this project.
 ```
-rustup install nightly-2019-08-22
-rustup default nightly-2019-08-22
+rustup install nightly-2019-08-25
+rustup default nightly-2019-08-25
 ```
 Application has been tested to compile with `rustc 1.39.0-nightly (e44fdf979 2019-08-21)`.
 
@@ -47,14 +47,12 @@ On linux systems first download and install opam:
 wget https://github.com/ocaml/opam/releases/download/2.0.5/opam-2.0.5-x86_64-linux
 sudo cp opam-2.0.5-x86_64-linux /usr/local/bin/opam
 sudo chmod a+x /usr/local/bin/opam
+opam init
 ```
 
-Then install required OCaml version and dune package manager:
+Install libs required to build sodiumoxide package:
 ```
-opam switch create 4.07.1
-opam switch set 4.07.1
-opam update
-opam install dune
+sudo apt install libsodium-dev
 ```
 
 Install libs required to build RocksDB package:
@@ -70,8 +68,7 @@ Building
 On linux systems:
 
 ```
-export SODIUM_USE_PKG_CONFIG=1
-cargo build
+SODIUM_USE_PKG_CONFIG=1 cargo build
 ```
 
 For more info on how to compile OCaml interop library please see [README](tezos_interop/README.md).
