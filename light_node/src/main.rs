@@ -21,8 +21,17 @@ use shell::shell_channel::ShellChannel;
 
 mod configuration;
 
+macro_rules! shutdown_and_exit {
+    ($err:expr, $sys:ident) => {{
+        $err;
+        futures::executor::block_on($sys.shutdown()).unwrap();
+        return;
+    }}
+}
+
 fn main() {
     let actor_system = ActorSystem::new().expect("Failed to create actor system");
+
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
             let tezos_default_identity: PathBuf = configuration::tezos_node::get_default_tezos_identity_json_file_path().unwrap();
@@ -39,19 +48,20 @@ fn main() {
 
     let identity = configuration::tezos_node::load_identity(identity_json_file_path);
     if let Err(e) = identity {
-        error!("Failed to load identity. Reason: {:?}", e);
-        return;
+        shutdown_and_exit!(error!("Failed to load identity. Reason: {:?}", e), actor_system);
     }
     let identity = identity.unwrap();
 
     let tezos_data_dir = &configuration::ENV.tezos_data_dir;
     if !tezos_data_dir.exists() && !tezos_data_dir.is_dir() {
-        error!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir);
-        return;
+        shutdown_and_exit!(error!("Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir), actor_system);
     }
     let tezos_data_dir = tezos_data_dir.to_str().unwrap();
-    let tezos_storage_init_info = client::init_storage(tezos_data_dir.to_string())
-        .unwrap_or_else(|_| panic!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir));
+    let tezos_storage_init_info = match client::init_storage(tezos_data_dir.to_string()) {
+        Ok(res) => res,
+        Err(_) => shutdown_and_exit!(error!("Failed to initialize Tezos OCaml storage in directory '{}'", &tezos_data_dir), actor_system)
+    };
+
     debug!("Tezos init constants: {:?}", &tezos_storage_init_info);
 
     let schemas = vec![
@@ -60,8 +70,10 @@ fn main() {
         OperationsStorage::cf_descriptor(),
         OperationsMetaStorage::cf_descriptor(),
     ];
-    let rocks_db = Arc::new(open_db(&configuration::ENV.bootstrap_db_path, schemas)
-        .unwrap_or_else(|_| panic!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path)));
+    let rocks_db = match open_db(&configuration::ENV.bootstrap_db_path, schemas) {
+        Ok(db) => Arc::new(db),
+        Err(_) => shutdown_and_exit!(error!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path), actor_system)
+    };
 
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
