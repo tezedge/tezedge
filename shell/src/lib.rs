@@ -5,6 +5,9 @@ use riker::actors::*;
 
 use networking::p2p::network_channel::NetworkChannelTopic;
 
+mod block_state;
+mod operations_state;
+
 pub mod shell_channel;
 pub mod chain_feeder;
 pub mod chain_manager;

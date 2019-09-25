@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use failure::Fail;
 use base58::{ToBase58, FromBase58};
 use sodiumoxide::crypto::hash::sha256;

@@ -4,12 +4,8 @@
 use std::cmp;
 use std::sync::Arc;
 
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageDatabase, BlockStorage, BlockStorageDatabase, BlockStorageReader, IteratorMode, StorageError};
 use tezos_encoding::hash::{BlockHash, ChainId};
-
-use crate::{BlockHeaderWithHash, StorageError};
-use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
-use crate::block_storage::{BlockStorage, BlockStorageDatabase, BlockStorageReader};
-use crate::persistent::database::IteratorMode;
 
 pub struct BlockState {
     block_storage: BlockStorage,

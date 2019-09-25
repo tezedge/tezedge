@@ -9,12 +9,8 @@ use std::sync::Arc;
 use log::trace;
 
 use networking::p2p::encoding::prelude::*;
+use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase, StorageError};
 use tezos_encoding::hash::BlockHash;
-
-use crate::{BlockHeaderWithHash, StorageError};
-use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
-use crate::operations_storage::{OperationsStorage, OperationsStorageDatabase};
-use crate::persistent::database::IteratorMode;
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,

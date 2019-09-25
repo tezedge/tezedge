@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use bytes::{Buf, BufMut, IntoBuf};
 use failure::_core::convert::TryFrom;
 use failure::Fail;
@@ -158,7 +161,7 @@ pub trait MessageHash {
 impl<T: BinaryMessage> MessageHash for T {
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
-        Ok(blake2b::digest(&bytes))
+        Ok(blake2b::digest_256(&bytes))
     }
 }
 
