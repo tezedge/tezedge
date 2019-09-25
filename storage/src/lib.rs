@@ -11,9 +11,9 @@ use networking::p2p::encoding::prelude::BlockHeader;
 use tezos_encoding::hash::{BlockHash, HashType};
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
-pub use crate::block_storage::{BlockStorage, BlockStorageReader, BlockStorageDatabase};
+pub use crate::block_storage::{BlockStorage, BlockStorageDatabase, BlockStorageReader};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
-pub use crate::operations_storage::{OperationsStorage, OperationsStorageDatabase};
+pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
 use crate::persistent::{Codec, DBError, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 

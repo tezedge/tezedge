@@ -14,6 +14,12 @@ use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
 
 pub type OperationsStorageDatabase = dyn DatabaseWithSchema<OperationsStorage> + Sync + Send;
 
+pub trait OperationsStorageReader: Sync + Send {
+    fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError>;
+
+    fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError>;
+}
+
 #[derive(Clone)]
 pub struct OperationsStorage {
     db: Arc<OperationsStorageDatabase>
@@ -22,22 +28,6 @@ pub struct OperationsStorage {
 impl OperationsStorage {
     pub fn new(db: Arc<OperationsStorageDatabase>) -> Self {
         OperationsStorage { db }
-    }
-
-    pub fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
-        let key = OperationKey {
-            block_hash: block_hash.clone(),
-            validation_pass: 0
-        };
-
-        let mut operations = vec![];
-        for (_key, value) in self.db.prefix_iterator(&key)? {
-            operations.push(value?);
-        }
-
-        operations.sort_by_key(|v| v.operations_for_block.validation_pass);
-
-        Ok(operations)
     }
 
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
@@ -51,6 +41,30 @@ impl OperationsStorage {
     pub fn put(&mut self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         self.db.put(key, value)
             .map_err(StorageError::from)
+    }
+}
+
+impl OperationsStorageReader for OperationsStorage {
+
+    fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError> {
+        self.db.get(key)
+            .map_err(StorageError::from)
+    }
+
+    fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
+        let key = OperationKey {
+            block_hash: block_hash.clone(),
+            validation_pass: 0
+        };
+
+        let mut operations = vec![];
+        for (_key, value) in self.db.prefix_iterator(&key)? {
+            operations.push(value?);
+        }
+
+        operations.sort_by_key(|v| v.operations_for_block.validation_pass);
+
+        Ok(operations)
     }
 }
 
@@ -74,6 +88,24 @@ impl Schema for OperationsStorage {
 pub struct OperationKey {
     block_hash: BlockHash,
     validation_pass: u8,
+}
+
+impl OperationKey {
+    pub fn new(block_hash: &BlockHash, validation_pass: u8) -> Self {
+        OperationKey {
+            block_hash: block_hash.clone(),
+            validation_pass
+        }
+    }
+}
+
+impl<'a> From<&'a OperationsForBlock> for OperationKey {
+    fn from(ops: &'a OperationsForBlock) -> Self {
+        OperationKey {
+            block_hash: ops.hash.clone(),
+            validation_pass: if ops.validation_pass >= 0 { ops.validation_pass as u8 } else { 0 }
+        }
+    }
 }
 
 impl Codec for OperationKey {

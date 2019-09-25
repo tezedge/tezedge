@@ -97,6 +97,10 @@ macro_rules! into_peer_message {
 
 into_peer_message!(AdvertiseMessage, Advertise);
 into_peer_message!(GetCurrentBranchMessage, GetCurrentBranch);
+into_peer_message!(CurrentBranchMessage, CurrentBranch);
 into_peer_message!(GetBlockHeadersMessage, GetBlockHeaders);
+into_peer_message!(BlockHeaderMessage, BlockHeader);
 into_peer_message!(GetCurrentHeadMessage, GetCurrentHead);
+into_peer_message!(CurrentHeadMessage, CurrentHead);
 into_peer_message!(GetOperationsForBlocksMessage, GetOperationsForBlocks);
+into_peer_message!(OperationsForBlocksMessage, OperationsForBlocks);
