@@ -20,12 +20,14 @@ use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 use crate::block_state::BlockState;
 use crate::operations_state::{OperationsState, MissingOperations};
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelRef, ShellChannelTopic};
+use networking::p2p::binary_message::MessageHash;
 
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
+
 
 #[actor(CheckChainCompleteness, NetworkChannelMsg, SystemEvent)]
 pub struct ChainManager {
@@ -112,7 +114,16 @@ impl ChainManager {
     }
 
     fn process_network_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: NetworkChannelMsg) -> Result<(), Error> {
-        let ChainManager { peers, block_state, operations_state, shell_channel, block_storage, .. } = self;
+        let ChainManager {
+            peers,
+            block_state,
+            operations_state,
+            shell_channel,
+            block_storage,
+            current_head_hash,
+            ..
+        } = self;
+
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
@@ -133,6 +144,18 @@ impl ChainManager {
                                     for block_hash in message.current_branch.history.iter().cloned().rev() {
                                         block_state.push_missing_block(block_hash)?
                                     }
+
+                                    // notify others that new block was received
+                                    let current_head = &message.current_branch.current_head;
+                                    shell_channel.tell(
+                                        Publish {
+                                            msg: BlockReceived {
+                                                hash: current_head.message_hash()?,
+                                                level: current_head.level,
+                                            }.into(),
+                                            topic: ShellChannelTopic::ShellEvents.into(),
+                                        }, Some(ctx.myself().into()));
+
                                     // trigger CheckChainCompleteness
                                     ctx.myself().tell(CheckChainCompleteness, None);
                                 }
