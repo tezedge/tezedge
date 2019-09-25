@@ -86,7 +86,7 @@ impl NetworkManager {
         }
     }
 
-    fn create_peer(&self, sys: &impl ActorRefFactory) -> PeerRef {
+    fn create_peer(&self, sys: &impl ActorRefFactory, socket_address: &SocketAddr) -> PeerRef {
         Peer::new(
             sys,
             self.event_channel.clone(),
@@ -95,6 +95,7 @@ impl NetworkManager {
             &self.secret_key,
             &self.proof_of_work_stamp,
             self.tokio_executor.clone(),
+            socket_address
         ).unwrap()
     }
 }
@@ -142,7 +143,7 @@ impl Receive<ConnectToPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ConnectToPeer, _sender: Sender) {
-        let peer = self.create_peer(ctx);
+        let peer = self.create_peer(ctx, &msg.address);
         let system = ctx.system.clone();
 
         self.tokio_executor.spawn(async move {
@@ -165,7 +166,7 @@ impl Receive<AcceptPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
-        let peer = self.create_peer(ctx);
+        let peer = self.create_peer(ctx, &msg.address);
         peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
     }
 }

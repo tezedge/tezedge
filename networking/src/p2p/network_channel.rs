@@ -1,10 +1,14 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-use riker::actors::*;
-use super::peer::PeerRef;
+use std::net::SocketAddr;
 use std::sync::Arc;
+
+use riker::actors::*;
+
 use crate::p2p::encoding::peer::PeerMessageResponse;
+
+use super::peer::PeerRef;
 
 pub const DEFAULT_TOPIC: &str = "network";
 
@@ -14,6 +18,7 @@ pub const DEFAULT_TOPIC: &str = "network";
 #[derive(Clone, Debug)]
 pub struct PeerCreated {
     pub peer: PeerRef,
+    pub address: SocketAddr,
 }
 
 /// Peer has been bootstrapped.

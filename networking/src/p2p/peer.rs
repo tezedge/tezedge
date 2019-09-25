@@ -117,6 +117,8 @@ struct Network {
     rx_run: Arc<AtomicBool>,
     /// Message sender
     tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
+    /// Socket address of the peer
+    socket_address: SocketAddr,
 }
 
 /// Local node info
@@ -152,7 +154,8 @@ impl Peer {
                public_key: &String,
                secret_key: &String,
                proof_of_work_stamp: &String,
-               tokio_executor: TaskExecutor) -> Result<PeerRef, CreateError>
+               tokio_executor: TaskExecutor,
+               socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port: listener_port.clone(),
@@ -160,18 +163,19 @@ impl Peer {
             public_key: public_key.clone(),
             secret_key: secret_key.clone(),
         };
-        let props = Props::new_args(Peer::actor, (event_channel, Arc::new(info), tokio_executor));
+        let props = Props::new_args(Peer::actor, (event_channel, Arc::new(info), tokio_executor, socket_address.clone()));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }
 
-    fn actor((event_channel, info, tokio_executor): (ChannelRef<NetworkChannelMsg>, Arc<Local>, TaskExecutor)) -> Self {
+    fn actor((event_channel, info, tokio_executor, socket_address): (ChannelRef<NetworkChannelMsg>, Arc<Local>, TaskExecutor, SocketAddr)) -> Self {
         Peer {
             event_channel,
             local: info,
             net: Network {
                 rx_run: Arc::new(AtomicBool::new(false)),
                 tx: Arc::new(Mutex::new(None)),
+                socket_address
             },
             tokio_executor,
         }
@@ -182,7 +186,11 @@ impl Actor for Peer {
     type Msg = PeerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.event_channel.tell(Publish { msg: PeerCreated { peer: ctx.myself() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
+        self.event_channel.tell(Publish { msg:
+        PeerCreated {
+            peer: ctx.myself(),
+            address: self.net.socket_address.clone(),
+        }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
     }
 
     fn post_stop(&mut self) {
