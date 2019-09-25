@@ -5,6 +5,8 @@ use riker::actors::*;
 
 use networking::p2p::network_channel::NetworkChannelTopic;
 
+use crate::shell_channel::ShellChannelTopic;
+
 mod block_state;
 mod operations_state;
 
@@ -34,6 +36,18 @@ where
         Subscribe {
             actor: Box::new(myself),
             topic: NetworkChannelTopic::NetworkEvents.into(),
+        }, None);
+}
+
+pub(crate) fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
+where
+    M: Message,
+    E: Message + Into<M>
+{
+    shell_channel.tell(
+        Subscribe {
+            actor: Box::new(myself),
+            topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
 }
 

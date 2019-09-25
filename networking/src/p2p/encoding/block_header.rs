@@ -19,6 +19,12 @@ impl HasEncoding for BlockHeaderMessage {
     }
 }
 
+impl From<BlockHeader> for BlockHeaderMessage {
+    fn from(block_header: BlockHeader) -> Self {
+        BlockHeaderMessage { block_header }
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetBlockHeadersMessage {

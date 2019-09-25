@@ -8,7 +8,7 @@ use failure::Error;
 use log::{debug, info, warn};
 use riker::actors::*;
 
-use storage::{BlockMetaStorage, BlockStorageReader, BlockStorage, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
 use tezos_client::client::{apply_block, TezosStorageInitInfo};
 use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 

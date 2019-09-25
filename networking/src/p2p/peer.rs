@@ -194,7 +194,7 @@ impl Actor for Peer {
     }
 
     fn post_stop(&mut self) {
-        self.net.rx_run.store(false, Ordering::Relaxed);
+        self.net.rx_run.store(false, Ordering::SeqCst);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -353,10 +353,10 @@ fn supported_version() -> Version {
 async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: ChannelRef<NetworkChannelMsg>) {
     info!("Starting accepting messages from peer: {}", rx.peer_id());
 
-    while rx_run.load(Ordering::Relaxed) {
+    while rx_run.load(Ordering::SeqCst) {
         match rx.read_message::<PeerMessageResponse>().await {
             Ok(msg) => {
-                let should_broadcast_message = rx_run.load(Ordering::Relaxed);
+                let should_broadcast_message = rx_run.load(Ordering::SeqCst);
                 if should_broadcast_message {
                     trace!("Message parsed successfully");
                     event_channel.tell(

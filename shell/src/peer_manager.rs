@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::net::SocketAddr;
@@ -8,13 +9,13 @@ use std::time::Duration;
 
 use dns_lookup::LookupError;
 use log::{info, warn};
+use rand::seq::SliceRandom;
 use riker::actors::*;
 
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::network_manager::{ConnectToPeer, NetworkManagerRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use rand::seq::SliceRandom;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 
@@ -72,20 +73,17 @@ impl PeerManager {
     }
 
     fn discover_peers(&mut self) {
-        if self.bootstrap_addresses.is_empty() {
-            self.peers.values()
-                .for_each(|peer| peer.tell(SendMessage::new(PeerMessage::Bootstrap.into()), None));
-        } else {
+        if self.peers.is_empty() {
             info!("Doing peer DNS lookup..");
             dns_lookup_peers(&self.bootstrap_addresses).iter()
                 .for_each(|i| {
                     info!("found potential peer: {}", i);
                     self.potential_peers.insert(*i);
                 });
-            // remove bootstrap addresses
-            self.bootstrap_addresses.clear();
+        } else {
+            self.peers.values()
+                .for_each(|peer| peer.tell(SendMessage::new(PeerMessage::Bootstrap.into()), None));
         }
-
     }
 }
 
@@ -140,7 +138,7 @@ impl Receive<CheckPeerCount> for PeerManager {
             // randomize peers as a security measurement
             addresses_to_connect.shuffle(&mut rand::thread_rng());
             addresses_to_connect
-                .drain(0..num_required_peers)
+                .drain(0..cmp::min(num_required_peers, addresses_to_connect.len()))
                 .for_each(|address| {
                     self.potential_peers.remove(&address);
                     self.network.tell(ConnectToPeer { address }, ctx.myself().into())
