@@ -1,17 +1,21 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
+use std::env;
 use std::error;
 use std::fmt;
-use std::env;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::ptr;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender, SendError};
 use std::task::{Context, Poll, Waker};
+use std::thread;
 
 use ocaml::core::callback::caml_startup;
 
 use lazy_static::lazy_static;
-use std::panic::AssertUnwindSafe;
 
 lazy_static! {
     /// Because ocaml runtime should be accessed only by a single thread
@@ -192,7 +196,7 @@ fn initialize_environment(ocaml_cfg: OcamlRuntimeConfiguration) -> OcamlEnvironm
     let (task_tx, task_rx) = channel();
     let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
     let executor = OcamlThreadExecutor { ready_tasks: task_rx };
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         start_ocaml_runtime(&ocaml_cfg);
         executor.run()
     });
@@ -229,5 +233,11 @@ pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
         F: FnOnce() -> T + 'static + Send,
         T: 'static + Send
 {
-    futures::executor::block_on(spawn(f))
+    let (sender, receiver) = channel();
+
+    thread::spawn(move || {
+        sender.send(futures::executor::block_on(spawn(f))).unwrap();
+    });
+
+    receiver.recv().unwrap()
 }

@@ -15,7 +15,7 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use tezos_client::client::TezosStorageInitInfo;
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events};
 use crate::block_state::BlockState;
@@ -134,10 +134,13 @@ impl ChainManager {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 debug!("Requesting current branch from peer: {}", &msg.peer);
-                let mut peer = PeerState::new(msg.peer);
-                tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), &mut peer);
+                let peer = PeerState::new(msg.peer);
                 // store peer
-                self.peers.insert(peer.peer_ref.uri().clone(), peer);
+                let actor_uri = peer.peer_ref.uri().clone();
+                self.peers.insert(actor_uri.clone(), peer);
+
+                let peer = self.peers.get_mut(&actor_uri).unwrap();
+                tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 match peers.get_mut(received.peer.uri()) {
