@@ -36,7 +36,9 @@ impl OperationsState {
     /// If block is already present in storage return `false`.
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
         if !self.operations_meta_storage.contains(&block_header.hash)? {
-            self.missing_operations_for_blocks.push(block_header.hash.clone());
+            if block_header.header.validation_pass > 0 {
+                self.missing_operations_for_blocks.push(block_header.hash.clone());
+            }
             self.operations_meta_storage.put_block_header(block_header)?;
             Ok(true)
         } else {

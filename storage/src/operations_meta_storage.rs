@@ -31,7 +31,7 @@ impl OperationsMetaStorage {
             &Meta {
                 validation_passes: block_header.header.validation_pass,
                 is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
-                is_complete: false
+                is_complete: block_header.header.validation_pass == 0
             }
         )
     }
