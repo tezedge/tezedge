@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use riker::actors::*;
 use super::peer::PeerRef;
 use std::sync::Arc;
@@ -17,6 +20,7 @@ pub struct PeerCreated {
 #[derive(Clone, Debug)]
 pub struct PeerBootstrapped {
     pub peer: PeerRef,
+    pub peer_id: String,
 }
 
 /// We have received message from another peer

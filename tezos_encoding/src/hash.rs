@@ -7,6 +7,7 @@ mod prefix_bytes {
     pub const OPERATION_HASH: [u8; 2] = [5, 116];
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
     pub const PROTOCOL_HASH: [u8; 2] = [2, 170];
+    pub const PUBLIC_KEY_HASH: [u8; 2] = [153, 103];
 }
 
 pub type Hash = Vec<u8>;
@@ -25,6 +26,7 @@ pub enum HashType {
     ContextHash,
     OperationHash,
     OperationListListHash,
+    PublicKeyHash,
 }
 
 impl HashType {
@@ -37,6 +39,7 @@ impl HashType {
             HashType::ProtocolHash => &PROTOCOL_HASH,
             HashType::OperationHash => &OPERATION_HASH,
             HashType::OperationListListHash => &OPERATION_LIST_LIST_HASH,
+            HashType::PublicKeyHash => &PUBLIC_KEY_HASH,
         }
     }
 
@@ -49,8 +52,25 @@ impl HashType {
             | HashType::ProtocolHash
             | HashType::OperationHash
             | HashType::OperationListListHash => 32,
+            HashType::PublicKeyHash => 16,
         }
     }
+
+    pub fn hash_fn<'a>(&self) -> &'a dyn Fn(&'a [u8]) -> Vec<u8> {
+        match self {
+            HashType::ChainId
+            | HashType::BlockHash
+            | HashType::ContextHash
+            | HashType::ProtocolHash
+            | HashType::OperationHash
+            | HashType::OperationListListHash => &copy_bytes,
+            HashType::PublicKeyHash => &crypto::blake2b::digest_128
+        }
+    }
+}
+
+fn copy_bytes(data: &[u8]) -> Vec<u8> {
+    data.to_vec()
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +89,9 @@ impl HashEncoding {
 
     /// Convert hash byte representation into string.
     pub fn bytes_to_string(&self, data: &[u8]) -> String {
+        let hash_fn = self.0.hash_fn();
+        let data = hash_fn(data);
+
         assert_eq!(self.0.size(), data.len(), "Expected data length is {} but instead found {}", self.0.size(), data.len());
         let mut hash = vec![];
         hash.extend(self.0.prefix());
@@ -122,6 +145,15 @@ mod tests {
     fn test_encode_operations_hash() -> Result<(), failure::Error> {
         let decoded = HashEncoding::new(HashType::OperationListListHash).bytes_to_string(&hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?);
         let expected = "LLoads9N8uB8v659hpNhpbrLzuzLdUCjz5euiR6Lm2hd7C6sS2Vep";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_public_key_hash() -> Result<(), failure::Error> {
+        let decoded = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&hex::decode("2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a")?);
+        let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
         assert_eq!(expected, decoded);
 
         Ok(())

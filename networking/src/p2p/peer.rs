@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::convert::TryFrom;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -18,6 +21,7 @@ use super::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use super::encoding::prelude::*;
 use super::network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerBootstrapped, PeerCreated, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
+use tezos_encoding::hash::{HashEncoding, HashType};
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
@@ -208,10 +212,14 @@ impl Receive<Bootstrap> for Peer {
             }
 
             match bootstrap(msg, info).await {
-                Ok(BootstrapOutput(rx, tx)) => {
+                Ok(BootstrapOutput(rx, tx, public_key)) => {
                     setup_net(&net, tx).await;
 
-                    event_channel.tell(Publish { msg: PeerBootstrapped { peer: myself.clone() }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
+                    event_channel.tell(Publish { msg:
+                    PeerBootstrapped {
+                        peer: myself.clone(),
+                        peer_id: HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&public_key)
+                    }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
                     // begin to process incoming messages in a loop
                     begin_process_incoming(rx, net.rx_run, myself.clone(), event_channel).await;
                     // connection to peer was closed, stop this actor
@@ -245,7 +253,7 @@ impl Receive<SendMessage> for Peer {
 }
 
 /// Output values of the successful bootstrap process
-struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter);
+struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey);
 
 async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, PeerError> {
     let (mut msg_rx, mut msg_tx) = {
@@ -310,7 +318,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     match ack_received {
         AckMessage::Ack => {
             debug!("Received ACK");
-            Ok(BootstrapOutput(msg_rx, msg_tx))
+            Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key.clone()))
         }
         AckMessage::Nack => {
             debug!("Received NACK");

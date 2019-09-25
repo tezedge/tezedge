@@ -10,22 +10,18 @@ use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashErr
 use networking::p2p::encoding::prelude::BlockHeader;
 use tezos_encoding::hash::{BlockHash, HashType};
 
-pub use crate::block_meta_storage::BlockMetaStorage;
-pub use crate::block_state::BlockState;
-pub use crate::block_storage::{BlockStorage, BlockStorageReader};
-pub use crate::operations_meta_storage::OperationsMetaStorage;
-pub use crate::operations_state::{MissingOperations, OperationsState};
-pub use crate::operations_storage::OperationsStorage;
+pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
+pub use crate::block_storage::{BlockStorage, BlockStorageReader, BlockStorageDatabase};
+pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
+pub use crate::operations_storage::{OperationsStorage, OperationsStorageDatabase};
 use crate::persistent::{Codec, DBError, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 
 pub mod persistent;
 pub mod operations_storage;
 pub mod operations_meta_storage;
-pub mod operations_state;
 pub mod block_storage;
 pub mod block_meta_storage;
-pub mod block_state;
 
 
 #[derive(PartialEq, Clone, Debug)]
@@ -90,7 +86,7 @@ impl From<SchemaError> for StorageError {
 pub fn initialize_storage_with_genesys_block(genesys_hash: &BlockHash, genesys: &BlockHeader, db: Arc<rocksdb::DB>) -> Result<(), StorageError> {
     let genesys_with_hash = BlockHeaderWithHash {
         hash: genesys_hash.clone(),
-        header: Arc::new(genesys.clone())
+        header: Arc::new(genesys.clone()),
     };
     let mut block_storage = BlockStorage::new(db.clone());
     if let None = block_storage.get(&genesys_with_hash.hash)? {
@@ -126,8 +122,8 @@ mod tests {
                 operations_hash: HashEncoding::new(HashType::OperationListListHash).string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?,
                 fitness: vec![vec![0, 0]],
                 context: HashEncoding::new(HashType::ContextHash).string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
-                protocol_data: vec![0, 1, 2, 3, 4, 5, 6, 7, 8]
-            })
+                protocol_data: vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
+            }),
         };
         let encoded_bytes = expected.encode()?;
         let decoded = BlockHeaderWithHash::decode(&encoded_bytes)?;

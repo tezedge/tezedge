@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use num_bigint::{BigUint, RandBigInt};
 use super::blake2b;
 
@@ -52,7 +55,7 @@ impl Nonce {
 
     #[allow(dead_code)]
     pub fn get_hash(&self) -> Vec<u8> {
-        blake2b::digest(&self.value.to_bytes_be())
+        blake2b::digest_256(&self.value.to_bytes_be())
     }
 }
 
@@ -64,8 +67,8 @@ pub struct NoncePair {
 pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> NoncePair {
     let (init_msg, resp_msg) = if incoming { (recv_msg, sent_msg) } else { (sent_msg, recv_msg) };
 
-    let nonce_init_to_resp = blake2b::digest(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))[0..NONCE_SIZE].to_vec();
-    let nonce_resp_to_init = blake2b::digest(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))[0..NONCE_SIZE].to_vec();
+    let nonce_init_to_resp = blake2b::digest_256(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))[0..NONCE_SIZE].to_vec();
+    let nonce_resp_to_init = blake2b::digest_256(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))[0..NONCE_SIZE].to_vec();
 
     if incoming {
         NoncePair { local: Nonce::new(&nonce_init_to_resp), remote: Nonce::new(&nonce_resp_to_init) }

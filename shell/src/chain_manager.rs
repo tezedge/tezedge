@@ -12,11 +12,13 @@ use riker::actors::*;
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::{BlockHeaderWithHash, BlockState, BlockStorage, BlockStorageReader, MissingOperations, OperationsState, StorageError};
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, StorageError};
 use tezos_client::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
+use crate::block_state::BlockState;
+use crate::operations_state::{OperationsState, MissingOperations};
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelRef, ShellChannelTopic};
 
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
