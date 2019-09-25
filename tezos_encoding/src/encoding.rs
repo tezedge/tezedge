@@ -1,6 +1,9 @@
-use std::fmt;
-use std::rc::Rc;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashMap;
+use std::fmt;
+use std::sync::Arc;
 
 use super::hash::HashEncoding;
 
@@ -84,18 +87,18 @@ pub enum SchemaType {
     Json, Binary
 }
 
-pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding { }
-impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding { }
-impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> {
+pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding + Send + Sync { }
+impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding + Send + Sync { }
+impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> + Send + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn(SchemaType) -> Encoding")
     }
 }
 
 
-pub trait RecursiveEncodingFn: Fn() -> Encoding { }
-impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding { }
-impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> {
+pub trait RecursiveEncodingFn: Fn() -> Encoding + Send + Sync { }
+impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding + Send + Sync { }
+impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn() -> Encoding")
     }
@@ -178,14 +181,14 @@ pub enum Encoding {
     /// This is controller by a hash implementation.
     Hash(HashEncoding),
     /// Provides different encoding based on target data type.
-    Split(Rc<dyn SplitEncodingFn<Output = Encoding>>),
+    Split(Arc<dyn SplitEncodingFn<Output = Encoding> + Send + Sync>),
     /// Timestamp encoding.
     /// - encoded as RFC 3339 in json
     /// - encoded as [Encoding::Int64] in binary
     Timestamp,
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
-    Lazy(Rc<dyn RecursiveEncodingFn<Output = Encoding>>)
+    Lazy(Arc<dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync>)
 }
 
 impl Encoding {
@@ -239,7 +242,7 @@ mod tests {
 
     #[test]
     fn schema_split() {
-        let split_encoding = Encoding::Split(Rc::new(|schema_type| {
+        let split_encoding = Encoding::Split(Arc::new(|schema_type| {
             match schema_type {
                 SchemaType::Json => Encoding::Uint16,
                 SchemaType::Binary => Encoding::Float

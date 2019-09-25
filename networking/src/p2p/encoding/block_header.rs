@@ -1,10 +1,12 @@
-use std::rc::Rc;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, OperationListListHash};
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BlockHeaderMessage {
@@ -62,7 +64,7 @@ impl HasEncoding for BlockHeader {
             Field::new("timestamp", Encoding::Timestamp),
             Field::new("validation_pass", Encoding::Uint8),
             Field::new("operations_hash", Encoding::Hash(HashEncoding::new(HashType::OperationListListHash))),
-            Field::new("fitness", Encoding::Split(Rc::new(|schema_type|
+            Field::new("fitness", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::dynamic(Encoding::list(Encoding::Bytes)),
                     SchemaType::Binary => Encoding::dynamic(Encoding::list(
@@ -71,7 +73,7 @@ impl HasEncoding for BlockHeader {
                 }
             ))),
             Field::new("context", Encoding::Hash(HashEncoding::new(HashType::ContextHash))),
-            Field::new("protocol_data", Encoding::Split(Rc::new(|schema_type|
+            Field::new("protocol_data", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,
                     SchemaType::Binary => Encoding::list(Encoding::Uint8)

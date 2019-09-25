@@ -1,9 +1,12 @@
-use std::rc::Rc;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{HashEncoding, HashType, ChainId, BlockHash};
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
 use crate::p2p::encoding::block_header::BlockHeader;
 
@@ -33,7 +36,7 @@ impl HasEncoding for CurrentBranch {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("current_head", Encoding::dynamic(BlockHeader::encoding())),
-            Field::new("history", Encoding::Split(Rc::new(|schema_type|
+            Field::new("history", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
                     SchemaType::Binary => Encoding::list(Encoding::Hash(HashEncoding::new(HashType::BlockHash)))

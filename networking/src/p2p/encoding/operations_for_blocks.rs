@@ -1,11 +1,15 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::mem::size_of;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, TagMap, Tag};
-use tezos_encoding::hash::{BlockHash, HashEncoding, HashType, Hash};
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::hash::{BlockHash, Hash, HashEncoding, HashType};
+
 use crate::p2p::encoding::operation::Operation;
-use std::rc::Rc;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct OperationsForBlock {
@@ -82,8 +86,8 @@ fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(&[
-            Tag::new(0xF0, "Left", Encoding::Lazy(Rc::new(PathLeft::encoding))),
-            Tag::new(0x0F, "Right", Encoding::Lazy(Rc::new(PathRight::encoding))),
+            Tag::new(0xF0, "Left", Encoding::Lazy(Arc::new(PathLeft::encoding))),
+            Tag::new(0x0F, "Right", Encoding::Lazy(Arc::new(PathRight::encoding))),
             Tag::new(0x00, "Op", Encoding::Unit),
         ])
     )
