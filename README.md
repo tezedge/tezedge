@@ -72,3 +72,7 @@ SODIUM_USE_PKG_CONFIG=1 cargo build
 ```
 
 For more info on how to compile OCaml interop library please see [README](tezos_interop/README.md).
+
+**5. Listening for updates**
+
+Node emits some statistics on the websocket server, which can be change with `-w` argument.

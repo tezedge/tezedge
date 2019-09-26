@@ -14,3 +14,7 @@
 # Honggfuzz worspace
 /hfuzz_workspace
 /hfuzz_target
+
+# Miscellaneous
+/bootstrap_db
+/.vscode

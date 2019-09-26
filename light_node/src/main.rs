@@ -1,6 +1,3 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
-// SPDX-License-Identifier: MIT
-
 #[macro_use]
 extern crate lazy_static;
 
@@ -11,7 +8,6 @@ use log::{debug, error, info};
 use riker::actors::*;
 use tokio::runtime::Runtime;
 
-use metrics::MetricsManager;
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
 use shell::chain_feeder::ChainFeeder;
@@ -21,6 +17,7 @@ use shell::shell_channel::ShellChannel;
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
+use monitoring::{Monitor, WebsocketHandler};
 
 mod configuration;
 
@@ -83,6 +80,7 @@ fn main() {
     }
 
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system)
@@ -109,10 +107,12 @@ fn main() {
         network_channel.clone(),
         shell_channel.clone(),
         rocks_db.clone(),
-        &tezos_storage_init_info
+        &tezos_storage_init_info,
     );
-    let _ = ChainFeeder::actor(&actor_system, shell_channel, rocks_db.clone(), &tezos_storage_init_info);
-    let _ = MetricsManager::actor(&actor_system, network_channel.clone(), 4927);
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &tezos_storage_init_info);
+    let ws = WebsocketHandler::actor(&actor_system, configuration::ENV.websocket_address)
+        .expect("Failed to start websocket actor");
+    let _ = Monitor::actor(&actor_system, network_channel.clone(), ws, shell_channel);
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;

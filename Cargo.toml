@@ -8,6 +8,7 @@ members = [
     "shell",
     "storage",
     "light_node",
+    "monitoring",
 
     "fuzz/connection_message"
 ]
