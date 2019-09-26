@@ -16,15 +16,15 @@ impl BlocksMonitor {
         }
     }
 
-    pub fn accept_block(&mut self, _block: i32) {
+    pub fn accept_block(&mut self) {
         self.blocks += 1;
     }
 
-    pub fn block_finished_downloading_operations(&mut self, _block: i32) {
+    pub fn block_finished_downloading_operations(&mut self) {
         self.downloaded_blocks += 1;
     }
 
-    pub fn block_was_applied_by_protocol(&mut self, _block: i32) {
+    pub fn block_was_applied_by_protocol(&mut self) {
         self.applied_blocks += 1;
     }
 
@@ -33,8 +33,8 @@ impl BlocksMonitor {
 
         let group_count = self.blocks / self.threshold;
         let mut total_count: i32 = self.blocks.clone() as i32;
-        let mut downloaded_count: i32 = (self.downloaded_blocks / self.threshold) as i32;
-        let mut applied_count: i32 = (self.applied_blocks / self.threshold) as i32;
+        let mut downloaded_count: i32 = self.downloaded_blocks as i32;
+        let mut applied_count: i32 = self.applied_blocks  as i32;
         let mut payload: Vec<BlockMetrics> = Vec::with_capacity(group_count + 1);
 
         for i in 0..group_count {

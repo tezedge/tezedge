@@ -210,14 +210,14 @@ impl Receive<ShellChannelMsg> for Monitor {
                 }
 
                 // Start tracking it in the blocks monitor
-                self.blocks_monitor.accept_block(msg.level);
+                self.blocks_monitor.accept_block();
             }
-            ShellChannelMsg::BlockApplied(msg) => {
-                self.blocks_monitor.block_was_applied_by_protocol(msg.level);
+            ShellChannelMsg::BlockApplied(_msg) => {
+                self.blocks_monitor.block_was_applied_by_protocol();
             }
-            ShellChannelMsg::AllBlockOperationsReceived(msg) => {
+            ShellChannelMsg::AllBlockOperationsReceived(_msg) => {
                 self.bootstrap_monitor.increase_block_count();
-                self.blocks_monitor.block_finished_downloading_operations(msg.level);
+                self.blocks_monitor.block_finished_downloading_operations();
             }
         }
     }
