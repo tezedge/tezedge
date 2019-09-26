@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp;
-use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashSet};
+use std::convert::TryInto;
 use std::sync::Arc;
-
-use log::trace;
 
 use networking::p2p::encoding::prelude::*;
 use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase, StorageError};
@@ -15,7 +14,7 @@ use tezos_encoding::hash::BlockHash;
 pub struct OperationsState {
     operations_storage: OperationsStorage,
     operations_meta_storage: OperationsMetaStorage,
-    missing_operations_for_blocks: Vec<BlockHash>,
+    missing_operations_for_blocks: BinaryHeap<MissingOperations>,
 }
 
 impl OperationsState {
@@ -24,7 +23,7 @@ impl OperationsState {
         OperationsState {
             operations_storage: OperationsStorage::new(db),
             operations_meta_storage: OperationsMetaStorage::new(meta_db),
-            missing_operations_for_blocks: Vec::new(),
+            missing_operations_for_blocks: BinaryHeap::new(),
         }
     }
 
@@ -37,7 +36,14 @@ impl OperationsState {
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
         if !self.operations_meta_storage.contains(&block_header.hash)? {
             if block_header.header.validation_pass > 0 {
-                self.missing_operations_for_blocks.push(block_header.hash.clone());
+                self.missing_operations_for_blocks.push(MissingOperations {
+                    block_hash: block_header.hash.clone(),
+                    validation_passes: (0..block_header.header.validation_pass)
+                        .filter(|i| *i < std::i8::MAX.try_into().unwrap())
+                        .map(|i| i.try_into().unwrap())
+                        .collect(),
+                    level: block_header.header.level
+                });
             }
             self.operations_meta_storage.put_block_header(block_header)?;
             Ok(true)
@@ -57,38 +63,35 @@ impl OperationsState {
         self.operations_meta_storage.is_complete(&message.operations_for_block.hash)
     }
 
-    pub fn drain_missing_operations(&mut self, n: usize) -> Result<Vec<MissingOperations>, StorageError> {
-        let OperationsState { operations_meta_storage, missing_operations_for_blocks, .. } = self;
-        let res = missing_operations_for_blocks
-            .drain(0..cmp::min(missing_operations_for_blocks.len(), n))
-            .map(|block_hash| MissingOperations {
-                block_hash: block_hash.clone(),
-                validation_passes: operations_meta_storage.get_missing_validation_passes(&block_hash).expect("Failed to get missing validation passes")
-            })
-            .collect();
-        Ok(res)
+    pub fn drain_missing_operations(&mut self, n: usize) -> Vec<MissingOperations> {
+        (0..cmp::min(self.missing_operations_for_blocks.len(), n))
+            .map(|_| self.missing_operations_for_blocks.pop().unwrap())
+            .collect()
     }
 
-    pub fn push_missing_operations<Q: Iterator<Item=MissingOperations>>(&mut self, operations: Q) -> Result<(), StorageError>{
-        for op in operations {
-            if !self.operations_meta_storage.is_complete(&op.block_hash)? {
-                self.missing_operations_for_blocks.push(op.block_hash);
-            } else {
-                trace!("Will not re-queue block {:?} because it has complete operations", &op.block_hash);
+    pub fn push_missing_operations<Q: Iterator<Item=MissingOperations>>(&mut self, missing_operations: Q) -> Result<(), StorageError>{
+        for missing_operation in missing_operations {
+            if !self.operations_meta_storage.is_complete(&missing_operation.block_hash)? {
+                self.missing_operations_for_blocks.push(missing_operation);
             }
         }
         Ok(())
     }
 
+    #[inline]
     pub fn has_missing_operations(&self) -> bool {
         !self.missing_operations_for_blocks.is_empty()
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        let OperationsState { operations_meta_storage, missing_operations_for_blocks, .. } = self;
-        for (key, value) in operations_meta_storage.iter(IteratorMode::Start)? {
-            if !value?.is_complete() {
-                missing_operations_for_blocks.push(key?);
+        for (key, value) in self.operations_meta_storage.iter(IteratorMode::Start)? {
+            let (key, value) = (key?, value?);
+            if !value.is_complete() {
+                self.missing_operations_for_blocks.push(MissingOperations {
+                    block_hash: key,
+                    validation_passes: value.get_missing_validation_passes(),
+                    level: value.level()
+                });
             }
         }
 
@@ -100,20 +103,27 @@ impl OperationsState {
 #[derive(Clone, Debug)]
 pub struct MissingOperations {
     pub block_hash: BlockHash,
-    pub validation_passes: HashSet<i8>
+    pub validation_passes: HashSet<i8>,
+    pub level: i32
 }
 
 impl PartialEq for MissingOperations {
     fn eq(&self, other: &Self) -> bool {
-        self.block_hash == other.block_hash
+        self.level == other.level && self.block_hash == other.block_hash
     }
 }
 
 impl Eq for MissingOperations {}
 
-impl Hash for MissingOperations {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.block_hash.hash(state);
+impl PartialOrd for MissingOperations {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for MissingOperations {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.level, &self.block_hash).cmp(&(other.level, &other.block_hash)).reverse()
     }
 }
 
@@ -129,5 +139,41 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_operation_has_correct_ordering() {
+        let mut heap = BinaryHeap::new();
+        heap.push(MissingOperations {
+            level: 15,
+            block_hash: vec![0, 0, 0, 1],
+            validation_passes: HashSet::new()
+        });
+        heap.push(MissingOperations {
+            level: 7,
+            block_hash: vec![0, 0, 0, 9],
+            validation_passes: HashSet::new()
+        });
+        heap.push(MissingOperations {
+            level: 0,
+            block_hash: vec![0, 0, 0, 4],
+            validation_passes: HashSet::new()
+        });
+        heap.push(MissingOperations {
+            level: 1,
+            block_hash: vec![0, 0, 0, 5],
+            validation_passes: HashSet::new()
+        });
+
+        let levels = (0..heap.len())
+            .map(|_| heap.pop().unwrap())
+            .map(|i| i.level)
+            .collect::<Vec<i32>>();
+        assert_eq!(vec![0, 1, 7, 15], levels)
     }
 }

@@ -106,7 +106,7 @@ impl ChainManager {
             for (_, peer) in peers.iter_mut() {
                 let available_capacity = peer.available_operations_queue_capacity();
                 if available_capacity > 0 {
-                    let missing_operations = operations_state.drain_missing_operations(available_capacity)?;
+                    let missing_operations = operations_state.drain_missing_operations(available_capacity);
                     if !missing_operations.is_empty() {
                         debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
                         missing_operations.iter()

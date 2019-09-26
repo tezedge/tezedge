@@ -54,23 +54,6 @@ impl OperationsMetaStorage {
         }
     }
 
-    pub fn get_missing_validation_passes(&mut self, block_hash: &BlockHash) -> Result<HashSet<i8>, StorageError> {
-        match self.get(block_hash)? {
-            Some(meta) => {
-                let result  = if meta.is_complete {
-                    HashSet::new()
-                } else {
-                    meta.is_validation_pass_present.iter().enumerate()
-                        .filter(|(_, is_present)| **is_present == (false as u8))
-                        .map(|(idx, _)| idx as i8)
-                        .collect()
-                };
-                Ok(result)
-            }
-            None => Err(StorageError::MissingKey),
-        }
-    }
-
     #[inline]
     pub fn is_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         match self.get(block_hash)? {
@@ -165,6 +148,22 @@ impl Meta {
             is_validation_pass_present: vec![],
             level: 0
         }
+    }
+
+    pub fn get_missing_validation_passes(&self) -> HashSet<i8> {
+        if self.is_complete {
+            HashSet::new()
+        } else {
+            self.is_validation_pass_present.iter().enumerate()
+                .filter(|(_, is_present)| **is_present == (false as u8))
+                .map(|(idx, _)| idx as i8)
+                .collect()
+        }
+    }
+
+    #[inline]
+    pub fn level(&self) -> i32 {
+        self.level
     }
 }
 
