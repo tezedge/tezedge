@@ -85,9 +85,6 @@ impl Schema for OperationsStorage {
     }
 }
 
-/// Layout of the `OperationKey` is:
-///
-/// * bytes layout: `[block_hash(32)][validation_pass(1)]`
 #[derive(Debug, PartialEq)]
 pub struct OperationKey {
     block_hash: BlockHash,
@@ -112,6 +109,9 @@ impl<'a> From<&'a OperationsForBlock> for OperationKey {
     }
 }
 
+/// Layout of the `OperationKey` is:
+///
+/// * bytes layout: `[block_hash(32)][validation_pass(1)]`
 impl Codec for OperationKey {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {

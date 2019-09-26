@@ -32,7 +32,8 @@ impl OperationsMetaStorage {
             &Meta {
                 validation_passes: block_header.header.validation_pass,
                 is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
-                is_complete: block_header.header.validation_pass == 0
+                is_complete: block_header.header.validation_pass == 0,
+                level: block_header.header.level
             }
         )
     }
@@ -148,7 +149,8 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
 pub struct Meta {
     validation_passes: u8,
     is_validation_pass_present: Vec<u8>,
-    is_complete: bool
+    is_complete: bool,
+    level: i32
 }
 
 impl Meta {
@@ -160,20 +162,29 @@ impl Meta {
         Meta {
             is_complete: true,
             validation_passes: 0,
-            is_validation_pass_present: vec![]
+            is_validation_pass_present: vec![],
+            level: 0
         }
     }
 }
 
+/// Codec for `Meta`
+///
+/// * bytes layout: `[validation_passes(1)][is_validation_pass_present(validation_passes * 1)][is_complete(1)][level(4)]`
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if !bytes.is_empty() {
             let validation_passes = bytes[0];
-            if bytes.len() == ((validation_passes as usize) + 2) {
+            if bytes.len() == ((validation_passes as usize) + 6) {
                 let is_complete_pos = validation_passes as usize + 1;
                 let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
                 let is_complete = bytes[is_complete_pos] != 0;
-                Ok(Meta { validation_passes, is_validation_pass_present, is_complete })
+                // level
+                let level_pos = is_complete_pos + 1;
+                let mut level_bytes: [u8; 4] = Default::default();
+                level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
+                let level = i32::from_le_bytes(level_bytes);
+                Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level })
             } else {
                 Err(SchemaError::DecodeError)
             }
@@ -188,6 +199,7 @@ impl Codec for Meta {
             result.push(self.validation_passes);
             result.extend(&self.is_validation_pass_present);
             result.push(self.is_complete as u8);
+            result.extend(&self.level.to_le_bytes());
             Ok(result)
         } else {
             Err(SchemaError::EncodeError)
@@ -209,7 +221,8 @@ mod tests {
         let expected = Meta {
             is_validation_pass_present: vec![false as u8; 5],
             is_complete: false,
-            validation_passes: 5
+            validation_passes: 5,
+            level: 93_422,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -240,7 +253,8 @@ mod tests {
                     let expected = Meta {
                         validation_passes: 0,
                         is_validation_pass_present: vec![],
-                        is_complete: true
+                        is_complete: true,
+                        level: 0
                     };
                     assert_eq!(expected, value);
                 },
@@ -271,6 +285,7 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
+                level: 785
             };
             let mut storage = OperationsMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
@@ -287,6 +302,7 @@ mod tests {
                 Some(value) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
+                    assert_eq!(785, value.level)
                 },
                 _ => panic!("value not present"),
             }
@@ -316,6 +332,7 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
+                level: 31_337
             };
             let p = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -333,6 +350,7 @@ mod tests {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
+                    assert_eq!(31_337, value.level)
                 },
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
