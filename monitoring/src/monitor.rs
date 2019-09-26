@@ -48,7 +48,7 @@ impl Monitor {
             msg_channel,
             peer_monitors: HashMap::new(),
             bootstrap_monitor: BootstrapMonitor::new(),
-            blocks_monitor: BlocksMonitor::new(5000),
+            blocks_monitor: BlocksMonitor::new(4096),
         }
     }
 
