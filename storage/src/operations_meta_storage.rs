@@ -150,7 +150,7 @@ impl Meta {
         self.is_complete
     }
 
-    pub fn genesys_meta() -> Self {
+    pub fn genesis_meta() -> Self {
         Meta {
             is_complete: true,
             validation_passes: 0,
@@ -211,10 +211,10 @@ mod tests {
     }
 
     #[test]
-    fn genesys_ops_initialized_success() -> Result<(), Error> {
+    fn genesis_ops_initialized_success() -> Result<(), Error> {
         use rocksdb::DB;
 
-        let path = "__opmeta_genesystest";
+        let path = "__opmeta_genesistest";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
@@ -226,7 +226,7 @@ mod tests {
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let v = Meta::genesys_meta();
+            let v = Meta::genesis_meta();
             let mut storage = OperationsMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
             match storage.get(&k)? {

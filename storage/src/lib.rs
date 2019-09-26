@@ -80,22 +80,22 @@ impl From<SchemaError> for StorageError {
     }
 }
 
-/// Genesys block needs extra handling because predecessor of the genesys block is genesys itself.
-/// Which means that successor of the genesys block is also genesys block. By combining those
+/// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
+/// Which means that successor of the genesis block is also genesis block. By combining those
 /// two statements we get cyclic relationship and everything breaks..
-pub fn initialize_storage_with_genesys_block(genesys_hash: &BlockHash, genesys: &BlockHeader, db: Arc<rocksdb::DB>) -> Result<(), StorageError> {
-    let genesys_with_hash = BlockHeaderWithHash {
-        hash: genesys_hash.clone(),
-        header: Arc::new(genesys.clone()),
+pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, db: Arc<rocksdb::DB>) -> Result<(), StorageError> {
+    let genesis_with_hash = BlockHeaderWithHash {
+        hash: genesis_hash.clone(),
+        header: Arc::new(genesis.clone()),
     };
     let mut block_storage = BlockStorage::new(db.clone());
-    if let None = block_storage.get(&genesys_with_hash.hash)? {
-        info!("Initializing storage with genesys block");
-        block_storage.put_block_header(&genesys_with_hash)?;
+    if let None = block_storage.get(&genesis_with_hash.hash)? {
+        info!("Initializing storage with genesis block");
+        block_storage.put_block_header(&genesis_with_hash)?;
         let mut block_meta_storage = BlockMetaStorage::new(db.clone());
-        block_meta_storage.put(&genesys_with_hash.hash, &block_meta_storage::Meta::genesys_meta(&genesys_with_hash.hash))?;
+        block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash))?;
         let mut operations_meta_storage = OperationsMetaStorage::new(db);
-        operations_meta_storage.put(&genesys_with_hash.hash, &operations_meta_storage::Meta::genesys_meta())?;
+        operations_meta_storage.put(&genesis_with_hash.hash, &operations_meta_storage::Meta::genesis_meta())?;
     }
 
     Ok(())

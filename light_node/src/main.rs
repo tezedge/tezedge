@@ -18,7 +18,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannel;
-use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesys_block, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
 
@@ -78,8 +78,8 @@ fn main() {
         Err(_) => shutdown_and_exit!(error!("Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path), actor_system)
     };
 
-    if let Err(e) = initialize_storage_with_genesys_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, rocks_db.clone()) {
-        shutdown_and_exit!(error!("Failed to initialize storage with genesys block. Reason: {}", e), actor_system);
+    if let Err(e) = initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, rocks_db.clone()) {
+        shutdown_and_exit!(error!("Failed to initialize storage with genesis block. Reason: {}", e), actor_system);
     }
 
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");

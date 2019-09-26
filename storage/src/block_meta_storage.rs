@@ -109,11 +109,11 @@ pub struct Meta {
 }
 
 impl Meta {
-    pub fn genesys_meta(genesys_hash: &BlockHash) -> Self {
+    pub fn genesis_meta(genesis_hash: &BlockHash) -> Self {
         Meta {
-            is_applied: true, // we consider genesys as already applied
-            predecessor: Some(genesys_hash.clone()), // this is what we want
-            successor: None // we do not know (yet) successor of the genesys
+            is_applied: true, // we consider genesis as already applied
+            predecessor: Some(genesis_hash.clone()), // this is what we want
+            successor: None // we do not know (yet) successor of the genesis
         }
     }
 }
@@ -226,10 +226,10 @@ mod tests {
     }
 
     #[test]
-    fn genesys_block_initialized_success() -> Result<(), Error> {
+    fn genesis_block_initialized_success() -> Result<(), Error> {
         use rocksdb::DB;
 
-        let path = "__blockmeta_genesystest";
+        let path = "__blockmeta_genesistest";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
@@ -241,7 +241,7 @@ mod tests {
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let v = Meta::genesys_meta(&k);
+            let v = Meta::genesis_meta(&k);
             let mut storage = BlockMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
             match storage.get(&k)? {
