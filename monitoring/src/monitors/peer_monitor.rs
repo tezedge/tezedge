@@ -1,27 +1,26 @@
-use std::time::Instant;
-use crate::messages::PeerMetrics;
-
-/// General statistics about incoming transfer
-///
-#[allow(dead_code)]
-pub(crate) struct IncomingTransferMonitor {}
-
+use std::{time::Instant, net::SocketAddr};
+use riker::actor::ActorUri;
+use crate::handlers::handler_messages::PeerMetrics;
 
 /// Peer specific details about transfer *FROM* peer.
 pub(crate) struct PeerMonitor {
-    pub identifier: String,
+    pub identifier: ActorUri,
     pub total_transferred: usize,
+    pub addr: Option<SocketAddr>,
+    pub public_key: Option<String>,
     current_transferred: usize,
     last_update: Instant,
     first_update: Instant,
 }
 
 impl PeerMonitor {
-    pub fn new(identifier: String) -> Self {
+    pub fn new(identifier: ActorUri) -> Self {
         let now = Instant::now();
         Self {
             identifier,
             total_transferred: 0,
+            addr: None,
+            public_key: None,
             current_transferred: 0,
             last_update: now.clone(),
             first_update: now,
@@ -36,7 +35,6 @@ impl PeerMonitor {
         self.current_transferred as f32 / self.last_update.elapsed().as_secs_f32()
     }
 
-    #[allow(dead_code)]
     pub fn transferred_bytes(&self) -> usize {
         self.total_transferred
     }
@@ -48,7 +46,7 @@ impl PeerMonitor {
 
     pub fn snapshot(&mut self) -> PeerMetrics {
         let ret = PeerMetrics::new(
-            self.identifier.clone(),
+            self.addr.unwrap_or(SocketAddr::new([0,0,0,0].into(), 0)).to_string(),
             self.total_transferred,
             self.avg_speed(),
             self.current_speed(),

@@ -190,6 +190,7 @@ impl Actor for Peer {
         PeerCreated {
             peer: ctx.myself(),
             address: self.net.socket_address.clone(),
+            public_key: self.local.public_key.clone(),
         }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, None);
     }
 

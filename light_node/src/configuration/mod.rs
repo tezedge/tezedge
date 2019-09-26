@@ -31,7 +31,8 @@ pub struct Environment {
     pub log_message_contents: bool,
     pub bootstrap_db_path: PathBuf,
     pub peer_threshold: Threshold,
-    pub tezos_data_dir: PathBuf
+    pub tezos_data_dir: PathBuf,
+    pub websocket_address: SocketAddr,
 }
 
 impl Environment {
@@ -97,6 +98,11 @@ impl Environment {
                 .takes_value(true)
                 .required(true)
                 .help("A directory for Tezos OCaml runtime storage (context/store)"))
+            .arg(Arg::with_name("websocket-address")
+                .short("w")
+                .long("websocket-address")
+                .takes_value(true)
+                .default_value("0.0.0.0:4927"))
             .get_matches();
 
         Environment {
@@ -144,13 +150,18 @@ impl Environment {
                 .expect("Provided value cannot be converted to path"),
             peer_threshold: Threshold::new(
                 args.value_of("peer-thresh-low")
-                   .unwrap_or_default()
-                   .parse::<usize>()
-                   .expect("Provided value cannot be converted to number"),
-            args.value_of("peer-thresh-high")
-                   .unwrap_or_default()
-                   .parse::<usize>()
-                   .expect("Provided value cannot be converted to number"),)
+                    .unwrap_or_default()
+                    .parse::<usize>()
+                    .expect("Provided value cannot be converted to number"),
+                args.value_of("peer-thresh-high")
+                    .unwrap_or_default()
+                    .parse::<usize>()
+                    .expect("Provided value cannot be converted to number"),
+            ),
+            websocket_address: args.value_of("websocket-address")
+                .unwrap_or_default()
+                .parse()
+                .expect("Provided value cannot be converted into valid uri")
         }
     }
 }

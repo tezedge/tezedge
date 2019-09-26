@@ -1,5 +1,5 @@
 [package]
-name = "metrics"
+name = "monitoring"
 version = "0.1.0"
 authors = ["Martin Lacko <mrt.lacko@gmail.com>"]
 edition = "2018"
@@ -8,6 +8,7 @@ edition = "2018"
 storage = { path = "../storage" }
 riker = { git = "https://github.com/riker-rs/riker" }
 networking = { path = "../networking" }
+shell = { path = "../shell" }
 failure = "0.1.5"
 rocksdb = "0.12.3"
 chrono = "0.4"
