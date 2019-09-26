@@ -96,7 +96,7 @@ impl Actor for PeerManager {
 
         ctx.schedule::<Self::Msg, _>(
             Duration::from_secs(2),
-            Duration::from_secs(30),
+            Duration::from_secs(15),
             ctx.myself(),
             None,
             CheckPeerCount.into());
