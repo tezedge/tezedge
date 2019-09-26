@@ -9,6 +9,7 @@ impl <E,T> BitReverse for BitVec<E,T>
         E: Cursor,
         T: Bits
 {
+    #[inline]
     fn reverse(&self) -> BitVec<E,T> {
         let mut reversed: BitVec<E,T> = BitVec::new();
         for bit in self.iter().rev() {

@@ -193,6 +193,7 @@ pub enum Encoding {
 
 impl Encoding {
 
+    #[inline]
     pub fn try_unwrap_option_encoding(&self) -> &Encoding {
         match self {
             Encoding::Option(encoding) => encoding,
@@ -202,30 +203,35 @@ impl Encoding {
 
     /// Utility function to construct [Encoding::List] without the need
     /// to manually create new [Box].
+    #[inline]
     pub fn list(encoding: Encoding) -> Encoding {
         Encoding::List(Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Sized] without the need
     /// to manually create new [Box].
+    #[inline]
     pub fn sized(bytes_sz: usize, encoding: Encoding) -> Encoding {
         Encoding::Sized(bytes_sz, Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Greedy] without the need
     /// to manually create new [Box].
+    #[inline]
     pub fn greedy(encoding: Encoding) -> Encoding {
         Encoding::Greedy(Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Dynamic] without the need
     /// to manually create new [Box].
+    #[inline]
     pub fn dynamic(encoding: Encoding) -> Encoding {
         Encoding::Dynamic(Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Option] without the need
     /// to manually create new [Box].
+    #[inline]
     pub fn option(encoding: Encoding) -> Encoding {
         Encoding::Option(Box::new(encoding))
     }

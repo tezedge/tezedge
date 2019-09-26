@@ -41,12 +41,14 @@ impl BlockHeaderWithHash {
 
 /// Codec for `BlockHeaderWithHash`
 impl Codec for BlockHeaderWithHash {
+    #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         let hash = bytes[0..HashType::BlockHash.size()].to_vec();
         let header = BlockHeader::from_bytes(bytes[HashType::BlockHash.size()..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
         Ok(BlockHeaderWithHash { hash, header: Arc::new(header) })
     }
 
+    #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = vec![];
         result.extend(&self.hash);

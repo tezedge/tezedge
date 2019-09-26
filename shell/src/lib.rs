@@ -15,6 +15,7 @@ pub mod chain_feeder;
 pub mod chain_manager;
 pub mod peer_manager;
 
+#[inline]
 pub(crate) fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
 where
     M: Message,
@@ -27,6 +28,7 @@ where
         }, None);
 }
 
+#[inline]
 pub(crate) fn subscribe_to_network_events<M, E>(network_channel: &ChannelRef<E>, myself: ActorRef<M>)
 where
     M: Message,
@@ -39,6 +41,7 @@ where
         }, None);
 }
 
+#[inline]
 pub(crate) fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
 where
     M: Message,

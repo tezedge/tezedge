@@ -85,6 +85,7 @@ impl MessageStream {
         }
     }
 
+    #[inline]
     pub fn split(self) -> (MessageReader, MessageWriter) {
         (self.reader, self.writer)
     }
@@ -144,6 +145,7 @@ impl MessageWriter {
     ///
     /// In case all bytes are successfully written to network stream a raw binary
     /// message is returned as a result.
+    #[inline]
     pub async fn write_message(&mut self, bytes: &BinaryChunk) -> Result<(), StreamError> {
         Ok(self.stream.write_all(bytes.raw()).await?)
     }
@@ -188,6 +190,7 @@ impl EncryptedMessageWriter {
         Ok(())
     }
 
+    #[inline]
     fn nonce_fetch_increment(&mut self) -> Nonce {
         let incremented = self.nonce_local.increment();
         std::mem::replace(&mut self.nonce_local, incremented)
@@ -252,10 +255,12 @@ impl EncryptedMessageReader {
         }
     }
 
+    #[inline]
     pub fn peer_id(&self) -> &PeerId {
         &self.peer_id
     }
 
+    #[inline]
     fn nonce_fetch_increment(&mut self) -> Nonce {
         let incremented = self.nonce_remote.increment();
         std::mem::replace(&mut self.nonce_remote, incremented)

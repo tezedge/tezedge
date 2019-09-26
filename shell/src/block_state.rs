@@ -36,6 +36,7 @@ impl BlockState {
         Ok(())
     }
 
+    #[inline]
     pub fn push_missing_block(&mut self, block_hash: BlockHash) -> Result<(), StorageError> {
         if !self.block_storage.contains(&block_hash)? {
             self.missing_blocks.push(block_hash);
@@ -43,12 +44,14 @@ impl BlockState {
         Ok(())
     }
 
+    #[inline]
     pub fn drain_missing_blocks(&mut self, n: usize) -> Vec<BlockHash> {
         self.missing_blocks
             .drain(0..cmp::min(self.missing_blocks.len(), n))
             .collect()
     }
 
+    #[inline]
     pub fn has_missing_blocks(&self) -> bool {
         !self.missing_blocks.is_empty()
     }
@@ -63,6 +66,7 @@ impl BlockState {
         Ok(())
     }
 
+    #[inline]
     pub fn get_chain_id(&self) -> &ChainId {
         &self.chain_id
     }
