@@ -48,7 +48,7 @@ impl Monitor {
             msg_channel,
             peer_monitors: HashMap::new(),
             bootstrap_monitor: BootstrapMonitor::new(),
-            blocks_monitor: BlocksMonitor::new(),
+            blocks_monitor: BlocksMonitor::new(5000),
         }
     }
 
@@ -68,15 +68,18 @@ impl Monitor {
         for message in &msg.message.messages {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
-                    self.blocks_monitor.current_level = Some(msg.current_branch.current_head.level);
+                    if msg.current_branch.current_head.level > 0 {
+                        self.bootstrap_monitor.level = msg.current_branch.current_head.level as usize;
+                    }
                 }
                 _ => (),
             }
         }
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
-            // TODO: Add proper sizes
-            monitor.incoming_bytes(size_of_val(&msg.message));
+            if monitor.public_key.is_some() {
+                monitor.incoming_bytes(size_of_val(&msg.message));
+            }
         } else {
             warn!("Missing monitor for peer: {}", msg.peer.name());
         }
@@ -154,6 +157,9 @@ impl Receive<BroadcastSignal> for Monitor {
             BroadcastSignal::PublishBlocksStatistics => {
                 let bootstrap_stats: HandlerMessage = self.bootstrap_monitor.snapshot().into();
                 self.msg_channel.tell(bootstrap_stats, None);
+
+                let payload = self.blocks_monitor.snapshot();
+                self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, None);
             }
             BroadcastSignal::PeerUpdate(msg) => {
                 let msg: HandlerMessage = msg.into();
@@ -169,11 +175,9 @@ impl Receive<NetworkChannelMsg> for Monitor {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
-                // TODO: Add field to message with peer name / identifier
                 let identifier = msg.peer.uri();
                 let mut monitor = PeerMonitor::new(identifier.clone());
                 monitor.addr = Some(msg.address);
-                monitor.public_key = Some(msg.public_key.clone());
                 if let Some(monitor) = self.peer_monitors.insert(msg.peer.uri().clone(), monitor) {
                     warn!("Duplicate monitor found for peer: {}", monitor.identifier.to_string());
                 }
@@ -182,7 +186,11 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     None,
                 );
             }
-            NetworkChannelMsg::PeerBootstrapped(_msg) => {}
+            NetworkChannelMsg::PeerBootstrapped(msg) => {
+                if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
+                    monitor.public_key = Some(msg.peer_id);
+                }
+            }
             NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg),
         }
     }
@@ -196,18 +204,21 @@ impl Receive<ShellChannelMsg> for Monitor {
 
         match msg {
             ShellChannelMsg::BlockReceived(msg) => {
-                if let Some(level) = self.blocks_monitor.current_level {
-                    self.bootstrap_monitor.level = max(level, msg.level) as usize;
-                } else {
-                    self.bootstrap_monitor.level = msg.level as usize
+                // Update current max block count
+                if msg.level > 0 {
+                    self.bootstrap_monitor.level = max(self.bootstrap_monitor.level, msg.level as usize);
                 }
-                // Increase block header count
-                self.bootstrap_monitor.increase_block_count();
 
-                // TODO: Add block statistics
+                // Start tracking it in the blocks monitor
+                self.blocks_monitor.accept_block(msg.level);
             }
-            ShellChannelMsg::BlockApplied(_msg) => {}
-            ShellChannelMsg::AllBlockOperationsReceived(_msg) => {}
+            ShellChannelMsg::BlockApplied(msg) => {
+                self.blocks_monitor.block_was_applied_by_protocol(msg.level);
+            }
+            ShellChannelMsg::AllBlockOperationsReceived(msg) => {
+                self.bootstrap_monitor.increase_block_count();
+                self.blocks_monitor.block_finished_downloading_operations(msg.level);
+            }
         }
     }
 }
