@@ -31,15 +31,17 @@ pub struct IncomingTransferMetrics {
     current_block_count: usize,
     downloaded_blocks: usize,
     download_rate: f32,
+    average_download_rate: f32,
 }
 
 impl IncomingTransferMetrics {
-    pub fn new(eta: f32, current_block_count: usize, downloaded_blocks: usize, download_rate: f32) -> Self {
+    pub fn new(eta: f32, current_block_count: usize, downloaded_blocks: usize, download_rate: f32, average_download_rate: f32) -> Self {
         Self {
             eta,
             current_block_count,
             downloaded_blocks,
             download_rate,
+            average_download_rate,
         }
     }
 }

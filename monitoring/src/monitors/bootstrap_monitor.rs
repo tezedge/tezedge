@@ -49,6 +49,10 @@ impl BootstrapMonitor {
         self.downloaded_per_session += count;
         self.downloaded_blocks += count;
     }
+    #[inline]
+    pub fn average_download_rate(&self) -> f32 {
+        self.downloaded_per_session as f32 / self.session_start.elapsed().as_secs_f32()
+    }
 
 
     pub fn snapshot(&mut self) -> IncomingTransferMetrics {
@@ -68,6 +72,7 @@ impl BootstrapMonitor {
             self.level,
             self.downloaded_blocks,
             current_bps,
+            self.average_download_rate(),
         )
     }
 }
