@@ -36,7 +36,8 @@ impl BlockMetaStorage {
                 let meta = Meta {
                     is_applied: false,
                     predecessor: Some(block_header.header.predecessor.clone()),
-                    successor: None
+                    successor: None,
+                    level: block_header.header.level
                 };
                 self.put(&block_header.hash, &meta)?;
             }
@@ -52,7 +53,8 @@ impl BlockMetaStorage {
                 let meta = Meta {
                     is_applied: false,
                     predecessor: None,
-                    successor: Some(block_header.hash.clone())
+                    successor: Some(block_header.hash.clone()),
+                    level: block_header.header.level - 1
                 };
                 self.put(&block_header.header.predecessor, &meta)?;
             }
@@ -80,7 +82,7 @@ impl BlockMetaStorage {
     }
 }
 
-const BLOCK_LEN: usize = 32;
+const BLOCK_HASH_LEN: usize = 32;
 
 const MASK_IS_APPLIED: u8    = 0b0000_0001;
 const MASK_HAS_SUCCESSOR: u8   = 0b0000_0010;
@@ -88,10 +90,11 @@ const MASK_HAS_PREDECESSOR: u8 = 0b0000_0100;
 
 const IDX_MASK: usize = 0;
 const IDX_PREDECESSOR: usize = IDX_MASK + 1;
-const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + BLOCK_LEN;
+const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + BLOCK_HASH_LEN;
+const IDX_LEVEL: usize = IDX_SUCCESSOR + BLOCK_HASH_LEN;
 
-const BLANK_BLOCK_HASH: [u8; BLOCK_LEN] = [0; BLOCK_LEN];
-const META_LEN: usize = 1 + BLOCK_LEN + BLOCK_LEN;
+const BLANK_BLOCK_HASH: [u8; BLOCK_HASH_LEN] = [0; BLOCK_HASH_LEN];
+const META_LEN: usize = 1 + BLOCK_HASH_LEN + BLOCK_HASH_LEN + 4;
 
 macro_rules! is_applied {
     ($mask:expr) => {{ ($mask & MASK_IS_APPLIED) != 0 }}
@@ -109,6 +112,7 @@ pub struct Meta {
     pub predecessor: Option<BlockHash>,
     pub successor: Option<BlockHash>,
     pub is_applied: bool,
+    pub level: i32
 }
 
 impl Meta {
@@ -116,14 +120,15 @@ impl Meta {
         Meta {
             is_applied: true, // we consider genesis as already applied
             predecessor: Some(genesis_hash.clone()), // this is what we want
-            successor: None // we do not know (yet) successor of the genesis
+            successor: None, // we do not know (yet) successor of the genesis
+            level: 0
         }
     }
 }
 
 /// Codec for `Meta`
 ///
-/// * bytes layout: `[mask(1)][predecessor(32)][successor(32)]`
+/// * bytes layout: `[mask(1)][predecessor(32)][successor(32)][level(4)]`
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if META_LEN == bytes.len() {
@@ -131,8 +136,11 @@ impl Codec for Meta {
             let is_processed = is_applied!(mask);
             let predecessor = if has_predecessor!(mask) { Some(bytes[IDX_PREDECESSOR..IDX_SUCCESSOR].to_vec()) } else { None };
             let successor = if has_successor!(mask) { Some(bytes[IDX_SUCCESSOR..META_LEN].to_vec()) } else { None };
-
-            Ok(Meta { predecessor, successor, is_applied: is_processed })
+            // level
+            let mut level_bytes: [u8; 4] = Default::default();
+            level_bytes.copy_from_slice(&bytes[IDX_LEVEL..IDX_LEVEL + 4]);
+            let level = i32::from_le_bytes(level_bytes);
+            Ok(Meta { predecessor, successor, is_applied: is_processed, level })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -160,6 +168,7 @@ impl Codec for Meta {
             Some(successor) =>  value.extend(successor),
             None => value.extend(&BLANK_BLOCK_HASH)
         }
+        value.extend(&self.level.to_le_bytes());
 
         Ok(value)
     }
@@ -221,7 +230,8 @@ mod tests {
         let expected = Meta {
             is_applied: false,
             predecessor: Some(vec![98; 32]),
-            successor: Some(vec![21; 32])
+            successor: Some(vec![21; 32]),
+            level: 34
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -252,7 +262,8 @@ mod tests {
                     let expected = Meta {
                         is_applied: true,
                         predecessor: Some(k.clone()),
-                        successor: None
+                        successor: None,
+                        level: 662_257
                     };
                     assert_eq!(expected, value);
                 },
@@ -279,7 +290,8 @@ mod tests {
             let mut v = Meta {
                 is_applied: false,
                 predecessor: None,
-                successor: None
+                successor: None,
+                level: 1_245_762
             };
             let mut storage = BlockMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
@@ -299,7 +311,8 @@ mod tests {
                     let expected = Meta {
                         is_applied: true,
                         predecessor: Some(vec![98; 32]),
-                        successor: Some(vec![21; 32])
+                        successor: Some(vec![21; 32]),
+                        level: 1_245_762
                     };
                     assert_eq!(expected, value);
                 },
@@ -326,7 +339,8 @@ mod tests {
             let mut v = Meta {
                 is_applied: false,
                 predecessor: None,
-                successor: None
+                successor: None,
+                level: 2
             };
             let p = BlockMetaStorageDatabase::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -345,7 +359,8 @@ mod tests {
                     let expected = Meta {
                         is_applied: true,
                         predecessor: Some(vec![98; 32]),
-                        successor: Some(vec![21; 32])
+                        successor: Some(vec![21; 32]),
+                        level: 2
                     };
                     assert_eq!(expected, value);
                 },

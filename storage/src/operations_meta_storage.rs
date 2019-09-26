@@ -194,12 +194,12 @@ impl Codec for Meta {
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         if (self.validation_passes as usize) == self.is_validation_pass_present.len() {
-            let mut result = vec![];
-            result.push(self.validation_passes);
-            result.extend(&self.is_validation_pass_present);
-            result.push(self.is_complete as u8);
-            result.extend(&self.level.to_le_bytes());
-            Ok(result)
+            let mut value = vec![];
+            value.push(self.validation_passes);
+            value.extend(&self.is_validation_pass_present);
+            value.push(self.is_complete as u8);
+            value.extend(&self.level.to_le_bytes());
+            Ok(value)
         } else {
             Err(SchemaError::EncodeError)
         }
