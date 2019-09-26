@@ -28,11 +28,13 @@ impl BlockStorage {
         BlockStorage { db }
     }
 
+    #[inline]
     pub fn put_block_header(&mut self, block: &BlockHeaderWithHash) -> Result<(), StorageError> {
         self.db.put(&block.hash, block)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
         self.db.iterator(mode)
             .map_err(StorageError::from)
@@ -40,11 +42,13 @@ impl BlockStorage {
 }
 
 impl BlockStorageReader for BlockStorage {
+    #[inline]
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.db.get(block_hash)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.get(block_hash)
             .map_err(StorageError::from)

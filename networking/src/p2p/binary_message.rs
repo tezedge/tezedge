@@ -40,11 +40,13 @@ pub trait BinaryMessage: Sized {
 impl<T> BinaryMessage for T
     where T: HasEncoding + DeserializeOwned + Serialize + Sized {
 
+    #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error> {
         let mut writer = BinaryWriter::new();
         writer.write(self, &Self::encoding())
     }
 
+    #[inline]
     fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError> {
         let reader = BinaryReader::new();
         let value = reader.read(buf, &Self::encoding())?;
@@ -77,11 +79,13 @@ impl BinaryChunk {
     }
 
     /// Gets raw data (including encoded content size)
+    #[inline]
     pub fn raw(&self) -> &Vec<u8> {
         &self.0
     }
 
     /// Get content of the message
+    #[inline]
     pub fn content(&self) -> &[u8] {
         &self.0[CONTENT_LENGTH_FIELD_BYTES..]
     }
@@ -132,6 +136,7 @@ pub trait JsonMessage {
 impl<T> JsonMessage for T
     where T: HasEncoding + Serialize + Sized {
 
+    #[inline]
     fn as_json(&self) -> Result<String, ser::Error> {
         let mut writer = JsonWriter::new();
         writer.write(self, &Self::encoding())
@@ -159,6 +164,7 @@ pub trait MessageHash {
 }
 
 impl<T: BinaryMessage> MessageHash for T {
+    #[inline]
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
         Ok(blake2b::digest_256(&bytes))
@@ -205,11 +211,13 @@ pub trait Hexable: Sized {
 
 impl<T: BinaryMessage> Hexable for T {
 
+    #[inline]
     fn to_hex(&self) -> Result<String, MessageHexableError> {
         let bytes = self.as_bytes()?;
         Ok(hex::encode(bytes))
     }
 
+    #[inline]
     fn from_hex(hex: String) -> Result<Self, MessageHexableError> {
         let bytes = hex::decode(hex)?;
         match Self::from_bytes(bytes) {

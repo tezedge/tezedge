@@ -61,16 +61,19 @@ impl BlockMetaStorage {
         Ok(())
     }
 
+    #[inline]
     pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.db.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.db.get(block_hash)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
         self.db.iterator(mode)
             .map_err(StorageError::from)

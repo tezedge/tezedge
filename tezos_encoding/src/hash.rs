@@ -30,6 +30,8 @@ pub enum HashType {
 }
 
 impl HashType {
+
+    #[inline]
     pub fn prefix(&self) -> &'static [u8] {
         use prefix_bytes::*;
         match self {
@@ -44,6 +46,7 @@ impl HashType {
     }
 
     /// Size of hash in bytes
+    #[inline]
     pub fn size(&self) -> usize {
         match self {
             HashType::ChainId => 4,
@@ -56,6 +59,7 @@ impl HashType {
         }
     }
 
+    #[inline]
     pub fn hash_fn<'a>(&self) -> &'a dyn Fn(&'a [u8]) -> Vec<u8> {
         match self {
             HashType::ChainId

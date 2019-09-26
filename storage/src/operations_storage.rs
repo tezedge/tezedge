@@ -30,6 +30,7 @@ impl OperationsStorage {
         OperationsStorage { db }
     }
 
+    #[inline]
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
             block_hash: message.operations_for_block.hash.clone(),
@@ -38,6 +39,7 @@ impl OperationsStorage {
         self.put(&key, &message)
     }
 
+    #[inline]
     pub fn put(&mut self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         self.db.put(key, value)
             .map_err(StorageError::from)
@@ -46,11 +48,13 @@ impl OperationsStorage {
 
 impl OperationsStorageReader for OperationsStorage {
 
+    #[inline]
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError> {
         self.db.get(key)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
         let key = OperationKey {
             block_hash: block_hash.clone(),
@@ -109,6 +113,7 @@ impl<'a> From<&'a OperationsForBlock> for OperationKey {
 }
 
 impl Codec for OperationKey {
+    #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         Ok(OperationKey {
             block_hash: bytes[0..HashType::BlockHash.size()].to_vec(),
@@ -116,6 +121,7 @@ impl Codec for OperationKey {
         })
     }
 
+    #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut value = Vec::with_capacity(HashType::BlockHash.size() + 1);
         value.extend(&self.block_hash);
@@ -125,11 +131,13 @@ impl Codec for OperationKey {
 }
 
 impl Codec for OperationsForBlocksMessage {
+    #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         OperationsForBlocksMessage::from_bytes(bytes.to_vec())
             .map_err(|_| SchemaError::DecodeError)
     }
 
+    #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         self.as_bytes()
             .map_err(|_| SchemaError::EncodeError)

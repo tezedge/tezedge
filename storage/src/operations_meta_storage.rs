@@ -26,6 +26,7 @@ impl OperationsMetaStorage {
         OperationsMetaStorage { db }
     }
 
+    #[inline]
     pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
             &Meta {
@@ -69,6 +70,7 @@ impl OperationsMetaStorage {
         }
     }
 
+    #[inline]
     pub fn is_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         match self.get(block_hash)? {
             Some(Meta { is_complete, .. }) => {
@@ -78,22 +80,26 @@ impl OperationsMetaStorage {
         }
     }
 
+    #[inline]
     pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.db.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.db.get(block_hash)
             .map_err(StorageError::from)
     }
 
+    #[inline]
     pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.db.get(block_hash)
             .map(|v| v.is_some())
             .map_err(StorageError::from)
     }
 
+    #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
         self.db.iterator(mode)
             .map_err(StorageError::from)
