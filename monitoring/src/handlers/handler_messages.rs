@@ -5,20 +5,43 @@ use std::iter::FromIterator;
 // -------------------------- GENERAL METRICS -------------------------- //
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct BlockMetrics {
+    group: i32,
+    numbers_of_blocks: i32,
+    finished_blocks: i32,
+    applied_blocks: i32,
+}
+
+impl BlockMetrics {
+    pub fn new(group: i32, numbers_of_blocks: i32, finished_blocks: i32, applied_blocks: i32) -> Self {
+        Self {
+            group,
+            numbers_of_blocks,
+            finished_blocks,
+            applied_blocks,
+        }
+    }
+}
+
+// -------------------------- GENERAL METRICS -------------------------- //
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct IncomingTransferMetrics {
     eta: f32,
     current_block_count: usize,
     downloaded_blocks: usize,
     download_rate: f32,
+    average_download_rate: f32,
 }
 
 impl IncomingTransferMetrics {
-    pub fn new(eta: f32, current_block_count: usize, downloaded_blocks: usize, download_rate: f32) -> Self {
+    pub fn new(eta: f32, current_block_count: usize, downloaded_blocks: usize, download_rate: f32, average_download_rate: f32) -> Self {
         Self {
             eta,
             current_block_count,
             downloaded_blocks,
             download_rate,
+            average_download_rate,
         }
     }
 }
@@ -27,16 +50,19 @@ impl IncomingTransferMetrics {
 #[derive(Clone, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct PeerMetrics {
-    id: String,
+    #[serde(rename = "id")]
+    public_key: Option<String>,
+    ip_address: String,
     transferred_bytes: usize,
     average_transfer_speed: f32,
     current_transfer_speed: f32,
 }
 
 impl PeerMetrics {
-    pub fn new(identifier: String, transferred_bytes: usize, average_transfer_speed: f32, current_transfer_speed: f32) -> Self {
+    pub fn new(public_key: Option<String>, ip_address: String, transferred_bytes: usize, average_transfer_speed: f32, current_transfer_speed: f32) -> Self {
         Self {
-            id: identifier,
+            public_key,
+            ip_address,
             transferred_bytes,
             average_transfer_speed,
             current_transfer_speed,
@@ -74,6 +100,9 @@ pub enum HandlerMessage {
     },
     IncomingTransfer {
         payload: IncomingTransferMetrics
+    },
+    BlockStatus {
+        payload: Vec<BlockMetrics>
     },
     NotImplemented(String),
 }
