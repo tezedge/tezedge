@@ -10,15 +10,17 @@ pub struct BlockMetrics {
     numbers_of_blocks: i32,
     finished_blocks: i32,
     applied_blocks: i32,
+    download_duration: Option<f32>,
 }
 
 impl BlockMetrics {
-    pub fn new(group: i32, numbers_of_blocks: i32, finished_blocks: i32, applied_blocks: i32) -> Self {
+    pub fn new(group: i32, numbers_of_blocks: i32, finished_blocks: i32, applied_blocks: i32, download_duration: Option<f32>) -> Self {
         Self {
             group,
             numbers_of_blocks,
             finished_blocks,
             applied_blocks,
+            download_duration,
         }
     }
 }
