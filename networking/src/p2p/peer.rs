@@ -289,7 +289,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     // receive connection message
     let received_connection_msg = match msg_rx.read_message().await {
         Ok(msg) => msg,
-        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Receive no response to our connection message" })
+        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Received no response to our connection message" })
     };
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_msg, msg.incoming);

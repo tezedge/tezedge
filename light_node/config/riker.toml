@@ -1,6 +1,6 @@
 [log]
 # max level to log
-level = "debug"
+level = "info"
 
 # Uncomment this to enable filters on the logger.  The {module} field
 # of every log line will be checked, and if the {module} field contains

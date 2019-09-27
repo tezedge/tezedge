@@ -4,10 +4,11 @@ use std::io;
 use bytes::Buf;
 use bytes::IntoBuf;
 use failure::{Error, Fail};
+use failure::_core::time::Duration;
 use log::trace;
-use tokio;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::prelude::*;
+use tokio::timer::timeout::Elapsed;
 use tokio_io::split::{ReadHalf, WriteHalf};
 
 use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
@@ -19,6 +20,8 @@ use crate::p2p::peer::PeerId;
 
 /// Max allowed content length in bytes when taking into account extra data added by encryption
 pub const CONTENT_LENGTH_MAX: usize = crate::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
+
+const READ_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// This is common error that might happen when communicating with peer over the network.
 #[derive(Debug, Fail)]
@@ -44,6 +47,15 @@ pub enum StreamError {
         message: &'static str,
         error: Error,
     },
+}
+
+impl From<Elapsed> for StreamError {
+    fn from(timeout: Elapsed) -> Self {
+        StreamError::NetworkError {
+            message: "Connection timeout",
+            error: timeout.into()
+        }
+    }
 }
 
 impl From<tezos_encoding::ser::Error> for StreamError {
@@ -117,7 +129,7 @@ impl MessageReader {
         // read the message contents
         let msg_len = msg_len_bytes.into_buf().get_u16_be() as usize;
         let mut msg_content_bytes = vec![0u8; msg_len];
-        self.stream.read_exact(&mut msg_content_bytes).await?;
+        self.stream.read_exact(&mut msg_content_bytes).timeout(READ_TIMEOUT).await??;
         all_recv_bytes.extend(&msg_content_bytes);
 
         Ok(all_recv_bytes.try_into()?)
@@ -127,7 +139,7 @@ impl MessageReader {
     /// Total length is encoded as u big endian u16.
     async fn read_message_length_bytes(&mut self) -> io::Result<[u8; CONTENT_LENGTH_FIELD_BYTES]> {
         let mut msg_len_bytes: [u8; CONTENT_LENGTH_FIELD_BYTES] = [0; CONTENT_LENGTH_FIELD_BYTES];
-        self.stream.read_exact(&mut msg_len_bytes).await?;
+        self.stream.read_exact(&mut msg_len_bytes).timeout(READ_TIMEOUT).await??;
         Ok(msg_len_bytes)
     }
 }
