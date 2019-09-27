@@ -174,19 +174,18 @@ impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if !bytes.is_empty() {
             let validation_passes = bytes[0];
-            if bytes.len() == ((validation_passes as usize) + 6) {
-                let is_complete_pos = validation_passes as usize + 1;
-                let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
-                let is_complete = bytes[is_complete_pos] != 0;
-                // level
-                let level_pos = is_complete_pos + 1;
-                let mut level_bytes: [u8; 4] = Default::default();
-                level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
-                let level = i32::from_le_bytes(level_bytes);
-                Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level })
-            } else {
-                Err(SchemaError::DecodeError)
-            }
+            assert_eq!(expected_data_length(validation_passes), bytes.len(),
+                       "Was expecting the length of a block with validation_passes={} to be {} but instead it was {}", validation_passes, expected_data_length(validation_passes), bytes.len());
+            let is_complete_pos = validation_passes as usize + 1;
+            let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
+            let is_complete = bytes[is_complete_pos] != 0;
+            // level
+            let level_pos = is_complete_pos + 1;
+            let mut level_bytes: [u8; 4] = Default::default();
+            level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
+            let level = i32::from_le_bytes(level_bytes);
+            assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
+            Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -199,11 +198,20 @@ impl Codec for Meta {
             value.extend(&self.is_validation_pass_present);
             value.push(self.is_complete as u8);
             value.extend(&self.level.to_le_bytes());
+            assert_eq!(expected_data_length(self.validation_passes), value.len(), "Was expecting value to have length {} but instead found {}", expected_data_length(self.validation_passes), value.len());
             Ok(value)
         } else {
             Err(SchemaError::EncodeError)
         }
     }
+}
+
+#[inline]
+fn expected_data_length(validation_passes: u8) -> usize {
+    std::mem::size_of::<u8>()            // validation_passes
+        + std::mem::size_of::<u8>()      // is_complete
+        + std::mem::size_of::<i32>()     // level
+        + (validation_passes as usize) * std::mem::size_of::<u8>()  // is_validation_pass_present
 }
 
 #[cfg(test)]

@@ -94,7 +94,7 @@ const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + BLOCK_HASH_LEN;
 const IDX_LEVEL: usize = IDX_SUCCESSOR + BLOCK_HASH_LEN;
 
 const BLANK_BLOCK_HASH: [u8; BLOCK_HASH_LEN] = [0; BLOCK_HASH_LEN];
-const META_LEN: usize = 1 + BLOCK_HASH_LEN + BLOCK_HASH_LEN + 4;
+const META_LEN: usize = std::mem::size_of::<u8>() + BLOCK_HASH_LEN + BLOCK_HASH_LEN + std::mem::size_of::<i32>();
 
 macro_rules! is_applied {
     ($mask:expr) => {{ ($mask & MASK_IS_APPLIED) != 0 }}
@@ -134,8 +134,20 @@ impl Codec for Meta {
         if META_LEN == bytes.len() {
             let mask = bytes[IDX_MASK];
             let is_processed = is_applied!(mask);
-            let predecessor = if has_predecessor!(mask) { Some(bytes[IDX_PREDECESSOR..IDX_SUCCESSOR].to_vec()) } else { None };
-            let successor = if has_successor!(mask) { Some(bytes[IDX_SUCCESSOR..META_LEN].to_vec()) } else { None };
+            let predecessor = if has_predecessor!(mask) {
+                let block_hash = bytes[IDX_PREDECESSOR..IDX_SUCCESSOR].to_vec();
+                assert_eq!(BLOCK_HASH_LEN, block_hash.len(), "Predecessor expected length is {} but found {}", BLOCK_HASH_LEN, block_hash.len());
+                Some(block_hash)
+            } else {
+                None
+            };
+            let successor = if has_successor!(mask) {
+                let block_hash = bytes[IDX_SUCCESSOR..IDX_LEVEL].to_vec();
+                assert_eq!(BLOCK_HASH_LEN, block_hash.len(), "Successor expected length is {} but found {}", BLOCK_HASH_LEN, block_hash.len());
+                Some(block_hash)
+            } else {
+                None
+            };
             // level
             let mut level_bytes: [u8; 4] = Default::default();
             level_bytes.copy_from_slice(&bytes[IDX_LEVEL..IDX_LEVEL + 4]);
@@ -161,14 +173,15 @@ impl Codec for Meta {
         let mut value = Vec::with_capacity(META_LEN);
         value.push(mask);
         match &self.predecessor {
-            Some(predecessor) =>  value.extend(predecessor),
+            Some(predecessor) => value.extend(predecessor),
             None => value.extend(&BLANK_BLOCK_HASH)
         }
         match &self.successor {
-            Some(successor) =>  value.extend(successor),
+            Some(successor) => value.extend(successor),
             None => value.extend(&BLANK_BLOCK_HASH)
         }
         value.extend(&self.level.to_le_bytes());
+        assert_eq!(META_LEN, value.len(), "Invalid size. predecessor={:?}, successor={:?}, level={:?}, data={:?}", &self.predecessor, &self.successor, self.level, &value);
 
         Ok(value)
     }
@@ -192,7 +205,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
     for op in operands {
         match result {
             Some(ref mut val) => {
-                assert_eq!(META_LEN, val.len(), "Value length is incorrect");
+                assert_eq!(META_LEN, val.len(), "Value length is incorrect. Was expecting {} but instead found {}", META_LEN, val.len());
 
                 let mask_val = val[IDX_MASK];
                 let mask_op = op[IDX_MASK];
@@ -206,8 +219,9 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
                 }
                 // if op has successor and val has not, copy it from op to val
                 if has_successor!(mask_op) && !has_successor!(mask_val) {
-                    val.splice(IDX_SUCCESSOR..META_LEN, op[IDX_SUCCESSOR..META_LEN].iter().cloned());
+                    val.splice(IDX_SUCCESSOR..IDX_LEVEL, op[IDX_SUCCESSOR..IDX_LEVEL].iter().cloned());
                 }
+                assert_eq!(META_LEN, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", META_LEN, val.len());
             },
             None => result = Some(op.to_vec())
         }
