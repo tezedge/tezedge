@@ -207,7 +207,7 @@ pub struct EncryptedMessageReader {
     nonce_remote: Nonce,
     /// Incoming message reader
     rx: MessageReader,
-    /// Peer ID is created as hex string representation of peer public key bytes.
+    /// Peer ID is created as hash of peer's public key bytes.
     peer_id: PeerId,
 }
 
