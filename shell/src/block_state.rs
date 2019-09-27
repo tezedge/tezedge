@@ -3,16 +3,17 @@
 
 use std::cmp;
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 use std::sync::Arc;
 
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageDatabase, BlockStorage, BlockStorageDatabase, BlockStorageReader, IteratorMode, StorageError};
 use tezos_encoding::hash::{BlockHash, ChainId};
 
+use crate::collections::{BlockData, UniqueBlockData};
+
 pub struct BlockState {
     block_storage: BlockStorage,
     block_meta_storage: BlockMetaStorage,
-    missing_blocks: BinaryHeap<MissingBlock>,
+    missing_blocks: UniqueBlockData<MissingBlock>,
     chain_id: ChainId,
 }
 
@@ -21,7 +22,7 @@ impl BlockState {
         BlockState {
             block_storage: BlockStorage::new(db),
             block_meta_storage: BlockMetaStorage::new(meta_db),
-            missing_blocks: BinaryHeap::new(),
+            missing_blocks: UniqueBlockData::new(),
             chain_id: chain_id.clone()
         }
     }
@@ -85,6 +86,13 @@ impl BlockState {
 pub struct MissingBlock {
     pub block_hash: BlockHash,
     pub level: i32
+}
+
+impl BlockData for MissingBlock {
+    #[inline]
+    fn block_hash(&self) -> &BlockHash {
+        &self.block_hash
+    }
 }
 
 impl From<BlockHash> for MissingBlock {

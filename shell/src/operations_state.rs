@@ -3,7 +3,7 @@
 
 use std::cmp;
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
 
@@ -11,10 +11,12 @@ use networking::p2p::encoding::prelude::*;
 use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase, StorageError};
 use tezos_encoding::hash::BlockHash;
 
+use crate::collections::{BlockData, UniqueBlockData};
+
 pub struct OperationsState {
     operations_storage: OperationsStorage,
     operations_meta_storage: OperationsMetaStorage,
-    missing_operations_for_blocks: BinaryHeap<MissingOperations>,
+    missing_operations_for_blocks: UniqueBlockData<MissingOperations>,
 }
 
 impl OperationsState {
@@ -23,7 +25,7 @@ impl OperationsState {
         OperationsState {
             operations_storage: OperationsStorage::new(db),
             operations_meta_storage: OperationsMetaStorage::new(meta_db),
-            missing_operations_for_blocks: BinaryHeap::new(),
+            missing_operations_for_blocks: UniqueBlockData::new(),
         }
     }
 
@@ -107,6 +109,13 @@ pub struct MissingOperations {
     pub level: i32
 }
 
+impl BlockData for MissingOperations {
+    #[inline]
+    fn block_hash(&self) -> &BlockHash {
+        &self.block_hash
+    }
+}
+
 impl PartialEq for MissingOperations {
     fn eq(&self, other: &Self) -> bool {
         self.level == other.level && self.block_hash == other.block_hash
@@ -126,7 +135,6 @@ impl Ord for MissingOperations {
         (self.level, &self.block_hash).cmp(&(other.level, &other.block_hash)).reverse()
     }
 }
-
 
 impl From<&MissingOperations> for Vec<OperationsForBlock> {
     fn from(ops: &MissingOperations) -> Self {
@@ -148,7 +156,7 @@ mod tests {
 
     #[test]
     fn missing_operation_has_correct_ordering() {
-        let mut heap = BinaryHeap::new();
+        let mut heap = UniqueBlockData::new();
         heap.push(MissingOperations {
             level: 15,
             block_hash: vec![0, 0, 0, 1],
