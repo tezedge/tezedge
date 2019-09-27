@@ -15,12 +15,12 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use tezos_client::client::TezosStorageInitInfo;
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events};
 use crate::block_state::{BlockState, MissingBlock};
 use crate::operations_state::{MissingOperations, OperationsState};
-use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelRef, ShellChannelTopic, ShellChannelMsg};
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
@@ -219,7 +219,7 @@ impl ChainManager {
                                             }
                                         }
                                         None => {
-                                            warn!("Received unexpected block header from peer: {}", &received.peer);
+                                            warn!("Received unexpected block header {} from peer: {}", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header_with_hash.hash), &received.peer);
                                             ctx.system.stop(received.peer.clone());
                                         }
                                     }
