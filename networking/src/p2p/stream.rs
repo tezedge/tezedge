@@ -7,8 +7,8 @@ use failure::{Error, Fail};
 use log::trace;
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::split::{TcpStreamReadHalf, TcpStreamWriteHalf};
 use tokio::net::TcpStream;
+use tokio_io::split::{ReadHalf, WriteHalf};
 
 use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
@@ -78,7 +78,7 @@ pub struct MessageStream {
 
 impl MessageStream {
     fn new(stream: TcpStream) -> MessageStream {
-        let (rx, tx) = stream.split();
+        let (rx, tx) = tokio::io::split(stream);
         MessageStream {
             reader: MessageReader { stream: rx },
             writer: MessageWriter { stream: tx }
@@ -100,7 +100,7 @@ impl From<TcpStream> for MessageStream {
 /// Reader of the TCP/IP connection.
 pub struct MessageReader {
     /// reader part or the TCP/IP network stream
-    stream: TcpStreamReadHalf
+    stream: ReadHalf<TcpStream>
 }
 
 impl MessageReader {
@@ -133,7 +133,7 @@ impl MessageReader {
 }
 
 pub struct MessageWriter {
-    stream: TcpStreamWriteHalf
+    stream: WriteHalf<TcpStream>
 }
 
 impl MessageWriter {
