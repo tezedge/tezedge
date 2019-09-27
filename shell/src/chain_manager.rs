@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,12 +15,12 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use tezos_client::client::TezosStorageInitInfo;
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events};
-use crate::block_state::BlockState;
+use crate::block_state::{BlockState, MissingBlock};
 use crate::operations_state::{MissingOperations, OperationsState};
-use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelRef, ShellChannelTopic, ShellChannelMsg};
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
@@ -91,11 +91,14 @@ impl ChainManager {
                 .for_each(|(_, peer)| {
                     let available_capacity = peer.available_block_queue_capacity();
                     if available_capacity > 0 {
-                        let missing_block_headers = block_state.drain_missing_blocks(available_capacity);
-                        if !missing_block_headers.is_empty() {
-                            debug!("Requesting {} block headers from peer {}", missing_block_headers.len(), &peer.peer_ref);
-                            peer.queued_block_headers.extend(missing_block_headers.clone());
-                            let msg = GetBlockHeadersMessage { get_block_headers: missing_block_headers };
+                        let mut missing_blocks = block_state.drain_missing_blocks(available_capacity);
+                        if !missing_blocks.is_empty() {
+                            debug!("Requesting {} block headers from peer {}", missing_blocks.len(), &peer.peer_ref);
+                            let msg = GetBlockHeadersMessage { get_block_headers: missing_blocks.iter().map(|mb| mb.block_hash.clone()).collect() };
+                            peer.queued_block_headers.extend(
+                                missing_blocks.drain(..)
+                                    .map(|missing_block| (missing_block.block_hash.clone(), missing_block))
+                            );
                             tell_peer(msg.into(), peer);
                         }
                     }
@@ -106,7 +109,7 @@ impl ChainManager {
             for (_, peer) in peers.iter_mut() {
                 let available_capacity = peer.available_operations_queue_capacity();
                 if available_capacity > 0 {
-                    let missing_operations = operations_state.drain_missing_operations(available_capacity)?;
+                    let missing_operations = operations_state.drain_missing_operations(available_capacity);
                     if !missing_operations.is_empty() {
                         debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
                         missing_operations.iter()
@@ -156,9 +159,9 @@ impl ChainManager {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
-                                    for block_hash in message.current_branch.history.iter().cloned().rev() {
-                                        block_state.push_missing_block(block_hash)?
-                                    }
+                                    message.current_branch.history.iter().cloned().rev()
+                                        .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
+                                        .collect::<Result<Vec<_>, _>>()?;
 
                                     // notify others that new block was received
                                     let current_head = &message.current_branch.current_head;
@@ -192,32 +195,33 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
-                                    let block_header = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
-                                    let block_was_expected = peer.queued_block_headers.remove(&block_header.hash);
-                                    if block_was_expected {
-                                        debug!("Received block header from peer: {}", &received.peer);
+                                    let block_header_with_hash = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
+                                    match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
+                                        Some(missing_block) => {
+                                            debug!("Received block header from peer: {}", &received.peer);
+                                            let is_new_block =
+                                                block_state.process_block_header(&block_header_with_hash)
+                                                    .and(operations_state.process_block_header(&block_header_with_hash))?;
 
-                                        let is_new_block = {
-                                            block_state.process_block_header(block_header.clone())?;
-                                            operations_state.process_block_header(&block_header)?
-                                        };
-                                        if is_new_block {
-                                            // trigger CheckChainCompleteness
-                                            ctx.myself().tell(CheckChainCompleteness, None);
+                                            if is_new_block {
+                                                // trigger CheckChainCompleteness
+                                                ctx.myself().tell(CheckChainCompleteness, None);
 
-                                            // notify others that new block was received
-                                            shell_channel.tell(
-                                                Publish {
-                                                    msg: BlockReceived {
-                                                        hash: block_header.hash.clone(),
-                                                        level: block_header.header.level,
-                                                    }.into(),
-                                                    topic: ShellChannelTopic::ShellEvents.into(),
-                                                }, Some(ctx.myself().into()));
+                                                // notify others that new block was received
+                                                shell_channel.tell(
+                                                    Publish {
+                                                        msg: BlockReceived {
+                                                            hash: missing_block.block_hash,
+                                                            level: missing_block.level,
+                                                        }.into(),
+                                                        topic: ShellChannelTopic::ShellEvents.into(),
+                                                    }, Some(ctx.myself().into()));
+                                            }
                                         }
-                                    } else {
-                                        warn!("Received unexpected block header from peer: {}", &received.peer);
-                                        ctx.system.stop(received.peer.clone());
+                                        None => {
+                                            warn!("Received unexpected block header {} from peer: {}", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header_with_hash.hash), &received.peer);
+                                            ctx.system.stop(received.peer.clone());
+                                        }
                                     }
                                 }
                                 PeerMessage::GetBlockHeaders(message) => {
@@ -383,8 +387,8 @@ impl Receive<SystemEvent> for ChainManager {
             if let Some(mut peer) = self.peers.remove(evt.actor.uri()) {
                 peer.queued_block_headers
                     .drain()
-                    .for_each(|block_hash| {
-                        self.block_state.push_missing_block(block_hash).expect("Failed to re-schedule block hash");
+                    .for_each(|(_, missing_block)| {
+                        self.block_state.push_missing_block(missing_block).expect("Failed to re-schedule block hash");
                     });
 
                 self.operations_state.push_missing_operations(peer.queued_operations.drain().map(|(_, op)| op))
@@ -437,7 +441,7 @@ impl Receive<ShellChannelMsg> for ChainManager {
 
 struct PeerState {
     peer_ref: PeerRef,
-    queued_block_headers: HashSet<BlockHash>,
+    queued_block_headers: HashMap<BlockHash, MissingBlock>,
     queued_operations: HashMap<BlockHash, MissingOperations>,
     request_last: Instant,
     response_last: Instant,
@@ -447,7 +451,7 @@ impl PeerState {
     fn new(peer_ref: PeerRef) -> Self {
         PeerState {
             peer_ref,
-            queued_block_headers: HashSet::new(),
+            queued_block_headers: HashMap::new(),
             queued_operations: HashMap::new(),
             request_last: Instant::now(),
             response_last: Instant::now(),

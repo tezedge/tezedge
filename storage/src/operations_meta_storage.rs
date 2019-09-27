@@ -32,7 +32,8 @@ impl OperationsMetaStorage {
             &Meta {
                 validation_passes: block_header.header.validation_pass,
                 is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
-                is_complete: block_header.header.validation_pass == 0
+                is_complete: block_header.header.validation_pass == 0,
+                level: block_header.header.level
             }
         )
     }
@@ -48,23 +49,6 @@ impl OperationsMetaStorage {
                 meta.is_validation_pass_present[validation_pass as usize] = true as u8;
                 meta.is_complete = meta.is_validation_pass_present.iter().all(|v| *v == (true as u8));
                 self.put(&block_hash, &meta)
-            }
-            None => Err(StorageError::MissingKey),
-        }
-    }
-
-    pub fn get_missing_validation_passes(&mut self, block_hash: &BlockHash) -> Result<HashSet<i8>, StorageError> {
-        match self.get(block_hash)? {
-            Some(meta) => {
-                let result  = if meta.is_complete {
-                    HashSet::new()
-                } else {
-                    meta.is_validation_pass_present.iter().enumerate()
-                        .filter(|(_, is_present)| **is_present == (false as u8))
-                        .map(|(idx, _)| idx as i8)
-                        .collect()
-                };
-                Ok(result)
             }
             None => Err(StorageError::MissingKey),
         }
@@ -148,7 +132,8 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
 pub struct Meta {
     validation_passes: u8,
     is_validation_pass_present: Vec<u8>,
-    is_complete: bool
+    is_complete: bool,
+    level: i32
 }
 
 impl Meta {
@@ -160,23 +145,47 @@ impl Meta {
         Meta {
             is_complete: true,
             validation_passes: 0,
-            is_validation_pass_present: vec![]
+            is_validation_pass_present: vec![],
+            level: 0
         }
+    }
+
+    pub fn get_missing_validation_passes(&self) -> HashSet<i8> {
+        if self.is_complete {
+            HashSet::new()
+        } else {
+            self.is_validation_pass_present.iter().enumerate()
+                .filter(|(_, is_present)| **is_present == (false as u8))
+                .map(|(idx, _)| idx as i8)
+                .collect()
+        }
+    }
+
+    #[inline]
+    pub fn level(&self) -> i32 {
+        self.level
     }
 }
 
+/// Codec for `Meta`
+///
+/// * bytes layout: `[validation_passes(1)][is_validation_pass_present(validation_passes * 1)][is_complete(1)][level(4)]`
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if !bytes.is_empty() {
             let validation_passes = bytes[0];
-            if bytes.len() == ((validation_passes as usize) + 2) {
-                let is_complete_pos = validation_passes as usize + 1;
-                let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
-                let is_complete = bytes[is_complete_pos] != 0;
-                Ok(Meta { validation_passes, is_validation_pass_present, is_complete })
-            } else {
-                Err(SchemaError::DecodeError)
-            }
+            assert_eq!(expected_data_length(validation_passes), bytes.len(),
+                       "Was expecting the length of a block with validation_passes={} to be {} but instead it was {}", validation_passes, expected_data_length(validation_passes), bytes.len());
+            let is_complete_pos = validation_passes as usize + 1;
+            let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
+            let is_complete = bytes[is_complete_pos] != 0;
+            // level
+            let level_pos = is_complete_pos + 1;
+            let mut level_bytes: [u8; 4] = Default::default();
+            level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
+            let level = i32::from_le_bytes(level_bytes);
+            assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
+            Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -184,15 +193,25 @@ impl Codec for Meta {
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         if (self.validation_passes as usize) == self.is_validation_pass_present.len() {
-            let mut result = vec![];
-            result.push(self.validation_passes);
-            result.extend(&self.is_validation_pass_present);
-            result.push(self.is_complete as u8);
-            Ok(result)
+            let mut value = vec![];
+            value.push(self.validation_passes);
+            value.extend(&self.is_validation_pass_present);
+            value.push(self.is_complete as u8);
+            value.extend(&self.level.to_le_bytes());
+            assert_eq!(expected_data_length(self.validation_passes), value.len(), "Was expecting value to have length {} but instead found {}", expected_data_length(self.validation_passes), value.len());
+            Ok(value)
         } else {
             Err(SchemaError::EncodeError)
         }
     }
+}
+
+#[inline]
+fn expected_data_length(validation_passes: u8) -> usize {
+    std::mem::size_of::<u8>()            // validation_passes
+        + std::mem::size_of::<u8>()      // is_complete
+        + std::mem::size_of::<i32>()     // level
+        + (validation_passes as usize) * std::mem::size_of::<u8>()  // is_validation_pass_present
 }
 
 #[cfg(test)]
@@ -209,7 +228,8 @@ mod tests {
         let expected = Meta {
             is_validation_pass_present: vec![false as u8; 5],
             is_complete: false,
-            validation_passes: 5
+            validation_passes: 5,
+            level: 93_422,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -240,7 +260,8 @@ mod tests {
                     let expected = Meta {
                         validation_passes: 0,
                         is_validation_pass_present: vec![],
-                        is_complete: true
+                        is_complete: true,
+                        level: 0
                     };
                     assert_eq!(expected, value);
                 },
@@ -271,6 +292,7 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
+                level: 785
             };
             let mut storage = OperationsMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
@@ -287,6 +309,7 @@ mod tests {
                 Some(value) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
+                    assert_eq!(785, value.level)
                 },
                 _ => panic!("value not present"),
             }
@@ -316,6 +339,7 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
+                level: 31_337
             };
             let p = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -333,6 +357,7 @@ mod tests {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
+                    assert_eq!(31_337, value.level)
                 },
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),

@@ -289,7 +289,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     // receive connection message
     let received_connection_msg = match msg_rx.read_message().await {
         Ok(msg) => msg,
-        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Receive no response to our connection message" })
+        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Received no response to our connection message" })
     };
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_msg, msg.incoming);
@@ -297,7 +297,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     // convert received bytes from remote peer into `ConnectionMessage`
     let received_connection_msg: ConnectionMessage = ConnectionMessage::try_from(received_connection_msg)?;
     let peer_public_key = received_connection_msg.get_public_key();
-    let peer_id = hex::encode(&peer_public_key);
+    let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&peer_public_key);
     debug!("Received peer_public_key: {}", &peer_id);
 
     // pre-compute encryption key
@@ -352,7 +352,7 @@ fn supported_version() -> Version {
 
 /// Start to process incoming data
 async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: ChannelRef<NetworkChannelMsg>) {
-    info!("Starting accepting messages from peer: {}", rx.peer_id());
+    info!("Starting to accept messages from peer: {}", rx.peer_id());
 
     while rx_run.load(Ordering::SeqCst) {
         match rx.read_message::<PeerMessageResponse>().await {
