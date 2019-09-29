@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use failure::Error;
+use itertools::Itertools;
 use log::{debug, info, trace, warn};
 use riker::actors::*;
 
@@ -87,8 +88,9 @@ impl ChainManager {
         let ChainManager { peers, block_state, operations_state, .. } = self;
 
         if block_state.has_missing_blocks() {
-            peers.iter_mut()
-                .for_each(|(_, peer)| {
+            peers.values_mut()
+                .sorted_by_key(|peer| peer.available_block_queue_capacity()).rev()
+                .for_each(|peer| {
                     let available_capacity = peer.available_block_queue_capacity();
                     if available_capacity > 0 {
                         let mut missing_blocks = block_state.drain_missing_blocks(available_capacity);
@@ -106,23 +108,25 @@ impl ChainManager {
         }
 
         if operations_state.has_missing_operations() {
-            for (_, peer) in peers.iter_mut() {
-                let available_capacity = peer.available_operations_queue_capacity();
-                if available_capacity > 0 {
-                    let missing_operations = operations_state.drain_missing_operations(available_capacity);
-                    if !missing_operations.is_empty() {
-                        debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
-                        missing_operations.iter()
-                            .for_each(|operations| {
-                                peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
-                                let msg = GetOperationsForBlocksMessage {
-                                    get_operations_for_blocks: operations.into()
-                                };
-                                tell_peer(msg.into(), peer);
-                            });
+            peers.values_mut()
+                .sorted_by_key(|peer| peer.available_operations_queue_capacity()).rev()
+                .for_each(|peer| {
+                    let available_capacity = peer.available_operations_queue_capacity();
+                    if available_capacity > 0 {
+                        let missing_operations = operations_state.drain_missing_operations(available_capacity);
+                        if !missing_operations.is_empty() {
+                            debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
+                            missing_operations.iter()
+                                .for_each(|operations| {
+                                    peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
+                                    let msg = GetOperationsForBlocksMessage {
+                                        get_operations_for_blocks: operations.into()
+                                    };
+                                    tell_peer(msg.into(), peer);
+                                });
+                        }
                     }
-                }
-            }
+                })
         }
 
         Ok(())
@@ -476,7 +480,6 @@ impl PeerState {
         }
     }
 }
-
 
 fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
     peer.peer_ref.tell(SendMessage::new(msg), None);
