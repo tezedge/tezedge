@@ -277,7 +277,7 @@ mod tests {
                         is_applied: true,
                         predecessor: Some(k.clone()),
                         successor: None,
-                        level: 662_257
+                        level: 0
                     };
                     assert_eq!(expected, value);
                 },
