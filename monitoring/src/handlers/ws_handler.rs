@@ -17,6 +17,8 @@ pub struct WebsocketHandler {
     connected_clients: Arc<AtomicUsize>,
 }
 
+pub type WebsocketHandlerRef = ActorRef<WebsocketHandlerMsg>;
+
 impl WebsocketHandler {
     pub fn name() -> &'static str {
         "websocket_handler"
@@ -41,7 +43,7 @@ impl WebsocketHandler {
         }
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr) -> Result<ActorRef<WebsocketHandlerMsg>, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr) -> Result<WebsocketHandlerRef, CreateError> {
         sys.actor_of(
             Props::new_args(Self::new, address),
             Self::name(),
