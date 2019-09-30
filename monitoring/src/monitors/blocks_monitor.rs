@@ -7,7 +7,8 @@ pub struct BlocksMonitor {
     blocks: usize,
     downloaded_blocks: usize,
     applied_blocks: usize,
-    created_at: Vec<Instant>,
+    downloading_group: usize,
+    group_download_start: Instant,
     durations: Vec<f32>,
 }
 
@@ -18,7 +19,8 @@ impl BlocksMonitor {
             blocks: 0,
             downloaded_blocks: 0,
             applied_blocks: 0,
-            created_at: Vec::new(),
+            downloading_group: 0,
+            group_download_start: Instant::now(),
             durations: Vec::new(),
         }
     }
@@ -51,36 +53,23 @@ impl BlocksMonitor {
             downloaded_count -= finished_blocks;
             let applied_blocks = min(self.threshold as i32, applied_count);
             applied_count -= applied_blocks;
-            let download_duration = if i < self.created_at.len() {
-                if finished_blocks != blocks {
-                    None
-                } else {
-                    if i >= self.durations.len() {
-                        self.durations.push(self.created_at[i].elapsed().as_secs_f32());
-                    }
-                    Some(self.durations[i])
-                }
+
+            if i == self.downloading_group && blocks <= finished_blocks {
+                self.downloading_group += 1;
+                self.durations.push(self.group_download_start.elapsed().as_secs_f32());
+                self.group_download_start = Instant::now();
+            }
+
+            let download_duration = if i < self.durations.len() {
+                Some(self.durations[i])
             } else {
-                self.created_at.push(Instant::now());
                 None
             };
+
             payload.push(BlockMetrics::new(i as i32, blocks, finished_blocks, applied_blocks, download_duration));
         }
-        let i = group_count;
-        let download_duration = if i < self.created_at.len() {
-            if self.threshold != downloaded_count as usize {
-                None
-            } else {
-                if i >= self.durations.len() {
-                    self.durations.push(self.created_at[i].elapsed().as_secs_f32());
-                }
-                Some(self.durations[i])
-            }
-        } else {
-            self.created_at.push(Instant::now());
-            None
-        };
-        payload.push(BlockMetrics::new(group_count as i32, total_count, downloaded_count, applied_count, download_duration));
+
+        payload.push(BlockMetrics::new(group_count as i32, total_count, downloaded_count, applied_count, None));
 
         payload
     }
