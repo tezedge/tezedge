@@ -252,10 +252,11 @@ impl Receive<SendMessage> for Peer {
         let tx = self.net.tx.clone();
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
-            let tx = tx_lock.as_mut();
-            if let Err(e) = tx.unwrap().write_message(&*msg.message).await {
-                warn!("Failed to send message. {:?}", e);
-                system.stop(myself);
+            if let Some(tx) = tx_lock.as_mut() {
+                if let Err(e) = tx.write_message(&*msg.message).await {
+                    warn!("Failed to send message. {:?}", e);
+                    system.stop(myself);
+                }
             }
         });
     }
@@ -372,7 +373,11 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
             }
             Err(e) => {
                 warn!("Failed to read message: {:?}", e);
-                break;
+                if let StreamError::DeserializationError { error: BinaryReaderError::UnsupportedTag { .. } } = e {
+                    info!("Messages with unsupported tags are ignored");
+                } else {
+                    break;
+                }
             }
         }
     }

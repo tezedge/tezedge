@@ -95,8 +95,8 @@ impl Actor for PeerManager {
         subscribe_to_network_events(&self.network_channel, ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
-            Duration::from_secs(2),
-            Duration::from_secs(15),
+            Duration::from_secs(3),
+            Duration::from_secs(10),
             ctx.myself(),
             None,
             CheckPeerCount.into());
@@ -116,9 +116,11 @@ impl Actor for PeerManager {
 impl Receive<SystemEvent> for PeerManager {
     type Msg = PeerManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
         if let SystemEvent::ActorTerminated(evt) = msg {
-            self.peers.remove(evt.actor.uri());
+            if let Some(_) = self.peers.remove(evt.actor.uri()) {
+                ctx.myself().tell(CheckPeerCount, None);
+            }
         }
     }
 }
@@ -157,7 +159,7 @@ impl Receive<CheckPeerCount> for PeerManager {
 impl Receive<NetworkChannelMsg> for PeerManager {
     type Msg = PeerManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
                 self.peers.insert(msg.peer.uri().clone(), msg.peer);
@@ -172,6 +174,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                                 .filter_map(|str_ip_port| str_ip_port.parse().ok())
                                 .collect::<Vec<SocketAddr>>();
                             self.potential_peers.extend(sock_addresses);
+                            ctx.myself().tell(CheckPeerCount, None);
                         }
                         _ => ()
                     })

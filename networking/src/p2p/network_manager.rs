@@ -3,16 +3,18 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use futures::lock::Mutex;
 use log::info;
 use riker::actors::*;
+use tokio::future::FutureExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::TaskExecutor;
 
 use super::network_channel::NetworkChannelMsg;
 use super::peer::{Bootstrap, Peer, PeerRef};
-use std::sync::atomic::{Ordering, AtomicBool};
 
 /// Blacklist the IP address.
 #[derive(Clone, Debug)]
@@ -38,6 +40,8 @@ pub struct AcceptPeer {
 pub struct ConnectToPeer {
     pub address: SocketAddr
 }
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 
 pub type NetworkManagerRef = ActorRef<NetworkManagerMsg>;
 
@@ -148,13 +152,17 @@ impl Receive<ConnectToPeer> for NetworkManager {
 
         self.tokio_executor.spawn(async move {
             info!("Connecting to {}", &msg.address);
-            match TcpStream::connect(&msg.address).await {
-                Ok(stream) => {
+            match TcpStream::connect(&msg.address).timeout(CONNECT_TIMEOUT).await {
+                Ok(Ok(stream)) => {
                     info!("Connection to {} successful", &msg.address);
                     peer.tell(Bootstrap::outgoing(stream, msg.address), None);
                 }
-                Err(_) => {
+                Ok(Err(_)) => {
                     info!("Connection to {} failed", &msg.address);
+                    system.stop(peer);
+                }
+                Err(_) => {
+                    info!("Connection to {} timed out", &msg.address);
                     system.stop(peer);
                 }
             }

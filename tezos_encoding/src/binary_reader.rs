@@ -22,6 +22,10 @@ pub enum BinaryReaderError {
     DeserializationError {
         error: crate::de::Error
     },
+    #[fail(display = "No tag found for id: 0x{:X}", tag)]
+    UnsupportedTag {
+        tag: u16
+    }
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -143,7 +147,7 @@ impl BinaryReader {
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
                     },
-                    None => Err(de::Error::custom(format!("No tag found for id: 0x{:X}", tag_id)).into())
+                    None => Err(BinaryReaderError::UnsupportedTag { tag: tag_id })
                 }
             }
             Encoding::List(encoding_inner) => {

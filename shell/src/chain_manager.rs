@@ -25,6 +25,8 @@ use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChann
 
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
+const PEER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
+const PEER_SILENCE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
@@ -56,8 +58,6 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-
-    const PEER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
 
     pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
@@ -318,14 +318,21 @@ impl ChainManager {
     fn disconnect_silent_peers(&mut self, ctx: &Context<ChainManagerMsg>) {
         &self.peers.values()
             .for_each(|peer_state| {
-                let silence_duration = if peer_state.request_last > peer_state.response_last {
+                let response_duration = if peer_state.request_last > peer_state.response_last {
                     peer_state.request_last - peer_state.response_last
                 } else {
                     Duration::from_secs(0)
                 };
 
-                if silence_duration > Self::PEER_RESPONSE_TIMEOUT {
+                if response_duration > PEER_RESPONSE_TIMEOUT {
                     info!("Timeout when waiting for response from peer {:?}. Disconnecting peer.", &peer_state.peer_ref);
+                    ctx.system.stop(peer_state.peer_ref.clone());
+                }
+
+
+                let request_silence = Instant::now() - peer_state.request_last;
+                if request_silence > PEER_SILENCE_TIMEOUT {
+                    info!("Disconnecting unused peer {:?}.", &peer_state.peer_ref);
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
             });
@@ -365,8 +372,8 @@ impl Actor for ChainManager {
             CheckChainCompleteness.into());
 
         ctx.schedule::<Self::Msg, _>(
-            Self::PEER_RESPONSE_TIMEOUT.clone(),
-            Self::PEER_RESPONSE_TIMEOUT / 2,
+            PEER_RESPONSE_TIMEOUT.clone(),
+            PEER_RESPONSE_TIMEOUT / 2,
             ctx.myself(),
             None,
             DisconnectSilentPeers.into());
