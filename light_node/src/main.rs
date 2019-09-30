@@ -112,7 +112,7 @@ fn main() {
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &tezos_storage_init_info);
     let ws = WebsocketHandler::actor(&actor_system, configuration::ENV.websocket_address)
         .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(&actor_system, network_channel.clone(), ws, shell_channel);
+    let _ = Monitor::actor(&actor_system, network_channel.clone(), ws, shell_channel, rocks_db.clone());
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;

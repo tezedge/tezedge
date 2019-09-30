@@ -1,4 +1,3 @@
-use log::*;
 use networking::p2p::{
     network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
 };
@@ -7,13 +6,16 @@ use riker::{
     system::SystemEvent, actor::*,
     system::Timer, actors::SystemMsg,
 };
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, time::Duration, sync::Arc};
+use storage::{BlockMetaStorage, IteratorMode};
 use crate::{
     monitors::*,
     handlers::handler_messages::PeerConnectionStatus,
     handlers::WebsocketHandlerMsg,
 };
 use crate::handlers::handler_messages::HandlerMessage;
+use rocksdb::DB;
+use log::*;
 
 
 #[derive(Clone, Debug)]
@@ -41,20 +43,32 @@ impl Monitor {
         "monitor-manager"
     }
 
-    fn new((event_channel, msg_channel, shell_channel): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef)) -> Self {
+    fn new((event_channel, msg_channel, shell_channel, db): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, Arc<DB>)) -> Self {
+        let blocks_meta = BlockMetaStorage::new(db);
+        let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
+            let mut res = 0;
+            for _ in iter {
+                res += 1
+            }
+            res
+        } else { 0 };
+        let mut bootstrap_monitor = BootstrapMonitor::new();
+        bootstrap_monitor.downloaded_blocks = downloaded;
+        bootstrap_monitor.level = downloaded;
+
         Self {
             event_channel,
             shell_channel,
             msg_channel,
             peer_monitors: HashMap::new(),
-            bootstrap_monitor: BootstrapMonitor::new(),
-            blocks_monitor: BlocksMonitor::new(4096),
+            bootstrap_monitor,
+            blocks_monitor: BlocksMonitor::new(4096, downloaded),
         }
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef) -> Result<MonitorRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, db: Arc<DB>) -> Result<MonitorRef, CreateError> {
         sys.actor_of(
-            Props::new_args(Self::new, (event_channel, msg_channel, shell_channel)),
+            Props::new_args(Self::new, (event_channel, msg_channel, shell_channel, db)),
             Self::name(),
         )
     }

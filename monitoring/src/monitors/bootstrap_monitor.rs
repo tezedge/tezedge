@@ -6,7 +6,7 @@ pub(crate) struct BootstrapMonitor {
     // total number of blocks
     pub level: usize,
     // already downloaded blocks
-    downloaded_blocks: usize,
+    pub downloaded_blocks: usize,
     // number of blocks downloaded per this session
     downloaded_per_session: usize,
     downloaded_per_snapshot: usize,

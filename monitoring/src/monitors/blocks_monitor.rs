@@ -4,29 +4,30 @@ use std::time::Instant;
 #[derive(Debug, Clone)]
 pub struct BlocksMonitor {
     threshold: usize,
-    blocks: usize,
-    downloaded_blocks: usize,
+    pub level: usize,
+    pub downloaded_blocks: usize,
     applied_blocks: usize,
-    downloading_group: usize,
+    pub downloading_group: usize,
     group_download_start: Instant,
-    durations: Vec<f32>,
+    durations: Vec<Option<f32>>,
 }
 
 impl BlocksMonitor {
-    pub fn new(threshold: usize) -> Self {
+    pub fn new(threshold: usize, downloaded_blocks: usize) -> Self {
+        let mut downloading_group = downloaded_blocks / threshold;
         Self {
             threshold,
-            blocks: 0,
-            downloaded_blocks: 0,
+            level: downloaded_blocks,
+            downloaded_blocks: downloaded_blocks,
             applied_blocks: 0,
-            downloading_group: 0,
+            downloading_group: downloaded_blocks / threshold,
             group_download_start: Instant::now(),
-            durations: Vec::new(),
+            durations: vec![None; downloaded_blocks / threshold],
         }
     }
 
     pub fn accept_block(&mut self) {
-        self.blocks += 1;
+        self.level += 1;
     }
 
     pub fn block_finished_downloading_operations(&mut self) {
@@ -40,8 +41,8 @@ impl BlocksMonitor {
     pub fn snapshot(&mut self) -> Vec<BlockMetrics> {
         use std::cmp::min;
 
-        let group_count = self.blocks / self.threshold;
-        let mut total_count: i32 = self.blocks.clone() as i32;
+        let group_count = self.level / self.threshold;
+        let mut total_count: i32 = self.level.clone() as i32;
         let mut downloaded_count: i32 = self.downloaded_blocks as i32;
         let mut applied_count: i32 = self.applied_blocks as i32;
         let mut payload: Vec<BlockMetrics> = Vec::with_capacity(group_count + 1);
@@ -56,12 +57,12 @@ impl BlocksMonitor {
 
             if i == self.downloading_group && blocks <= finished_blocks {
                 self.downloading_group += 1;
-                self.durations.push(self.group_download_start.elapsed().as_secs_f32());
+                self.durations.push(Some(self.group_download_start.elapsed().as_secs_f32()));
                 self.group_download_start = Instant::now();
             }
 
             let download_duration = if i < self.durations.len() {
-                Some(self.durations[i])
+                self.durations[i]
             } else {
                 None
             };
