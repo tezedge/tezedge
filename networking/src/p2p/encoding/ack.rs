@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, HasEncoding, Tag, TagMap};
 
+use crate::p2p::binary_message::cache::{ CachedData, CacheReader, CacheWriter, NeverCache};
+
+static DUMMY_BODY_CACHE: NeverCache = NeverCache;
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum AckMessage {
     Ack,
@@ -19,5 +23,15 @@ impl HasEncoding for AckMessage {
                 Tag::new(0xFF, "Nack", Encoding::Unit),
             ])
         )
+    }
+}
+
+impl CachedData for AckMessage {
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &DUMMY_BODY_CACHE
+    }
+
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        None
     }
 }

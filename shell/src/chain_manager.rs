@@ -96,7 +96,7 @@ impl ChainManager {
                         let mut missing_blocks = block_state.drain_missing_blocks(available_capacity);
                         if !missing_blocks.is_empty() {
                             debug!("Requesting {} block headers from peer {}", missing_blocks.len(), &peer.peer_ref);
-                            let msg = GetBlockHeadersMessage { get_block_headers: missing_blocks.iter().map(|mb| mb.block_hash.clone()).collect() };
+                            let msg = GetBlockHeadersMessage::new(missing_blocks.iter().cloned().map(|mb| mb.block_hash));
                             peer.queued_block_headers.extend(
                                 missing_blocks.drain(..)
                                     .map(|missing_block| (missing_block.block_hash.clone(), missing_block))
@@ -119,10 +119,7 @@ impl ChainManager {
                             missing_operations.iter()
                                 .for_each(|operations| {
                                     peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
-                                    let msg = GetOperationsForBlocksMessage {
-                                        get_operations_for_blocks: operations.into()
-                                    };
-                                    tell_peer(msg.into(), peer);
+                                    tell_peer(GetOperationsForBlocksMessage::new(operations.into()).into(), peer);
                                 });
                         }
                     }
@@ -186,13 +183,7 @@ impl ChainManager {
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head_hash) = &self.current_head_hash {
                                             if let Some(current_head) = block_storage.get(current_head_hash)? {
-                                                let msg = CurrentBranchMessage {
-                                                    chain_id: block_state.get_chain_id().clone(),
-                                                    current_branch: CurrentBranch {
-                                                        current_head: (*current_head.header).clone(),
-                                                        history: vec![] // TODO: return some random blocks hashes
-                                                    }
-                                                };
+                                                let msg = CurrentBranchMessage::new(block_state.get_chain_id(), &current_head.header);
                                                 tell_peer(msg.into(), peer);
                                             }
                                         }
@@ -241,14 +232,7 @@ impl ChainManager {
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head_hash) = &self.current_head_hash {
                                             if let Some(current_head) = block_storage.get(current_head_hash)? {
-                                                let msg = CurrentHeadMessage {
-                                                    chain_id: block_state.get_chain_id().clone(),
-                                                    current_block_header: (*current_head.header).clone(),
-                                                    current_mempool: Mempool {
-                                                        pending: vec![],    // TODO: provide meaningful value
-                                                        known_valid: vec![] // TODO: provide meaningful value
-                                                    }
-                                                };
+                                                let msg = CurrentHeadMessage::new(block_state.get_chain_id(), &current_head.header);
                                                 tell_peer(msg.into(), peer);
                                             }
                                         }

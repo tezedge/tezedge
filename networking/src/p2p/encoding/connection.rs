@@ -8,6 +8,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::encoding::version::Version;
+use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConnectionMessage {
@@ -16,6 +17,9 @@ pub struct ConnectionMessage {
     public_key: Vec<u8>,
     proof_of_work_stamp: Vec<u8>,
     message_nonce: Vec<u8>,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache
 }
 
 impl ConnectionMessage {
@@ -28,6 +32,7 @@ impl ConnectionMessage {
             proof_of_work_stamp: hex::decode(proof_of_work_stamp)
                 .expect("Failed to decode proof of work stamp from hex string"),
             message_nonce: message_nonce.into(),
+            body: Default::default(),
         }
     }
 
@@ -61,5 +66,17 @@ impl HasEncoding for ConnectionMessage {
             Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
             Field::new("versions", Encoding::list(Version::encoding()))
         ])
+    }
+}
+
+impl CachedData for ConnectionMessage {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
     }
 }

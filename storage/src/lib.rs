@@ -125,6 +125,7 @@ mod tests {
                 fitness: vec![vec![0, 0]],
                 context: HashEncoding::new(HashType::ContextHash).string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
                 protocol_data: vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
+                body: Default::default()
             }),
         };
         let encoded_bytes = expected.encode()?;

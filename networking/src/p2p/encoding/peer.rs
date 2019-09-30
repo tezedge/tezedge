@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 
+use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
 use crate::p2p::encoding::advertise::AdvertiseMessage;
 use crate::p2p::encoding::block_header::{BlockHeaderMessage, GetBlockHeadersMessage};
 use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
@@ -42,6 +43,21 @@ pub enum PeerMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PeerMessageResponse {
     pub messages: Vec<PeerMessage>,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache
+}
+
+impl CachedData for PeerMessageResponse {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
 }
 
 lazy_static! {
@@ -79,7 +95,7 @@ impl HasEncoding for PeerMessageResponse {
 
 impl From<PeerMessage> for PeerMessageResponse {
     fn from(peer_message: PeerMessage) -> Self {
-        PeerMessageResponse { messages: vec![peer_message] }
+        PeerMessageResponse { messages: vec![peer_message], body: Default::default() }
     }
 }
 

@@ -9,12 +9,24 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::hash::{BlockHash, Hash, HashEncoding, HashType};
 
+use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData, NeverCache};
 use crate::p2p::encoding::operation::Operation;
+
+static DUMMY_BODY_CACHE: NeverCache = NeverCache;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct OperationsForBlock {
     pub hash: BlockHash,
-    pub validation_pass: i8
+    pub validation_pass: i8,
+
+    #[serde(skip_serializing)]
+    pub body: BinaryDataCache,
+}
+
+impl OperationsForBlock {
+    pub fn new(hash: &BlockHash, validation_pass: i8) -> Self {
+        OperationsForBlock { hash: hash.clone(), validation_pass, body: Default::default() }
+    }
 }
 
 impl HasEncoding for OperationsForBlock {
@@ -26,12 +38,27 @@ impl HasEncoding for OperationsForBlock {
     }
 }
 
+impl CachedData for OperationsForBlock {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct OperationsForBlocksMessage {
     pub operations_for_block: OperationsForBlock,
     pub operation_hashes_path: Path,
-    pub operations: Vec<Operation>
+    pub operations: Vec<Operation>,
+
+    #[serde(skip_serializing)]
+    pub body: BinaryDataCache
 }
 
 impl HasEncoding for OperationsForBlocksMessage {
@@ -44,11 +71,26 @@ impl HasEncoding for OperationsForBlocksMessage {
     }
 }
 
+impl CachedData for OperationsForBlocksMessage {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct PathRight {
     pub left: Hash,
     pub path: Path,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for PathRight {
@@ -60,10 +102,26 @@ impl HasEncoding for PathRight {
     }
 }
 
+impl CachedData for PathRight {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
+// -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct PathLeft {
     pub path: Path,
-    pub right: Hash
+    pub right: Hash,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for PathLeft {
@@ -75,6 +133,19 @@ impl HasEncoding for PathLeft {
     }
 }
 
+impl CachedData for PathLeft {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
+// -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum Path {
     Left(Box<PathLeft>),
@@ -93,10 +164,32 @@ fn path_encoding() -> Encoding {
     )
 }
 
+impl CachedData for Path {
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &DUMMY_BODY_CACHE
+    }
+
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        None
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetOperationsForBlocksMessage {
-    pub get_operations_for_blocks: Vec<OperationsForBlock>
+    pub get_operations_for_blocks: Vec<OperationsForBlock>,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
+}
+
+impl GetOperationsForBlocksMessage {
+    pub fn new(ops: Vec<OperationsForBlock>) -> Self {
+        GetOperationsForBlocksMessage {
+            get_operations_for_blocks: ops,
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for GetOperationsForBlocksMessage {
@@ -104,5 +197,17 @@ impl HasEncoding for GetOperationsForBlocksMessage {
         Encoding::Obj(vec![
             Field::new("get_operations_for_blocks", Encoding::dynamic(Encoding::list(OperationsForBlock::encoding()))),
         ])
+    }
+}
+
+impl CachedData for GetOperationsForBlocksMessage {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
     }
 }

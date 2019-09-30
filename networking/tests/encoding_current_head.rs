@@ -5,7 +5,7 @@ use networking::p2p::binary_message::BinaryMessage;
 
 #[test]
 fn can_serialize_get_current_head_message() -> Result<(), Error> {
-    let response: PeerMessageResponse = GetCurrentHeadMessage { chain_id: hex::decode("8eceda2f")? }.into();
+    let response: PeerMessageResponse = GetCurrentHeadMessage { chain_id: hex::decode("8eceda2f")?, body: Default::default() }.into();
     let message_bytes = response.as_bytes().unwrap();
     let expected_writer_result = hex::decode("0000000600138eceda2f").expect("Failed to decode");
     Ok(assert_eq!(expected_writer_result, message_bytes))

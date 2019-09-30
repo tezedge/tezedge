@@ -18,7 +18,7 @@ pub struct BinaryWriter {
 impl BinaryWriter {
 
     pub fn new() -> BinaryWriter {
-        BinaryWriter { data: Vec::new() }
+        BinaryWriter { data: Vec::with_capacity(512) }
     }
 
     pub fn write<T>(&mut self, data: &T, encoding: &Encoding) -> Result<Vec<u8>, Error>
