@@ -3,9 +3,14 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::hash::{HashEncoding, HashType, ProtocolHash};
 
+use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProtocolMessage {
-    protocol: Protocol
+    protocol: Protocol,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for ProtocolMessage {
@@ -16,12 +21,27 @@ impl HasEncoding for ProtocolMessage {
     }
 }
 
+impl CachedData for ProtocolMessage {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Component {
     name: String,
     interface: Option<String>,
     implementation: String,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for Component {
@@ -34,12 +54,26 @@ impl HasEncoding for Component {
     }
 }
 
+impl CachedData for Component {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Protocol {
     expected_env_version: i16,
     components: Vec<Component>,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
 }
 
 impl Protocol {
@@ -61,10 +95,25 @@ impl HasEncoding for Protocol {
     }
 }
 
+impl CachedData for Protocol {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetProtocolsMessage {
     get_protocols: Vec<ProtocolHash>,
+
+    #[serde(skip_serializing)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for GetProtocolsMessage {
@@ -72,5 +121,17 @@ impl HasEncoding for GetProtocolsMessage {
         Encoding::Obj(vec![
             Field::new("get_protocols", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::ProtocolHash))))),
         ])
+    }
+}
+
+impl CachedData for GetProtocolsMessage {
+    #[inline]
+    fn cache_reader(&self) -> & dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
     }
 }

@@ -288,8 +288,10 @@ mod test_data {
                         operations_for_block: OperationsForBlock {
                             validation_pass: 4,
                             hash: hex::decode(block_hash.clone()).unwrap() as BlockHash,
+                            body: Default::default()
                         },
                         operations: ops,
+                        body: Default::default()
                     }
                 )
             })

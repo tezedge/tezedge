@@ -23,6 +23,103 @@ pub const CONTENT_LENGTH_FIELD_BYTES: usize = 2;
 /// Max allowed message length in bytes
 pub const CONTENT_LENGTH_MAX: usize = u16::max_value() as usize;
 
+pub mod cache {
+    use std::fmt;
+
+    use serde::{Deserialize, Deserializer};
+
+    pub trait CacheReader {
+        fn get(&self) -> Option<Vec<u8>>;
+    }
+
+    pub trait CacheWriter {
+        fn put(&mut self, body: &[u8]);
+    }
+
+    pub trait CachedData {
+        fn cache_reader(&self) -> &dyn CacheReader;
+        fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter>;
+    }
+
+    #[derive(Clone, Default)]
+    pub struct BinaryDataCache {
+        data: Option<Vec<u8>>
+    }
+
+    impl CacheReader for BinaryDataCache {
+        #[inline]
+        fn get(&self) -> Option<Vec<u8>> {
+            self.data.as_ref().map(|v| v.clone())
+        }
+    }
+
+    impl CacheWriter for BinaryDataCache {
+        #[inline]
+        fn put(&mut self, body: &[u8]) {
+            self.data.replace(body.to_vec());
+        }
+    }
+
+    impl PartialEq for BinaryDataCache {
+        #[inline]
+        fn eq(&self, _: &Self) -> bool {
+            true
+        }
+    }
+
+    impl Eq for BinaryDataCache {}
+
+    impl<'de> Deserialize<'de> for BinaryDataCache {
+        fn deserialize<D>(_: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>
+        {
+            Ok(BinaryDataCache::default())
+        }
+    }
+
+    impl fmt::Debug for BinaryDataCache {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self.get() {
+                Some(data) => write!(f, "BinaryDataCache {{ has_value: true, len: {} }}", data.len()),
+                None => write!(f, "BinaryDataCache {{ has_value: false }}"),
+            }
+        }
+    }
+
+    #[derive(Clone, PartialEq, Default)]
+    pub struct NeverCache;
+
+    impl<'de> Deserialize<'de> for NeverCache {
+        fn deserialize<D>(_: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>
+        {
+            Ok(NeverCache::default())
+        }
+    }
+
+    impl CacheReader for NeverCache {
+        #[inline]
+        fn get(&self) -> Option<Vec<u8>> {
+            None
+        }
+    }
+
+    impl CacheWriter for NeverCache {
+        #[inline]
+        fn put(&mut self, _: &[u8]) {
+            // ..
+        }
+    }
+
+    impl fmt::Debug for NeverCache {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "NeverCache {{ }}")
+        }
+    }
+
+}
 
 /// Trait for binary encoding to implement.
 ///
@@ -38,21 +135,28 @@ pub trait BinaryMessage: Sized {
 }
 
 impl<T> BinaryMessage for T
-    where T: HasEncoding + DeserializeOwned + Serialize + Sized {
+    where T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized {
 
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error> {
-        let mut writer = BinaryWriter::new();
-        writer.write(self, &Self::encoding())
+        match self.cache_reader().get() {
+            Some(data) => Ok(data),
+            None => BinaryWriter::new().write(self, &Self::encoding())
+        }
     }
 
     #[inline]
     fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError> {
-        let reader = BinaryReader::new();
-        let value = reader.read(buf, &Self::encoding())?;
-        deserialize_from_value(&value)
+        let body = buf.clone();
+        let value = BinaryReader::new().read(buf, &Self::encoding())?;
+        let mut myself: Self = deserialize_from_value(&value)?;
+        if let Some(cache_writer) = myself.cache_writer() {
+            cache_writer.put(&body);
+        }
+        Ok(myself)
     }
 }
+
 
 /// Represents binary raw encoding received from peer node.
 ///

@@ -184,8 +184,10 @@ mod tests {
                 operation_hashes_path: Path::Op,
                 operations_for_block: OperationsForBlock {
                     hash: block_hash.clone(),
-                    validation_pass: 0
-                }
+                    validation_pass: 0,
+                    body: Default::default()
+                },
+                body: Default::default()
             };
 
 

@@ -140,12 +140,7 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
     fn from(ops: &MissingOperations) -> Self {
         ops.validation_passes
             .iter()
-            .map(|vp| {
-                OperationsForBlock {
-                    hash: ops.block_hash.clone(),
-                    validation_pass: *vp
-                }
-            })
+            .map(|vp| OperationsForBlock::new(&ops.block_hash, *vp))
             .collect()
     }
 }
