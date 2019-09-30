@@ -14,7 +14,6 @@ pub struct BlocksMonitor {
 
 impl BlocksMonitor {
     pub fn new(threshold: usize, downloaded_blocks: usize) -> Self {
-        let mut downloading_group = downloaded_blocks / threshold;
         Self {
             threshold,
             level: downloaded_blocks,
