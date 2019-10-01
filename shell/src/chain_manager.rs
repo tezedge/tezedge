@@ -26,7 +26,8 @@ use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ChainCompl
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
 const PEER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
-const PEER_SILENCE_TIMEOUT: Duration = Duration::from_secs(60);
+const PEER_SILENCE_TIMEOUT: Duration = Duration::from_secs(120);
+const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(45);
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
@@ -86,6 +87,7 @@ impl ChainManager {
     }
 
     fn new((network_channel, shell_channel, rocks_db, chain_id, current_head): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId, CurrentHead)) -> Self {
+        assert!(PEER_SILENCE_TIMEOUT > CHECK_CHAIN_COMPLETENESS_INTERVAL * 2, "Peer silence timeout must be at least twice as long as the check chain completeness interval");
         ChainManager {
             network_channel,
             shell_channel,
@@ -151,6 +153,12 @@ impl ChainManager {
         Ok(blocks_complete && operations_complete)
     }
 
+    fn request_current_head(&mut self) {
+        let ChainManager { peers, block_state, .. } = self;
+        peers.iter_mut()
+            .for_each(|(_, peer)| tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), peer))
+    }
+
     fn process_network_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: NetworkChannelMsg) -> Result<(), Error> {
         let ChainManager {
             peers,
@@ -186,8 +194,15 @@ impl ChainManager {
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;
 
-                                    // notify others that new block was received
                                     let current_head = &message.current_branch.current_head;
+
+                                    // if needed, update remote current head
+                                    if message.current_branch.current_head.level > self.current_head.remote_level {
+                                        self.current_head.remote_level = message.current_branch.current_head.level;
+                                        self.current_head.remote = message.current_branch.current_head.message_hash()?;
+                                    }
+
+                                    // notify others that new block was received
                                     shell_channel.tell(
                                         Publish {
                                             msg: BlockReceived {
@@ -331,10 +346,9 @@ impl ChainManager {
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
 
-
-                let request_silence = Instant::now() - peer_state.request_last;
+                let request_silence = Instant::now() - peer_state.response_last;
                 if request_silence > PEER_SILENCE_TIMEOUT {
-                    info!("Disconnecting unused peer {:?}.", &peer_state.peer_ref);
+                    info!("Disconnecting silent peer {:?}.", &peer_state.peer_ref);
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
             });
@@ -367,8 +381,8 @@ impl Actor for ChainManager {
         info!("Hydrating completed successfully");
 
         ctx.schedule::<Self::Msg, _>(
-            Duration::from_secs(15),
-            Duration::from_secs(60),
+            CHECK_CHAIN_COMPLETENESS_INTERVAL / 4,
+            CHECK_CHAIN_COMPLETENESS_INTERVAL.clone(),
             ctx.myself(),
             None,
             CheckChainCompleteness.into());
@@ -421,6 +435,8 @@ impl Receive<CheckChainCompleteness> for ChainManager {
                     msg: ChainCompleted.into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 }, Some(ctx.myself().into()));
+            } else {
+                self.request_current_head();
             }
             Err(e) => warn!("Failed to check chain completeness: {:?}", e),
         }
