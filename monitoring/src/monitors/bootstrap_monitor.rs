@@ -7,9 +7,12 @@ pub(crate) struct BootstrapMonitor {
     pub level: usize,
     // already downloaded blocks
     pub downloaded_blocks: usize,
+    pub downloaded_headers: usize,
     // number of blocks downloaded per this session
     downloaded_per_session: usize,
     downloaded_per_snapshot: usize,
+    headers_per_session: usize,
+    headers_per_snapshot: usize,
     session_start: Instant,
     last_snapshot: Instant,
 }
@@ -20,8 +23,11 @@ impl BootstrapMonitor {
         Self {
             level: 0,
             downloaded_blocks: 0,
+            downloaded_headers: 0,
             downloaded_per_session: 0,
             downloaded_per_snapshot: 0,
+            headers_per_session: 0,
+            headers_per_snapshot: 0,
             session_start: now.clone(),
             last_snapshot: now,
         }
@@ -50,8 +56,22 @@ impl BootstrapMonitor {
         self.downloaded_blocks += count;
     }
     #[inline]
+    pub fn increase_headers_count(&mut self) {
+        self.increase_headers_count_by(1)
+    }
+    #[inline]
+    pub fn increase_headers_count_by(&mut self, count: usize) {
+        self.headers_per_session += count;
+        self.headers_per_snapshot += count;
+        self.downloaded_headers += count;
+    }
+    #[inline]
     pub fn average_download_rate(&self) -> f32 {
         self.downloaded_per_session as f32 / self.session_start.elapsed().as_secs_f32()
+    }
+    #[inline]
+    pub fn average_header_download_rate(&self) -> f32 {
+        self.headers_per_session as f32 / self.session_start.elapsed().as_secs_f32()
     }
 
 
@@ -63,8 +83,10 @@ impl BootstrapMonitor {
         let downloaded_blocks = self.downloaded_per_snapshot;
         let current_bps = downloaded_blocks as f32 / snapshot_duration.as_secs_f32();
         let current_eta = self.missing_blocks() as f32 / current_bps;
+        let current_header_bps = self.headers_per_snapshot as f32 / snapshot_duration.as_secs_f32();
 
         self.downloaded_per_snapshot = 0;
+        self.headers_per_snapshot = 0;
         self.last_snapshot = snapshot_end;
 
         IncomingTransferMetrics::new(
@@ -73,6 +95,9 @@ impl BootstrapMonitor {
             self.downloaded_blocks,
             current_bps,
             self.average_download_rate(),
+            self.downloaded_headers,
+            current_header_bps,
+            self.average_header_download_rate(),
         )
     }
 }

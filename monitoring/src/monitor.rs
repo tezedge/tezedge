@@ -225,6 +225,7 @@ impl Receive<ShellChannelMsg> for Monitor {
 
                 // Start tracking it in the blocks monitor
                 self.blocks_monitor.accept_block();
+                self.bootstrap_monitor.increase_headers_count();
             }
             ShellChannelMsg::BlockApplied(_msg) => {
                 self.blocks_monitor.block_was_applied_by_protocol();
