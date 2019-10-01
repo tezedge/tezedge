@@ -456,7 +456,7 @@ impl Receive<CheckChainCompleteness> for ChainManager {
                     msg: ChainCompleted.into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 }, Some(ctx.myself().into()));
-            } else {
+            } else if self.current_head.local == self.current_head.remote {
                 self.request_current_head();
             }
             Err(e) => warn!("Failed to check chain completeness: {:?}", e),
