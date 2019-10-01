@@ -233,6 +233,7 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.bootstrap_monitor.increase_block_count();
                 self.blocks_monitor.block_finished_downloading_operations();
             }
+            ShellChannelMsg::ChainCompleted(_msg) => (),
         }
     }
 }

@@ -21,7 +21,7 @@ use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events};
 use crate::block_state::{BlockState, MissingBlock};
 use crate::operations_state::{MissingOperations, OperationsState};
-use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ChainCompleted, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
@@ -84,10 +84,10 @@ impl ChainManager {
         }
     }
 
-    fn check_chain_completeness(&mut self) -> Result<(), Error> {
+    fn check_chain_completeness(&mut self) -> Result<bool, Error> {
         let ChainManager { peers, block_state, operations_state, .. } = self;
 
-        if block_state.has_missing_blocks() {
+        let blocks_complete = if block_state.has_missing_blocks() {
             peers.values_mut()
                 .sorted_by_key(|peer| peer.available_block_queue_capacity()).rev()
                 .for_each(|peer| {
@@ -104,10 +104,14 @@ impl ChainManager {
                             tell_peer(msg.into(), peer);
                         }
                     }
-                })
-        }
+                });
 
-        if operations_state.has_missing_operations() {
+            false
+        } else {
+            peers.values().all(|peer| peer.queued_block_headers.is_empty())
+        };
+
+        let operations_complete = if operations_state.has_missing_operations() {
             peers.values_mut()
                 .sorted_by_key(|peer| peer.available_operations_queue_capacity()).rev()
                 .for_each(|peer| {
@@ -123,10 +127,14 @@ impl ChainManager {
                                 });
                         }
                     }
-                })
-        }
+                });
 
-        Ok(())
+            false
+        } else {
+            peers.values().all(|peer| peer.queued_operations.is_empty())
+        };
+
+        Ok(blocks_complete && operations_complete)
     }
 
     fn process_network_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: NetworkChannelMsg) -> Result<(), Error> {
@@ -396,9 +404,14 @@ impl Receive<SystemEvent> for ChainManager {
 impl Receive<CheckChainCompleteness> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
         match self.check_chain_completeness() {
-            Ok(_) => (),
+            Ok(is_complete) => if is_complete {
+                self.shell_channel.tell(Publish {
+                    msg: ChainCompleted.into(),
+                    topic: ShellChannelTopic::ShellEvents.into(),
+                }, Some(ctx.myself().into()));
+            }
             Err(e) => warn!("Failed to check chain completeness: {:?}", e),
         }
     }
