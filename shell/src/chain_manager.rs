@@ -111,13 +111,24 @@ impl ChainManager {
                     if available_capacity > 0 {
                         let mut missing_blocks = block_state.drain_missing_blocks(available_capacity);
                         if !missing_blocks.is_empty() {
-                            debug!("Requesting {} block headers from peer {}", missing_blocks.len(), &peer.peer_ref);
-                            let msg = GetBlockHeadersMessage::new(missing_blocks.iter().cloned().map(|mb| mb.block_hash));
-                            peer.queued_block_headers.extend(
-                                missing_blocks.drain(..)
-                                    .map(|missing_block| (missing_block.block_hash.clone(), missing_block))
-                            );
-                            tell_peer(msg.into(), peer);
+
+                            let queued_blocks = missing_blocks.drain(..)
+                                .map(|missing_block| {
+                                    let missing_block_hash = missing_block.block_hash.clone();
+                                    if let None = peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block) {
+                                        // block was not already present in queue
+                                        Some(missing_block_hash)
+                                    } else {
+                                        // block was already in queue
+                                        None
+                                    }
+                                })
+                                .filter_map(|missing_block_hash| missing_block_hash)
+                                .collect::<Vec<_>>();
+
+                            if !queued_blocks.is_empty() {
+                                tell_peer(GetBlockHeadersMessage::new(queued_blocks).into(), peer);
+                            }
                         }
                     }
                 });
@@ -135,12 +146,22 @@ impl ChainManager {
                     if available_capacity > 0 {
                         let missing_operations = operations_state.drain_missing_operations(available_capacity);
                         if !missing_operations.is_empty() {
-                            debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
-                            missing_operations.iter()
-                                .for_each(|operations| {
-                                    peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
-                                    tell_peer(GetOperationsForBlocksMessage::new(operations.into()).into(), peer);
-                                });
+
+                            let queued_operations = missing_operations.iter()
+                                .map(|missing_operation| {
+                                    if let None = peer.queued_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()) {
+                                        // operations were not already present in queue
+                                        Some(missing_operation)
+                                    } else {
+                                        // operations were already in queue
+                                        None
+                                    }
+                                })
+                                .filter_map(|missing_operation| missing_operation)
+                                .collect::<Vec<_>>();
+
+                            queued_operations.iter()
+                                .for_each(|&missing_operation| tell_peer(GetOperationsForBlocksMessage::new(missing_operation.into()).into(), peer));
                         }
                     }
                 });
