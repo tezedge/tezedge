@@ -54,9 +54,9 @@ pub struct GetBlockHeadersMessage {
 }
 
 impl GetBlockHeadersMessage {
-    pub fn new<I: Iterator<Item=BlockHash>>(get_block_headers: I) -> Self {
+    pub fn new(get_block_headers: Vec<BlockHash>) -> Self {
         GetBlockHeadersMessage {
-            get_block_headers: get_block_headers.collect(),
+            get_block_headers,
             body: Default::default()
         }
     }

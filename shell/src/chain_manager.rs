@@ -26,13 +26,28 @@ use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ChainCompl
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
 const OPERATIONS_BATCH_SIZE: usize = 10;
 const PEER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
-const PEER_SILENCE_TIMEOUT: Duration = Duration::from_secs(60);
+const PEER_SILENCE_TIMEOUT: Duration = Duration::from_secs(120);
+const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(45);
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
 
 #[derive(Clone, Debug)]
 pub struct DisconnectSilentPeers;
+
+
+/// This struct holds info about local and remote "current" head
+#[derive(Clone, Debug)]
+struct CurrentHead {
+    /// Represents local current head. Value here is teh same as the
+    /// hast of the lst applied block.
+    local: BlockHash,
+    /// Remote / network remote current head. This represents info about
+    /// the current branch with the highest level received from network.
+    remote: BlockHash,
+    /// Level of the remote current head.
+    remote_level: i32,
+}
 
 #[actor(CheckChainCompleteness, DisconnectSilentPeers, NetworkChannelMsg, ShellChannelMsg, SystemEvent)]
 pub struct ChainManager {
@@ -50,18 +65,18 @@ pub struct ChainManager {
     block_state: BlockState,
     /// Holds state of the operations
     operations_state: OperationsState,
-
-    // current head
-    current_head_hash: Option<BlockHash>
+    /// Current head information
+    current_head: CurrentHead
 }
 
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
 
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_storage_init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (network_channel, shell_channel, rocks_db, tezos_storage_init_info.chain_id.clone())),
+            Props::new_args(ChainManager::new, (network_channel, shell_channel, rocks_db, init_info.chain_id.clone(),
+                                                CurrentHead { local: init_info.current_block_header_hash.clone(), remote: init_info.genesis_block_header_hash.clone(), remote_level: 0 })),
             ChainManager::name())
     }
 
@@ -71,7 +86,8 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((network_channel, shell_channel, rocks_db, chain_id): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId)) -> Self {
+    fn new((network_channel, shell_channel, rocks_db, chain_id, current_head): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId, CurrentHead)) -> Self {
+        assert!(PEER_SILENCE_TIMEOUT > CHECK_CHAIN_COMPLETENESS_INTERVAL * 2, "Peer silence timeout must be at least twice as long as the check chain completeness interval");
         ChainManager {
             network_channel,
             shell_channel,
@@ -80,7 +96,7 @@ impl ChainManager {
             block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &chain_id),
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
             peers: HashMap::new(),
-            current_head_hash: None
+            current_head,
         }
     }
 
@@ -95,13 +111,24 @@ impl ChainManager {
                     if available_capacity > 0 {
                         let mut missing_blocks = block_state.drain_missing_blocks(available_capacity);
                         if !missing_blocks.is_empty() {
-                            debug!("Requesting {} block headers from peer {}", missing_blocks.len(), &peer.peer_ref);
-                            let msg = GetBlockHeadersMessage::new(missing_blocks.iter().cloned().map(|mb| mb.block_hash));
-                            peer.queued_block_headers.extend(
-                                missing_blocks.drain(..)
-                                    .map(|missing_block| (missing_block.block_hash.clone(), missing_block))
-                            );
-                            tell_peer(msg.into(), peer);
+
+                            let queued_blocks = missing_blocks.drain(..)
+                                .map(|missing_block| {
+                                    let missing_block_hash = missing_block.block_hash.clone();
+                                    if let None = peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block) {
+                                        // block was not already present in queue
+                                        Some(missing_block_hash)
+                                    } else {
+                                        // block was already in queue
+                                        None
+                                    }
+                                })
+                                .filter_map(|missing_block_hash| missing_block_hash)
+                                .collect::<Vec<_>>();
+
+                            if !queued_blocks.is_empty() {
+                                tell_peer(GetBlockHeadersMessage::new(queued_blocks).into(), peer);
+                            }
                         }
                     }
                 });
@@ -119,12 +146,22 @@ impl ChainManager {
                     if available_capacity > 0 {
                         let missing_operations = operations_state.drain_missing_operations(available_capacity);
                         if !missing_operations.is_empty() {
-                            debug!("Requesting {} operations from peer {}", missing_operations.iter().map(|op| op.validation_passes.len()).sum::<usize>(), &peer.peer_ref);
-                            missing_operations.iter()
-                                .for_each(|operations| {
-                                    peer.queued_operations.insert(operations.block_hash.clone(), operations.clone());
-                                    tell_peer(GetOperationsForBlocksMessage::new(operations.into()).into(), peer);
-                                });
+
+                            let queued_operations = missing_operations.iter()
+                                .map(|missing_operation| {
+                                    if let None = peer.queued_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()) {
+                                        // operations were not already present in queue
+                                        Some(missing_operation)
+                                    } else {
+                                        // operations were already in queue
+                                        None
+                                    }
+                                })
+                                .filter_map(|missing_operation| missing_operation)
+                                .collect::<Vec<_>>();
+
+                            queued_operations.iter()
+                                .for_each(|&missing_operation| tell_peer(GetOperationsForBlocksMessage::new(missing_operation.into()).into(), peer));
                         }
                     }
                 });
@@ -135,6 +172,12 @@ impl ChainManager {
         };
 
         Ok(blocks_complete && operations_complete)
+    }
+
+    fn request_current_head(&mut self) {
+        let ChainManager { peers, block_state, .. } = self;
+        peers.iter_mut()
+            .for_each(|(_, peer)| tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), peer))
     }
 
     fn process_network_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: NetworkChannelMsg) -> Result<(), Error> {
@@ -172,8 +215,15 @@ impl ChainManager {
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;
 
-                                    // notify others that new block was received
                                     let current_head = &message.current_branch.current_head;
+
+                                    // if needed, update remote current head
+                                    if message.current_branch.current_head.level > self.current_head.remote_level {
+                                        self.current_head.remote_level = message.current_branch.current_head.level;
+                                        self.current_head.remote = message.current_branch.current_head.message_hash()?;
+                                    }
+
+                                    // notify others that new block was received
                                     shell_channel.tell(
                                         Publish {
                                             msg: BlockReceived {
@@ -189,11 +239,9 @@ impl ChainManager {
                                 PeerMessage::GetCurrentBranch(message) => {
                                     debug!("Current branch requested by peer: {}", &received.peer);
                                     if block_state.get_chain_id() == &message.chain_id {
-                                        if let Some(current_head_hash) = &self.current_head_hash {
-                                            if let Some(current_head) = block_storage.get(current_head_hash)? {
-                                                let msg = CurrentBranchMessage::new(block_state.get_chain_id(), &current_head.header);
-                                                tell_peer(msg.into(), peer);
-                                            }
+                                        if let Some(current_head) = block_storage.get(&self.current_head.local)? {
+                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id(), &current_head.header);
+                                            tell_peer(msg.into(), peer);
                                         }
                                     }
                                 }
@@ -238,11 +286,9 @@ impl ChainManager {
                                 PeerMessage::GetCurrentHead(message) => {
                                     debug!("Current head requested by peer: {}", &received.peer);
                                     if block_state.get_chain_id() == &message.chain_id {
-                                        if let Some(current_head_hash) = &self.current_head_hash {
-                                            if let Some(current_head) = block_storage.get(current_head_hash)? {
-                                                let msg = CurrentHeadMessage::new(block_state.get_chain_id(), &current_head.header);
-                                                tell_peer(msg.into(), peer);
-                                            }
+                                        if let Some(current_head) = block_storage.get(&self.current_head.local)? {
+                                            let msg = CurrentHeadMessage::new(block_state.get_chain_id(), &current_head.header);
+                                            tell_peer(msg.into(), peer);
                                         }
                                     }
                                 }
@@ -321,10 +367,9 @@ impl ChainManager {
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
 
-
-                let request_silence = Instant::now() - peer_state.request_last;
+                let request_silence = Instant::now() - peer_state.response_last;
                 if request_silence > PEER_SILENCE_TIMEOUT {
-                    info!("Disconnecting unused peer {:?}.", &peer_state.peer_ref);
+                    info!("Disconnecting silent peer {:?}.", &peer_state.peer_ref);
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
             });
@@ -333,7 +378,7 @@ impl ChainManager {
     fn process_shell_channel_message(&mut self, _ctx: &Context<ChainManagerMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
             ShellChannelMsg::BlockApplied(message) => {
-                self.current_head_hash = Some(message.hash);
+                self.current_head.local = message.hash;
             }
             _ => ()
         }
@@ -357,8 +402,8 @@ impl Actor for ChainManager {
         info!("Hydrating completed successfully");
 
         ctx.schedule::<Self::Msg, _>(
-            Duration::from_secs(15),
-            Duration::from_secs(60),
+            CHECK_CHAIN_COMPLETENESS_INTERVAL / 4,
+            CHECK_CHAIN_COMPLETENESS_INTERVAL.clone(),
             ctx.myself(),
             None,
             CheckChainCompleteness.into());
@@ -411,6 +456,8 @@ impl Receive<CheckChainCompleteness> for ChainManager {
                     msg: ChainCompleted.into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 }, Some(ctx.myself().into()));
+            } else if self.current_head.local == self.current_head.remote {
+                self.request_current_head();
             }
             Err(e) => warn!("Failed to check chain completeness: {:?}", e),
         }
