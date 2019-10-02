@@ -1,9 +1,13 @@
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use colored::*;
+use hex_literal::hex;
+use os_type::{current_platform, OSType};
+use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
 const GIT_COMMIT_HASH: &str = "6cdd4ff984f0c7bed07f6ba19c257aba2b89da48";
@@ -12,7 +16,37 @@ const GIT_REPO_DIR: &str = "lib_tezos/src";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 const OPAM_CMD: &str = "opam";
 
-const REMOTE_LIB_URL: &str = "https://gitlab.com/simplestaking/tezos/uploads/f5b3bbbc4f7ff2cd111a304c8b8245c3/libtezos-ffi.so";
+struct RemoteLib {
+    url: &'static str,
+    sha256: [u8; 32],
+}
+
+fn get_remote_lib() -> RemoteLib {
+    let platform = current_platform();
+    let url = match platform.os_type {
+        OSType::Ubuntu => match platform.version.as_str() {
+            "16.04" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/a305eb0509f52cfa956611b18faa64c8/libtezos-ffi-ubuntu16.so", sha256: hex!("1BF2C459144E9C1EFC68D6B0A63AB74788C01CBB3E8CBB1A933905EFA8050096") }),
+            "18.04" | "18:10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/c26fb6584dd7d78e658d06d793a2618e/libtezos-ffi-ubuntu18.so", sha256: hex!("1945BDD37D73C2CDD4397C171170F6188B0D5FA7E83C70C8944352CDBCEE7D72")}),
+            "19.04" | "19.10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/4ff3913ffe802db4f4b964a1a9278ed1/libtezos-ffi-ubuntu19.so", sha256: hex!("E9A5AD64283A54E513BF99E9DF0BAA1C6CEF06DCB6749EE508A4E0CF689AC6A8")}),
+            _ => None,
+        }
+        OSType::Debian => match platform.version.as_str() {
+            "9" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/93572f259e43cdd53878ad1a4bc1a9f2/libtezos-ffi-debian9.so", sha256: hex!("2579B3E0A69BEEE1125148C88B75C568C78E1CC469DF9495B767AE2DDE8E430A")}),
+            "10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/94761c5e01d57e29daefaa902a5cb1db/libtezos-ffi-debian10.so", sha256: hex!("98BA0292490D7FCB97FF6D5759B450C47CBBB0AF0C26F9008B78584A685C05F9")}),
+            _ => None
+        }
+        _ => None,
+    };
+
+    match url {
+        Some(url) => url,
+        None => {
+            println!("cargo:warning=No precompiled library found for '{:?}'.", platform);
+            println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+            panic!("No precompiled library");
+        }
+    }
+}
 
 fn run_builder(build_chain: &str) {
 
@@ -29,10 +63,21 @@ fn run_builder(build_chain: &str) {
         }
         "remote" => {
             // $ curl <remote_url> --output lib_tezos/artifacts/libtezos.o
+            let libtezos_path = Path::new("lib_tezos").join("artifacts").join("libtezos.o");
+            let remote_lib = get_remote_lib();
             Command::new("curl")
-                .args(&[REMOTE_LIB_URL, "--output", Path::new("lib_tezos").join("artifacts").join("libtezos.o").as_os_str().to_str().unwrap()])
+                .args(&[remote_lib.url, "--output", libtezos_path.as_os_str().to_str().unwrap()])
                 .status()
                 .expect("Couldn't retrieve compiled tezos binary.");
+
+            // check sha256 hash
+            {
+                let mut file = File::open(&libtezos_path).expect("Failed to read contents of libtezos.o");
+                let mut sha256 = Sha256::new();
+                std::io::copy(&mut file, &mut sha256).expect("Failed to read contents of libtezos.o");
+                let hash = sha256.result();
+                assert_eq!(hash[..], remote_lib.sha256, "libtezos.o SHA256 mismatch");
+            }
 
             // $ pushd lib_tezos/artifacts && ar qs libtezos.a libtezos.o && popd
             Command::new("ar")
@@ -41,7 +86,10 @@ fn run_builder(build_chain: &str) {
                 .status()
                 .expect("Couldn't run ar.");
         }
-        _ => unimplemented!("cargo:warning=Invalid OCaml build chain '{}' .", build_chain)
+        _ => {
+            println!("cargo:warning=Invalid OCaml build chain '{}'.", build_chain);
+            unimplemented!("Invalid OCaml build chain");
+        }
     };
 }
 
