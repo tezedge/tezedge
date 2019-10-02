@@ -97,7 +97,9 @@ fn main() {
         });
 
     // setup tezos ocaml runtime
-    client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: configuration::ENV.ocaml_log_enabled });
+    if let Err(e) = client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: configuration::ENV.ocaml_log_enabled }) {
+        shutdown_and_exit!(error!("Failed to change ocaml runtime configuration: '{:?}'", e), actor_system);
+    }
     let identity = match configuration::tezos_node::load_identity(identity_json_file_path) {
         Ok(identity) => identity,
         Err(e) => shutdown_and_exit!(error!("Failed to load identity. Reason: {:?}", e), actor_system),
