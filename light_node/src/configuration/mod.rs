@@ -32,6 +32,7 @@ pub struct Environment {
     pub bootstrap_db_path: PathBuf,
     pub peer_threshold: Threshold,
     pub tezos_data_dir: PathBuf,
+    pub ocaml_log_enabled: bool,
     pub websocket_address: SocketAddr,
 }
 
@@ -98,6 +99,12 @@ impl Environment {
                 .takes_value(true)
                 .required(true)
                 .help("A directory for Tezos OCaml runtime storage (context/store)"))
+            .arg(Arg::with_name("ocaml-log-enabled")
+                .short("o")
+                .long("ocaml-log-enabled")
+                .takes_value(true)
+                .default_value("false")
+                .help("Flag for turn on/off logging in Tezos OCaml runtime. Default: false"))
             .arg(Arg::with_name("websocket-address")
                 .short("w")
                 .long("websocket-address")
@@ -140,6 +147,10 @@ impl Environment {
                 .unwrap()
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
+            ocaml_log_enabled: args.value_of("ocaml-log-enabled")
+                .unwrap()
+                .parse::<bool>()
+                .expect("Provided value cannot be converted to bool"),
             log_message_contents: args.value_of("log-message-contents")
                 .unwrap()
                 .parse::<bool>()

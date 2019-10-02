@@ -14,6 +14,3 @@ Valid values are:
 ##### Local OCaml development
 * `UPDATE_GIT` (default `true`) is used to skip git update of Tezos repository.
 * `TEZOS_BASE_DIR` (defalt `src`) is used to change location of Tezos repository on the file system for Makefile.
-
-### Running Ocaml runtime
-`OCAML_LOG_ENABLED` (default false) environment variable which turn on/off logging in Tezos OCaml runtime.

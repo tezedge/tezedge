@@ -1,12 +1,15 @@
 use tezos_interop::ffi;
-use tezos_interop::ffi::OcamlStorageInitInfo;
+use tezos_interop::ffi::{OcamlRuntimeConfiguration, OcamlStorageInitInfo};
 
 mod common;
 
 pub const CHAIN_ID: &str = "8eceda2f";
 
 #[test]
-fn test_init_storage() {
+fn test_init_storage_and_change_configuration() {
+    // change cfg
+    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: true }).unwrap().unwrap();
+
     // init empty storage for test
     let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash } = prepare_empty_storage("test_storage_01");
     assert!(!current_block_header_hash.is_empty());
@@ -16,6 +19,9 @@ fn test_init_storage() {
     // has current head (genesis)
     let current_head = ffi::get_current_block_header(chain_id.to_string()).unwrap().unwrap();
     assert!(!current_head.is_empty());
+
+    // change cfg
+    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: true }).unwrap().unwrap();
 
     // get header - genesis
     let block_header = ffi::get_block_header(genesis_block_header_hash).unwrap().unwrap();

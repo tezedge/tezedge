@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-use std::env;
 use std::error;
 use std::fmt;
 use std::future::Future;
@@ -20,37 +19,15 @@ use lazy_static::lazy_static;
 lazy_static! {
     /// Because ocaml runtime should be accessed only by a single thread
     /// we will create the `OCAML_ENV` singleton.
-    static ref OCAML_ENV: OcamlEnvironment = initialize_environment(OcamlRuntimeConfiguration::new());
-}
-
-/// Holds configuration for ocaml runtime - e.g. arguments which are passed to caml_startup
-struct OcamlRuntimeConfiguration {
-    log_enabled: bool
-}
-
-impl OcamlRuntimeConfiguration {
-    /// Creates configuration from
-    fn new() -> Self {
-        let log_enabled:bool = env::var("OCAML_LOG_ENABLED")
-            .unwrap_or("false".to_string())
-            .parse()
-            .expect("Invalid value specified for OCAML_LOG_ENABLED");
-        OcamlRuntimeConfiguration {
-            log_enabled
-        }
-    }
+    static ref OCAML_ENV: OcamlEnvironment = initialize_environment();
 }
 
 /// This function will start ocaml runtime.
 /// Ocaml runtime should always be called from a single thread.
-fn start_ocaml_runtime(ocaml_cfg: &OcamlRuntimeConfiguration) {
+fn start_ocaml_runtime() {
     unsafe {
-        let mut data_dir = format!("--log-enabled {}", ocaml_cfg.log_enabled);
-
-        let argv: *mut *mut u8 = [
-            data_dir.as_mut_str().as_mut_ptr(),
-            ptr::null_mut()
-        ].as_mut_ptr();
+        let mut ptr = ptr::null_mut();
+        let argv: *mut *mut u8 = &mut ptr;
 
         caml_startup(argv);
     }
@@ -59,7 +36,7 @@ fn start_ocaml_runtime(ocaml_cfg: &OcamlRuntimeConfiguration) {
 /// Ocaml execution error
 pub struct OcamlError;
 
-impl error::Error for OcamlError { }
+impl error::Error for OcamlError {}
 
 impl fmt::Display for OcamlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
@@ -192,12 +169,12 @@ struct OcamlEnvironment {
 }
 
 /// Create the environment and initialize ocaml runtime.
-fn initialize_environment(ocaml_cfg: OcamlRuntimeConfiguration) -> OcamlEnvironment {
+fn initialize_environment() -> OcamlEnvironment {
     let (task_tx, task_rx) = channel();
     let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
     let executor = OcamlThreadExecutor { ready_tasks: task_rx };
     thread::spawn(move || {
-        start_ocaml_runtime(&ocaml_cfg);
+        start_ocaml_runtime();
         executor.run()
     });
 

@@ -6,7 +6,7 @@ use std::process::Command;
 use colored::*;
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "88144f1fefbb64185f253ec0697a9f5571e814d5";
+const GIT_COMMIT_HASH: &str = "6cdd4ff984f0c7bed07f6ba19c257aba2b89da48";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
