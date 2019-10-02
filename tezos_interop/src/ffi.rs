@@ -4,6 +4,47 @@ use ocaml::{Array, Error, Str, Tag, Tuple, Value};
 use crate::runtime;
 use crate::runtime::OcamlError;
 
+/// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
+#[derive(Debug)]
+pub struct OcamlRuntimeConfiguration {
+    pub log_enabled: bool
+}
+
+#[derive(Debug, Fail)]
+pub enum OcamlRuntimeConfigurationError {
+    #[fail(display = "Change ocaml settings failed, message: {}!", message)]
+    ChangeConfigurationError {
+        message: String
+    }
+}
+
+impl From<ocaml::Error> for OcamlRuntimeConfigurationError {
+    fn from(error: ocaml::Error) -> Self {
+        match error {
+            Error::Exception(ffi_error) => {
+                OcamlRuntimeConfigurationError::ChangeConfigurationError {
+                    message: parse_error_message(ffi_error).unwrap_or("unknown".to_string())
+                }
+            },
+            _ => panic!("Ocaml settings failed! Reason: {:?}", error)
+        }
+    }
+}
+
+pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Result<Result<(), OcamlRuntimeConfigurationError>, OcamlError> {
+    runtime::execute(move || {
+        let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
+        match ocaml_function.call_exn::<Value>(Value::bool(settings.log_enabled)) {
+            Ok(_) => {
+                Ok(())
+            }
+            Err(e) => {
+                Err(OcamlRuntimeConfigurationError::from(e))
+            }
+        }
+    })
+}
+
 #[derive(Debug)]
 pub struct OcamlStorageInitInfo {
     pub chain_id: String,

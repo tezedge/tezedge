@@ -18,7 +18,7 @@ use shell::shell_channel::ShellChannel;
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
-use tezos_client::client::TezosStorageInitInfo;
+use tezos_client::client::{TezosRuntimeConfiguration, TezosStorageInitInfo};
 
 use crate::configuration::tezos_node::Identity;
 
@@ -56,7 +56,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         &configuration::ENV.initial_peers,
         configuration::ENV.peer_threshold)
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info,)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
         .expect("Failed to create chain manager");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info)
         .expect("Failed to create chain feeder");
@@ -96,6 +96,8 @@ fn main() {
             }
         });
 
+    // setup tezos ocaml runtime
+    client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: configuration::ENV.ocaml_log_enabled });
     let identity = match configuration::tezos_node::load_identity(identity_json_file_path) {
         Ok(identity) => identity,
         Err(e) => shutdown_and_exit!(error!("Failed to load identity. Reason: {:?}", e), actor_system),

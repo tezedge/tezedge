@@ -6,7 +6,21 @@ use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_interop::ffi;
-use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlStorageInitError, OcamlStorageInitInfo};
+use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo};
+
+pub type TezosRuntimeConfiguration = OcamlRuntimeConfiguration;
+
+pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), OcamlRuntimeConfigurationError> {
+    match ffi::change_runtime_configuration(settings) {
+        Ok(result) => Ok(result?),
+        Err(e) => {
+            error!("Change runtime configuration failed! Reason: {:?}", e);
+            Err(OcamlRuntimeConfigurationError::ChangeConfigurationError {
+                message: format!("FFI 'change_runtime_configuration' failed! Reason: {:?}", e)
+            })
+        }
+    }
+}
 
 /// Struct represent init information about Tezos OCaml storage
 pub struct TezosStorageInitInfo {
