@@ -18,7 +18,7 @@ The project can be considered as a proof of concept. This PoC demonstrates the v
 Requirements
 ------------
 
-**1. Install Rust** 
+**1. Install rustup command** 
 
 We recommend installing Rust through rustup.
 
@@ -28,27 +28,16 @@ Run the following in your terminal, then follow the onscreen instructions.
 curl https://sh.rustup.rs -sSf | sh
 ```
 
-**2. Rust version** 
+**2. Install rust toolchain** 
 
 Rust nightly is required to build this project.
 ```
 rustup install nightly-2019-08-25
 rustup default nightly-2019-08-25
 ```
-Application has been tested to compile with `rustc 1.39.0-nightly (e44fdf979 2019-08-21)`.
+Application has been tested to compile with `rustc 1.39.0-nightly (521d78407 2019-08-25)`.
 
-**3. Install OCaml**
-
-To build ocaml binaries used by our codebase you need to have opam installed.
-
-On linux systems first download and install opam:
-
-```
-wget https://github.com/ocaml/opam/releases/download/2.0.5/opam-2.0.5-x86_64-linux
-sudo cp opam-2.0.5-x86_64-linux /usr/local/bin/opam
-sudo chmod a+x /usr/local/bin/opam
-opam init
-```
+**3. Install required libs**
 
 Install libs required to build sodiumoxide package:
 ```
@@ -75,4 +64,4 @@ For more info on how to compile OCaml interop library please see [README](tezos_
 
 **5. Listening for updates**
 
-Node emits some statistics on the websocket server, which can be change with `-w` argument.
+Node emits statistics on the websocket server, which can be changed with `-w` argument.
