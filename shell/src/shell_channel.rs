@@ -24,17 +24,12 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
-/// All blocks and messages were received from peers
-#[derive(Clone, Debug)]
-pub struct ChainCompleted;
-
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
     BlockApplied(BlockApplied),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
-    ChainCompleted(ChainCompleted),
 }
 
 impl From<BlockApplied> for ShellChannelMsg {
@@ -52,12 +47,6 @@ impl From<BlockReceived> for ShellChannelMsg {
 impl From<AllBlockOperationsReceived> for ShellChannelMsg {
     fn from(msg: AllBlockOperationsReceived) -> Self {
         ShellChannelMsg::AllBlockOperationsReceived(msg)
-    }
-}
-
-impl From<ChainCompleted> for ShellChannelMsg {
-    fn from(msg: ChainCompleted) -> Self {
-        ShellChannelMsg::ChainCompleted(msg)
     }
 }
 
