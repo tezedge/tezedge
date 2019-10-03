@@ -39,6 +39,15 @@ fn get_remote_lib() -> RemoteLib {
             "15.1" | "15.2" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/2f64d1e9418596df8ac0f93eabeace97/libtezos-ffi-opensuse15.1.so", sha256: hex!("0674a49f92b81c6d8e944153276626ba272484969a59e44a7f6a2ce2c3f9e482")}),
             _ => None
         }
+        OSType::CentOS => match platform.version.chars().next().unwrap() {
+            '6' => {
+                println!("cargo:warning=CentOS 6.x is not supported by the OCaml Package Manager");
+                None
+            }
+            '7' => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/f141ab1b711f9f5c84c4646e48d7aebd/libtezos-ffi-centos7.so", sha256: hex!("de835e7bfe5127e2bd650d4e21a084db87dd60e141d26bb4bf5612cce1a287f6")}),
+            '8' => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/9d5048e82eaad705b2920c79d04898d3/libtezos-ffi-centos8.so", sha256: hex!("984eb34a52e04831be8e62508adabccd848864318173a908f97340b27150187b")}),
+            _ => None
+        }
         _ => None,
     };
 
