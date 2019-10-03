@@ -8,7 +8,7 @@ use log::{debug, error, info};
 use riker::actors::*;
 use tokio::runtime::Runtime;
 
-use monitoring::{Monitor, WebsocketHandler};
+use monitoring::{Monitor, WebsocketHandler, listener::NetworkListener};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
 use shell::chain_feeder::ChainFeeder;
@@ -64,6 +64,9 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel, rocks_db.clone())
         .expect("Failed to create monitor actor");
+    if let Some(ref file_path) = configuration::ENV.record_file {
+        let _ = NetworkListener::actor(&actor_system, file_path, network_channel.clone());
+    }
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;

@@ -34,6 +34,7 @@ pub struct Environment {
     pub tezos_data_dir: PathBuf,
     pub ocaml_log_enabled: bool,
     pub websocket_address: SocketAddr,
+    pub record_file: Option<String>,
 }
 
 impl Environment {
@@ -110,6 +111,12 @@ impl Environment {
                 .long("websocket-address")
                 .takes_value(true)
                 .default_value("0.0.0.0:4927"))
+            .arg(Arg::with_name("record_messages")
+                .short("R")
+                .long("record")
+                .value_name("FILE")
+                .help("EXPERIMENTAL: File to store network messages")
+            )
             .get_matches();
 
         Environment {
@@ -172,7 +179,8 @@ impl Environment {
             websocket_address: args.value_of("websocket-address")
                 .unwrap_or_default()
                 .parse()
-                .expect("Provided value cannot be converted into valid uri")
+                .expect("Provided value cannot be converted into valid uri"),
+            record_file: args.value_of("record_messages").map(|x| x.to_string()),
         }
     }
 }
