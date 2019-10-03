@@ -4,6 +4,8 @@ use networking::p2p::{
 };
 use riker::actor::ActorReference;
 use std::time::SystemTime;
+use std::borrow::Borrow;
+use networking::p2p::encoding::peer::PeerMessageResponse;
 
 #[derive(Serialize, Deserialize)]
 pub enum Record {
@@ -41,7 +43,8 @@ impl From<NetworkChannelMsg> for Record {
             NetworkChannelMsg::PeerMessageReceived(msg) => Record::PeerReceivedMessage {
                 ts,
                 peer_id: msg.peer.uri().name.to_string(),
-                content: Vec::new(),
+                content: serde_cbor::to_vec::<PeerMessageResponse>(msg.message.borrow())
+                    .expect("Failed to serialize message content"),
             }
         }
     }

@@ -17,7 +17,7 @@ impl NetworkListener {
 
     fn new((storage_path, network_channel): (&'static str, NetworkChannelRef)) -> Self {
         Self {
-            storage: File::open(storage_path).expect("Failed to open the file"),
+            storage: File::create(storage_path).expect("Failed to open the file"),
             network_channel,
         }
     }
@@ -42,7 +42,7 @@ impl Actor for NetworkListener {
 
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
         let record: Record = msg.into();
-        if let Ok(record) = bincode::serialize(&record) {
+        if let Ok(record) = serde_cbor::to_vec(&record) {
             if let Err(err) = self.storage.write_all(&record) {
                 warn!("Failed to store incoming message: {}", err);
             }
