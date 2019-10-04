@@ -25,5 +25,6 @@ addons:
       - libclang-dev
       - clang
       - libsodium-dev
+      - libev4
 
 cache: cargo
