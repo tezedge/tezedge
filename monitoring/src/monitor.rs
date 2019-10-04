@@ -82,8 +82,8 @@ impl Monitor {
         for message in &msg.message.messages {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
-                    if msg.current_branch.current_head.level() > 0 {
-                        self.bootstrap_monitor.level = msg.current_branch.current_head.level() as usize;
+                    if msg.current_branch().current_head.level() > 0 {
+                        self.bootstrap_monitor.level = msg.current_branch().current_head.level() as usize;
                     }
                 }
                 _ => (),

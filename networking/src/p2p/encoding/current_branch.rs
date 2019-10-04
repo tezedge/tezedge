@@ -3,31 +3,25 @@
 
 use std::sync::Arc;
 
+use derive_new::new;
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::block_header::BlockHeader;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, new)]
 pub struct CurrentBranchMessage {
-    pub chain_id: ChainId,
-    pub current_branch: CurrentBranch,
-
+    #[get = "pub"]
+    chain_id: ChainId,
+    #[get = "pub"]
+    current_branch: CurrentBranch,
+    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
-}
-
-impl CurrentBranchMessage {
-    pub fn new(chain_id: &ChainId, current_head: &BlockHeader) -> Self {
-        CurrentBranchMessage {
-            chain_id: chain_id.clone(),
-            current_branch: CurrentBranch::new(current_head),
-            body: Default::default(),
-        }
-    }
 }
 
 impl HasEncoding for CurrentBranchMessage {
