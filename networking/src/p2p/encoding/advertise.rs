@@ -1,12 +1,14 @@
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct AdvertiseMessage {
-    pub id: Vec<String>,
+    #[get = "pub"]
+    id: Vec<String>,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,

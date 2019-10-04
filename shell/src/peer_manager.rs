@@ -170,7 +170,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                     .for_each(|message| match message {
                         PeerMessage::Advertise(message) => {
                             info!("Received advertise message from peer: {}", &received.peer);
-                            let sock_addresses = message.id.iter()
+                            let sock_addresses = message.id().iter()
                                 .filter_map(|str_ip_port| str_ip_port.parse().ok())
                                 .collect::<Vec<SocketAddr>>();
                             self.potential_peers.extend(sock_addresses);
