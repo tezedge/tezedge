@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use derive_builder::Builder;
 use derive_new::new;
-use getset::{Getters, CopyGetters};
+use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
@@ -13,9 +13,10 @@ use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, Opera
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct BlockHeaderMessage {
-    pub block_header: BlockHeader,
+    #[get = "pub"]
+    block_header: BlockHeader,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,

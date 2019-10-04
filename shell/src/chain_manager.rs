@@ -236,7 +236,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
-                                    let block_header_with_hash = BlockHeaderWithHash::new(message.block_header.clone()).unwrap();
+                                    let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(missing_block) => {
                                             debug!("Received block header from peer: {}", &received.peer);
