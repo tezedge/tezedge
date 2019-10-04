@@ -197,7 +197,7 @@ impl ChainManager {
                     Some(peer) => {
                         peer.response_last = Instant::now();
 
-                        for message in &received.message.messages {
+                        for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);

@@ -7,9 +7,9 @@ use networking::p2p::binary_message::BinaryMessage;
 fn can_deserialize_bootstrap() -> Result<(), Error> {
     let message_bytes = hex::decode("000000020002")?;
     let messages = PeerMessageResponse::from_bytes(message_bytes).unwrap();
-    assert_eq!(1, messages.messages.len());
+    assert_eq!(1, messages.messages().len());
 
-    let message = messages.messages.get(0).unwrap();
+    let message = messages.messages().get(0).unwrap();
     match message {
         PeerMessage::Bootstrap => Ok(()),
         _ => panic!("Unsupported encoding: {:?}", message)

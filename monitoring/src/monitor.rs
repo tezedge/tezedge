@@ -79,7 +79,7 @@ impl Monitor {
 
         // TODO: Add real message processing
 
-        for message in &msg.message.messages {
+        for message in msg.message.messages() {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
                     if msg.current_branch().current_head().level() > 0 {

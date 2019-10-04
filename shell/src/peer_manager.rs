@@ -165,7 +165,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 self.peers.insert(msg.peer.uri().clone(), msg.peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
-                let messages = &received.message.messages;
+                let messages = received.message.messages();
                 messages.iter()
                     .for_each(|message| match message {
                         PeerMessage::Advertise(message) => {
