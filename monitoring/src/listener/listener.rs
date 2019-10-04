@@ -3,12 +3,13 @@ use riker::actor::*;
 use crate::listener::records::{RecordStorage, RecordMetaStorage, RecordMeta, RecordType};
 use std::sync::Arc;
 use rocksdb::DB;
-use std::time::SystemTime;
+use std::time::Instant;
 use networking::p2p::binary_message::BinaryMessage;
 
 type NetworkListenerRef = ActorRef<NetworkChannelMsg>;
 
 pub struct NetworkListener {
+    start: Instant,
     record_storage: RecordStorage,
     record_meta_storage: RecordMetaStorage,
     network_channel: NetworkChannelRef,
@@ -19,6 +20,7 @@ impl NetworkListener {
 
     fn new((rocks_db, network_channel): (Arc<DB>, NetworkChannelRef)) -> Self {
         Self {
+            start: Instant::now(),
             record_storage: RecordStorage::new(rocks_db.clone()),
             record_meta_storage: RecordMetaStorage::new(rocks_db),
             network_channel,
@@ -44,7 +46,9 @@ impl Actor for NetworkListener {
     }
 
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
-        let ts = SystemTime::UNIX_EPOCH.elapsed().expect("Failed to read system time").as_secs_f32();
+        use log::*;
+        let ts = self.start.elapsed().as_secs_f32();
+
         let (record_type, peer_id, record) = match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
                 (RecordType::PeerCreated, msg.peer.name().to_string(), Vec::new())
@@ -56,10 +60,14 @@ impl Actor for NetworkListener {
                 (RecordType::PeerReceivedMessage, msg.peer.name().to_string(), msg.message.as_bytes().unwrap_or_default())
             }
         };
-        self.record_meta_storage.put_record_meta(ts, &RecordMeta {
+        if let Err(err) = self.record_meta_storage.put_record_meta(ts, &RecordMeta {
             record_type,
             peer_id,
-        });
-        self.record_storage.put_record(ts, &record);
+        }) {
+            warn!("Failed to store meta for record: {}", err);
+        }
+        if let Err(err) = self.record_storage.put_record(ts, &record) {
+            warn!("Failed to store record {}", err);
+        }
     }
 }

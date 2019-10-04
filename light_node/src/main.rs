@@ -8,7 +8,10 @@ use log::{debug, error, info};
 use riker::actors::*;
 use tokio::runtime::Runtime;
 
-use monitoring::{Monitor, WebsocketHandler, listener::NetworkListener};
+use monitoring::{Monitor, WebsocketHandler, listener::{
+    NetworkListener,
+    RecordStorage, RecordMetaStorage,
+}};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
 use shell::chain_feeder::ChainFeeder;
@@ -65,6 +68,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel, rocks_db.clone())
         .expect("Failed to create monitor actor");
     if configuration::ENV.record {
+        info!("Running in record mode");
         let _ = NetworkListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
     }
 
@@ -126,6 +130,8 @@ fn main() {
         BlockMetaStorage::cf_descriptor(),
         OperationsStorage::cf_descriptor(),
         OperationsMetaStorage::cf_descriptor(),
+        RecordStorage::cf_descriptor(),
+        RecordMetaStorage::cf_descriptor(),
     ];
     let rocks_db = match open_db(&configuration::ENV.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
