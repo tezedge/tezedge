@@ -18,7 +18,7 @@ addons:
   apt:
     sources:
       - ubuntu-toolchain-r-test
-      - llvm-toolchain-xenial
+      - llvm-toolchain-trusty
     packages:
       - g++
       - llvm-dev
