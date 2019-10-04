@@ -308,7 +308,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 
     // receive metadata
     let metadata_received = msg_rx.read_message::<MetadataMessage>().await?;
-    debug!("Received remote peer metadata - disable_mempool: {}, private_node: {}", metadata_received.disable_mempool, metadata_received.private_node);
+    debug!("Received remote peer metadata - disable_mempool: {}, private_node: {}", metadata_received.disable_mempool(), metadata_received.private_node());
 
     // send ack
     msg_tx.write_message(&AckMessage::Ack).await?;
