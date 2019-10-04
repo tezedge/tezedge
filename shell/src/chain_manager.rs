@@ -266,7 +266,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetBlockHeaders(message) => {
-                                    for block_hash in &message.get_block_headers {
+                                    for block_hash in message.get_block_headers() {
                                         if let Some(block) = block_storage.get(block_hash)? {
                                             let msg: BlockHeaderMessage = (*block.header).clone().into();
                                             tell_peer(msg.into(), peer);

@@ -25,8 +25,8 @@ fn can_deserialize_get_block_headers() -> Result<(), Error> {
     let message = messages.messages.get(0).unwrap();
     match message {
         PeerMessage::GetBlockHeaders(message) => {
-            assert_eq!(1, message.get_block_headers.len());
-            Ok(assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashEncoding::new(HashType::BlockHash).bytes_to_string(&message.get_block_headers[0])))
+            assert_eq!(1, message.get_block_headers().len());
+            Ok(assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashEncoding::new(HashType::BlockHash).bytes_to_string(message.get_block_headers().get(0).unwrap())))
         }
         _ => panic!("Unsupported encoding: {:?}", message)
     }
