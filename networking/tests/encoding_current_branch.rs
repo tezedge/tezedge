@@ -41,7 +41,7 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
         PeerMessage::CurrentBranch(current_branch_message) => {
             assert_eq!(&hex::decode("8eceda2f")?, current_branch_message.chain_id());
 
-            let current_head = &current_branch_message.current_branch().current_head;
+            let current_head = current_branch_message.current_branch().current_head();
             assert_eq!(198_392, current_head.level());
             assert_eq!(4, current_head.validation_pass());
 
@@ -62,7 +62,7 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
             let expected_protocol_data = hex::decode("0000000000031b4f9aff00c6d9a5d1fbf5eda49a01e52017dc78ca1d7a45f3f4fe32840052f9845a61ccdd6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a")?;
             assert_eq!(&expected_protocol_data, current_head.protocol_data());
 
-            assert_eq!(141, current_branch_message.current_branch().history.len());
+            assert_eq!(141, current_branch_message.current_branch().history().len());
 
             let bytes = current_branch_message.as_bytes()?;
             // without length: 00001278 and without tag 0011

@@ -201,16 +201,16 @@ impl ChainManager {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!("Received current branch from peer: {}", &received.peer);
-                                    message.current_branch().history.iter().cloned().rev()
+                                    message.current_branch().history().iter().cloned().rev()
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;
 
-                                    let current_head = &message.current_branch().current_head;
+                                    let current_head = message.current_branch().current_head();
 
                                     // if needed, update remote current head
-                                    if message.current_branch().current_head.level() > self.current_head.remote_level {
-                                        self.current_head.remote_level = message.current_branch().current_head.level();
-                                        self.current_head.remote = message.current_branch().current_head.message_hash()?;
+                                    if message.current_branch().current_head().level() > self.current_head.remote_level {
+                                        self.current_head.remote_level = message.current_branch().current_head().level();
+                                        self.current_head.remote = message.current_branch().current_head().message_hash()?;
                                     }
 
                                     // notify others that new block was received
@@ -230,7 +230,7 @@ impl ChainManager {
                                     debug!("Current branch requested by peer: {}", &received.peer);
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new(&current_head.header));
+                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone()));
                                             tell_peer(msg.into(), peer);
                                         }
                                     }

@@ -46,23 +46,16 @@ impl CachedData for CurrentBranchMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, new)]
 pub struct CurrentBranch {
-    pub current_head: BlockHeader,
-    pub history: Vec<BlockHash>,
-
+    #[get = "pub"]
+    current_head: BlockHeader,
+    #[get = "pub"]
+    #[new(default)]
+    history: Vec<BlockHash>,
+    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
-}
-
-impl CurrentBranch {
-    pub fn new(current_head: &BlockHeader) -> Self {
-        CurrentBranch {
-            current_head: current_head.clone(),
-            history: vec![], // TODO: return some random blocks hashes,
-            body: Default::default(),
-        }
-    }
 }
 
 impl HasEncoding for CurrentBranch {
