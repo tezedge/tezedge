@@ -1,23 +1,18 @@
+use derive_new::new;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, new)]
 pub struct Version {
     name: String,
     major: u16,
     minor: u16,
-
+    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
-}
-
-impl Version {
-    pub fn new(name: String, major: u16, minor: u16,) -> Self {
-        Version { name, major, minor, body: Default::default() }
-    }
 }
 
 impl HasEncoding for Version {
