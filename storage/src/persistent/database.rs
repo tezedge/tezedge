@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use failure::Fail;
-use rocksdb::{DB, DBIterator, Error, WriteOptions};
+use rocksdb::{DB, DBIterator, Error, WriteOptions, DBRawIterator};
 
 use crate::persistent::schema::{Codec, Schema, SchemaError};
 
@@ -48,6 +48,8 @@ pub trait DatabaseWithSchema<S: Schema> {
     fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError>;
 
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError>;
+
+    fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
 }
 
 impl<S: Schema> DatabaseWithSchema<S> for DB {
@@ -103,6 +105,25 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
 
         Ok(IteratorWithSchema(self.prefix_iterator_cf(cf, key)?, PhantomData))
     }
+
+    fn contains(&self, key: &S::Key) -> Result<bool, DBError> {
+        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
+            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+
+        let key = key.encode()?;
+        let iter = self.iterator_cf(cf, rocksdb::IteratorMode::From(&key, rocksdb::Direction::Forward))?;
+        let contains = if iter.valid() {
+            let iter: DBRawIterator = iter.into();
+            match iter.key() {
+                Some(key_from_db) => key_from_db == key,
+                None => false
+            }
+        } else {
+            false
+        };
+
+        Ok(contains)
+    }
 }
 
 fn default_write_options() -> WriteOptions {
@@ -117,6 +138,7 @@ impl<'a, S: Schema> Iterator for IteratorWithSchema<'a, S>
 {
     type Item = (Result<S::Key, SchemaError>, Result<S::Value, SchemaError>);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
             .map(|(k, v)| (S::Key::decode(&k), S::Value::decode(&v)))

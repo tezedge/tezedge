@@ -50,9 +50,8 @@ impl BlockStorageReader for BlockStorage {
 
     #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.get(block_hash)
+        self.db.contains(block_hash)
             .map_err(StorageError::from)
-            .map(|v| v.is_some())
     }
 }
 
