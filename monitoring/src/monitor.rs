@@ -16,6 +16,7 @@ use crate::{
 use crate::handlers::handler_messages::HandlerMessage;
 use rocksdb::DB;
 use log::*;
+use networking::p2p::binary_message::BinaryMessage;
 
 
 #[derive(Clone, Debug)]
@@ -77,8 +78,6 @@ impl Monitor {
         use std::mem::size_of_val;
         use networking::p2p::encoding::peer::PeerMessage;
 
-        // TODO: Add real message processing
-
         for message in msg.message.messages() {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
@@ -92,7 +91,12 @@ impl Monitor {
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
             if monitor.public_key.is_some() {
-                monitor.incoming_bytes(size_of_val(&msg.message));
+                let size = if let Ok(msg) = msg.message.as_bytes() {
+                    msg.len()
+                } else {
+                    size_of_val(&msg.message)
+                };
+                monitor.incoming_bytes(size);
             }
         } else {
             warn!("Missing monitor for peer: {}", msg.peer.name());
