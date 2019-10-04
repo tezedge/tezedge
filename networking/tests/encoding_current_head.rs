@@ -30,10 +30,10 @@ fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
             assert_eq!(&expected_protocol_data, block_header.protocol_data());
 
             let mempool = current_head_message.current_mempool();
-            assert_eq!(1, mempool.known_valid.len());
+            assert_eq!(1, mempool.known_valid().len());
             let expected_known_valid = hex::decode("c533d1d8a515b35fac67eb9926a6c983397208511ce69808d57177415654bf09")?;
-            assert_eq!(&expected_known_valid, mempool.known_valid.get(0).unwrap());
-            Ok(assert_eq!(0, mempool.pending.len()))
+            assert_eq!(&expected_known_valid, mempool.known_valid().get(0).unwrap());
+            Ok(assert_eq!(0, mempool.pending().len()))
         }
         _ => panic!("Unsupported encoding: {:?}", message)
     }
@@ -58,12 +58,12 @@ fn can_deserialize_get_current_head_message_pending() -> Result<(), Error> {
             assert_eq!(&expected_protocol_data, block_header.protocol_data());
 
             let mempool = current_head_message.current_mempool();
-            assert_eq!(0, mempool.known_valid.len());
-            assert_eq!(2, mempool.pending.len());
+            assert_eq!(0, mempool.known_valid().len());
+            assert_eq!(2, mempool.pending().len());
             let expected_pending = hex::decode("3cebec53e6ff9207dd669c3777cec4e74feadcd5f0131c819d261cdb0d9b5d94")?;
-            assert_eq!(&expected_pending, mempool.pending.get(0).unwrap());
+            assert_eq!(&expected_pending, mempool.pending().get(0).unwrap());
             let expected_pending = hex::decode("70669010ec4053d96d750daefbcdc1f51ed79f9e29fb16931515eccb84cb6a55")?;
-            Ok(assert_eq!(&expected_pending, mempool.pending.get(1).unwrap()))
+            Ok(assert_eq!(&expected_pending, mempool.pending().get(1).unwrap()))
         }
         _ => panic!("Unsupported encoding: {:?}", message)
     }

@@ -21,7 +21,7 @@ fn ocaml_fn_echo(arg: String) -> OcamlResult<String> {
 fn bench_ocaml_echo(b: &mut Bencher) {
     // Run one dummy task so ocaml runtime is started. We do not want to measure
     // runtime startup time but only a time of a method call.
-    futures::executor::block_on(ocaml_fn_echo("__dummy__".into()));
+    futures::executor::block_on(ocaml_fn_echo("__dummy__".into())).unwrap();
 
     b.iter(|| futures::executor::block_on(ocaml_fn_echo("Hello world!".into())));
 }
