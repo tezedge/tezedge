@@ -20,16 +20,16 @@ fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
 
     match message {
         PeerMessage::CurrentHead(current_head_message) => {
-            assert_eq!(hex::decode("8eceda2f")?, current_head_message.chain_id);
+            assert_eq!(&hex::decode("8eceda2f")?, current_head_message.chain_id());
 
-            let block_header = &current_head_message.current_block_header;
+            let block_header = current_head_message.current_block_header();
             assert_eq!(245_395, block_header.level());
             assert_eq!(1, block_header.proto());
 
             let expected_protocol_data = hex::decode("000000000003e35a661200a75ebed94c886ce8c2700cc2fb38e301e7573f481eff49aea6892068cef7c9290947567e9df3a2cfc99ed9b0666f9c0291f586f65eb9e42cf4cdbef1ef8424d0")?;
             assert_eq!(&expected_protocol_data, block_header.protocol_data());
 
-            let mempool = &current_head_message.current_mempool;
+            let mempool = current_head_message.current_mempool();
             assert_eq!(1, mempool.known_valid.len());
             let expected_known_valid = hex::decode("c533d1d8a515b35fac67eb9926a6c983397208511ce69808d57177415654bf09")?;
             assert_eq!(&expected_known_valid, mempool.known_valid.get(0).unwrap());
@@ -48,16 +48,16 @@ fn can_deserialize_get_current_head_message_pending() -> Result<(), Error> {
 
     match message {
         PeerMessage::CurrentHead(current_head_message) => {
-            assert_eq!(hex::decode("8eceda2f")?, current_head_message.chain_id);
+            assert_eq!(&hex::decode("8eceda2f")?, current_head_message.chain_id());
 
-            let block_header = &current_head_message.current_block_header;
+            let block_header = current_head_message.current_block_header();
             assert_eq!(248_533, block_header.level());
             assert_eq!(1, block_header.proto());
 
             let expected_protocol_data = hex::decode("000000000003d671d0520032846bbd8b2d6e10daa9cb6d6f82e4070d9c8047b081ea80cd6a473a3868135229c7650b7a6401d7c83c1b8896662faeb361a7bbb2f881ede725630e1ce34483")?;
             assert_eq!(&expected_protocol_data, block_header.protocol_data());
 
-            let mempool = &current_head_message.current_mempool;
+            let mempool = current_head_message.current_mempool();
             assert_eq!(0, mempool.known_valid.len());
             assert_eq!(2, mempool.pending.len());
             let expected_pending = hex::decode("3cebec53e6ff9207dd669c3777cec4e74feadcd5f0131c819d261cdb0d9b5d94")?;

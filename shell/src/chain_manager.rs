@@ -277,7 +277,7 @@ impl ChainManager {
                                     debug!("Current head requested by peer: {}", &received.peer);
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let msg = CurrentHeadMessage::new(block_state.get_chain_id(), &current_head.header);
+                                            let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
                                             tell_peer(msg.into(), peer);
                                         }
                                     }
