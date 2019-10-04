@@ -1,0 +1,30 @@
+language: rust
+rust:
+  - nightly-2019-08-25
+
+os:
+  - linux
+
+dist: xenial
+
+sudo: false
+
+env:
+  global:
+    - RUST_BACKTRACE=1
+    - SODIUM_USE_PKG_CONFIG=1
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - llvm-toolchain-trusty
+    packages:
+      - g++
+      - llvm-dev
+      - libclang-dev
+      - clang
+      - libsodium-dev
+      - libev4
+
+cache: cargo

@@ -1,6 +1,9 @@
 Tezos-rs
 ===========
 
+[![Build Status](https://travis-ci.com/simplestaking/tezos-rs.svg?branch=master)](https://travis-ci.com/simplestaking/tezos-rs)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust. In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
 
 The project can be considered as a proof of concept. This PoC demonstrates the viability of a node build that uses Rust. 
