@@ -47,12 +47,14 @@ impl CachedData for CurrentHeadMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters, new)]
 pub struct GetCurrentHeadMessage {
-    pub chain_id: ChainId,
+    #[get = "pub"]
+    chain_id: ChainId,
 
     #[serde(skip_serializing)]
-    pub body: BinaryDataCache,
+    #[new(default)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for GetCurrentHeadMessage {
