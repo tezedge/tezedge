@@ -1,30 +1,33 @@
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use riker::actor::*;
-use std::fs::File;
-use crate::listener::records::Record;
-use std::io::Write;
-use log::*;
+use crate::listener::records::{RecordStorage, RecordMetaStorage, RecordMeta, RecordType};
+use std::sync::Arc;
+use rocksdb::DB;
+use std::time::SystemTime;
+use networking::p2p::binary_message::BinaryMessage;
 
 type NetworkListenerRef = ActorRef<NetworkChannelMsg>;
 
 pub struct NetworkListener {
-    storage: File,
+    record_storage: RecordStorage,
+    record_meta_storage: RecordMetaStorage,
     network_channel: NetworkChannelRef,
 }
 
 impl NetworkListener {
     fn name() -> &'static str { "network-listener" }
 
-    fn new((storage_path, network_channel): (&'static str, NetworkChannelRef)) -> Self {
+    fn new((rocks_db, network_channel): (Arc<DB>, NetworkChannelRef)) -> Self {
         Self {
-            storage: File::create(storage_path).expect("Failed to open the file"),
+            record_storage: RecordStorage::new(rocks_db.clone()),
+            record_meta_storage: RecordMetaStorage::new(rocks_db),
             network_channel,
         }
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, storage_path: &'static str, network_channel: NetworkChannelRef) -> Result<NetworkListenerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, rocks_db: Arc<DB>, network_channel: NetworkChannelRef) -> Result<NetworkListenerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(Self::new, (storage_path, network_channel)),
+            Props::new_args(Self::new, (rocks_db, network_channel)),
             Self::name(),
         )
     }
@@ -41,14 +44,22 @@ impl Actor for NetworkListener {
     }
 
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
-        let record: Record = msg.into();
-        if let Ok(record) = serde_cbor::to_vec(&record) {
-            if let Err(err) = self.storage.write_all(&record) {
-                warn!("Failed to store incoming message: {}", err);
+        let ts = SystemTime::UNIX_EPOCH.elapsed().expect("Failed to read system time").as_secs_f32();
+        let (record_type, peer_id, record) = match msg {
+            NetworkChannelMsg::PeerCreated(msg) => {
+                (RecordType::PeerCreated, msg.peer.name().to_string(), Vec::new())
             }
-            if let Err(err) = writeln!(self.storage) {
-                warn!("Failed to write newline after message: {}", err);
+            NetworkChannelMsg::PeerBootstrapped(msg) => {
+                (RecordType::PeerBootstrapped, msg.peer.name().to_string(), msg.peer_id.into_bytes())
             }
-        }
+            NetworkChannelMsg::PeerMessageReceived(msg) => {
+                (RecordType::PeerReceivedMessage, msg.peer.name().to_string(), msg.message.as_bytes().unwrap_or_default())
+            }
+        };
+        self.record_meta_storage.put_record_meta(ts, &RecordMeta {
+            record_type,
+            peer_id,
+        });
+        self.record_storage.put_record(ts, &record);
     }
 }

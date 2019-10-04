@@ -64,8 +64,8 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel, rocks_db.clone())
         .expect("Failed to create monitor actor");
-    if let Some(ref file_path) = configuration::ENV.record_file {
-        let _ = NetworkListener::actor(&actor_system, file_path, network_channel.clone());
+    if configuration::ENV.record {
+        let _ = NetworkListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
     }
 
     tokio_runtime.block_on(async move {
