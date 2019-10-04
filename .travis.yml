@@ -1,11 +1,11 @@
 language: rust
 rust:
-  - nightly
+  - nightly-2019-08-25
 
 os:
   - linux
 
-dist: bionic
+dist: xenial
 
 sudo: false
 
@@ -18,7 +18,7 @@ addons:
   apt:
     sources:
       - ubuntu-toolchain-r-test
-      - llvm-toolchain-bionic
+      - llvm-toolchain-xenial
     packages:
       - g++
       - llvm-dev
