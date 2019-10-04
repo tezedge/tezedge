@@ -288,7 +288,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 
     // convert received bytes from remote peer into `ConnectionMessage`
     let received_connection_msg: ConnectionMessage = ConnectionMessage::try_from(received_connection_msg)?;
-    let peer_public_key = received_connection_msg.get_public_key();
+    let peer_public_key = received_connection_msg.public_key();
     let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&peer_public_key);
     debug!("Received peer_public_key: {}", &peer_id);
 
