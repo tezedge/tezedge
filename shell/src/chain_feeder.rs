@@ -172,7 +172,7 @@ fn feed_chain_to_protocol(
                                 // notify others that the block successfully applied
                                 shell_channel.tell(
                                     Publish {
-                                        msg: BlockApplied { hash: current_head.hash.clone(), level: current_head.header.level }.into(),
+                                        msg: BlockApplied { hash: current_head.hash.clone(), level: current_head.header.level() }.into(),
                                         topic: ShellChannelTopic::ShellEvents.into(),
                                     }, None);
 

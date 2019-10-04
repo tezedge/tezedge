@@ -208,8 +208,8 @@ impl ChainManager {
                                     let current_head = &message.current_branch.current_head;
 
                                     // if needed, update remote current head
-                                    if message.current_branch.current_head.level > self.current_head.remote_level {
-                                        self.current_head.remote_level = message.current_branch.current_head.level;
+                                    if message.current_branch.current_head.level() > self.current_head.remote_level {
+                                        self.current_head.remote_level = message.current_branch.current_head.level();
                                         self.current_head.remote = message.current_branch.current_head.message_hash()?;
                                     }
 
@@ -218,7 +218,7 @@ impl ChainManager {
                                         Publish {
                                             msg: BlockReceived {
                                                 hash: current_head.message_hash()?,
-                                                level: current_head.level,
+                                                level: current_head.level(),
                                             }.into(),
                                             topic: ShellChannelTopic::ShellEvents.into(),
                                         }, Some(ctx.myself().into()));
@@ -299,7 +299,7 @@ impl ChainManager {
                                                         Publish {
                                                             msg: AllBlockOperationsReceived {
                                                                 hash: block.hash,
-                                                                level: block.header.level
+                                                                level: block.header.level()
                                                             }.into(),
                                                             topic: ShellChannelTopic::ShellEvents.into(),
                                                         }, Some(ctx.myself().into()));

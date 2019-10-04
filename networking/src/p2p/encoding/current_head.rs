@@ -8,7 +8,7 @@ use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWrite
 use super::block_header::BlockHeader;
 use super::mempool::Mempool;
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CurrentHeadMessage {
     pub chain_id: ChainId,
     pub current_block_header: BlockHeader,

@@ -30,10 +30,10 @@ impl OperationsMetaStorage {
     pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
             &Meta {
-                validation_passes: block_header.header.validation_pass,
-                is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
-                is_complete: block_header.header.validation_pass == 0,
-                level: block_header.header.level
+                validation_passes: block_header.header.validation_pass(),
+                is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
+                is_complete: block_header.header.validation_pass() == 0,
+                level: block_header.header.level()
             }
         )
     }

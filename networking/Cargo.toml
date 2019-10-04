@@ -9,9 +9,11 @@ bitvec = "0.9.0"
 byteorder = "1.3.2"
 bytes = "0.4.12"
 chrono = "0.4.7"
+derive_builder = "0.8.0"
 dns-lookup = "1.0.1"
 failure = "0.1.5"
 futures-preview = "0.3.0-alpha.18"
+getset = { git = "https://github.com/Hoverbear/getset.git" }
 hex = "0.3.2"
 hyper = { git = "https://github.com/hyperium/hyper.git" }
 lazy_static = "1.4.0"

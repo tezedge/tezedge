@@ -42,25 +42,25 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
             assert_eq!(hex::decode("8eceda2f")?, current_branch_message.chain_id);
 
             let current_head = &current_branch_message.current_branch.current_head;
-            assert_eq!(198_392, current_head.level);
-            assert_eq!(4, current_head.validation_pass);
+            assert_eq!(198_392, current_head.level());
+            assert_eq!(4, current_head.validation_pass());
 
-            assert_eq!(hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?, current_head.predecessor);
-            assert_eq!(hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?, current_head.context);
-            assert_eq!(hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?, current_head.operations_hash);
+            assert_eq!(&hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?, current_head.predecessor());
+            assert_eq!(&hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?, current_head.context());
+            assert_eq!(&hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?, current_head.operations_hash());
 
 
-            assert_eq!(2, current_head.fitness.len());
-            let fitness_0 = current_head.fitness.get(0).unwrap();
+            assert_eq!(2, current_head.fitness().len());
+            let fitness_0 = current_head.fitness().get(0).unwrap();
             let expected_fitness_0 = hex::decode("00")?;
             assert_eq!(&expected_fitness_0, fitness_0);
-            let fitness_1 = current_head.fitness.get(1).unwrap();
+            let fitness_1 = current_head.fitness().get(1).unwrap();
             let expected_fitness_1 = hex::decode("00000000005ba1ca")?;
             assert_eq!(&expected_fitness_1, fitness_1);
 
-            assert_eq!(75, current_head.protocol_data.len());
+            assert_eq!(75, current_head.protocol_data().len());
             let expected_protocol_data = hex::decode("0000000000031b4f9aff00c6d9a5d1fbf5eda49a01e52017dc78ca1d7a45f3f4fe32840052f9845a61ccdd6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a")?;
-            assert_eq!(expected_protocol_data, current_head.protocol_data);
+            assert_eq!(&expected_protocol_data, current_head.protocol_data());
 
             assert_eq!(141, current_branch_message.current_branch.history.len());
 

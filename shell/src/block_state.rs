@@ -30,8 +30,8 @@ impl BlockState {
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(MissingBlock {
-            block_hash: block_header.header.predecessor.clone(),
-            level: block_header.header.level - 1
+            block_hash: block_header.header.predecessor().clone(),
+            level: block_header.header.level() - 1
         })?;
 
         // store block

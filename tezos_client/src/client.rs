@@ -121,9 +121,9 @@ pub fn apply_block(
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
-    if (block_header.validation_pass as usize) != operations.len() {
+    if (block_header.validation_pass() as usize) != operations.len() {
         return Err(ApplyBlockError::IncompleteOperations {
-            expected: block_header.validation_pass as usize,
+            expected: block_header.validation_pass() as usize,
             actual: operations.len(),
         });
     }

@@ -15,7 +15,7 @@ pub mod peer;
 pub mod prelude {
     pub use super::ack::AckMessage;
     pub use super::advertise::AdvertiseMessage;
-    pub use super::block_header::{BlockHeader, BlockHeaderMessage, GetBlockHeadersMessage};
+    pub use super::block_header::{BlockHeader, BlockHeaderBuilder, BlockHeaderMessage, GetBlockHeadersMessage};
     pub use super::connection::ConnectionMessage;
     pub use super::current_branch::{CurrentBranchMessage, CurrentBranch, GetCurrentBranchMessage};
     pub use super::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
