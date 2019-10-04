@@ -156,7 +156,7 @@ fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec
         .map(|bo| {
             if let Some(bo_ops) = bo {
                 Some(
-                    bo_ops.operations
+                    bo_ops.operations()
                         .iter()
                         .map(|op| op.to_hex().unwrap())
                         .collect()

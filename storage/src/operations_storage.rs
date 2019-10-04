@@ -33,8 +33,8 @@ impl OperationsStorage {
     #[inline]
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
-            block_hash: message.operations_for_block.hash.clone(),
-            validation_pass: message.operations_for_block.validation_pass as u8
+            block_hash: message.operations_for_block().hash().clone(),
+            validation_pass: message.operations_for_block().validation_pass() as u8
         };
         self.put(&key, &message)
     }
@@ -66,7 +66,7 @@ impl OperationsStorageReader for OperationsStorage {
             operations.push(value?);
         }
 
-        operations.sort_by_key(|v| v.operations_for_block.validation_pass);
+        operations.sort_by_key(|v| v.operations_for_block().validation_pass());
 
         Ok(operations)
     }
@@ -103,8 +103,8 @@ impl OperationKey {
 impl<'a> From<&'a OperationsForBlock> for OperationKey {
     fn from(ops: &'a OperationsForBlock) -> Self {
         OperationKey {
-            block_hash: ops.hash.clone(),
-            validation_pass: if ops.validation_pass >= 0 { ops.validation_pass as u8 } else { 0 }
+            block_hash: ops.hash().clone(),
+            validation_pass: if ops.validation_pass() >= 0 { ops.validation_pass() as u8 } else { 0 }
         }
     }
 }
@@ -178,42 +178,37 @@ mod tests {
         opts.create_missing_column_families(true);
         {
             let db = DB::open_cf_descriptors(&opts, path, vec![OperationsStorage::cf_descriptor()]).unwrap();
-            let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
-            let mut message = OperationsForBlocksMessage {
-                operations: vec![],
-                operation_hashes_path: Path::Op,
-                operations_for_block: OperationsForBlock {
-                    hash: block_hash.clone(),
-                    validation_pass: 0,
-                    body: Default::default()
-                },
-                body: Default::default()
-            };
+
+            let block_hash_1 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
+            let block_hash_2 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
+            let block_hash_3 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
 
 
             let mut storage = OperationsStorage::new(Arc::new(db));
-            message.operations_for_block.validation_pass = 3;
+            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 3), Path::Op, vec![]);
             storage.put_operations(&message)?;
-            message.operations_for_block.validation_pass = 1;
+            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 1), Path::Op, vec![]);
             storage.put_operations(&message)?;
-            message.operations_for_block.validation_pass = 0;
+            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 0), Path::Op, vec![]);
             storage.put_operations(&message)?;
-            message.operations_for_block.hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
-            message.operations_for_block.validation_pass = 1;
+            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_2.clone(), 1), Path::Op, vec![]);
             storage.put_operations(&message)?;
-            message.operations_for_block.hash = block_hash.clone();
-            message.operations_for_block.validation_pass = 2;
+            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 2), Path::Op, vec![]);
             storage.put_operations(&message)?;
-            message.operations_for_block.hash = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
-            message.operations_for_block.validation_pass = 3;
+            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_3.clone(), 3), Path::Op, vec![]);
             storage.put_operations(&message)?;
 
-            let operations = storage.get_operations(&block_hash)?;
+            let operations = storage.get_operations(&block_hash_1)?;
             assert_eq!(4, operations.len(), "Was expecting vector of {} elements but instead found {}", 4, operations.len());
             for i in 0..4 {
-                assert_eq!(i as i8, operations[i].operations_for_block.validation_pass, "Was expecting operation pass {} but found {}", i, operations[i].operations_for_block.validation_pass);
-                assert_eq!(block_hash, operations[i].operations_for_block.hash, "Block hash mismatch");
+                assert_eq!(i as i8, operations[i].operations_for_block().validation_pass(), "Was expecting operation pass {} but found {}", i, operations[i].operations_for_block().validation_pass());
+                assert_eq!(&block_hash_1, operations[i].operations_for_block().hash(), "Block hash mismatch");
             }
+            let operations = storage.get_operations(&block_hash_2)?;
+            assert_eq!(1, operations.len(), "Was expecting vector of {} elements but instead found {}", 1, operations.len());
+            let operations = storage.get_operations(&block_hash_3)?;
+            assert_eq!(1, operations.len(), "Was expecting vector of {} elements but instead found {}", 1, operations.len());
+
         }
         assert!(DB::destroy(&opts, path).is_ok());
         Ok(())

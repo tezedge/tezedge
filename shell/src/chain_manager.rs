@@ -283,12 +283,12 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::OperationsForBlocks(operations) => {
-                                    let block_hash = operations.operations_for_block.hash.clone();
+                                    let block_hash = operations.operations_for_block().hash().clone();
                                     match peer.queued_operations.get_mut(&block_hash) {
                                         Some(missing_operations) => {
-                                            let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block.validation_pass);
+                                            let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
-                                                debug!("Received operations validation pass #{} from peer: {}", operations.operations_for_block.validation_pass, &received.peer);
+                                                debug!("Received operations validation pass #{} from peer: {}", operations.operations_for_block().validation_pass(), &received.peer);
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // trigger CheckChainCompleteness
                                                     ctx.myself().tell(CheckChainCompleteness, None);
@@ -308,7 +308,7 @@ impl ChainManager {
                                                     peer.queued_operations.remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!("Received unexpected validation pass #{} from peer: {}", operations.operations_for_block.validation_pass, &received.peer);
+                                                warn!("Received unexpected validation pass #{} from peer: {}", operations.operations_for_block().validation_pass(), &received.peer);
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
@@ -319,8 +319,8 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetOperationsForBlocks(message) => {
-                                    for get_op in &message.get_operations_for_blocks {
-                                        if get_op.validation_pass < 0 {
+                                    for get_op in message.get_operations_for_blocks() {
+                                        if get_op.validation_pass() < 0 {
                                             continue
                                         }
 

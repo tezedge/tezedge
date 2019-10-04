@@ -62,7 +62,7 @@ impl OperationsState {
     pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
         self.operations_storage.put_operations(message)?;
         self.operations_meta_storage.put_operations(message)?;
-        self.operations_meta_storage.is_complete(&message.operations_for_block.hash)
+        self.operations_meta_storage.is_complete(message.operations_for_block().hash())
     }
 
     pub fn drain_missing_operations(&mut self, n: usize) -> Vec<MissingOperations> {
@@ -140,7 +140,7 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
     fn from(ops: &MissingOperations) -> Self {
         ops.validation_passes
             .iter()
-            .map(|vp| OperationsForBlock::new(&ops.block_hash, *vp))
+            .map(|vp| OperationsForBlock::new(ops.block_hash.clone(), *vp))
             .collect()
     }
 }

@@ -238,7 +238,6 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
 mod test_data {
     use networking::p2p::binary_message::Hexable;
     use networking::p2p::encoding::prelude::*;
-    use tezos_encoding::hash::BlockHash;
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
     pub const BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";
@@ -282,18 +281,7 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_hex(op).unwrap())
                     .collect();
-                Some(
-                    OperationsForBlocksMessage {
-                        operation_hashes_path: Path::Op,
-                        operations_for_block: OperationsForBlock {
-                            validation_pass: 4,
-                            hash: hex::decode(block_hash.clone()).unwrap() as BlockHash,
-                            body: Default::default()
-                        },
-                        operations: ops,
-                        body: Default::default()
-                    }
-                )
+                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
             })
             .collect()
     }

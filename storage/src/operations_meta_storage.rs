@@ -39,11 +39,11 @@ impl OperationsMetaStorage {
     }
 
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        let block_hash =  message.operations_for_block.hash.clone();
+        let block_hash =  message.operations_for_block().hash().clone();
 
         match self.get(&block_hash)? {
             Some(mut meta) => {
-                let validation_pass = message.operations_for_block.validation_pass as u8;
+                let validation_pass = message.operations_for_block().validation_pass() as u8;
 
                 // update validation passes and check if we have all operations
                 meta.is_validation_pass_present[validation_pass as usize] = true as u8;
