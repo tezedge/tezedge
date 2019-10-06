@@ -28,3 +28,7 @@ addons:
       - libev4
 
 cache: cargo
+
+branches:
+  only:
+    - master
