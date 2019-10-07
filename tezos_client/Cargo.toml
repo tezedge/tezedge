@@ -7,8 +7,8 @@ edition = "2018"
 [dependencies]
 failure = "0.1.5"
 failure_derive = "0.1.5"
-futures-preview = "0.3.0-alpha.18"
-hex = "0.3.2"
+futures-preview = "0.3.0-alpha.19"
+hex = "0.4.0"
 log = "0.4.8"
 
 # local dependencies
