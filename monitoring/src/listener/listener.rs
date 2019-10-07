@@ -8,14 +8,14 @@ use networking::p2p::binary_message::BinaryMessage;
 
 type NetworkListenerRef = ActorRef<NetworkChannelMsg>;
 
-pub struct NetworkListener {
+pub struct NetworkChannelListener {
     start: Instant,
     record_storage: RecordStorage,
     record_meta_storage: RecordMetaStorage,
     network_channel: NetworkChannelRef,
 }
 
-impl NetworkListener {
+impl NetworkChannelListener {
     fn name() -> &'static str { "network-listener" }
 
     fn new((rocks_db, network_channel): (Arc<DB>, NetworkChannelRef)) -> Self {
@@ -35,7 +35,7 @@ impl NetworkListener {
     }
 }
 
-impl Actor for NetworkListener {
+impl Actor for NetworkChannelListener {
     type Msg = NetworkChannelMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {

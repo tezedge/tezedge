@@ -9,7 +9,7 @@ use riker::actors::*;
 use tokio::runtime::Runtime;
 
 use monitoring::{Monitor, WebsocketHandler, listener::{
-    NetworkListener,
+    NetworkChannelListener,
     RecordStorage, RecordMetaStorage,
 }};
 use networking::p2p::network_channel::NetworkChannel;
@@ -69,7 +69,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create monitor actor");
     if configuration::ENV.record {
         info!("Running in record mode");
-        let _ = NetworkListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
+        let _ = NetworkChannelListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
     }
 
     tokio_runtime.block_on(async move {
