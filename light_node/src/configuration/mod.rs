@@ -10,7 +10,7 @@ pub mod tezos_node;
 lazy_static! {
     pub static ref ENV: Environment = Environment::from_cli_args();
 }
-// tihs is test
+// this is test
 #[derive(Debug, Clone)]
 pub struct P2p {
     pub listener_port: u16,
