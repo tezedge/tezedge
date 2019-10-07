@@ -68,7 +68,7 @@ impl Schema for RecordStorage {
 
 /// Simple counting identification stamp, denoted by order of messages
 /// implementing the codec trait for simple database serialization.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub struct RocksStamp(u64);
 
 impl From<u64> for RocksStamp {
@@ -96,7 +96,7 @@ impl Codec for RocksStamp {
 }
 
 /// Part of the Record Meta, denoting content type in the Record storage
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum EventType {
     /// Connection to new peer was accepted. No record in Record Storage should correspond to
@@ -126,7 +126,7 @@ impl EventType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Record metadata, describing incoming message.
 pub struct Event {
     /// Description of type of incoming message, and stored format.
@@ -160,5 +160,31 @@ impl Codec for Event {
         ret.extend_from_slice(&self.timestamp.to_le_bytes());
         ret.extend_from_slice(self.peer_id.as_bytes());
         Ok(ret)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use failure::Error;
+
+    #[test]
+    fn rockstamp_encoded_equals_decoded() -> Result<(), Error> {
+        let expected = RocksStamp(42);
+        let encoded_bytes = expected.encode()?;
+        assert_eq!(expected, RocksStamp::decode(&encoded_bytes)?);
+        Ok(())
+    }
+
+    #[test]
+    fn event_encoded_equals_decoded() -> Result<(), Error> {
+        let expected = Event {
+            record_type: EventType::PeerCreated,
+            timestamp: 0,
+            peer_id: "peer-testing".to_string(),
+        };
+        let encoded_bytes = expected.encode()?;
+        assert_eq!(expected, Event::decode(&encoded_bytes)?);
+        Ok(())
     }
 }
