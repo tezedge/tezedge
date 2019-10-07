@@ -13,7 +13,8 @@ use tokio::future::FutureExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::TaskExecutor;
 
-use super::network_channel::NetworkChannelMsg;
+use crate::p2p::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerCreated};
+
 use super::peer::{Bootstrap, Peer, PeerRef};
 
 /// Blacklist the IP address.
@@ -47,7 +48,7 @@ pub type NetworkManagerRef = ActorRef<NetworkManagerMsg>;
 
 #[actor(BlacklistIpAddress, WhitelistIpAddress, AcceptPeer, ConnectToPeer)]
 pub struct NetworkManager {
-    event_channel: ChannelRef<NetworkChannelMsg>,
+    network_channel: NetworkChannelRef,
     tokio_executor: TaskExecutor,
     listener_port: u16,
     public_key: String,
@@ -60,7 +61,7 @@ pub struct NetworkManager {
 
 impl NetworkManager {
     pub fn actor(sys: &impl ActorRefFactory,
-                 event_channel: ChannelRef<NetworkChannelMsg>,
+                 network_channel: NetworkChannelRef,
                  tokio_executor: TaskExecutor,
                  listener_port: u16,
                  public_key: String,
@@ -68,7 +69,7 @@ impl NetworkManager {
                  proof_of_work_stamp: String) -> Result<NetworkManagerRef, CreateError>
     {
         sys.actor_of(
-            Props::new_args(NetworkManager::new, (event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp)),
+            Props::new_args(NetworkManager::new, (network_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp)),
             NetworkManager::name())
     }
 
@@ -78,9 +79,9 @@ impl NetworkManager {
         "network-manager"
     }
 
-    fn new((event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp): (ChannelRef<NetworkChannelMsg>, TaskExecutor, u16, String, String, String)) -> Self {
+    fn new((event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp): (NetworkChannelRef, TaskExecutor, u16, String, String, String)) -> Self {
         NetworkManager {
-            event_channel,
+            network_channel: event_channel,
             tokio_executor,
             listener_port,
             public_key,
@@ -91,16 +92,27 @@ impl NetworkManager {
     }
 
     fn create_peer(&self, sys: &impl ActorRefFactory, socket_address: &SocketAddr) -> PeerRef {
-        Peer::new(
+        let peer = Peer::actor(
             sys,
-            self.event_channel.clone(),
+            self.network_channel.clone(),
             self.listener_port,
             &self.public_key,
             &self.secret_key,
             &self.proof_of_work_stamp,
             self.tokio_executor.clone(),
-            socket_address
-        ).unwrap()
+            socket_address,
+        ).unwrap();
+
+        self.network_channel.tell(
+            Publish {
+                msg: PeerCreated {
+                    peer: peer.clone(),
+                    address: *socket_address,
+                }.into(),
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+            }, None);
+
+        peer
     }
 }
 

@@ -1,17 +1,19 @@
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::hash::{HashEncoding, HashType, OperationHash};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Getters)]
 pub struct Mempool {
-    pub known_valid: Vec<OperationHash>,
-    pub pending: Vec<OperationHash>,
-
+    #[get = "pub"]
+    known_valid: Vec<OperationHash>,
+    #[get = "pub"]
+    pending: Vec<OperationHash>,
     #[serde(skip_serializing)]
-    pub body: BinaryDataCache,
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for Mempool {

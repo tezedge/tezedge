@@ -1,10 +1,11 @@
 use std::mem::size_of;
 
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::advertise::AdvertiseMessage;
 use crate::p2p::encoding::block_header::{BlockHeaderMessage, GetBlockHeadersMessage};
 use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
@@ -40,10 +41,10 @@ pub enum PeerMessage {
 
 
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct PeerMessageResponse {
-    pub messages: Vec<PeerMessage>,
-
+    #[get = "pub"]
+    messages: Vec<PeerMessage>,
     #[serde(skip_serializing)]
     body: BinaryDataCache
 }

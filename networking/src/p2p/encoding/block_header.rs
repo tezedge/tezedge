@@ -3,16 +3,20 @@
 
 use std::sync::Arc;
 
+use derive_builder::Builder;
+use derive_new::new;
+use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, OperationListListHash};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct BlockHeaderMessage {
-    pub block_header: BlockHeader,
+    #[get = "pub"]
+    block_header: BlockHeader,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,
@@ -45,21 +49,14 @@ impl From<BlockHeader> for BlockHeaderMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Getters, new)]
 pub struct GetBlockHeadersMessage {
-    pub get_block_headers: Vec<BlockHash>,
+    #[get = "pub"]
+    get_block_headers: Vec<BlockHash>,
 
+    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
-}
-
-impl GetBlockHeadersMessage {
-    pub fn new(get_block_headers: Vec<BlockHash>) -> Self {
-        GetBlockHeadersMessage {
-            get_block_headers,
-            body: Default::default()
-        }
-    }
 }
 
 impl HasEncoding for GetBlockHeadersMessage {
@@ -83,20 +80,30 @@ impl CachedData for GetBlockHeadersMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Builder, Getters, CopyGetters)]
 pub struct BlockHeader {
-    pub level: i32,
-    pub proto: u8,
-    pub predecessor: BlockHash,
-    pub timestamp: i64,
-    pub validation_pass: u8,
-    pub operations_hash: OperationListListHash,
-    pub fitness: Vec<Vec<u8>>,
-    pub context: ContextHash,
-    pub protocol_data: Vec<u8>,
+    #[get_copy = "pub"]
+    level: i32,
+    #[get_copy = "pub"]
+    proto: u8,
+    #[get = "pub"]
+    predecessor: BlockHash,
+    #[get_copy = "pub"]
+    timestamp: i64,
+    #[get_copy = "pub"]
+    validation_pass: u8,
+    #[get = "pub"]
+    operations_hash: OperationListListHash,
+    #[get = "pub"]
+    fitness: Vec<Vec<u8>>,
+    #[get = "pub"]
+    context: ContextHash,
+    #[get = "pub"]
+    protocol_data: Vec<u8>,
 
     #[serde(skip_serializing)]
-    pub body: BinaryDataCache,
+    #[builder(default)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for BlockHeader {

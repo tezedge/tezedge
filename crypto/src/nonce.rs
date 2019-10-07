@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cmp::Ordering;
+
 use num_bigint::{BigUint, RandBigInt};
+
 use super::blake2b;
 
 const INIT_TO_RESP_SEED: &[u8] = b"Init -> Resp";
@@ -42,14 +45,14 @@ impl Nonce {
 
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut bytes = self.value.to_bytes_be();
-        if bytes.len() == NONCE_SIZE {
-            bytes
-        } else if bytes.len() < NONCE_SIZE {
-            let mut zero_prefixed_bytes = vec![0u8; NONCE_SIZE - bytes.len()];
-            zero_prefixed_bytes.append(&mut bytes);
-            zero_prefixed_bytes
-        } else {
-            panic!("Nonce value overflow")
+        match bytes.len().cmp(&NONCE_SIZE) {
+            Ordering::Equal => bytes,
+            Ordering::Less => {
+                let mut zero_prefixed_bytes = vec![0u8; NONCE_SIZE - bytes.len()];
+                zero_prefixed_bytes.append(&mut bytes);
+                zero_prefixed_bytes
+            },
+            Ordering::Greater => panic!("Nonce value overflow"),
         }
     }
 
@@ -113,5 +116,12 @@ mod tests {
         let expected_remote_nonce = "8a09a2c43a61aa6eccee084aa66da9bc94b441b17615be58";
         assert_eq!(expected_remote_nonce, hex::encode(remote_nonce.get_bytes()));
         assert_eq!(expected_local_nonce, hex::encode(local_nonce.get_bytes()));
+    }
+
+    #[test]
+    #[should_panic]
+    fn too_big_value_produces_panic() {
+        let nonce = Nonce::new(&[0x1F; NONCE_SIZE + 1]);
+        let _ = nonce.get_bytes();
     }
 }

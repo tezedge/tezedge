@@ -40,7 +40,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     // current head must be set (genesis)
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(0, current_header.level, "Was expecting current header level to be 0 but instead it was {}", current_header.level);
+    assert_eq!(0, current_header.level(), "Was expecting current header level to be 0 but instead it was {}", current_header.level());
 
     let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
@@ -59,7 +59,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     // check current head changed to level 1
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(1, current_header.level);
+    assert_eq!(1, current_header.level());
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
@@ -74,7 +74,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     // check current head changed to level 2
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(2, current_header.level);
+    assert_eq!(2, current_header.level());
 
     // apply third block - level 3
     let apply_block_result = client::apply_block(
@@ -89,7 +89,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     // check current head changed to level 3
     let current_header = client::get_current_block_header(&chain_id)?;
-    Ok(assert_eq!(3, current_header.level))
+    Ok(assert_eq!(3, current_header.level()))
 }
 
 fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor() -> Result<(), failure::Error> {
@@ -102,7 +102,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
 
     // current head must be set (genesis)
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(0, current_header.level);
+    assert_eq!(0, current_header.level());
 
     let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
@@ -131,7 +131,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
 
     // current head must be set (genesis)
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(0, current_header.level);
+    assert_eq!(0, current_header.level());
 
     let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
@@ -157,7 +157,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
 
     // current head must be set (genesis)
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(0, current_header.level);
+    assert_eq!(0, current_header.level());
 
     let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
@@ -197,7 +197,7 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
 
     // current head must be set (genesis)
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(0, current_header.level, "Was expecting current header level to be 0 but instead it was {}", current_header.level);
+    assert_eq!(0, current_header.level(), "Was expecting current header level to be 0 but instead it was {}", current_header.level());
 
     let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
@@ -216,7 +216,7 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
 
     // check current head changed to level 1
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(1, current_header.level);
+    assert_eq!(1, current_header.level());
 
     // reinit storage in the same directory for test
     let TezosStorageInitInfo { genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
@@ -230,7 +230,7 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
 
     // current hash must be equal to level1
     let current_header = client::get_current_block_header(&chain_id)?;
-    assert_eq!(1, current_header.level);
+    assert_eq!(1, current_header.level());
     assert_eq!(current_block_header_hash, current_header.message_hash()?);
     Ok(())
 }
@@ -238,7 +238,6 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
 mod test_data {
     use networking::p2p::binary_message::Hexable;
     use networking::p2p::encoding::prelude::*;
-    use tezos_encoding::hash::BlockHash;
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
     pub const BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";
@@ -282,18 +281,7 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_hex(op).unwrap())
                     .collect();
-                Some(
-                    OperationsForBlocksMessage {
-                        operation_hashes_path: Path::Op,
-                        operations_for_block: OperationsForBlock {
-                            validation_pass: 4,
-                            hash: hex::decode(block_hash.clone()).unwrap() as BlockHash,
-                            body: Default::default()
-                        },
-                        operations: ops,
-                        body: Default::default()
-                    }
-                )
+                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
             })
             .collect()
     }

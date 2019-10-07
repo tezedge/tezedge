@@ -21,13 +21,15 @@ use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic};
 #[derive(Clone, Debug)]
 pub struct FeedChainToProtocol;
 
+type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
+
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
 #[actor(FeedChainToProtocol)]
 pub struct ChainFeeder {
     /// Thread where blocks are applied will run until this is set to `false`
     block_applier_run: Arc<AtomicBool>,
     /// Block applier thread
-    block_applier_thread: Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>,
+    block_applier_thread: SharedJoinHandle,
 }
 
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
@@ -68,7 +70,7 @@ impl ChainFeeder {
         "chain-feeder"
     }
 
-    fn new((block_applier_run, block_applier_thread): (Arc<AtomicBool>, Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>)) -> Self {
+    fn new((block_applier_run, block_applier_thread): (Arc<AtomicBool>, SharedJoinHandle)) -> Self {
         ChainFeeder {
             block_applier_run,
             block_applier_thread
@@ -172,7 +174,7 @@ fn feed_chain_to_protocol(
                                 // notify others that the block successfully applied
                                 shell_channel.tell(
                                     Publish {
-                                        msg: BlockApplied { hash: current_head.hash.clone(), level: current_head.header.level }.into(),
+                                        msg: BlockApplied { hash: current_head.hash.clone(), level: current_head.header.level() }.into(),
                                         topic: ShellChannelTopic::ShellEvents.into(),
                                     }, None);
 

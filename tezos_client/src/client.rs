@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::fmt;
 
 use log::error;
@@ -121,15 +124,15 @@ pub fn apply_block(
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
-    if (block_header.validation_pass as usize) != operations.len() {
+    if (block_header.validation_pass() as usize) != operations.len() {
         return Err(ApplyBlockError::IncompleteOperations {
-            expected: block_header.validation_pass as usize,
+            expected: block_header.validation_pass() as usize,
             actual: operations.len(),
         });
     }
 
     let block_header = block_header.to_hex();
-    if let Err(_) = block_header {
+    if block_header.is_err() {
         return Err(ApplyBlockError::InvalidBlockHeaderData);
     }
     let block_header = block_header.unwrap();
@@ -156,7 +159,7 @@ fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec
         .map(|bo| {
             if let Some(bo_ops) = bo {
                 Some(
-                    bo_ops.operations
+                    bo_ops.operations()
                         .iter()
                         .map(|op| op.to_hex().unwrap())
                         .collect()

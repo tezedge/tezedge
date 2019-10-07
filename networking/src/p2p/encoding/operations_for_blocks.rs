@@ -4,29 +4,27 @@
 use std::mem::size_of;
 use std::sync::Arc;
 
+use derive_new::new;
+use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::hash::{BlockHash, Hash, HashEncoding, HashType};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData, NeverCache};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter, NeverCache};
 use crate::p2p::encoding::operation::Operation;
 
 static DUMMY_BODY_CACHE: NeverCache = NeverCache;
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters, new)]
 pub struct OperationsForBlock {
-    pub hash: BlockHash,
-    pub validation_pass: i8,
-
+    #[get = "pub"]
+    hash: BlockHash,
+    #[get_copy = "pub"]
+    validation_pass: i8,
+    #[new(default)]
     #[serde(skip_serializing)]
-    pub body: BinaryDataCache,
-}
-
-impl OperationsForBlock {
-    pub fn new(hash: &BlockHash, validation_pass: i8) -> Self {
-        OperationsForBlock { hash: hash.clone(), validation_pass, body: Default::default() }
-    }
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for OperationsForBlock {
@@ -51,14 +49,17 @@ impl CachedData for OperationsForBlock {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters, new)]
 pub struct OperationsForBlocksMessage {
-    pub operations_for_block: OperationsForBlock,
-    pub operation_hashes_path: Path,
-    pub operations: Vec<Operation>,
-
+    #[get = "pub"]
+    operations_for_block: OperationsForBlock,
+    #[get = "pub"]
+    operation_hashes_path: Path,
+    #[get = "pub"]
+    operations: Vec<Operation>,
+    #[new(default)]
     #[serde(skip_serializing)]
-    pub body: BinaryDataCache
+    body: BinaryDataCache
 }
 
 impl HasEncoding for OperationsForBlocksMessage {
@@ -84,11 +85,12 @@ impl CachedData for OperationsForBlocksMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathRight {
-    pub left: Hash,
-    pub path: Path,
-
+    #[get = "pub"]
+    left: Hash,
+    #[get = "pub"]
+    path: Path,
     #[serde(skip_serializing)]
     body: BinaryDataCache,
 }
@@ -115,11 +117,12 @@ impl CachedData for PathRight {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathLeft {
-    pub path: Path,
-    pub right: Hash,
-
+    #[get = "pub"]
+    path: Path,
+    #[get = "pub"]
+    right: Hash,
     #[serde(skip_serializing)]
     body: BinaryDataCache,
 }
@@ -175,21 +178,13 @@ impl CachedData for Path {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters, new)]
 pub struct GetOperationsForBlocksMessage {
-    pub get_operations_for_blocks: Vec<OperationsForBlock>,
-
+    #[get = "pub"]
+    get_operations_for_blocks: Vec<OperationsForBlock>,
+    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
-}
-
-impl GetOperationsForBlocksMessage {
-    pub fn new(ops: Vec<OperationsForBlock>) -> Self {
-        GetOperationsForBlocksMessage {
-            get_operations_for_blocks: ops,
-            body: Default::default()
-        }
-    }
 }
 
 impl HasEncoding for GetOperationsForBlocksMessage {
