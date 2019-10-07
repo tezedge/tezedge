@@ -49,7 +49,7 @@ pub mod cache {
     impl CacheReader for BinaryDataCache {
         #[inline]
         fn get(&self) -> Option<Vec<u8>> {
-            self.data.as_ref().map(|v| v.clone())
+            self.data.as_ref().cloned()
         }
     }
 

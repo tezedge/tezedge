@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::fmt;
 
 use log::error;
@@ -129,7 +132,7 @@ pub fn apply_block(
     }
 
     let block_header = block_header.to_hex();
-    if let Err(_) = block_header {
+    if block_header.is_err() {
         return Err(ApplyBlockError::InvalidBlockHeaderData);
     }
     let block_header = block_header.unwrap();

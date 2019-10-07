@@ -151,19 +151,19 @@ impl Peer {
     pub fn actor(sys: &impl ActorRefFactory,
                network_channel: NetworkChannelRef,
                listener_port: u16,
-               public_key: &String,
-               secret_key: &String,
-               proof_of_work_stamp: &String,
+               public_key: &str,
+               secret_key: &str,
+               proof_of_work_stamp: &str,
                tokio_executor: TaskExecutor,
                socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
         let info = Local {
-            listener_port: listener_port.clone(),
-            proof_of_work_stamp: proof_of_work_stamp.clone(),
-            public_key: public_key.clone(),
-            secret_key: secret_key.clone(),
+            listener_port,
+            proof_of_work_stamp: proof_of_work_stamp.into(),
+            public_key: public_key.into(),
+            secret_key: secret_key.into(),
         };
-        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, socket_address.clone()));
+        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }

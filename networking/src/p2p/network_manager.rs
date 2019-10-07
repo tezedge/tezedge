@@ -107,7 +107,7 @@ impl NetworkManager {
             Publish {
                 msg: PeerCreated {
                     peer: peer.clone(),
-                    address: socket_address.clone(),
+                    address: *socket_address,
                 }.into(),
                 topic: NetworkChannelTopic::NetworkEvents.into(),
             }, None);

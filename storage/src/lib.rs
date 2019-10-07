@@ -91,7 +91,7 @@ pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: 
         header: Arc::new(genesis.clone()),
     };
     let mut block_storage = BlockStorage::new(db.clone());
-    if let None = block_storage.get(&genesis_with_hash.hash)? {
+    if block_storage.get(&genesis_with_hash.hash)?.is_none() {
         info!("Initializing storage with genesis block");
         block_storage.put_block_header(&genesis_with_hash)?;
         let mut block_meta_storage = BlockMetaStorage::new(db.clone());
