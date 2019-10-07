@@ -7,7 +7,7 @@ use storage::{
 use storage::persistent::{Schema, Codec, SchemaError};
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 
-/// --- Storing result in Rocks DB --- ///
+// --- Storing result in Rocks DB --- //
 pub type RecordMetaStorageDatabase = dyn DatabaseWithSchema<RecordMetaStorage> + Sync + Send;
 pub type RecordStorageDatabase = dyn DatabaseWithSchema<RecordStorage> + Sync + Send;
 
@@ -56,7 +56,10 @@ impl Schema for RecordStorage {
     type Value = Vec<u8>;
 }
 
-/// --- Record implementation --- ///
+// --- Record implementation --- //
+
+/// Simple timestamp, denoting passed seconds from start of the node
+/// implementing the codec trait for simple database serialization.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RocksStamp(f32);
 
@@ -84,11 +87,18 @@ impl Codec for RocksStamp {
     }
 }
 
+/// Part of the Record Meta, denoting content type in the Record storage
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
 pub enum RecordType {
+    /// Connection to new peer was accepted. No record in Record Storage should correspond to
+    /// this meta message
     PeerCreated,
+    /// Full connection to peer was established. Record should contains a string with public
+    /// key of connected peer.
     PeerBootstrapped,
+    /// Node received a message from a peer. Record should contain raw message, which
+    /// should be deserialized manually.
     PeerReceivedMessage,
 }
 
@@ -108,8 +118,11 @@ impl RecordType {
 }
 
 #[derive(Debug, Clone)]
+/// Record metadata, describing incoming message.
 pub struct RecordMeta {
+    /// Description of type of incoming message, and stored format.
     pub record_type: RecordType,
+    /// Representation of an peer actor, to whom belongs the message
     pub peer_id: String,
 }
 
