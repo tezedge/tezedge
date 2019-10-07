@@ -35,10 +35,10 @@ curl https://sh.rustup.rs -sSf | sh
 
 Rust nightly is required to build this project.
 ```
-rustup install nightly-2019-08-25
-rustup default nightly-2019-08-25
+rustup toolchain install nightly-2019-10-04
+rustup default nightly-2019-10-04
 ```
-Application has been tested to compile with `rustc 1.39.0-nightly (521d78407 2019-08-25)`.
+Application has been tested to compile with `rustc 1.40.0-nightly (032a53a06 2019-10-03)`.
 
 **3. Install required libs**
 
