@@ -34,6 +34,7 @@ pub struct Environment {
     pub tezos_data_dir: PathBuf,
     pub ocaml_log_enabled: bool,
     pub websocket_address: SocketAddr,
+    pub record: bool,
 }
 
 impl Environment {
@@ -110,6 +111,10 @@ impl Environment {
                 .long("websocket-address")
                 .takes_value(true)
                 .default_value("0.0.0.0:4927"))
+            .arg(Arg::with_name("record")
+                .short("R")
+                .long("record")
+                .takes_value(false))
             .get_matches();
 
         Environment {
@@ -172,7 +177,8 @@ impl Environment {
             websocket_address: args.value_of("websocket-address")
                 .unwrap_or_default()
                 .parse()
-                .expect("Provided value cannot be converted into valid uri")
+                .expect("Provided value cannot be converted into valid uri"),
+            record: args.is_present("record"),
         }
     }
 }

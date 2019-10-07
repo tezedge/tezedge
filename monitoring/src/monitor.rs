@@ -166,7 +166,6 @@ impl Receive<BroadcastSignal> for Monitor {
     type Msg = MonitorMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
-        // TODO: Replace with channel implementation and broadcast it on that instead.
         match msg {
             BroadcastSignal::PublishPeerStatistics => {
                 let peer_stats: HandlerMessage = self.peer_monitors.values_mut().collect();
