@@ -10,7 +10,7 @@ use tokio::runtime::Runtime;
 
 use monitoring::{Monitor, WebsocketHandler, listener::{
     NetworkChannelListener,
-    RecordStorage, RecordMetaStorage,
+    EventPayloadStorage, EventStorage,
 }};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
@@ -130,8 +130,8 @@ fn main() {
         BlockMetaStorage::cf_descriptor(),
         OperationsStorage::cf_descriptor(),
         OperationsMetaStorage::cf_descriptor(),
-        RecordStorage::cf_descriptor(),
-        RecordMetaStorage::cf_descriptor(),
+        EventPayloadStorage::cf_descriptor(),
+        EventStorage::cf_descriptor(),
     ];
     let rocks_db = match open_db(&configuration::ENV.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),

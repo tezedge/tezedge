@@ -1,6 +1,6 @@
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use riker::actor::*;
-use crate::listener::records::{RecordStorage, RecordMetaStorage, Event, EventType};
+use crate::listener::events::{EventPayloadStorage, EventStorage, Event, EventType};
 use std::sync::Arc;
 use rocksdb::DB;
 use std::time::Instant;
@@ -12,8 +12,8 @@ type NetworkListenerRef = ActorRef<NetworkChannelMsg>;
 pub struct NetworkChannelListener {
     start: Instant,
     event_index: u64,
-    record_storage: RecordStorage,
-    record_meta_storage: RecordMetaStorage,
+    record_storage: EventPayloadStorage,
+    record_meta_storage: EventStorage,
     network_channel: NetworkChannelRef,
 }
 
@@ -21,12 +21,12 @@ impl NetworkChannelListener {
     fn name() -> &'static str { "network-listener" }
 
     fn new((rocks_db, network_channel): (Arc<DB>, NetworkChannelRef)) -> Self {
-        let record_meta_storage = RecordMetaStorage::new(rocks_db.clone());
+        let record_meta_storage = EventStorage::new(rocks_db.clone());
         let event_index = record_meta_storage.count_events().unwrap_or_default() as u64;
         Self {
             start: Instant::now(),
             event_index,
-            record_storage: RecordStorage::new(rocks_db),
+            record_storage: EventPayloadStorage::new(rocks_db),
             record_meta_storage,
             network_channel,
         }
@@ -70,7 +70,7 @@ impl Actor for NetworkChannelListener {
         let id = self.event_index;
         self.event_index += 1;
 
-        if let Err(err) = self.record_meta_storage.put_record_meta(id, &Event {
+        if let Err(err) = self.record_meta_storage.put_event(id, &Event {
             record_type,
             timestamp,
             peer_id,

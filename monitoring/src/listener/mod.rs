@@ -1,5 +1,5 @@
 mod listener;
-mod records;
+mod events;
 
 pub use listener::*;
-pub use records::{RecordMetaStorage, RecordStorage};
+pub use events::{EventStorage, EventPayloadStorage};

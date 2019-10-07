@@ -5,21 +5,21 @@ use storage::persistent::{Schema, Codec, SchemaError};
 use failure::_core::cmp::max;
 
 // --- Storing result in Rocks DB --- //
-pub type RecordMetaStorageDatabase = dyn DatabaseWithSchema<RecordMetaStorage> + Sync + Send;
-pub type RecordStorageDatabase = dyn DatabaseWithSchema<RecordStorage> + Sync + Send;
+pub type EventStorageDatabase = dyn DatabaseWithSchema<EventStorage> + Sync + Send;
+pub type EventPayloadStorageDatabase = dyn DatabaseWithSchema<EventPayloadStorage> + Sync + Send;
 
 #[derive(Clone)]
-pub struct RecordMetaStorage {
-    db: Arc<RecordMetaStorageDatabase>,
+pub struct EventStorage {
+    db: Arc<EventStorageDatabase>,
 }
 
-impl RecordMetaStorage {
-    pub fn new(db: Arc<RecordMetaStorageDatabase>) -> Self {
+impl EventStorage {
+    pub fn new(db: Arc<EventStorageDatabase>) -> Self {
         Self { db }
     }
 
     #[inline]
-    pub fn put_record_meta(&mut self, ts: u64, record_meta: &Event) -> Result<(), StorageError> {
+    pub fn put_event(&mut self, ts: u64, record_meta: &Event) -> Result<(), StorageError> {
         self.db.put(&RocksStamp(ts), record_meta)
             .map_err(StorageError::from)
     }
@@ -36,19 +36,19 @@ impl RecordMetaStorage {
     }
 }
 
-impl Schema for RecordMetaStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "record_meta_storage";
+impl Schema for EventStorage {
+    const COLUMN_FAMILY_NAME: &'static str = "event_storage";
     type Key = RocksStamp;
     type Value = Event;
 }
 
 #[derive(Clone)]
-pub struct RecordStorage {
-    db: Arc<RecordStorageDatabase>,
+pub struct EventPayloadStorage {
+    db: Arc<EventPayloadStorageDatabase>,
 }
 
-impl RecordStorage {
-    pub fn new(db: Arc<RecordStorageDatabase>) -> Self {
+impl EventPayloadStorage {
+    pub fn new(db: Arc<EventPayloadStorageDatabase>) -> Self {
         Self { db }
     }
 
@@ -58,8 +58,8 @@ impl RecordStorage {
     }
 }
 
-impl Schema for RecordStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "record_storage";
+impl Schema for EventPayloadStorage {
+    const COLUMN_FAMILY_NAME: &'static str = "event_payload_storage";
     type Key = RocksStamp;
     type Value = Vec<u8>;
 }
@@ -154,7 +154,7 @@ impl Codec for Event {
 
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        // 1 byte record_type, 8 bytes (little endian) timestamp, rest is peer name (UTF-8)
+        // 1 byte event_type, 8 bytes (little endian) timestamp, rest is peer name (UTF-8)
         let mut ret = Vec::with_capacity(1 + 8 + self.peer_id.as_bytes().len());
         ret.push(self.record_type as u8);
         ret.extend_from_slice(&self.timestamp.to_le_bytes());
