@@ -16,6 +16,7 @@ use crate::{
 use crate::handlers::handler_messages::HandlerMessage;
 use rocksdb::DB;
 use log::*;
+use networking::p2p::binary_message::BinaryMessage;
 
 
 #[derive(Clone, Debug)]
@@ -77,13 +78,11 @@ impl Monitor {
         use std::mem::size_of_val;
         use networking::p2p::encoding::peer::PeerMessage;
 
-        // TODO: Add real message processing
-
-        for message in &msg.message.messages {
+        for message in msg.message.messages() {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
-                    if msg.current_branch.current_head.level > 0 {
-                        self.bootstrap_monitor.level = msg.current_branch.current_head.level as usize;
+                    if msg.current_branch().current_head().level() > 0 {
+                        self.bootstrap_monitor.level = msg.current_branch().current_head().level() as usize;
                     }
                 }
                 _ => (),
@@ -92,7 +91,12 @@ impl Monitor {
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
             if monitor.public_key.is_some() {
-                monitor.incoming_bytes(size_of_val(&msg.message));
+                let size = if let Ok(msg) = msg.message.as_bytes() {
+                    msg.len()
+                } else {
+                    size_of_val(&msg.message)
+                };
+                monitor.incoming_bytes(size);
             }
         } else {
             warn!("Missing monitor for peer: {}", msg.peer.name());
@@ -233,7 +237,6 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.bootstrap_monitor.increase_block_count();
                 self.blocks_monitor.block_finished_downloading_operations();
             }
-            ShellChannelMsg::ChainCompleted(_msg) => (),
         }
     }
 }

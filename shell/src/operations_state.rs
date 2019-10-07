@@ -37,14 +37,14 @@ impl OperationsState {
     /// If block is already present in storage return `false`.
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
         if !self.operations_meta_storage.contains(&block_header.hash)? {
-            if block_header.header.validation_pass > 0 {
+            if block_header.header.validation_pass() > 0 {
                 self.missing_operations_for_blocks.push(MissingOperations {
                     block_hash: block_header.hash.clone(),
-                    validation_passes: (0..block_header.header.validation_pass)
+                    validation_passes: (0..block_header.header.validation_pass())
                         .filter(|i| *i < std::i8::MAX.try_into().unwrap())
                         .map(|i| i.try_into().unwrap())
                         .collect(),
-                    level: block_header.header.level
+                    level: block_header.header.level()
                 });
             }
             self.operations_meta_storage.put_block_header(block_header)?;
@@ -62,7 +62,7 @@ impl OperationsState {
     pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
         self.operations_storage.put_operations(message)?;
         self.operations_meta_storage.put_operations(message)?;
-        self.operations_meta_storage.is_complete(&message.operations_for_block.hash)
+        self.operations_meta_storage.is_complete(message.operations_for_block().hash())
     }
 
     pub fn drain_missing_operations(&mut self, n: usize) -> Vec<MissingOperations> {
@@ -140,7 +140,7 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
     fn from(ops: &MissingOperations) -> Self {
         ops.validation_passes
             .iter()
-            .map(|vp| OperationsForBlock::new(&ops.block_hash, *vp))
+            .map(|vp| OperationsForBlock::new(ops.block_hash.clone(), *vp))
             .collect()
     }
 }

@@ -1,23 +1,24 @@
 use std::convert::TryFrom;
 use std::io::Cursor;
 
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::version::Version;
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct ConnectionMessage {
     port: u16,
     versions: Vec<Version>,
+    #[get = "pub"]
     public_key: Vec<u8>,
     proof_of_work_stamp: Vec<u8>,
     message_nonce: Vec<u8>,
-
     #[serde(skip_serializing)]
     body: BinaryDataCache
 }
@@ -34,15 +35,6 @@ impl ConnectionMessage {
             message_nonce: message_nonce.into(),
             body: Default::default(),
         }
-    }
-
-    pub fn get_public_key(&self) -> &Vec<u8> {
-        &self.public_key
-    }
-
-    #[allow(dead_code)]
-    pub fn get_nonce(&self) -> &Vec<u8> {
-        &self.message_nonce
     }
 }
 

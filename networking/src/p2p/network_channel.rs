@@ -19,7 +19,6 @@ pub const DEFAULT_TOPIC: &str = "network";
 pub struct PeerCreated {
     pub peer: PeerRef,
     pub address: SocketAddr,
-    pub public_key: String,
 }
 
 /// Peer has been bootstrapped.

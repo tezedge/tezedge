@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{time::Instant, net::SocketAddr};
 use riker::actor::ActorUri;
 use crate::handlers::handler_messages::PeerMetrics;
@@ -22,7 +25,7 @@ impl PeerMonitor {
             addr: None,
             public_key: None,
             current_transferred: 0,
-            last_update: now.clone(),
+            last_update: now,
             first_update: now,
         }
     }

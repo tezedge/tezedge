@@ -29,34 +29,34 @@ impl BlockMetaStorage {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {
-                meta.predecessor = Some(block_header.header.predecessor.clone());
+                meta.predecessor = Some(block_header.header.predecessor().clone());
                 self.put(&block_header.hash, &meta)?;
             },
             None => {
                 let meta = Meta {
                     is_applied: false,
-                    predecessor: Some(block_header.header.predecessor.clone()),
+                    predecessor: Some(block_header.header.predecessor().clone()),
                     successor: None,
-                    level: block_header.header.level
+                    level: block_header.header.level()
                 };
                 self.put(&block_header.hash, &meta)?;
             }
         }
 
         // create/update record for block predecessor
-        match self.get(&block_header.header.predecessor)?.as_mut() {
+        match self.get(&block_header.header.predecessor())?.as_mut() {
             Some(meta) => {
                 meta.successor = Some(block_header.hash.clone());
-                self.put(&block_header.header.predecessor, &meta)?;
+                self.put(block_header.header.predecessor(), &meta)?;
             },
             None => {
                 let meta = Meta {
                     is_applied: false,
                     predecessor: None,
                     successor: Some(block_header.hash.clone()),
-                    level: block_header.header.level - 1
+                    level: block_header.header.level() - 1
                 };
-                self.put(&block_header.header.predecessor, &meta)?;
+                self.put(block_header.header.predecessor(), &meta)?;
             }
         }
 

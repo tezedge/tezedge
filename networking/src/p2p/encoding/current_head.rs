@@ -1,32 +1,27 @@
+use derive_new::new;
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::hash::{ChainId, HashEncoding, HashType};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
 use super::block_header::BlockHeader;
 use super::mempool::Mempool;
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Getters, new)]
 pub struct CurrentHeadMessage {
-    pub chain_id: ChainId,
-    pub current_block_header: BlockHeader,
-    pub current_mempool: Mempool,
-
+    #[get = "pub"]
+    chain_id: ChainId,
+    #[get = "pub"]
+    current_block_header: BlockHeader,
+    #[get = "pub"]
+    #[new(default)]
+    current_mempool: Mempool,
     #[serde(skip_serializing)]
+    #[new(default)]
     body: BinaryDataCache,
-}
-
-impl CurrentHeadMessage {
-    pub fn new(chain_id: &ChainId, current_block_header: &BlockHeader) -> Self {
-        CurrentHeadMessage {
-            chain_id: chain_id.clone(),
-            current_block_header: current_block_header.clone(),
-            current_mempool: Default::default(),
-            body: Default::default()
-        }
-    }
 }
 
 impl HasEncoding for CurrentHeadMessage {
@@ -52,12 +47,14 @@ impl CachedData for CurrentHeadMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Getters, new)]
 pub struct GetCurrentHeadMessage {
-    pub chain_id: ChainId,
+    #[get = "pub"]
+    chain_id: ChainId,
 
     #[serde(skip_serializing)]
-    pub body: BinaryDataCache,
+    #[new(default)]
+    body: BinaryDataCache,
 }
 
 impl HasEncoding for GetCurrentHeadMessage {

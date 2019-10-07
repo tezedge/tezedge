@@ -25,14 +25,27 @@ fn get_remote_lib() -> RemoteLib {
     let platform = current_platform();
     let url = match platform.os_type {
         OSType::Ubuntu => match platform.version.as_str() {
-            "16.04" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/a305eb0509f52cfa956611b18faa64c8/libtezos-ffi-ubuntu16.so", sha256: hex!("1BF2C459144E9C1EFC68D6B0A63AB74788C01CBB3E8CBB1A933905EFA8050096") }),
-            "18.04" | "18:10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/c26fb6584dd7d78e658d06d793a2618e/libtezos-ffi-ubuntu18.so", sha256: hex!("1945BDD37D73C2CDD4397C171170F6188B0D5FA7E83C70C8944352CDBCEE7D72")}),
-            "19.04" | "19.10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/4ff3913ffe802db4f4b964a1a9278ed1/libtezos-ffi-ubuntu19.so", sha256: hex!("E9A5AD64283A54E513BF99E9DF0BAA1C6CEF06DCB6749EE508A4E0CF689AC6A8")}),
+            "16.04" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/adbc14e473dee8d52af75f24f5101f76/libtezos-ffi-ubuntu16.so", sha256: hex!("0c73183a048662df7a73012702c80a2590e1e3bed56d1a64778218c7cc898a8d") }),
+            "18.04" | "18:10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/f3c5fc4c424943e13765b30245a6317e/libtezos-ffi-ubuntu18.so", sha256: hex!("5980f886d4cd9b4b603c423ee77ea852a14f90274f9820a683e05edab06beeae")}),
+            "19.04" | "19.10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/cdbfaf2ef75b6de53878075988f3c799/libtezos-ffi-ubuntu19.so", sha256: hex!("2f0f7d3f1f6365ef9b2c0e34bc8cc657384375bc140257e81dce36367eda6748")}),
             _ => None,
         }
         OSType::Debian => match platform.version.as_str() {
-            "9" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/93572f259e43cdd53878ad1a4bc1a9f2/libtezos-ffi-debian9.so", sha256: hex!("2579B3E0A69BEEE1125148C88B75C568C78E1CC469DF9495B767AE2DDE8E430A")}),
-            "10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/94761c5e01d57e29daefaa902a5cb1db/libtezos-ffi-debian10.so", sha256: hex!("98BA0292490D7FCB97FF6D5759B450C47CBBB0AF0C26F9008B78584A685C05F9")}),
+            "9" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/e82b77c70bf55c80761f50ec6780b0c4/libtezos-ffi-debian9.so", sha256: hex!("345c75a6473e7ccd48ee4304789cfe9be5ed8455ec1df9733ee32293a49227df")}),
+            "10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/9ebc227e0f76095414fbef936f47fc8e/libtezos-ffi-debian10.so", sha256: hex!("16134611b74fcf76d386e399cec633d638c499e84fee08d800f7a22e2e0abcf1")}),
+            _ => None
+        }
+        OSType::OpenSUSE => match platform.version.as_str() {
+            "15.1" | "15.2" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/2f64d1e9418596df8ac0f93eabeace97/libtezos-ffi-opensuse15.1.so", sha256: hex!("0674a49f92b81c6d8e944153276626ba272484969a59e44a7f6a2ce2c3f9e482")}),
+            _ => None
+        }
+        OSType::CentOS => match platform.version.chars().next().unwrap() {
+            '6' => {
+                println!("cargo:warning=CentOS 6.x is not supported by the OCaml Package Manager");
+                None
+            }
+            '7' => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/f141ab1b711f9f5c84c4646e48d7aebd/libtezos-ffi-centos7.so", sha256: hex!("de835e7bfe5127e2bd650d4e21a084db87dd60e141d26bb4bf5612cce1a287f6")}),
+            '8' => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/9d5048e82eaad705b2920c79d04898d3/libtezos-ffi-centos8.so", sha256: hex!("984eb34a52e04831be8e62508adabccd848864318173a908f97340b27150187b")}),
             _ => None
         }
         _ => None,
@@ -52,6 +65,12 @@ fn run_builder(build_chain: &str) {
 
     match build_chain.as_ref() {
         "local" => {
+            // check we want to update git updates or just skip updates, because of development process and changes on ocaml side, which are not yet in git
+            let update_git = env::var("UPDATE_GIT").unwrap_or("true".to_string()).parse::<bool>().unwrap();
+            if update_git {
+                update_git_repository();
+            }
+
             check_prerequisites();
 
             // $ pushd lib_tezos && make clean all && popd
@@ -141,19 +160,13 @@ fn rerun_if_ocaml_file_changes() {
 }
 
 fn main() {
-    // check we want to update git updates or just skip updates, because of development process and changes on ocaml side, which are not yet in git
-    let update_git = env::var("UPDATE_GIT").unwrap_or("true".to_string()).parse::<bool>().unwrap();
-    if update_git {
-        update_git_repository();
-    }
-
     // ensure lib_tezos/artifacts directory is empty
     if Path::new(ARTIFACTS_DIR).exists() {
         fs::remove_dir_all(ARTIFACTS_DIR).expect("Failed to delete artifacts directory!");
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
 
-    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("local".to_string());
+    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("remote".to_string());
     run_builder(&build_chain);
 
     // copy artifact files to OUT_DIR location

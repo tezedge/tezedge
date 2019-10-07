@@ -30,20 +30,20 @@ impl OperationsMetaStorage {
     pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
             &Meta {
-                validation_passes: block_header.header.validation_pass,
-                is_validation_pass_present: vec![false as u8; block_header.header.validation_pass as usize],
-                is_complete: block_header.header.validation_pass == 0,
-                level: block_header.header.level
+                validation_passes: block_header.header.validation_pass(),
+                is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
+                is_complete: block_header.header.validation_pass() == 0,
+                level: block_header.header.level()
             }
         )
     }
 
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        let block_hash =  message.operations_for_block.hash.clone();
+        let block_hash =  message.operations_for_block().hash().clone();
 
         match self.get(&block_hash)? {
             Some(mut meta) => {
-                let validation_pass = message.operations_for_block.validation_pass as u8;
+                let validation_pass = message.operations_for_block().validation_pass() as u8;
 
                 // update validation passes and check if we have all operations
                 meta.is_validation_pass_present[validation_pass as usize] = true as u8;
@@ -78,8 +78,7 @@ impl OperationsMetaStorage {
 
     #[inline]
     pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.db.get(block_hash)
-            .map(|v| v.is_some())
+        self.db.contains(block_hash)
             .map_err(StorageError::from)
     }
 
@@ -364,5 +363,44 @@ mod tests {
             }
         }
         assert!(DB::destroy(&opts, path).is_ok());
+    }
+
+    #[test]
+    fn operations_meta_storage_test_contains() -> Result<(), Error> {
+        use rocksdb::DB;
+
+        let path = "__opmeta_storage_test_contains";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let k = vec![3, 1, 3, 3, 7];
+            let v = Meta {
+                is_complete: false,
+                is_validation_pass_present: vec![false as u8; 5],
+                validation_passes: 5,
+                level: 785
+            };
+            let k_missing_1 = vec![0, 1, 2];
+            let k_added_later = vec![6, 7, 8, 9];
+
+            let mut storage = OperationsMetaStorage::new(Arc::new(db));
+            assert!(!storage.contains(&k)?);
+            assert!(!storage.contains(&k_missing_1)?);
+            assert!(!storage.contains(&k_added_later)?);
+            storage.put(&k, &v)?;
+            assert!(storage.contains(&k)?);
+            assert!(!storage.contains(&k_missing_1)?);
+            assert!(!storage.contains(&k_added_later)?);
+            storage.put(&k_added_later, &v)?;
+            assert!(storage.contains(&k)?);
+            assert!(!storage.contains(&k_missing_1)?);
+            assert!(storage.contains(&k_added_later)?);
+        }
+        Ok(assert!(DB::destroy(&opts, path).is_ok()))
     }
 }

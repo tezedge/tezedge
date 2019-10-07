@@ -165,18 +165,15 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 self.peers.insert(msg.peer.uri().clone(), msg.peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
-                let messages = &received.message.messages;
+                let messages = received.message.messages();
                 messages.iter()
-                    .for_each(|message| match message {
-                        PeerMessage::Advertise(message) => {
-                            info!("Received advertise message from peer: {}", &received.peer);
-                            let sock_addresses = message.id.iter()
-                                .filter_map(|str_ip_port| str_ip_port.parse().ok())
-                                .collect::<Vec<SocketAddr>>();
-                            self.potential_peers.extend(sock_addresses);
-                            ctx.myself().tell(CheckPeerCount, None);
-                        }
-                        _ => ()
+                    .for_each(|message| if let PeerMessage::Advertise(message) = message {
+                        info!("Received advertise message from peer: {}", &received.peer);
+                        let sock_addresses = message.id().iter()
+                            .filter_map(|str_ip_port| str_ip_port.parse().ok())
+                            .collect::<Vec<SocketAddr>>();
+                        self.potential_peers.extend(sock_addresses);
+                        ctx.myself().tell(CheckPeerCount, None);
                     })
             }
             _ => ()

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::handlers::handler_messages::BlockMetrics;
 use std::time::Instant;
 
@@ -17,7 +20,7 @@ impl BlocksMonitor {
         Self {
             threshold,
             level: downloaded_blocks,
-            downloaded_blocks: downloaded_blocks,
+            downloaded_blocks,
             applied_blocks: 0,
             downloading_group: downloaded_blocks / threshold,
             group_download_start: Instant::now(),
@@ -41,7 +44,7 @@ impl BlocksMonitor {
         use std::cmp::min;
 
         let group_count = self.level / self.threshold;
-        let mut total_count: i32 = self.level.clone() as i32;
+        let mut total_count: i32 = self.level as i32;
         let mut downloaded_count: i32 = self.downloaded_blocks as i32;
         let mut applied_count: i32 = self.applied_blocks as i32;
         let mut payload: Vec<BlockMetrics> = Vec::with_capacity(group_count + 1);

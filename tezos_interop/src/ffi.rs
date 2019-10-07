@@ -23,7 +23,7 @@ impl From<ocaml::Error> for OcamlRuntimeConfigurationError {
         match error {
             Error::Exception(ffi_error) => {
                 OcamlRuntimeConfigurationError::ChangeConfigurationError {
-                    message: parse_error_message(ffi_error).unwrap_or("unknown".to_string())
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
             _ => panic!("Ocaml settings failed! Reason: {:?}", error)
@@ -66,7 +66,7 @@ impl From<ocaml::Error> for OcamlStorageInitError {
         match error {
             Error::Exception(ffi_error) => {
                 OcamlStorageInitError::InitializeError {
-                    message: parse_error_message(ffi_error).unwrap_or("unknown".to_string())
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
             _ => panic!("Storage initialization failed! Reason: {:?}", error)
@@ -113,7 +113,7 @@ impl From<ocaml::Error> for BlockHeaderError {
         match error {
             Error::Exception(ffi_error) => {
                 BlockHeaderError::ReadError {
-                    message: parse_error_message(ffi_error).unwrap_or("unknown".to_string())
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
             _ => panic!("Storage initialization failed! Reason: {:?}", error)
