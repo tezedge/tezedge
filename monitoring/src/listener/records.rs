@@ -1,11 +1,8 @@
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
-use storage::{
-    persistent::DatabaseWithSchema,
-    StorageError,
-};
+use storage::{persistent::DatabaseWithSchema, StorageError, IteratorMode};
 use storage::persistent::{Schema, Codec, SchemaError};
-use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
+use failure::_core::cmp::max;
 
 // --- Storing result in Rocks DB --- //
 pub type RecordMetaStorageDatabase = dyn DatabaseWithSchema<RecordMetaStorage> + Sync + Send;
@@ -22,16 +19,27 @@ impl RecordMetaStorage {
     }
 
     #[inline]
-    pub fn put_record_meta(&mut self, ts: f32, record_meta: &RecordMeta) -> Result<(), StorageError> {
+    pub fn put_record_meta(&mut self, ts: u64, record_meta: &Event) -> Result<(), StorageError> {
         self.db.put(&RocksStamp(ts), record_meta)
             .map_err(StorageError::from)
+    }
+
+    pub fn count_events(&self) -> Result<usize, StorageError> {
+        let iter = self.db.iterator(IteratorMode::End)?;
+        let mut ret = 0;
+        for (key, _) in iter {
+            if let Ok(stamp) = key {
+                ret = max(stamp.0, ret);
+            }
+        }
+        Ok(ret as usize)
     }
 }
 
 impl Schema for RecordMetaStorage {
     const COLUMN_FAMILY_NAME: &'static str = "record_meta_storage";
     type Key = RocksStamp;
-    type Value = RecordMeta;
+    type Value = Event;
 }
 
 #[derive(Clone)]
@@ -44,7 +52,7 @@ impl RecordStorage {
         Self { db }
     }
 
-    pub fn put_record(&mut self, ts: f32, record: &Vec<u8>) -> Result<(), StorageError> {
+    pub fn put_record(&mut self, ts: u64, record: &Vec<u8>) -> Result<(), StorageError> {
         self.db.put(&RocksStamp(ts), record)
             .map_err(StorageError::from)
     }
@@ -58,13 +66,13 @@ impl Schema for RecordStorage {
 
 // --- Record implementation --- //
 
-/// Simple timestamp, denoting passed seconds from start of the node
+/// Simple counting identification stamp, denoted by order of messages
 /// implementing the codec trait for simple database serialization.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct RocksStamp(f32);
+pub struct RocksStamp(u64);
 
-impl From<f32> for RocksStamp {
-    fn from(val: f32) -> Self {
+impl From<u64> for RocksStamp {
+    fn from(val: u64) -> Self {
         Self(val)
     }
 }
@@ -72,25 +80,25 @@ impl From<f32> for RocksStamp {
 impl Codec for RocksStamp {
     #[inline]
     fn decode(data: &[u8]) -> Result<Self, SchemaError> {
-        if data.len() < 4 {
+        if data.len() < 8 {
             Err(SchemaError::DecodeError)
         } else {
-            Ok(Self((&data[0..4]).read_f32::<LittleEndian>().map_err(|_| SchemaError::DecodeError)?))
+            let mut buffer: [u8; 8] = Default::default();
+            buffer.copy_from_slice(&data[0..8]);
+            Ok(Self(u64::from_le_bytes(buffer)))
         }
     }
 
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        let mut data = Vec::with_capacity(4);
-        data.write_f32::<LittleEndian>(self.0).map_err(|_| SchemaError::EncodeError)?;
-        Ok(data)
+        Ok(self.0.to_le_bytes().to_vec())
     }
 }
 
 /// Part of the Record Meta, denoting content type in the Record storage
 #[derive(Debug, Copy, Clone)]
 #[repr(u8)]
-pub enum RecordType {
+pub enum EventType {
     /// Connection to new peer was accepted. No record in Record Storage should correspond to
     /// this meta message
     PeerCreated,
@@ -102,9 +110,10 @@ pub enum RecordType {
     PeerReceivedMessage,
 }
 
-impl RecordType {
+impl EventType {
     fn from_u8(val: u8) -> Option<Self> {
-        use RecordType::*;
+        use EventType::*;
+
         if val == PeerCreated as u8 {
             Some(PeerCreated)
         } else if val == PeerBootstrapped as u8 {
@@ -119,23 +128,28 @@ impl RecordType {
 
 #[derive(Debug, Clone)]
 /// Record metadata, describing incoming message.
-pub struct RecordMeta {
+pub struct Event {
     /// Description of type of incoming message, and stored format.
-    pub record_type: RecordType,
+    pub record_type: EventType,
+    /// Relative time in milliseconds, denoting when message came.
+    pub timestamp: u64,
     /// Representation of an peer actor, to whom belongs the message
     pub peer_id: String,
 }
 
-impl Codec for RecordMeta {
+impl Codec for Event {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if bytes.len() < 1 {
             return Err(SchemaError::DecodeError);
         }
         let record_type = bytes.first().ok_or(SchemaError::DecodeError)?;
-        let record_type = RecordType::from_u8(record_type.clone()).ok_or(SchemaError::DecodeError)?;
-        let peer_id = String::from_utf8(bytes[1..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
-        Ok(Self { record_type, peer_id })
+        let record_type = EventType::from_u8(record_type.clone()).ok_or(SchemaError::DecodeError)?;
+        let mut ts_buffer: [u8; 8] = Default::default();
+        ts_buffer.copy_from_slice(&bytes[1..9]);
+        let timestamp = u64::from_le_bytes(ts_buffer);
+        let peer_id = String::from_utf8(bytes[9..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
+        Ok(Self { record_type, timestamp, peer_id })
     }
 
     #[inline]
@@ -143,6 +157,7 @@ impl Codec for RecordMeta {
         // 1 byte record_type, 8 bytes (little endian) timestamp, rest is peer name (UTF-8)
         let mut ret = Vec::with_capacity(1 + 8 + self.peer_id.as_bytes().len());
         ret.push(self.record_type as u8);
+        ret.extend_from_slice(&self.timestamp.to_le_bytes());
         ret.extend_from_slice(self.peer_id.as_bytes());
         Ok(ret)
     }

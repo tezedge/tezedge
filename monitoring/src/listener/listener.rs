@@ -1,15 +1,17 @@
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use riker::actor::*;
-use crate::listener::records::{RecordStorage, RecordMetaStorage, RecordMeta, RecordType};
+use crate::listener::records::{RecordStorage, RecordMetaStorage, Event, EventType};
 use std::sync::Arc;
 use rocksdb::DB;
 use std::time::Instant;
 use networking::p2p::binary_message::BinaryMessage;
+use std::convert::TryInto;
 
 type NetworkListenerRef = ActorRef<NetworkChannelMsg>;
 
 pub struct NetworkChannelListener {
     start: Instant,
+    event_index: u64,
     record_storage: RecordStorage,
     record_meta_storage: RecordMetaStorage,
     network_channel: NetworkChannelRef,
@@ -19,10 +21,13 @@ impl NetworkChannelListener {
     fn name() -> &'static str { "network-listener" }
 
     fn new((rocks_db, network_channel): (Arc<DB>, NetworkChannelRef)) -> Self {
+        let record_meta_storage = RecordMetaStorage::new(rocks_db.clone());
+        let event_index = record_meta_storage.count_events().unwrap_or_default() as u64;
         Self {
             start: Instant::now(),
-            record_storage: RecordStorage::new(rocks_db.clone()),
-            record_meta_storage: RecordMetaStorage::new(rocks_db),
+            event_index,
+            record_storage: RecordStorage::new(rocks_db),
+            record_meta_storage,
             network_channel,
         }
     }
@@ -47,26 +52,32 @@ impl Actor for NetworkChannelListener {
 
     fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
         use log::*;
-        let ts = self.start.elapsed().as_secs_f32();
+        // TryFrom<u128> for u64 fail iff value of converting u128 is bigger than u64::max_value()
+        let timestamp = self.start.elapsed().as_micros().try_into().unwrap_or(u64::max_value());
 
         let (record_type, peer_id, record) = match msg {
             NetworkChannelMsg::PeerCreated(msg) => {
-                (RecordType::PeerCreated, msg.peer.name().to_string(), Vec::new())
+                (EventType::PeerCreated, msg.peer.name().to_string(), Vec::new())
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {
-                (RecordType::PeerBootstrapped, msg.peer.name().to_string(), msg.peer_id.into_bytes())
+                (EventType::PeerBootstrapped, msg.peer.name().to_string(), msg.peer_id.into_bytes())
             }
             NetworkChannelMsg::PeerMessageReceived(msg) => {
-                (RecordType::PeerReceivedMessage, msg.peer.name().to_string(), msg.message.as_bytes().unwrap_or_default())
+                (EventType::PeerReceivedMessage, msg.peer.name().to_string(), msg.message.as_bytes().unwrap_or_default())
             }
         };
-        if let Err(err) = self.record_meta_storage.put_record_meta(ts, &RecordMeta {
+
+        let id = self.event_index;
+        self.event_index += 1;
+
+        if let Err(err) = self.record_meta_storage.put_record_meta(id, &Event {
             record_type,
+            timestamp,
             peer_id,
         }) {
             warn!("Failed to store meta for record: {}", err);
         }
-        if let Err(err) = self.record_storage.put_record(ts, &record) {
+        if let Err(err) = self.record_storage.put_record(id, &record) {
             warn!("Failed to store record {}", err);
         }
     }
