@@ -10,8 +10,7 @@ failure_derive = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4.0"
 log = "0.4.8"
-
 # local dependencies
-networking = { path = "../networking" }
-tezos_encoding = { path = "../tezos_encoding" }
-tezos_interop = { path = "../tezos_interop" }
+tezos_encoding = { path = "../encoding" }
+tezos_interop = { path = "../interop" }
+networking = { path = "../../networking" }
