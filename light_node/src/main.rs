@@ -1,9 +1,6 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-#[macro_use]
-extern crate lazy_static;
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -25,9 +22,11 @@ use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_bl
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
 use tezos_client::client::{TezosRuntimeConfiguration, TezosStorageInitInfo};
+use tezos_client::environment;
+use tezos_client::identity;
+use tezos_client::identity::Identity;
 
 use crate::configuration::LogFormat;
-use crate::configuration::tezos_node::Identity;
 
 mod configuration;
 mod slog_detailed_json;
@@ -42,12 +41,12 @@ macro_rules! shutdown_and_exit {
 }
 
 fn create_logger() -> Logger {
-    let drain = match configuration::ENV.log_format {
+    let drain = match configuration::ENV.logging.log_format {
         LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
         LogFormat::Json => slog_async::Async::new(slog_detailed_json::default(std::io::stdout()).fuse()).build()
     };
 
-    let drain = if configuration::ENV.verbose {
+    let drain = if configuration::ENV.logging.verbose {
         drain.filter_level(Level::Debug).fuse()
     } else {
         drain.filter_level(Level::Info).fuse()
@@ -70,22 +69,26 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         configuration::ENV.p2p.listener_port,
         identity.public_key,
         identity.secret_key,
-        identity.proof_of_work_stamp)
-        .expect("Failed to create network manager");
+        identity.proof_of_work_stamp,
+        environment::TEZOS_ENV
+            .get(&configuration::ENV.tezos_network)
+            .map(|cfg| cfg.version.clone())
+            .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network))
+    ).expect("Failed to create network manager");
     let _ = PeerManager::actor(
         &actor_system,
         network_channel.clone(),
         network_manager.clone(),
         &configuration::ENV.p2p.bootstrap_lookup_addresses,
-        &configuration::ENV.initial_peers,
-        configuration::ENV.peer_threshold,
+        &configuration::ENV.p2p.initial_peers,
+        configuration::ENV.p2p.peer_threshold,
         log.clone())
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
         .expect("Failed to create chain manager");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, log.clone())
         .expect("Failed to create chain feeder");
-    let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.websocket_address, log.clone())
+    let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel, rocks_db.clone())
         .expect("Failed to create monitor actor");
@@ -115,7 +118,7 @@ fn main() {
 
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
         .unwrap_or_else(|| {
-            let tezos_default_identity: PathBuf = configuration::tezos_node::get_default_tezos_identity_json_file_path().unwrap();
+            let tezos_default_identity: PathBuf = identity::get_default_tezos_identity_json_file_path().unwrap();
             if tezos_default_identity.exists() {
                 // if exists tezos default location, then use it
                 tezos_default_identity
@@ -126,20 +129,20 @@ fn main() {
         });
 
     // setup tezos ocaml runtime
-    if let Err(e) = client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: configuration::ENV.ocaml_log_enabled }) {
+    if let Err(e) = client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled }) {
         shutdown_and_exit!(error!(log, "Failed to change ocaml runtime configuration: '{:?}'", e), actor_system);
     }
-    let identity = match configuration::tezos_node::load_identity(identity_json_file_path) {
+    let identity = match identity::load_identity(identity_json_file_path) {
         Ok(identity) => identity,
         Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity. Reason: {:?}", e), actor_system),
     };
     let tezos_storage_init_info = {
-        let tezos_data_dir = &configuration::ENV.tezos_data_dir;
+        let tezos_data_dir = &configuration::ENV.storage.tezos_data_dir;
         if !(tezos_data_dir.exists() && tezos_data_dir.is_dir()) {
             shutdown_and_exit!(error!(log, "Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir), actor_system);
         }
         let tezos_data_dir = tezos_data_dir.to_str().unwrap();
-        match client::init_storage(tezos_data_dir.to_string()) {
+        match client::init_storage(tezos_data_dir.to_string(), configuration::ENV.tezos_network) {
             Ok(res) => res,
             Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "directory" => tezos_data_dir, "reason" => err), actor_system)
         }
@@ -155,9 +158,9 @@ fn main() {
         EventPayloadStorage::cf_descriptor(),
         EventStorage::cf_descriptor(),
     ];
-    let rocks_db = match open_db(&configuration::ENV.bootstrap_db_path, schemas) {
+    let rocks_db = match open_db(&configuration::ENV.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
-        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &configuration::ENV.bootstrap_db_path), actor_system)
+        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &configuration::ENV.storage.bootstrap_db_path), actor_system)
     };
     debug!(log, "Loaded RocksDB database");
 

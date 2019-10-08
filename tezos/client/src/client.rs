@@ -9,6 +9,9 @@ use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo};
 
+use crate::environment;
+use crate::environment::{TezosEnvironment, TezosEnvironmentConfiguration};
+
 pub type TezosRuntimeConfiguration = OcamlRuntimeConfiguration;
 
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), OcamlRuntimeConfigurationError> {
@@ -58,8 +61,14 @@ impl fmt::Debug for TezosStorageInitInfo {
 
 
 /// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {
-    match ffi::init_storage(storage_data_dir) {
+pub fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {
+    let cfg: &TezosEnvironmentConfiguration = match environment::TEZOS_ENV.get(&tezos_environment) {
+        None => return Err(OcamlStorageInitError::InitializeError {
+            message: format!("FFI 'init_storage' failed, because there is no tezos environment configured for: {:?}", tezos_environment)
+        }),
+        Some(cfg) => cfg
+    };
+    match ffi::init_storage(storage_data_dir, &cfg.genesis) {
         Ok(result) => Ok(TezosStorageInitInfo::new(result?)?),
         Err(e) => {
             Err(OcamlStorageInitError::InitializeError {
@@ -77,7 +86,7 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
                 Ok(header) => Ok(header),
                 Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
             }
-        },
+        }
         Err(e) => {
             Err(BlockHeaderError::ReadError {
                 message: format!("FFI 'get_current_block_header' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
@@ -87,8 +96,8 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
 }
 
 /// Get block header from storage or None
-pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHeader>, BlockHeaderError> {
-    match ffi::get_block_header(hex::encode(block_header_hash)) {
+pub fn get_block_header(chain_id: &ChainId, block_header_hash: &BlockHash) -> Result<Option<BlockHeader>, BlockHeaderError> {
+    match ffi::get_block_header(hex::encode(chain_id), hex::encode(block_header_hash)) {
         Ok(result) => {
             let header = result?;
             match header {
@@ -100,7 +109,7 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHea
                     }
                 }
             }
-        },
+        }
         Err(e) => {
             Err(BlockHeaderError::ReadError {
                 message: format!("FFI 'get_block_header' failed! Something is wrong! Reason: {:?}", e)
@@ -115,6 +124,7 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHea
 /// - new current head is evaluated
 /// - returns validation_result.message
 pub fn apply_block(
+    chain_id: &ChainId,
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
@@ -133,6 +143,7 @@ pub fn apply_block(
     let operations = to_hex_vec(operations);
 
     match ffi::apply_block(
+        hex::encode(chain_id),
         hex::encode(block_header_hash),
         block_header,
         operations,

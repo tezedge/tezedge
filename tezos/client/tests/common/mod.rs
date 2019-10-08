@@ -18,3 +18,9 @@ pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
         .to_path_buf();
     path
 }
+
+pub fn is_ocaml_log_enabled() -> bool {
+    env::var("OCAML_LOG_ENABLED")
+        .unwrap_or("false".to_string())
+        .parse::<bool>().unwrap()
+}

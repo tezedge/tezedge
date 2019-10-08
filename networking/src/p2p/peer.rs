@@ -137,6 +137,8 @@ pub struct Local {
     secret_key: String,
     /// proof of work
     proof_of_work_stamp: String,
+    /// version of network protocol
+    version: String
 }
 
 pub type PeerRef = ActorRef<PeerMsg>;
@@ -160,6 +162,7 @@ impl Peer {
                public_key: &str,
                secret_key: &str,
                proof_of_work_stamp: &str,
+               version: &str,
                tokio_executor: TaskExecutor,
                socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
@@ -168,6 +171,7 @@ impl Peer {
             proof_of_work_stamp: proof_of_work_stamp.into(),
             public_key: public_key.into(),
             secret_key: secret_key.into(),
+            version: version.into()
         };
         let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
@@ -277,7 +281,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
         &info.public_key,
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
-        vec![supported_version()]);
+        vec![Version::new(info.version.clone(), 0, 0)]);
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match msg_tx.write_message(&connection_message_bytes).await {
@@ -343,11 +347,6 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
 /// remote_nonce is used for reading crypto messages from other peers
 fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: bool) -> NoncePair {
     nonce::generate_nonces(sent_msg.raw(), recv_msg.raw(), incoming)
-}
-
-/// Return supported network protocol version
-fn supported_version() -> Version {
-    Version::new("TEZOS_ALPHANET_2018-11-30T15:30:56Z".into(), 0, 0)
 }
 
 /// Start to process incoming data

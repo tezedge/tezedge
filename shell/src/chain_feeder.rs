@@ -13,7 +13,7 @@ use slog::{info, warn, Logger};
 
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
 use tezos_client::client::{apply_block, TezosStorageInitInfo};
-use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
+use tezos_encoding::hash::{BlockHash, HashEncoding, HashType, ChainId};
 
 use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic};
 
@@ -42,8 +42,10 @@ impl ChainFeeder {
         let block_applier_thread = {
             let apply_block_run = apply_block_run.clone();
             let current_head_hash = tezos_init.current_block_header_hash.clone();
+            let chain_id = tezos_init.chain_id.clone();
 
             thread::spawn(move || feed_chain_to_protocol(
+                chain_id,
                 apply_block_run,
                 current_head_hash,
                 shell_channel,
@@ -121,6 +123,7 @@ impl Receive<FeedChainToProtocol> for ChainFeeder {
 
 
 fn feed_chain_to_protocol(
+    chain_id: ChainId,
     apply_block_run: Arc<AtomicBool>,
     mut current_head_hash: BlockHash,
     shell_channel: ShellChannelRef,
@@ -162,7 +165,7 @@ fn feed_chain_to_protocol(
                                     .map(Some)
                                     .collect();
                                 // apply block and it's operations
-                                apply_block(&current_head.hash, &current_head.header, &operations)?;
+                                apply_block(&chain_id, &current_head.hash, &current_head.header, &operations)?;
                                 // mark current head as applied
                                 current_head_meta.is_applied = true;
                                 block_meta_storage.put(&current_head.hash, &current_head_meta)?;

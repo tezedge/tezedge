@@ -3,9 +3,9 @@ use std::stringify;
 use networking::p2p::binary_message::{Hexable, MessageHash};
 use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
+use tezos_client::client::{TezosRuntimeConfiguration, TezosStorageInitInfo};
+use tezos_client::environment::TezosEnvironment;
 use tezos_interop::ffi::ApplyBlockError;
-
-use crate::client::TezosStorageInitInfo;
 
 mod common;
 
@@ -15,14 +15,18 @@ macro_rules! tezos_test {
 
 #[test]
 fn run_tests() {
+    // init runtime and turn on/off ocaml logging
+    client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap();
+
     // We cannot run tests in parallel, because tezos does not handle situation when multiple storage
     // directories are initialized
-    let tests: [(&str, fn() -> Result<(), failure::Error>); 5] = [
+    let tests: [(&str, fn() -> Result<(), failure::Error>); 6] = [
         tezos_test!(test_bootstrap_empty_storage_with_first_three_blocks),
         tezos_test!(test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor),
         tezos_test!(test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations),
         tezos_test!(test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations),
-        tezos_test!(test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_directory)
+        tezos_test!(test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_directory),
+        tezos_test!(test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_directory)
     ];
 
     for (name, f) in tests.iter() {
@@ -32,9 +36,11 @@ fn run_tests() {
 }
 
 fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure::Error> {
+
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
-        common::prepare_empty_dir("bootstrap_test_storage_01")
+        common::prepare_empty_dir("bootstrap_test_storage_01"),
+        test_data::TEZOS_ENV,
     )?;
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -43,12 +49,13 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     let current_header = client::get_current_block_header(&chain_id)?;
     assert_eq!(0, current_header.level(), "Was expecting current header level to be 0 but instead it was {}", current_header.level());
 
-    let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
+    let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
     assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?,
         &test_data::block_operations_from_hex(
@@ -64,6 +71,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string())?,
         &test_data::block_operations_from_hex(
@@ -79,6 +87,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     // apply third block - level 3
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string())?,
         &test_data::block_operations_from_hex(
@@ -96,7 +105,8 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
-        common::prepare_empty_dir("bootstrap_test_storage_02")
+        common::prepare_empty_dir("bootstrap_test_storage_02"),
+        test_data::TEZOS_ENV,
     )?;
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -105,12 +115,13 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
     let current_header = client::get_current_block_header(&chain_id)?;
     assert_eq!(0, current_header.level());
 
-    let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
+    let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
     assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string())?,
         &test_data::block_operations_from_hex(
@@ -125,7 +136,8 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
 fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
-        common::prepare_empty_dir("bootstrap_test_storage_03")
+        common::prepare_empty_dir("bootstrap_test_storage_03"),
+        test_data::TEZOS_ENV,
     )?;
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -134,12 +146,13 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
     let current_header = client::get_current_block_header(&chain_id)?;
     assert_eq!(0, current_header.level());
 
-    let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
+    let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
     assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
 
     // apply second block - level 3 has validation_pass = 4
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string())?,
         vec![None].as_ref(),
@@ -151,7 +164,8 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
 fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations() -> Result<(), failure::Error> {
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
-        common::prepare_empty_dir("bootstrap_test_storage_04")
+        common::prepare_empty_dir("bootstrap_test_storage_04"),
+        test_data::TEZOS_ENV,
     )?;
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -160,12 +174,13 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
     let current_header = client::get_current_block_header(&chain_id)?;
     assert_eq!(0, current_header.level());
 
-    let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
+    let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
     assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
 
     // apply second block - level 1 ok
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?,
         &test_data::block_operations_from_hex(
@@ -177,6 +192,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
 
     // apply second block - level 2 with operations for level 3
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string())?,
         &test_data::block_operations_from_hex(
@@ -191,7 +207,8 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
     let storage_data_dir = "bootstrap_test_storage_05";
     // init empty storage for test
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
-        common::prepare_empty_dir(&storage_data_dir)
+        common::prepare_empty_dir(&storage_data_dir),
+        test_data::TEZOS_ENV,
     )?;
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -200,12 +217,13 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
     let current_header = client::get_current_block_header(&chain_id)?;
     assert_eq!(0, current_header.level(), "Was expecting current header level to be 0 but instead it was {}", current_header.level());
 
-    let genesis_header = client::get_block_header(&genesis_block_header_hash)?;
+    let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
     assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(
+        &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?,
         &test_data::block_operations_from_hex(
@@ -224,7 +242,8 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
         common::test_storage_dir_path(storage_data_dir)
             .to_str()
             .unwrap()
-            .to_string()
+            .to_string(),
+        test_data::TEZOS_ENV,
     )?;
     // current hash is not equal to genesis anymore
     assert_ne!(genesis_block_header_hash, current_block_header_hash);
@@ -236,9 +255,68 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
     Ok(())
 }
 
+fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_directory() -> Result<(), failure::Error> {
+    let storage_data_dir = "bootstrap_test_storage_06";
+    // ALPHANET init empty storage for test
+    let alphanet_init_info: TezosStorageInitInfo = client::init_storage(
+        common::prepare_empty_dir(&storage_data_dir),
+        TezosEnvironment::Alphanet,
+    )?;
+    // current hash must be equal to genesis
+    assert_eq!(alphanet_init_info.genesis_block_header_hash, alphanet_init_info.current_block_header_hash);
+
+    let alphanet_block_header_hash_level1 = BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?;
+
+    // ALPHANET - apply first block - level 1
+    let apply_block_result = client::apply_block(
+        &alphanet_init_info.chain_id,
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
+        &alphanet_block_header_hash_level1,
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        ),
+    );
+    assert_eq!("activate PsddFKi32cMJ", &apply_block_result?.validation_result_message);
+
+    // MAINNET reinit storage in the same directory for test
+    let mainnet_init_info: TezosStorageInitInfo = client::init_storage(
+        common::test_storage_dir_path(storage_data_dir)
+            .to_str()
+            .unwrap()
+            .to_string(),
+        TezosEnvironment::Mainnet,
+    )?;
+    // current hash is equal to genesis in new storage
+    assert_eq!(mainnet_init_info.genesis_block_header_hash, mainnet_init_info.current_block_header_hash);
+
+    // checks chains
+    assert_ne!(alphanet_init_info.chain_id, mainnet_init_info.chain_id);
+
+    // checks genesis
+    assert_ne!(alphanet_init_info.genesis_block_header_hash, mainnet_init_info.genesis_block_header_hash);
+
+    // checks genesis
+    assert_ne!(alphanet_init_info.current_block_header_hash, mainnet_init_info.current_block_header_hash);
+
+    // ALPHANET current hash must be equal to level1
+    let alphanet_current_header = client::get_current_block_header(&alphanet_init_info.chain_id)?;
+    assert_eq!(1, alphanet_current_header.level());
+    assert_eq!(alphanet_current_header.message_hash()?, alphanet_block_header_hash_level1.message_hash()?);
+
+    // MAINNET current hash must be equal to level0
+    let mainnet_current_header = client::get_current_block_header(&mainnet_init_info.chain_id)?;
+    assert_eq!(0, mainnet_current_header.level());
+
+    Ok(())
+}
+
 mod test_data {
     use networking::p2p::binary_message::Hexable;
     use networking::p2p::encoding::prelude::*;
+    use tezos_client::environment::TezosEnvironment;
+
+    pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
     pub const BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";
