@@ -10,4 +10,4 @@ failure = "0.1.5"
 log = "0.4.8"
 rocksdb = "0.12.3"
 networking = { path = "../networking" }
-tezos_encoding = { path = "../tezos_encoding" }
+tezos_encoding = { path = "../tezos/encoding" }

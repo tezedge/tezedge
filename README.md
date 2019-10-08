@@ -63,7 +63,7 @@ On linux systems:
 SODIUM_USE_PKG_CONFIG=1 cargo build
 ```
 
-For more info on how to compile OCaml interop library please see [README](tezos_interop/README.md).
+For more info on how to compile OCaml interop library please see [README](./tezos/interop/README.md).
 
 **5. Listening for updates**
 

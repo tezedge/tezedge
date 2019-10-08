@@ -3,8 +3,9 @@ use std::stringify;
 use networking::p2p::binary_message::{Hexable, MessageHash};
 use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
-use tezos_client::client::TezosStorageInitInfo;
 use tezos_interop::ffi::ApplyBlockError;
+
+use crate::client::TezosStorageInitInfo;
 
 mod common;
 
