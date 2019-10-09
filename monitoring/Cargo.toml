@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 storage = { path = "../storage" }
-riker = { git = "https://github.com/riker-rs/riker" }
+riker = { git = "https://github.com/mrjoe7/riker.git", branch = "slog-support" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 failure = "0.1.5"
@@ -16,4 +16,6 @@ ws = "*"
 tokio = "0.2.0-alpha.6"
 serde = "1.0"
 serde_json = "1.0.41"
-log = "0.4.8"
+erased-serde = "0.3"
+slog = { version = "2.5", features = ["nested-values"] }
+slog_derive = "0.1.1"

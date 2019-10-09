@@ -1,14 +1,19 @@
-use ws::{WebSocket, Sender as WsSender};
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{
-    sync::{Arc, atomic::AtomicUsize},
     net::SocketAddr,
+    sync::{Arc, atomic::AtomicUsize},
     thread::Builder,
 };
-use log::*;
+
 use riker::actor::*;
+use slog::{info, Logger, warn};
+use ws::{Sender as WsSender, WebSocket};
+
 use crate::handlers::{
-    ws_server::WsServer,
     handler_messages::HandlerMessage,
+    ws_server::WsServer,
 };
 
 #[actor(HandlerMessage)]
@@ -24,7 +29,7 @@ impl WebsocketHandler {
         "websocket_handler"
     }
 
-    pub fn new(address: SocketAddr) -> Self {
+    fn new(address: SocketAddr) -> Self {
         let connected_clients = Arc::new(AtomicUsize::new(0));
         let ws_server = WebSocket::new(WsServer::new(connected_clients.clone()))
             .expect("Unable to create websocket server");
@@ -35,7 +40,6 @@ impl WebsocketHandler {
                 .expect("Unable to bind websocket server");
             socket.run().expect("Websocket failed unexpectedly");
         }).expect("Failed to spawn websocket thread");
-        info!("Starting websocket server at address: {}", address);
 
         Self {
             broadcaster,
@@ -43,7 +47,9 @@ impl WebsocketHandler {
         }
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr) -> Result<WebsocketHandlerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr, log: Logger) -> Result<WebsocketHandlerRef, CreateError> {
+        info!(log, "Starting websocket server"; "address" => address);
+
         sys.actor_of(
             Props::new_args(Self::new, address),
             Self::name(),
@@ -62,15 +68,15 @@ impl Actor for WebsocketHandler {
 impl Receive<HandlerMessage> for WebsocketHandler {
     type Msg = WebsocketHandlerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: HandlerMessage, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: HandlerMessage, _sender: Sender) {
         use std::sync::atomic::Ordering::Relaxed;
 
         if self.connected_clients.load(Relaxed) > 0 {
             match serde_json::to_string(&msg) {
                 Ok(serialized) => if let Err(err) = self.broadcaster.send(serialized) {
-                    warn!("Failed to broadcast message: {}", err);
+                    warn!(ctx.system.log(), "Failed to broadcast message"; "message" => msg, "reason" => format!("{:?}", err));
                 }
-                Err(err) => warn!("Failed to serialize message '{:?}: {}'", msg, err)
+                Err(err) => warn!(ctx.system.log(), "Failed to serialize message"; "message" => msg, "reason" => format!("{:?}", err))
             }
         }
     }

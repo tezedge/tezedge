@@ -1,8 +1,13 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::Arc;
-use serde::{Serialize, Deserialize};
-use storage::{persistent::DatabaseWithSchema, StorageError, IteratorMode};
-use storage::persistent::{Schema, Codec, SchemaError};
+
 use failure::_core::cmp::max;
+use serde::{Deserialize, Serialize};
+
+use storage::{IteratorMode, persistent::DatabaseWithSchema, StorageError};
+use storage::persistent::{Codec, Schema, SchemaError};
 
 // --- Storing result in Rocks DB --- //
 pub type EventStorageDatabase = dyn DatabaseWithSchema<EventStorage> + Sync + Send;
@@ -165,8 +170,9 @@ impl Codec for Event {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use failure::Error;
+
+    use super::*;
 
     #[test]
     fn rockstamp_encoded_equals_decoded() -> Result<(), Error> {

@@ -8,9 +8,9 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use dns_lookup::LookupError;
-use log::{info, warn};
 use rand::seq::SliceRandom;
 use riker::actors::*;
+use slog::{info, warn, Logger};
 
 use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
@@ -45,6 +45,7 @@ pub struct PeerManager {
     peers: HashMap<ActorUri, PeerRef>,
     bootstrap_addresses: Vec<String>,
     potential_peers: HashSet<SocketAddr>,
+    log: Logger,
 }
 
 pub type PeerManagerRef = ActorRef<PeerManagerMsg>;
@@ -55,10 +56,11 @@ impl PeerManager {
                network: NetworkManagerRef,
                bootstrap_addresses: &[String],
                initial_peers: &[SocketAddr],
-               threshold: Threshold) -> Result<PeerManagerRef, CreateError> {
+               threshold: Threshold,
+               log: Logger) -> Result<PeerManagerRef, CreateError> {
 
         sys.actor_of(
-            Props::new_args(PeerManager::new, (event_channel, bootstrap_addresses.to_vec(), HashSet::from_iter(initial_peers.to_vec()), network, threshold)),
+            Props::new_args(PeerManager::new, (event_channel, bootstrap_addresses.to_vec(), HashSet::from_iter(initial_peers.to_vec()), network, threshold, log)),
             PeerManager::name())
     }
 
@@ -68,16 +70,16 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn new((event_channel, bootstrap_addresses, potential_peers, network, threshold): (NetworkChannelRef, Vec<String>, HashSet<SocketAddr>, NetworkManagerRef, Threshold)) -> Self {
-        PeerManager { network_channel: event_channel, network, bootstrap_addresses, threshold, peers: HashMap::new(), potential_peers }
+    fn new((event_channel, bootstrap_addresses, potential_peers, network, threshold, log): (NetworkChannelRef, Vec<String>, HashSet<SocketAddr>, NetworkManagerRef, Threshold, Logger)) -> Self {
+        PeerManager { network_channel: event_channel, network, bootstrap_addresses, threshold, peers: HashMap::new(), potential_peers, log }
     }
 
     fn discover_peers(&mut self) {
         if self.peers.is_empty() {
-            info!("Doing peer DNS lookup..");
-            dns_lookup_peers(&self.bootstrap_addresses).iter()
+            info!(self.log, "Doing peer DNS lookup..");
+            dns_lookup_peers(&self.bootstrap_addresses, self.log.clone()).iter()
                 .for_each(|i| {
-                    info!("found potential peer: {}", i);
+                    info!(self.log, "Found potential peer"; "ip" => i);
                     self.potential_peers.insert(*i);
                 });
         } else {
@@ -130,7 +132,7 @@ impl Receive<CheckPeerCount> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckPeerCount, _sender: Sender) {
         if self.peers.len() < self.threshold.low {
-            warn!("Peer count is too low. actual={}, required={}", self.peers.len(), self.threshold.low);
+            warn!(self.log, "Peer count is too low"; "actual" => self.peers.len(), "required" => self.threshold.low);
             if self.potential_peers.len() < self.threshold.low {
                 self.discover_peers();
             }
@@ -146,7 +148,7 @@ impl Receive<CheckPeerCount> for PeerManager {
                     self.network.tell(ConnectToPeer { address }, ctx.myself().into())
                 });
         } else if self.peers.len() > self.threshold.high {
-            warn!("Peer count is too high. Some peers will be stopped. actual={}, required={}", self.peers.len(), self.threshold.high);
+            warn!(self.log, "Peer count is too high. Some peers will be stopped"; "actual" => self.peers.len(), "required" => self.threshold.high);
 
             // stop some peers
             self.peers.values()
@@ -168,7 +170,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 let messages = received.message.messages();
                 messages.iter()
                     .for_each(|message| if let PeerMessage::Advertise(message) = message {
-                        info!("Received advertise message from peer: {}", &received.peer);
+                        info!(self.log, "Received advertise message from peer"; "peer" => received.peer.name());
                         let sock_addresses = message.id().iter()
                             .filter_map(|str_ip_port| str_ip_port.parse().ok())
                             .collect::<Vec<SocketAddr>>();
@@ -181,7 +183,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
     }
 }
 
-fn dns_lookup_peers(bootstrap_addresses: &[String]) -> HashSet<SocketAddr> {
+fn dns_lookup_peers(bootstrap_addresses: &[String], log: Logger) -> HashSet<SocketAddr> {
     let mut resolved_peers = HashSet::new();
     for address in bootstrap_addresses {
         match resolve_dns_name_to_peer_address(&address) {
@@ -189,7 +191,7 @@ fn dns_lookup_peers(bootstrap_addresses: &[String]) -> HashSet<SocketAddr> {
                 resolved_peers.extend(&peers)
             },
             Err(e) => {
-                warn!("DNS lookup for address: {:?} error: {:?}", &address, e)
+                warn!(log, "DNS lookup failed"; "ip" => address, "reason" => format!("{:?}", e))
             }
         }
     }

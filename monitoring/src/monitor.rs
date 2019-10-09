@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use networking::p2p::{
     network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
 };
@@ -15,8 +18,8 @@ use crate::{
 };
 use crate::handlers::handler_messages::HandlerMessage;
 use rocksdb::DB;
-use log::*;
 use networking::p2p::binary_message::BinaryMessage;
+use slog::{Logger, warn};
 
 
 #[derive(Clone, Debug)]
@@ -74,7 +77,7 @@ impl Monitor {
         )
     }
 
-    pub fn process_peer_message(&mut self, msg: PeerMessageReceived) {
+    fn process_peer_message(&mut self, msg: PeerMessageReceived, log: Logger) {
         use std::mem::size_of_val;
         use networking::p2p::encoding::peer::PeerMessage;
 
@@ -99,7 +102,7 @@ impl Monitor {
                 monitor.incoming_bytes(size);
             }
         } else {
-            warn!("Missing monitor for peer: {}", msg.peer.name());
+            warn!(log, "Missing monitor for peer"; "peer" => msg.peer.name());
         }
     }
 }
@@ -156,7 +159,7 @@ impl Receive<SystemEvent> for Monitor {
                     None,
                 );
             } else {
-                warn!("Monitor for actor {}, was never set up.", evt.actor.name());
+                warn!(ctx.system.log(), "Monitor for actor, was never set up."; "actor" => evt.actor.name());
             }
         }
     }
@@ -196,7 +199,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
                 let mut monitor = PeerMonitor::new(identifier.clone());
                 monitor.addr = Some(msg.address);
                 if let Some(monitor) = self.peer_monitors.insert(msg.peer.uri().clone(), monitor) {
-                    warn!("Duplicate monitor found for peer: {}", monitor.identifier.to_string());
+                    warn!(ctx.system.log(), "Duplicate monitor found for peer"; "peer" => monitor.identifier.to_string());
                 }
                 ctx.myself.tell(
                     BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(msg.address.to_string())),
@@ -208,7 +211,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     monitor.public_key = Some(msg.peer_id);
                 }
             }
-            NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg),
+            NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, ctx.system.log()),
         }
     }
 }

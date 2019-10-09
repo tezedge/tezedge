@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::convert::TryInto;
 use std::io;
 
@@ -5,7 +8,7 @@ use bytes::Buf;
 use bytes::IntoBuf;
 use failure::{Error, Fail};
 use failure::_core::time::Duration;
-use log::trace;
+use slog::{FnValue, Logger, o, trace};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::timer::timeout::Elapsed;
@@ -78,6 +81,12 @@ impl From<BinaryChunkError> for StreamError {
 impl From<BinaryReaderError> for StreamError {
     fn from(error: BinaryReaderError) -> Self {
         StreamError::DeserializationError { error }
+    }
+}
+
+impl slog::Value for StreamError {
+    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+        serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
@@ -173,19 +182,20 @@ pub struct EncryptedMessageWriter {
     nonce_local: Nonce,
     /// Outgoing message writer
     tx: MessageWriter,
-    /// Peer ID is created as hex string representation of peer public key bytes.
-    peer_id: PeerId,
+    /// Logger
+    log: Logger,
 }
 
 impl EncryptedMessageWriter {
 
-    pub fn new(tx: MessageWriter, precomputed_key: PrecomputedKey, nonce_local: Nonce, peer_id: PeerId) -> Self {
-        EncryptedMessageWriter { tx, precomputed_key, nonce_local, peer_id }
+    pub fn new(tx: MessageWriter, precomputed_key: PrecomputedKey, nonce_local: Nonce, peer_id: PeerId, log: Logger) -> Self {
+        let log = log.new(o!("peer" => peer_id));
+        EncryptedMessageWriter { tx, precomputed_key, nonce_local, log }
     }
 
     pub async fn write_message<'a>(&'a mut self, message: &'a impl BinaryMessage) -> Result<(), StreamError> {
         let message_bytes = message.as_bytes()?;
-        trace!("Message to send to peer {} as hex (without length): \n{}", self.peer_id, hex::encode(&message_bytes));
+        trace!(self.log, "Writing message"; "message" => FnValue(|_| hex::encode(&message_bytes)));
 
         for chunk_content_bytes in message_bytes.chunks(CONTENT_LENGTH_MAX) {
             // encrypt
@@ -219,14 +229,15 @@ pub struct EncryptedMessageReader {
     nonce_remote: Nonce,
     /// Incoming message reader
     rx: MessageReader,
-    /// Peer ID is created as hash of peer's public key bytes.
-    peer_id: PeerId,
+    /// Logger
+    log: Logger,
 }
 
 impl EncryptedMessageReader {
 
-    pub fn new(rx: MessageReader, precomputed_key: PrecomputedKey, nonce_remote: Nonce, peer_id: PeerId) -> Self {
-        EncryptedMessageReader { rx, precomputed_key, nonce_remote, peer_id }
+    pub fn new(rx: MessageReader, precomputed_key: PrecomputedKey, nonce_remote: Nonce, peer_id: PeerId, log: Logger) -> Self {
+        let log = log.new(o!("peer" => peer_id));
+        EncryptedMessageReader { rx, precomputed_key, nonce_remote, log }
     }
 
     pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
@@ -243,7 +254,7 @@ impl EncryptedMessageReader {
             // decrypt
             match decrypt(message_encrypted.content(), &self.nonce_fetch_increment(), &self.precomputed_key) {
                 Ok(mut message_decrypted) => {
-                    trace!("Message received from peer {} as hex: \n{}", self.peer_id, hex::encode(&message_decrypted));
+                    trace!(self.log, "Message received"; "message" => FnValue(|_| hex::encode(&message_decrypted)));
                     if input_remaining >= message_decrypted.len() {
                         input_remaining -= message_decrypted.len();
                     } else {
@@ -265,11 +276,6 @@ impl EncryptedMessageReader {
                 }
             }
         }
-    }
-
-    #[inline]
-    pub fn peer_id(&self) -> &PeerId {
-        &self.peer_id
     }
 
     #[inline]

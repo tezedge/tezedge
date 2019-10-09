@@ -8,8 +8,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use failure::Error;
-use log::{info, warn};
 use riker::actors::*;
+use slog::{info, warn, Logger};
 
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
 use tezos_client::client::{apply_block, TezosStorageInitInfo};
@@ -36,7 +36,7 @@ pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
 
-    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo) -> Result<ChainFeederRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo, log: Logger) -> Result<ChainFeederRef, CreateError> {
 
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
@@ -51,6 +51,7 @@ impl ChainFeeder {
                 BlockMetaStorage::new(rocks_db.clone()),
                 OperationsStorage::new(rocks_db.clone()),
                 OperationsMetaStorage::new(rocks_db),
+                log,
             ))
         };
 
@@ -90,13 +91,9 @@ impl Actor for ChainFeeder {
             ctx.myself(),
             None,
             FeedChainToProtocol.into());
-
-
     }
 
     fn post_stop(&mut self) {
-
-
         // Set the flag, and let the thread wake up. There is no race condition here, if `unpark`
         // happens first, `park` will return immediately. Hence there is no risk of a deadlock.
         self.block_applier_run.store(false, Ordering::Release);
@@ -104,10 +101,7 @@ impl Actor for ChainFeeder {
         let join_handle = self.block_applier_thread.lock().unwrap()
             .take().expect("Thread join handle is missing");
         join_handle.thread().unpark();
-        match join_handle.join() {
-            Ok(_) => info!("Block applier thread stopped"),
-            Err(_) => warn!("Failed to join block applier thread"),
-        }
+        let _ = join_handle.join().expect("Failed to join block applier thread");
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -134,6 +128,7 @@ fn feed_chain_to_protocol(
     mut block_meta_storage: BlockMetaStorage,
     operations_storage: OperationsStorage,
     operations_meta_storage: OperationsMetaStorage,
+    log: Logger,
 ) -> Result<(), Error> {
 
     let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
@@ -161,7 +156,7 @@ fn feed_chain_to_protocol(
                             // available. If yes we will apply them. If not, we will do nothing.
                             if operations_meta_storage.is_complete(&current_head.hash)? {
 
-                                info!("Applying block {}", block_hash_encoding.bytes_to_string(&current_head.hash));
+                                info!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
                                 let operations = operations_storage.get_operations(&current_head_hash)?
                                     .drain(..)
                                     .map(Some)
@@ -195,7 +190,7 @@ fn feed_chain_to_protocol(
                     }
                 }
             },
-            None => warn!("No meta info record was found in database for the current head {}", block_hash_encoding.bytes_to_string(&current_head_hash))
+            None => warn!(log, "No meta info record was found in database for the current head"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
         }
 
         // This should be hit only in case that the current branch is applied

@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use failure::{Error, Fail};
 use futures::lock::Mutex;
-use log::{debug, info, trace, warn};
 use riker::actors::*;
+use slog::{debug, info, Logger, trace, warn};
 use tokio::net::TcpStream;
 use tokio::runtime::TaskExecutor;
 
@@ -76,6 +76,12 @@ impl From<StreamError> for PeerError {
 impl From<BinaryChunkError> for PeerError {
     fn from(error: BinaryChunkError) -> Self {
         PeerError::NetworkError { error: error.into(), message: "Binary chunk error" }
+    }
+}
+
+impl slog::Value for PeerError {
+    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+        serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
@@ -211,22 +217,24 @@ impl Receive<Bootstrap> for Peer {
                 *net.tx.lock().await = Some(tx);
             }
 
-            match bootstrap(msg, info).await {
+            match bootstrap(msg, info, system.log()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     setup_net(&net, tx).await;
 
+                    let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&public_key);
                     event_channel.tell(Publish { msg:
                     PeerBootstrapped {
                         peer: myself.clone(),
-                        peer_id: HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&public_key)
+                        peer_id: peer_id.clone(),
                     }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
                     // begin to process incoming messages in a loop
-                    begin_process_incoming(rx, net.rx_run, myself.clone(), event_channel).await;
+                    let log = system.log().new(slog::o!("peer" => peer_id));
+                    begin_process_incoming(rx, net.rx_run, myself.clone(), event_channel, log).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
                 Err(e) => {
-                    warn!("Connection to peer failed: {:?}.", e);
+                    warn!(system.log(), "Connection to peer failed"; "reason" => e);
                     system.stop(myself);
                 }
             }
@@ -245,7 +253,7 @@ impl Receive<SendMessage> for Peer {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
                 if let Err(e) = tx.write_message(&*msg.message).await {
-                    warn!("Failed to send message. {:?}", e);
+                    warn!(system.log(), "Failed to send message"; "reason" => e);
                     system.stop(myself);
                 }
             }
@@ -256,7 +264,7 @@ impl Receive<SendMessage> for Peer {
 /// Output values of the successful bootstrap process
 struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey);
 
-async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, PeerError> {
+async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<BootstrapOutput, PeerError> {
     let (mut msg_rx, mut msg_tx) = {
         let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");
         let msg_reader: MessageStream = stream.into();
@@ -290,7 +298,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     let received_connection_msg: ConnectionMessage = ConnectionMessage::try_from(received_connection_msg)?;
     let peer_public_key = received_connection_msg.public_key();
     let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&peer_public_key);
-    debug!("Received peer_public_key: {}", &peer_id);
+    debug!(log, "Received peer public key"; "public_key" => &peer_id);
 
     // pre-compute encryption key
     let precomputed_key = match precompute(&hex::encode(peer_public_key), &info.secret_key) {
@@ -299,8 +307,8 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
     };
 
     // from now on all messages will be encrypted
-    let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, peer_id.clone());
-    let mut msg_rx = EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, peer_id);
+    let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, peer_id.clone(), log.clone());
+    let mut msg_rx = EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, peer_id, log.clone());
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
@@ -308,7 +316,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 
     // receive metadata
     let metadata_received = msg_rx.read_message::<MetadataMessage>().await?;
-    debug!("Received remote peer metadata - disable_mempool: {}, private_node: {}", metadata_received.disable_mempool(), metadata_received.private_node());
+    debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
     msg_tx.write_message(&AckMessage::Ack).await?;
@@ -318,11 +326,11 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>) -> Result<BootstrapOutput, 
 
     match ack_received {
         AckMessage::Ack => {
-            debug!("Received ACK");
+            debug!(log, "Received ACK");
             Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key.clone()))
         }
         AckMessage::Nack => {
-            debug!("Received NACK");
+            debug!(log, "Received NACK");
             Err(PeerError::NackReceived)
         }
     }
@@ -343,15 +351,15 @@ fn supported_version() -> Version {
 }
 
 /// Start to process incoming data
-async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: NetworkChannelRef) {
-    info!("Starting to accept messages from peer: {}", rx.peer_id());
+async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger) {
+    info!(log, "Starting to accept messages");
 
     while rx_run.load(Ordering::SeqCst) {
         match rx.read_message::<PeerMessageResponse>().await {
             Ok(msg) => {
                 let should_broadcast_message = rx_run.load(Ordering::SeqCst);
                 if should_broadcast_message {
-                    trace!("Message parsed successfully");
+                    trace!(log, "Message parsed successfully");
                     event_channel.tell(
                         Publish {
                             msg: PeerMessageReceived {
@@ -363,10 +371,10 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
                 }
             }
             Err(e) => {
-                warn!("Failed to read message: {:?}", e);
                 if let StreamError::DeserializationError { error: BinaryReaderError::UnsupportedTag { .. } } = e {
-                    info!("Messages with unsupported tags are ignored");
+                    info!(log, "Messages with unsupported tags are ignored");
                 } else {
+                    warn!(log, "Failed to read message"; "reason" => e);
                     break;
                 }
             }
