@@ -1,7 +1,7 @@
 [package]
 name = "monitoring"
 version = "0.1.0"
-authors = ["Martin Lacko <mrt.lacko@gmail.com>"]
+authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
