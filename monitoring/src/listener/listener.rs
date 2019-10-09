@@ -1,11 +1,18 @@
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
-use riker::actor::*;
-use crate::listener::events::{EventPayloadStorage, EventStorage, Event, EventType};
-use std::sync::Arc;
-use rocksdb::DB;
-use std::time::Instant;
-use networking::p2p::binary_message::BinaryMessage;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::convert::TryInto;
+use std::sync::Arc;
+use std::time::Instant;
+
+use riker::actor::*;
+use rocksdb::DB;
+use slog::warn;
+
+use networking::p2p::binary_message::BinaryMessage;
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
+
+use crate::listener::events::{Event, EventPayloadStorage, EventStorage, EventType};
 
 type NetworkListenerRef = ActorRef<NetworkChannelMsg>;
 
@@ -50,8 +57,7 @@ impl Actor for NetworkChannelListener {
         }, None);
     }
 
-    fn recv(&mut self, _ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
-        use log::*;
+    fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
         // TryFrom<u128> for u64 fail iff value of converting u128 is bigger than u64::max_value()
         let timestamp = self.start.elapsed().as_micros().try_into().unwrap_or(u64::max_value());
 
@@ -75,10 +81,10 @@ impl Actor for NetworkChannelListener {
             timestamp,
             peer_id,
         }) {
-            warn!("Failed to store meta for record: {}", err);
+            warn!(ctx.system.log(), "Failed to store meta for record"; "reason" => err);
         }
         if let Err(err) = self.record_storage.put_record(id, &record) {
-            warn!("Failed to store record {}", err);
+            warn!(ctx.system.log(), "Failed to store record"; "reason" => err);
         }
     }
 }

@@ -74,6 +74,12 @@ impl From<ocaml::Error> for OcamlStorageInitError {
     }
 }
 
+impl slog::Value for OcamlStorageInitError {
+    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+        serializer.emit_arguments(key, &format_args!("{}", self))
+    }
+}
+
 pub fn init_storage(storage_data_dir: String) -> Result<Result<OcamlStorageInitInfo, OcamlStorageInitError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");

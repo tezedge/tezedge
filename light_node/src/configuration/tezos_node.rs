@@ -1,8 +1,10 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::fs;
 use std::path::PathBuf;
 
 use failure::{bail, Error};
-use log::warn;
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -15,7 +17,6 @@ pub struct Identity {
 
 /// Load identity from tezos configuration file.
 pub fn load_identity(identity_json_file_path: PathBuf) -> Result<Identity, Error> {
-    warn!("Using Tezos identity from file: {:?}", &identity_json_file_path);
     let contents = fs::read_to_string(&identity_json_file_path)?;
     Ok(serde_json::from_str::<Identity>(&contents)?)
 }

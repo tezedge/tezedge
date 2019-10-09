@@ -3,8 +3,6 @@
 
 use std::fmt;
 
-use log::error;
-
 use networking::p2p::binary_message::Hexable;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
@@ -17,7 +15,6 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
     match ffi::change_runtime_configuration(settings) {
         Ok(result) => Ok(result?),
         Err(e) => {
-            error!("Change runtime configuration failed! Reason: {:?}", e);
             Err(OcamlRuntimeConfigurationError::ChangeConfigurationError {
                 message: format!("FFI 'change_runtime_configuration' failed! Reason: {:?}", e)
             })
@@ -65,7 +62,6 @@ pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, Oc
     match ffi::init_storage(storage_data_dir) {
         Ok(result) => Ok(TezosStorageInitInfo::new(result?)?),
         Err(e) => {
-            error!("Init ocaml storage failed! Reason: {:?}", e);
             Err(OcamlStorageInitError::InitializeError {
                 message: format!("FFI 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
             })
@@ -83,7 +79,6 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
             }
         },
         Err(e) => {
-            error!("Get current header failed! Reason: {:?}", e);
             Err(BlockHeaderError::ReadError {
                 message: format!("FFI 'get_current_block_header' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
             })
@@ -107,7 +102,6 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHea
             }
         },
         Err(e) => {
-            error!("Get block header failed! Reason: {:?}", e);
             Err(BlockHeaderError::ReadError {
                 message: format!("FFI 'get_block_header' failed! Something is wrong! Reason: {:?}", e)
             })
@@ -145,9 +139,8 @@ pub fn apply_block(
     ) {
         Ok(result) => result,
         Err(e) => {
-            error!("Apply block failed! Reason: {:?}", e);
             Err(ApplyBlockError::FailedToApplyBlock {
-                message: "Unknown OcamlError".to_string()
+                message: format!("Unknown OcamlError: {:?}", e)
             })
         }
     }

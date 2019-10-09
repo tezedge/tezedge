@@ -1,5 +1,9 @@
-use ws::{Handler, Sender, Factory};
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+use ws::{Factory, Handler, Sender};
 
 /// Server
 /// *should* handle incoming messages, for now not really necessary,

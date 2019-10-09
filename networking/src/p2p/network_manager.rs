@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures::lock::Mutex;
-use log::info;
 use riker::actors::*;
+use slog::info;
 use tokio::future::FutureExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::TaskExecutor;
@@ -163,18 +163,18 @@ impl Receive<ConnectToPeer> for NetworkManager {
         let system = ctx.system.clone();
 
         self.tokio_executor.spawn(async move {
-            info!("Connecting to {}", &msg.address);
+            info!(system.log(), "Connecting to IP"; "ip" => msg.address);
             match TcpStream::connect(&msg.address).timeout(CONNECT_TIMEOUT).await {
                 Ok(Ok(stream)) => {
-                    info!("Connection to {} successful", &msg.address);
+                    info!(system.log(), "Connection successful"; "ip" => msg.address);
                     peer.tell(Bootstrap::outgoing(stream, msg.address), None);
                 }
                 Ok(Err(_)) => {
-                    info!("Connection to {} failed", &msg.address);
+                    info!(system.log(), "Connection failed"; "ip" => msg.address);
                     system.stop(peer);
                 }
                 Err(_) => {
-                    info!("Connection to {} timed out", &msg.address);
+                    info!(system.log(), "Connection timed out"; "ip" => msg.address);
                     system.stop(peer);
                 }
             }

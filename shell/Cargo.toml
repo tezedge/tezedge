@@ -9,10 +9,10 @@ dns-lookup = "1.0.1"
 failure = "0.1.5"
 hex = "0.4.0"
 itertools = "0.8.0"
-log = "0.4.8"
 rand = "0.7.2"
-riker = { git = "https://github.com/riker-rs/riker" }
+riker = { git = "https://github.com/mrjoe7/riker.git", branch = "slog-support" }
 rocksdb = "0.12.3"
+slog = "2.5"
 # local dependencies
 networking = { path = "../networking" }
 storage = { path = "../storage" }

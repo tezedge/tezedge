@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use failure::Fail;
-use log::info;
+use slog::info;
+use slog::Logger;
 
 use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use networking::p2p::encoding::prelude::BlockHeader;
@@ -82,17 +83,23 @@ impl From<SchemaError> for StorageError {
     }
 }
 
+impl slog::Value for StorageError {
+    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+        serializer.emit_arguments(key, &format_args!("{}", self))
+    }
+}
+
 /// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
 /// Which means that successor of the genesis block is also genesis block. By combining those
 /// two statements we get cyclic relationship and everything breaks..
-pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, db: Arc<rocksdb::DB>) -> Result<(), StorageError> {
+pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, db: Arc<rocksdb::DB>, log: Logger) -> Result<(), StorageError> {
     let genesis_with_hash = BlockHeaderWithHash {
         hash: genesis_hash.clone(),
         header: Arc::new(genesis.clone()),
     };
     let mut block_storage = BlockStorage::new(db.clone());
     if block_storage.get(&genesis_with_hash.hash)?.is_none() {
-        info!("Initializing storage with genesis block");
+        info!(log, "Initializing storage with genesis block");
         block_storage.put_block_header(&genesis_with_hash)?;
         let mut block_meta_storage = BlockMetaStorage::new(db.clone());
         block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash))?;

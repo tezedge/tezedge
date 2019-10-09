@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -23,6 +26,24 @@ pub struct Rpc {
 }
 
 #[derive(Debug, Clone)]
+pub enum LogFormat {
+    Json,
+    Simple
+}
+
+impl std::str::FromStr for LogFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "simple" => Ok(LogFormat::Simple),
+            "json" => Ok(LogFormat::Json),
+            _ => Err(format!("Unsupported format: {}", s))
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Environment {
     pub p2p: P2p,
     pub rpc: Rpc,
@@ -35,6 +56,8 @@ pub struct Environment {
     pub ocaml_log_enabled: bool,
     pub websocket_address: SocketAddr,
     pub record: bool,
+    pub verbose: bool,
+    pub log_format: LogFormat,
 }
 
 impl Environment {
@@ -115,6 +138,17 @@ impl Environment {
                 .short("R")
                 .long("record")
                 .takes_value(false))
+            .arg(Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .takes_value(false)
+                .help("Turn verbose output on"))
+            .arg(Arg::with_name("log-format")
+                .short("f")
+                .long("log-format")
+                .takes_value(true)
+                .default_value("simple")
+                .help("Set output format of the log. Possible values: simple, json"))
             .get_matches();
 
         Environment {
@@ -179,6 +213,12 @@ impl Environment {
                 .parse()
                 .expect("Provided value cannot be converted into valid uri"),
             record: args.is_present("record"),
+            verbose: args.is_present("verbose"),
+            log_format: args
+                .value_of("log-format")
+                .unwrap_or_default()
+                .parse::<LogFormat>()
+                .expect("Was expecting 'simple' or 'json'"),
         }
     }
 }

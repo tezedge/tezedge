@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 
 use failure::Error;
 use itertools::Itertools;
-use log::{debug, info, trace, warn};
 use riker::actors::*;
+use slog::{debug, FnValue, info, trace, warn};
 
 use networking::p2p::binary_message::MessageHash;
 use networking::p2p::encoding::prelude::*;
@@ -183,7 +183,9 @@ impl ChainManager {
 
         match msg {
             NetworkChannelMsg::PeerBootstrapped(msg) => {
-                debug!("Requesting current branch from peer: {}", &msg.peer);
+                let log = ctx.system.log().new(slog::o!("peer" => msg.peer.name().to_string()));
+
+                debug!(log, "Requesting current branch");
                 let peer = PeerState::new(msg.peer);
                 // store peer
                 let actor_uri = peer.peer_ref.uri().clone();
@@ -193,6 +195,8 @@ impl ChainManager {
                 tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
+                let log = ctx.system.log().new(slog::o!("peer" => received.peer.name().to_string()));
+
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
                         peer.response_last = Instant::now();
@@ -200,7 +204,7 @@ impl ChainManager {
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
-                                    debug!("Received current branch from peer: {}", &received.peer);
+                                    debug!(log, "Received current branch");
                                     message.current_branch().history().iter().cloned().rev()
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;
@@ -227,7 +231,7 @@ impl ChainManager {
                                     ctx.myself().tell(CheckChainCompleteness, None);
                                 }
                                 PeerMessage::GetCurrentBranch(message) => {
-                                    debug!("Current branch requested by peer: {}", &received.peer);
+                                    debug!(log, "Current branch requested");
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head) = block_storage.get(&self.current_head.local)? {
                                             let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone()));
@@ -239,7 +243,7 @@ impl ChainManager {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(missing_block) => {
-                                            debug!("Received block header from peer: {}", &received.peer);
+                                            debug!(log, "Received block header");
                                             let is_new_block =
                                                 block_state.process_block_header(&block_header_with_hash)
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
@@ -260,7 +264,7 @@ impl ChainManager {
                                             }
                                         }
                                         None => {
-                                            warn!("Received unexpected block header {} from peer: {}", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header_with_hash.hash), &received.peer);
+                                            warn!(log, "Received unexpected block header"; "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header_with_hash.hash));
                                             ctx.system.stop(received.peer.clone());
                                         }
                                     }
@@ -274,7 +278,7 @@ impl ChainManager {
                                     }
                                 },
                                 PeerMessage::GetCurrentHead(message) => {
-                                    debug!("Current head requested by peer: {}", &received.peer);
+                                    debug!(log, "Current head requested");
                                     if block_state.get_chain_id() == message.chain_id() {
                                         if let Some(current_head) = block_storage.get(&self.current_head.local)? {
                                             let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
@@ -288,7 +292,7 @@ impl ChainManager {
                                         Some(missing_operations) => {
                                             let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
-                                                debug!("Received operations validation pass #{} from peer: {}", operations.operations_for_block().validation_pass(), &received.peer);
+                                                debug!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // trigger CheckChainCompleteness
                                                     ctx.myself().tell(CheckChainCompleteness, None);
@@ -308,12 +312,12 @@ impl ChainManager {
                                                     peer.queued_operations.remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!("Received unexpected validation pass #{} from peer: {}", operations.operations_for_block().validation_pass(), &received.peer);
+                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
                                         None => {
-                                            warn!("Received unexpected operations from peer: {}", &received.peer);
+                                            warn!(log, "Received unexpected operations");
                                             ctx.system.stop(received.peer.clone());
                                         }
                                     }
@@ -330,11 +334,11 @@ impl ChainManager {
                                         }
                                     }
                                 }
-                                _ => trace!("Ignored message: {:?}", message)
+                                _ => trace!(log, "Ignored message"; "message" => FnValue(|_| format!("{:?}", message)))
                             }
                         }
                     }
-                    None => debug!("Received message from non-existing peer: {}", &received.peer)
+                    None => debug!(log, "Received message from non-existing peer")
                 }
             }
             _ => (),
@@ -344,8 +348,11 @@ impl ChainManager {
     }
 
     fn disconnect_silent_peers(&mut self, ctx: &Context<ChainManagerMsg>) {
+        let root_logger = ctx.system.log();
         &self.peers.values()
             .for_each(|peer_state| {
+                let log = root_logger.new(slog::o!("peer" => peer_state.peer_ref.name().to_string()));
+
                 let response_duration = if peer_state.request_last > peer_state.response_last {
                     peer_state.request_last - peer_state.response_last
                 } else {
@@ -353,13 +360,13 @@ impl ChainManager {
                 };
 
                 if response_duration > PEER_RESPONSE_TIMEOUT {
-                    info!("Timeout when waiting for response from peer {:?}. Disconnecting peer.", &peer_state.peer_ref);
+                    info!(log, "Timeout when waiting for response from peer");
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
 
                 let request_silence = Instant::now() - peer_state.response_last;
                 if request_silence > PEER_SILENCE_TIMEOUT {
-                    info!("Disconnecting silent peer {:?}.", &peer_state.peer_ref);
+                    info!(log, "Disconnecting silent peer");
                     ctx.system.stop(peer_state.peer_ref.clone());
                 }
             });
@@ -385,11 +392,11 @@ impl Actor for ChainManager {
         subscribe_to_network_events(&self.network_channel, ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
 
-        info!("Hydrating block state");
+        info!(ctx.system.log(), "Hydrating block state");
         self.block_state.hydrate().expect("Failed to hydrate block state");
-        info!("Hydrating operations state");
+        info!(ctx.system.log(), "Hydrating operations state");
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
-        info!("Hydrating completed successfully");
+        info!(ctx.system.log(), "Hydrating completed successfully");
 
         ctx.schedule::<Self::Msg, _>(
             CHECK_CHAIN_COMPLETENESS_INTERVAL / 4,
@@ -446,10 +453,10 @@ impl Receive<SystemEvent> for ChainManager {
 impl Receive<CheckChainCompleteness> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
         match self.check_chain_completeness() {
             Ok(_) => (),
-            Err(e) => warn!("Failed to check chain completeness: {:?}", e),
+            Err(e) => warn!(ctx.system.log(), "Failed to check chain completeness"; "reason" => format!("{:?}", e)),
         }
     }
 }
@@ -468,7 +475,7 @@ impl Receive<NetworkChannelMsg> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         match self.process_network_channel_message(ctx, msg) {
             Ok(_) => (),
-            Err(e) => warn!("Failed to process network channel message: {:?}", e),
+            Err(e) => warn!(ctx.system.log(), "Failed to process network channel message"; "reason" => format!("{:?}", e)),
         }
     }
 }
@@ -479,7 +486,7 @@ impl Receive<ShellChannelMsg> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
         match self.process_shell_channel_message(ctx, msg) {
             Ok(_) => (),
-            Err(e) => warn!("Failed to process shell channel message: {:?}", e),
+            Err(e) => warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e)),
         }
     }
 }

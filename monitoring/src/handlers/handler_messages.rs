@@ -1,6 +1,12 @@
-use serde::Serialize;
-use crate::monitors::PeerMonitor;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::iter::FromIterator;
+
+use serde::Serialize;
+
+use crate::monitors::PeerMonitor;
+use slog_derive::SerdeValue;
 
 // -------------------------- GENERAL METRICS -------------------------- //
 #[derive(Serialize, Debug, Clone)]
@@ -105,7 +111,7 @@ impl PeerConnectionStatus {
 }
 
 // -------------------------- MONITOR MESSAGE -------------------------- //
-#[derive(Serialize, Debug, Clone)]
+#[derive(SerdeValue, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HandlerMessage {
     PeersMetrics {
