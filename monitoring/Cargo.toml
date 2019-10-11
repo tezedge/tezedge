@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 storage = { path = "../storage" }
-riker = { git = "https://github.com/mrjoe7/riker.git", branch = "slog-support" }
+riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 failure = "0.1.5"
