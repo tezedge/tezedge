@@ -10,7 +10,7 @@ failure = "0.1.5"
 hex = "0.4.0"
 itertools = "0.8.0"
 rand = "0.7.2"
-riker = { git = "https://github.com/mrjoe7/riker.git", branch = "slog-support" }
+riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 rocksdb = "0.12.3"
 slog = "2.5"
 # local dependencies
