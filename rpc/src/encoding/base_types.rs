@@ -46,6 +46,15 @@ impl UniString {
     }
 }
 
+// Timestamp
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum TimeStamp {
+    Integral(i64),
+    /// RFC 3339 (1996-12-19T16:39:57-08:00)
+    Rfc(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,6 +72,56 @@ mod tests {
             } else {
                 format!("{},{}", s, x)
             }))
+    }
+
+    mod timestamp {
+        use super::*;
+
+        #[test]
+        fn encoded_equals_decoded() -> Result<(), serde_json::Error> {
+            for expected in &[TimeStamp::Integral(10), TimeStamp::Rfc("1996-12-19T16:39:57-08:00".to_string())] {
+                let encoded = serde_json::to_string(expected)?;
+                let decoded: TimeStamp = serde_json::from_str(&encoded)?;
+                assert_eq!(expected, &decoded);
+            }
+            Ok(())
+        }
+
+        #[test]
+        fn decode_custom_integral() -> Result<(), serde_json::Error> {
+            let original = 10;
+            let message = format!("{}", original);
+            let decoded: TimeStamp = serde_json::from_str(&message)?;
+            assert_eq!(decoded, TimeStamp::Integral(original));
+            Ok(())
+        }
+
+        #[test]
+        fn decode_custom_rfc() -> Result<(), serde_json::Error> {
+            let original = "1996-12-19T16:39:57-08:00".to_string();
+            let message = format!("\"{}\"", original);
+            let decoded: TimeStamp = serde_json::from_str(&message)?;
+            assert_eq!(decoded, TimeStamp::Rfc(original));
+            Ok(())
+        }
+
+        #[test]
+        fn encode_custom_integral() -> Result<(), serde_json::Error> {
+            let value = 10;
+            let original = TimeStamp::Integral(value.clone());
+            let encoded = serde_json::to_string(&original)?;
+            assert_eq!(encoded, format!("{}", value));
+            Ok(())
+        }
+
+        #[test]
+        fn encode_custom_rfc() -> Result<(), serde_json::Error> {
+            let value = "1996-12-19T16:39:57-08:00".to_string();
+            let original = TimeStamp::Rfc(value.clone());
+            let encoded = serde_json::to_string(&original)?;
+            assert_eq!(encoded, format!("\"{}\"", value));
+            Ok(())
+        }
     }
 
     mod invalid_string {
