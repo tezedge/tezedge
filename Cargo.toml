@@ -9,5 +9,6 @@ members = [
     "storage",
     "light_node",
     "monitoring",
+    "rpc",
     "fuzz/connection_message"
 ]
