@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InvalidString {
     #[serde(rename = "invalid_utf8_string")]
     content: Vec<u8>,
@@ -24,7 +24,7 @@ impl<T> From<T> for InvalidString
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum UniString {
     Valid(String),
@@ -46,8 +46,17 @@ impl UniString {
     }
 }
 
+impl<T> From<T> for UniString
+    where
+        T: Into<String>
+{
+    fn from(value: T) -> Self {
+        Self::Valid(value.into())
+    }
+}
+
 // Timestamp
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum TimeStamp {
     Integral(i64),
@@ -58,21 +67,8 @@ pub enum TimeStamp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encoding::test_helpers::*;
     use serde_json;
-
-    fn iter_to_string<I, T>(it: I) -> String
-        where
-            I: Iterator<Item=T>,
-            T: std::fmt::Display,
-    {
-        format!("[{}]", it
-            .map(|x| x.to_string())
-            .fold(String::new(), |s, x| if s.is_empty() {
-                x
-            } else {
-                format!("{},{}", s, x)
-            }))
-    }
 
     mod timestamp {
         use super::*;
@@ -91,36 +87,28 @@ mod tests {
         fn decode_custom_integral() -> Result<(), serde_json::Error> {
             let original = 10;
             let message = format!("{}", original);
-            let decoded: TimeStamp = serde_json::from_str(&message)?;
-            assert_eq!(decoded, TimeStamp::Integral(original));
-            Ok(())
+            custom_decoded(&message, TimeStamp::Integral(original))
         }
 
         #[test]
         fn decode_custom_rfc() -> Result<(), serde_json::Error> {
             let original = "1996-12-19T16:39:57-08:00".to_string();
             let message = format!("\"{}\"", original);
-            let decoded: TimeStamp = serde_json::from_str(&message)?;
-            assert_eq!(decoded, TimeStamp::Rfc(original));
-            Ok(())
+            custom_decoded(&message, TimeStamp::Rfc(original))
         }
 
         #[test]
         fn encode_custom_integral() -> Result<(), serde_json::Error> {
             let value = 10;
             let original = TimeStamp::Integral(value.clone());
-            let encoded = serde_json::to_string(&original)?;
-            assert_eq!(encoded, format!("{}", value));
-            Ok(())
+            custom_encoded(original, &format!("{}", value))
         }
 
         #[test]
         fn encode_custom_rfc() -> Result<(), serde_json::Error> {
             let value = "1996-12-19T16:39:57-08:00".to_string();
             let original = TimeStamp::Rfc(value.clone());
-            let encoded = serde_json::to_string(&original)?;
-            assert_eq!(encoded, format!("\"{}\"", value));
-            Ok(())
+            custom_encoded(original, &format!("\"{}\"", value))
         }
     }
 
@@ -140,18 +128,14 @@ mod tests {
         fn decode_custom() -> Result<(), serde_json::Error> {
             let original: Vec<u8> = "InvalidString".bytes().collect();
             let message = format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(original.iter()));
-            let decoded: InvalidString = serde_json::from_str(&message)?;
-            assert_eq!(decoded.content, original);
-            Ok(())
+            custom_decoded(&message, InvalidString { content: original })
         }
 
         #[test]
         fn encode_custom() -> Result<(), serde_json::Error> {
             let message: Vec<u8> = "InvalidString".bytes().collect();
-            let original = InvalidString { content: message };
-            let encoded = serde_json::to_string(&original)?;
-            assert_eq!(format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(original.content.iter())), encoded);
-            Ok(())
+            let original = InvalidString { content: message.clone() };
+            custom_encoded(original, &format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(message.iter())))
         }
     }
 
@@ -172,45 +156,28 @@ mod tests {
         fn decode_custom_valid_string() -> Result<(), serde_json::Error> {
             let original_content = "UniString::String".to_string();
             let message = format!("\"{}\"", original_content);
-            let decoded: UniString = serde_json::from_str(&message)?;
-            if let UniString::Valid(decoded_content) = decoded {
-                assert_eq!(original_content, decoded_content);
-            } else {
-                panic!("Expected UniString::String type");
-            }
-            Ok(())
+            custom_decoded(&message, UniString::Valid(original_content))
         }
 
         #[test]
         fn decode_custom_invalid_string() -> Result<(), serde_json::Error> {
             let original_content: Vec<u8> = "UniString::InvalidString".bytes().collect();
             let message = format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(original_content.iter()));
-            let decoded: UniString = serde_json::from_str(&message)?;
-            if let UniString::Invalid(decoded_content) = decoded {
-                let original_content: InvalidString = original_content.into();
-                assert_eq!(original_content, decoded_content);
-            } else {
-                panic!("Expected UniString::InvalidString type");
-            }
-            Ok(())
+            custom_decoded(&message, UniString::Invalid(original_content.into()))
         }
 
         #[test]
         fn encode_custom_string() -> Result<(), serde_json::Error> {
             let message = "UniString::String".to_string();
             let original = UniString::Valid(message.clone());
-            let encoded = serde_json::to_string(&original)?;
-            assert_eq!(format!("\"{}\"", message), encoded);
-            Ok(())
+            custom_encoded(original, &format!("\"{}\"", message))
         }
 
         #[test]
         fn encode_custom_invalid_string() -> Result<(), serde_json::Error> {
             let message: Vec<u8> = "UniString::InvalidString".bytes().collect();
             let original = UniString::Invalid(message.clone().into());
-            let encoded = serde_json::to_string(&original)?;
-            assert_eq!(format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(message.iter())), encoded);
-            Ok(())
+            custom_encoded(original, &format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(message.iter())))
         }
     }
 }
