@@ -21,6 +21,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannel;
+use rpc::server::spawn_server;
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
@@ -93,6 +94,15 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         info!(log, "Running in record mode");
         let _ = NetworkChannelListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
     }
+
+    let addr = ([127, 0, 0, 1], 3030).into();
+    let server = spawn_server(&addr, actor_system.clone());
+    let inner_log = log.clone();
+    tokio_runtime.spawn(async move {
+        if let Err(e) = server.await {
+            warn!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
+        }
+    });
 
     tokio_runtime.block_on(async move {
         use tokio::net::signal;

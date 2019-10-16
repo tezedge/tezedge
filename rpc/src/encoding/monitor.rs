@@ -2,6 +2,8 @@ use super::base_types::*;
 use serde::{Serialize, Deserialize};
 
 type ChainId = UniString;
+
+// GET /monitor/protocols
 type ProtocolHash = UniString;
 
 
@@ -48,11 +50,49 @@ impl ChainStatus {
 
 pub type ActiveChains = Vec<ChainStatus>;
 
+// GET /monitor/bootstrapped
+
+pub type BlockHash = UniString;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BootstrapInfo {
+    block: BlockHash,
+    timestamp: TimeStamp,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::encoding::test_helpers::*;
     use serde_json;
+
+    mod bootstrapped {
+        use super::*;
+
+        #[test]
+        fn encoded_equals_decoded() -> Result<(), serde_json::Error> {
+            let original = BootstrapInfo { block: "test".into(), timestamp: TimeStamp::Integral(10) };
+            let encoded = serde_json::to_string(&original)?;
+            let decoded = serde_json::from_str(&encoded)?;
+            assert_eq!(original, decoded);
+            Ok(())
+        }
+
+        #[test]
+        fn encoded_custom() -> Result<(), serde_json::Error> {
+            let ct = "test";
+            let ts = 10;
+            let original = BootstrapInfo { block: ct.into(), timestamp: TimeStamp::Integral(ts) };
+            custom_encoded(original, &format!("{{\"block\":\"{}\",\"timestamp\":{}}}", ct, ts))
+        }
+
+        #[test]
+        fn decoded_custom() -> Result<(), serde_json::Error> {
+            let ct = "test";
+            let ts = 10;
+            custom_decoded(&format!("{{\"block\":\"{}\",\"timestamp\":{}}}", ct, ts), BootstrapInfo { block: ct.into(), timestamp: TimeStamp::Integral(ts) })
+        }
+    }
 
     mod active_chain {
         use super::*;
