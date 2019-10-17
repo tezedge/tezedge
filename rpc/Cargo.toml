@@ -14,3 +14,9 @@ tokio = "0.2.0-alpha.6"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 lazy_static = "1.4.0"
 futures-preview = "0.3.0-alpha.19"
+slog = { version = "2.5", features = ["nested-values"] }
+slog_derive = "0.1.1"
+
+networking = { path = "../networking" }
+shell = { path = "../shell" }
+tezos_encoding = { path = "../tezos/encoding" }
