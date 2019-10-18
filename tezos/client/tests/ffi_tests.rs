@@ -19,11 +19,11 @@ fn test_init_storage_and_change_configuration() {
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
 
     // has current head (genesis)
-    let current_head = ffi::get_current_block_header(chain_id.to_string()).unwrap().unwrap();
+    let current_head = ffi::get_current_block_header(chain_id.clone()).unwrap().unwrap();
     assert!(!current_head.is_empty());
 
     // get header - genesis
-    let block_header = ffi::get_block_header(chain_id.to_string(), genesis_block_header_hash).unwrap().unwrap();
+    let block_header = ffi::get_block_header(chain_id, genesis_block_header_hash).unwrap().unwrap();
 
     // check header found
     assert!(block_header.is_some());
@@ -39,8 +39,8 @@ fn test_fn_get_block_header_not_found_return_none() {
     let OcamlStorageInitInfo { chain_id, .. } = prepare_empty_storage("test_storage_02");
 
     // get unknown header
-    let block_header_hash = "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a";
-    let block_header = ffi::get_block_header(chain_id.to_string(), block_header_hash.to_string()).unwrap().unwrap();
+    let block_header_hash = hex::decode("3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a").unwrap();
+    let block_header = ffi::get_block_header(chain_id, block_header_hash).unwrap().unwrap();
 
     // check not found
     assert!(block_header.is_none());
@@ -56,6 +56,8 @@ fn prepare_empty_storage(dir_name: &str) -> OcamlStorageInitInfo {
             .expect("no tezos environment configured")
             .genesis,
     ).unwrap().unwrap();
-    assert_eq!(CHAIN_ID, &storage_init_info.chain_id);
+
+    let expected_chain_id = hex::decode(CHAIN_ID).unwrap();
+    assert_eq!(expected_chain_id, storage_init_info.chain_id);
     storage_init_info
 }
