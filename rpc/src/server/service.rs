@@ -78,7 +78,7 @@ async fn bootstrapped() -> ServiceResult {
             let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash());
             BootstrapInfo::new(hash.into(), timestamp())
         } else {
-            return empty();
+            BootstrapInfo::new("".into(), timestamp())
         })?;
         Ok(Response::new(Body::from(resp)))
     } else {
