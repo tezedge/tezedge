@@ -1,18 +1,18 @@
 use hyper::{Body, Response, Error, Server, Request, StatusCode, Method};
 use hyper::service::{service_fn, make_service_fn};
-use riker::actors::ActorSystem;
 use std::net::SocketAddr;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
 use futures::Future;
+use crate::rpc_actor::RpcServerRef;
 
 lazy_static! {
-    static ref ACTOR_SYSTEM: Mutex<Option<ActorSystem>> = Mutex::new(None);
+    static ref ACTOR_SYSTEM: Mutex<Option<RpcServerRef>> = Mutex::new(None);
 }
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
-pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem) -> impl Future<Output=Result<(), Error>> {
+pub fn spawn_server(addr: &SocketAddr, sys: RpcServerRef) -> impl Future<Output=Result<(), Error>> {
     let mut state = ACTOR_SYSTEM.lock().unwrap();
     *state = Some(sys);
 

@@ -1,13 +1,15 @@
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic, NetworkChannelRef};
 use shell::shell_channel::{ShellChannelRef, ShellChannelMsg, ShellChannelTopic};
 use riker::{
-    actor::*,
+    actors::*,
 };
 use crate::{
     helpers::*,
-    server::control_msg::*,
+    server::{spawn_server, control_msg::*},
 };
 use slog::warn;
+use std::net::SocketAddr;
+use tokio::runtime::Runtime;
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -30,11 +32,20 @@ impl RpcServer {
         }
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef) -> Result<RpcServerRef, CreateError> {
-        sys.actor_of(
+    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime) -> Result<RpcServerRef, CreateError> {
+        let ret = sys.actor_of(
             Props::new_args(Self::new, (network_channel, shell_channel)),
             Self::name(),
-        )
+        )?;
+
+        let server = spawn_server(&addr, ret.clone());
+        let inner_log = sys.log();
+        runtime.spawn(async move {
+            if let Err(e) = server.await {
+                warn!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
+            }
+        });
+        Ok(ret)
     }
 }
 
@@ -62,7 +73,7 @@ impl Receive<NetworkChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: NetworkChannelMsg, _sender: Sender) {
-        unimplemented!()
+        /* Not yet implemented, do nothing */
     }
 }
 
