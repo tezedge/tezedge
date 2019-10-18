@@ -60,6 +60,12 @@ pub struct BootstrapInfo {
     timestamp: TimeStamp,
 }
 
+impl BootstrapInfo {
+    pub fn new(block: BlockHash, timestamp: TimeStamp) -> Self {
+        Self { block, timestamp }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

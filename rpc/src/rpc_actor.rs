@@ -22,7 +22,7 @@ pub struct RpcServer {
 }
 
 impl RpcServer {
-    fn name() -> &'static str { "rpc-server" }
+    pub fn name() -> &'static str { "rpc-server" }
 
     fn new((network_channel, shell_channel): (NetworkChannelRef, ShellChannelRef)) -> Self {
         Self {
@@ -38,7 +38,7 @@ impl RpcServer {
             Self::name(),
         )?;
 
-        let server = spawn_server(&addr, ret.clone());
+        let server = spawn_server(&addr, sys.clone(), ret.clone());
         let inner_log = sys.log();
         runtime.spawn(async move {
             if let Err(e) = server.await {
@@ -91,7 +91,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
                     self.current_head = Some(CurrentHead::new(data.level, data.hash.clone()));
                 }
             }
-            _ => ( /* Not yet implemented, do nothing */),
+            _ => (/* Not yet implemented, do nothing */),
         }
     }
 }

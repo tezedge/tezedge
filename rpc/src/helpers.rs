@@ -14,6 +14,10 @@ impl CurrentHead {
         }
     }
 
+    pub fn hash(&self) -> BlockHash {
+        self.block_hash.clone()
+    }
+
     pub fn level(&self) -> i32 {
         self.level
     }

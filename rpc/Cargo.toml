@@ -16,6 +16,7 @@ lazy_static = "1.4.0"
 futures-preview = "0.3.0-alpha.19"
 slog = { version = "2.5", features = ["nested-values"] }
 slog_derive = "0.1.1"
+chrono = "0.4.9"
 
 networking = { path = "../networking" }
 shell = { path = "../shell" }
