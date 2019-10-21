@@ -2,24 +2,42 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
-use tezos_interop::ffi::GenesisChain;
+use enum_derive::{enum_derive_util, IterVariants};
 
 use custom_derive::custom_derive;
-use enum_derive::{enum_derive_util, EnumFromStr, IterVariants};
 use lazy_static::lazy_static;
+use tezos_interop::ffi::GenesisChain;
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
 custom_derive! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumFromStr, IterVariants(TezosEnvironmentVariants))]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, IterVariants(TezosEnvironmentVariants))]
     pub enum TezosEnvironment {
         Alphanet,
         Babylonnet,
         Mainnet,
         Zeronet
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseTezosEnvironmentError(String);
+
+impl FromStr for TezosEnvironment {
+    type Err = ParseTezosEnvironmentError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "alphanet" => Ok(TezosEnvironment::Alphanet),
+            "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
+            "mainnet" => Ok(TezosEnvironment::Mainnet),
+            "zeronet" => Ok(TezosEnvironment::Zeronet),
+            _ => Err(ParseTezosEnvironmentError(format!("Invalid variant name: {}", s)))
+        }
     }
 }
 
