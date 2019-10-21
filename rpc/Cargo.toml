@@ -21,6 +21,3 @@ chrono = "0.4.9"
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 tezos_encoding = { path = "../tezos/encoding" }
-
-[build-dependencies]
-git2 = "0.10"

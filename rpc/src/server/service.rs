@@ -69,11 +69,17 @@ async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     }
 }
 
+async fn commit_hash(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
+    let resp = serde_json::to_string(&UniString::from(env!("GIT_HASH")))?;
+    Ok(Response::new(Body::from(resp)))
+}
+
 
 async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/monitor/active_chains") => active_chains(sys, actor).await,
         (&Method::GET, "/monitor/bootstrapped") => bootstrapped(sys, actor).await,
+        (&Method::GET, "/monitor/commit_hash") => commit_hash(sys, actor).await,
         _ => not_found()
     }
 }
