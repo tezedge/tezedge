@@ -47,10 +47,6 @@ fn empty() -> ServiceResult {
         .body(Body::empty())?)
 }
 
-async fn active_chains(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
-    Ok(Response::new(Body::from("10101010")))
-}
-
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     use crate::server::control_msg::GetCurrentHead;
     use crate::encoding::monitor::BootstrapInfo;
@@ -77,7 +73,6 @@ async fn commit_hash(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
 
 async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     match (req.method(), req.uri().path()) {
-        (&Method::GET, "/monitor/active_chains") => active_chains(sys, actor).await,
         (&Method::GET, "/monitor/bootstrapped") => bootstrapped(sys, actor).await,
         (&Method::GET, "/monitor/commit_hash") => commit_hash(sys, actor).await,
         _ => not_found()
