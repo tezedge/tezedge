@@ -2,41 +2,53 @@ use std::env;
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use colored::*;
-use hex_literal::hex;
 use os_type::{current_platform, OSType};
+use serde::Deserialize;
+use serde_json;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "6cdd4ff984f0c7bed07f6ba19c257aba2b89da48";
+const GIT_COMMIT_HASH: &str = "ba74a4aacab56cc6d287f05123b2d865e368890d";
+const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 const OPAM_CMD: &str = "opam";
 
+#[derive(Debug)]
 struct RemoteLib {
-    url: &'static str,
-    sha256: [u8; 32],
+    lib_url: String,
+    sha256_checksum_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Artifact {
+    name: String,
+    url: String,
 }
 
 fn get_remote_lib() -> RemoteLib {
     let platform = current_platform();
-    let url = match platform.os_type {
+    let artifacts = current_release_distributions_artifacts();
+    println!("Resolved known artifacts: {:?}", &artifacts);
+
+    let artifact_for_platform = match platform.os_type {
         OSType::Ubuntu => match platform.version.as_str() {
-            "16.04" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/adbc14e473dee8d52af75f24f5101f76/libtezos-ffi-ubuntu16.so", sha256: hex!("0c73183a048662df7a73012702c80a2590e1e3bed56d1a64778218c7cc898a8d") }),
-            "18.04" | "18:10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/f3c5fc4c424943e13765b30245a6317e/libtezos-ffi-ubuntu18.so", sha256: hex!("5980f886d4cd9b4b603c423ee77ea852a14f90274f9820a683e05edab06beeae")}),
-            "19.04" | "19.10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/cdbfaf2ef75b6de53878075988f3c799/libtezos-ffi-ubuntu19.so", sha256: hex!("2f0f7d3f1f6365ef9b2c0e34bc8cc657384375bc140257e81dce36367eda6748")}),
+            "16.04" => Some("libtezos-ffi-ubuntu16.so"),
+            "18.04" | "18:10" => Some("libtezos-ffi-ubuntu18.so"),
+            "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so"),
             _ => None,
         }
         OSType::Debian => match platform.version.as_str() {
-            "9" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/e82b77c70bf55c80761f50ec6780b0c4/libtezos-ffi-debian9.so", sha256: hex!("345c75a6473e7ccd48ee4304789cfe9be5ed8455ec1df9733ee32293a49227df")}),
-            "10" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/9ebc227e0f76095414fbef936f47fc8e/libtezos-ffi-debian10.so", sha256: hex!("16134611b74fcf76d386e399cec633d638c499e84fee08d800f7a22e2e0abcf1")}),
+            "9" => Some("libtezos-ffi-debian9.so"),
+            "10" => Some("libtezos-ffi-debian10.so"),
             _ => None
         }
         OSType::OpenSUSE => match platform.version.as_str() {
-            "15.1" | "15.2" => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/2f64d1e9418596df8ac0f93eabeace97/libtezos-ffi-opensuse15.1.so", sha256: hex!("0674a49f92b81c6d8e944153276626ba272484969a59e44a7f6a2ce2c3f9e482")}),
+            "15.1" | "15.2" => Some("libtezos-ffi-opensuse15.1.so"),
             _ => None
         }
         OSType::CentOS => match platform.version.chars().next().unwrap() {
@@ -44,25 +56,54 @@ fn get_remote_lib() -> RemoteLib {
                 println!("cargo:warning=CentOS 6.x is not supported by the OCaml Package Manager");
                 None
             }
-            '7' => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/f141ab1b711f9f5c84c4646e48d7aebd/libtezos-ffi-centos7.so", sha256: hex!("de835e7bfe5127e2bd650d4e21a084db87dd60e141d26bb4bf5612cce1a287f6")}),
-            '8' => Some(RemoteLib { url: "https://gitlab.com/simplestaking/tezos/uploads/9d5048e82eaad705b2920c79d04898d3/libtezos-ffi-centos8.so", sha256: hex!("984eb34a52e04831be8e62508adabccd848864318173a908f97340b27150187b")}),
+            '7' => Some("libtezos-ffi-centos7.so"),
+            '8' => Some("libtezos-ffi-centos8.so"),
             _ => None
         }
         _ => None,
     };
 
-    match url {
-        Some(url) => url,
+    match artifact_for_platform {
+        Some(artifact_for_platform) => {
+            // find artifact for platform
+            match artifacts.iter().find(|a| a.name == artifact_for_platform) {
+                Some(artifact) => {
+                    let artifact_for_platform_sha256 = format!("{}.sha256", &artifact_for_platform);
+                    let artifact_sha256 = artifacts
+                        .iter()
+                        .find(|a| a.name.as_str() == artifact_for_platform_sha256.as_str())
+                        .expect(&format!("Expected artifact for name: '{}', artifacts: {:?}", &artifact_for_platform_sha256, artifacts));
+
+                    RemoteLib {
+                        lib_url: artifact.url.to_string(),
+                        sha256_checksum_url: artifact_sha256.url.to_string(),
+                    }
+                },
+                None => {
+                    println!("cargo:warning=No precompiled library found for '{:?}'.", platform);
+                    println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+                    panic!("No precompiled library");
+                }
+            }
+        },
         None => {
-            println!("cargo:warning=No precompiled library found for '{:?}'.", platform);
+            println!("cargo:warning=Not yet supported platform: '{:?}', requested artifact_for_platform: {:?}!", platform, artifact_for_platform);
             println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
-            panic!("No precompiled library");
+            panic!("Not yet supported platform!");
         }
     }
 }
 
-fn run_builder(build_chain: &str) {
+fn current_release_distributions_artifacts() -> Vec<Artifact> {
+    let artifacts: Vec<Artifact> = fs::read_to_string(PathBuf::from(GIT_RELEASE_DISTRIBUTIONS_FILE))
+        .map(|output| {
+            serde_json::from_str::<Vec<Artifact>>(output.as_str()).unwrap()
+        })
+        .expect(&format!("Couldn't read current distributions artifacts from file: {:?}", &GIT_RELEASE_DISTRIBUTIONS_FILE));
+    artifacts
+}
 
+fn run_builder(build_chain: &str) {
     match build_chain.as_ref() {
         "local" => {
             // check we want to update git updates or just skip updates, because of development process and changes on ocaml side, which are not yet in git
@@ -81,13 +122,22 @@ fn run_builder(build_chain: &str) {
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "remote" => {
-            // $ curl <remote_url> --output lib_tezos/artifacts/libtezos.o
             let libtezos_path = Path::new("lib_tezos").join("artifacts").join("libtezos.o");
             let remote_lib = get_remote_lib();
+            println!("Resolved platform-dependent remote_lib: {:?}", &remote_lib);
+
+            // get library: $ curl <remote_url> --output lib_tezos/artifacts/libtezos.o
             Command::new("curl")
-                .args(&[remote_lib.url, "--output", libtezos_path.as_os_str().to_str().unwrap()])
+                .args(&[remote_lib.lib_url.as_str(), "--output", libtezos_path.as_os_str().to_str().unwrap()])
                 .status()
                 .expect("Couldn't retrieve compiled tezos binary.");
+
+            // get sha256 checksum file: $ curl <remote_url>
+            let remote_lib_sha256: Output = Command::new("curl")
+                .args(&[remote_lib.sha256_checksum_url.as_str()])
+                .output()
+                .expect(&format!("Couldn't retrieve sha256check file for tezos binary from url: {:?}!", remote_lib.sha256_checksum_url.as_str()));
+            let remote_lib_sha256 = hex::decode(std::str::from_utf8(&remote_lib_sha256.stdout).expect("Invalid UTF-8 value!")).expect("Invalid hex value!");
 
             // check sha256 hash
             {
@@ -95,7 +145,7 @@ fn run_builder(build_chain: &str) {
                 let mut sha256 = Sha256::new();
                 std::io::copy(&mut file, &mut sha256).expect("Failed to read contents of libtezos.o");
                 let hash = sha256.result();
-                assert_eq!(hash[..], remote_lib.sha256, "libtezos.o SHA256 mismatch");
+                assert_eq!(hash[..], *remote_lib_sha256, "libtezos.o SHA256 mismatch");
             }
 
             // $ pushd lib_tezos/artifacts && ar qs libtezos.a libtezos.o && popd
@@ -155,7 +205,7 @@ fn rerun_if_ocaml_file_changes() {
         .map(|dir_entry| dir_entry.path())
         .filter(|path| path.is_file())
         .map(|path| (path.as_os_str().to_str().unwrap().to_string(), path.file_name().unwrap().to_str().unwrap().to_string()))
-        .filter(|(_, file_name)| file_name.ends_with("ml")|| file_name.ends_with("mli"))
+        .filter(|(_, file_name)| file_name.ends_with("ml") || file_name.ends_with("mli"))
         .for_each(|(path, _)| println!("cargo:rerun-if-changed={}", path));
 }
 

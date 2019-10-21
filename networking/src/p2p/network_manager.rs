@@ -54,6 +54,7 @@ pub struct NetworkManager {
     public_key: String,
     secret_key: String,
     proof_of_work_stamp: String,
+    version: String,
     /// Message receiver boolean indicating whether
     /// more connections should be accepted from network
     rx_run: Arc<AtomicBool>,
@@ -66,10 +67,11 @@ impl NetworkManager {
                  listener_port: u16,
                  public_key: String,
                  secret_key: String,
-                 proof_of_work_stamp: String) -> Result<NetworkManagerRef, CreateError>
+                 proof_of_work_stamp: String,
+                 version: String) -> Result<NetworkManagerRef, CreateError>
     {
         sys.actor_of(
-            Props::new_args(NetworkManager::new, (network_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp)),
+            Props::new_args(NetworkManager::new, (network_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp, version)),
             NetworkManager::name())
     }
 
@@ -79,7 +81,7 @@ impl NetworkManager {
         "network-manager"
     }
 
-    fn new((event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp): (NetworkChannelRef, TaskExecutor, u16, String, String, String)) -> Self {
+    fn new((event_channel, tokio_executor, listener_port, public_key, secret_key, proof_of_work_stamp, version): (NetworkChannelRef, TaskExecutor, u16, String, String, String, String)) -> Self {
         NetworkManager {
             network_channel: event_channel,
             tokio_executor,
@@ -87,6 +89,7 @@ impl NetworkManager {
             public_key,
             secret_key,
             proof_of_work_stamp,
+            version,
             rx_run: Arc::new(AtomicBool::new(true)),
         }
     }
@@ -99,6 +102,7 @@ impl NetworkManager {
             &self.public_key,
             &self.secret_key,
             &self.proof_of_work_stamp,
+            &self.version,
             self.tokio_executor.clone(),
             socket_address,
         ).unwrap();

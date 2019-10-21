@@ -76,7 +76,7 @@ impl PeerManager {
 
     fn discover_peers(&mut self) {
         if self.peers.is_empty() {
-            info!(self.log, "Doing peer DNS lookup..");
+            info!(self.log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
             dns_lookup_peers(&self.bootstrap_addresses, self.log.clone()).iter()
                 .for_each(|i| {
                     info!(self.log, "Found potential peer"; "ip" => i);

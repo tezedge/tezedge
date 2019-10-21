@@ -55,6 +55,13 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 
 # Run configuration
 
+**Tezos network**
+(Which Tezos network we want to connect: Alphanet, Babylonnet, Mainnet, Zeronet)
+```
+--network Zeronet
+```
+
+
 **Tezos storage data directory**
 (Directory should already exists)
 ```
@@ -77,7 +84,7 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 ```
 
 **Bootstrap address**
-
+(Default values depends on choosen "Tezos network")
 ```
 --bootstrap-lookup-address boot.tzalpha.net,bootalpha.tzbeta.net
 ```
@@ -87,14 +94,9 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 --identity /opt/tezos-env/rust-node/identity.json
 ```
 
-**Disable JSON messages logging**
-```
---log-message-contents false
-```
-
 e.g.:
 ```
-cargo run -- --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false
+cargo run -- --network Zeronet --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false
 ```
 
 

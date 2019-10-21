@@ -80,10 +80,22 @@ impl slog::Value for OcamlStorageInitError {
     }
 }
 
-pub fn init_storage(storage_data_dir: String) -> Result<Result<OcamlStorageInitInfo, OcamlStorageInitError>, OcamlError> {
+#[derive(Debug)]
+pub struct GenesisChain {
+    pub time: String,
+    pub block: String,
+    pub protocol: String,
+}
+
+pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) -> Result<Result<OcamlStorageInitInfo, OcamlStorageInitError>, OcamlError> {
     runtime::execute(move || {
+        let mut genesis_tuple: Tuple = Tuple::new(3);
+        genesis_tuple.set(0, Str::from(genesis.time.as_str()).into()).unwrap();
+        genesis_tuple.set(1, Str::from(genesis.block.as_str()).into()).unwrap();
+        genesis_tuple.set(2, Str::from(genesis.protocol.as_str()).into()).unwrap();
+
         let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");
-        match ocaml_function.call_exn::<Str>(storage_data_dir.as_str().into()) {
+        match ocaml_function.call2_exn::<Str, Value>(storage_data_dir.as_str().into(), Value::from(genesis_tuple)) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
                 let chain_id: Str = ocaml_result.get(0).unwrap().into();
@@ -146,10 +158,10 @@ pub fn get_current_block_header(chain_id: String) -> Result<Result<String, Block
     })
 }
 
-pub fn get_block_header(block_header_hash: String) -> Result<Result<Option<String>, BlockHeaderError>, OcamlError> {
+pub fn get_block_header(chain_id: String, block_header_hash: String) -> Result<Result<Option<String>, BlockHeaderError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("get_block_header").expect("function 'get_block_header' is not registered");
-        match ocaml_function.call_exn::<Str>(block_header_hash.as_str().into()) {
+        match ocaml_function.call2_exn::<Str, Str>(chain_id.as_str().into(), block_header_hash.as_str().into()) {
             Ok(block_header) => {
                 let block_header: Str = block_header.into();
                 if block_header.is_empty() {
@@ -210,14 +222,19 @@ impl From<ocaml::Error> for ApplyBlockError {
     }
 }
 
-pub fn apply_block(block_header_hash: String, block_header: String, operations: Vec<Option<Vec<String>>>)
+pub fn apply_block(chain_id: String, block_header_hash: String, block_header: String, operations: Vec<Option<Vec<String>>>)
                    -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
-        match ocaml_function.call3_exn::<Str, Str, Array>(
-            block_header_hash.as_str().into(),
-            block_header.as_str().into(),
-            operations_to_ocaml_array(operations),
+
+        let mut block_header_tuple: Tuple = Tuple::new(2);
+        block_header_tuple.set(0, Str::from(block_header_hash.as_str()).into()).unwrap();
+        block_header_tuple.set(1, Str::from(block_header.as_str()).into()).unwrap();
+
+        match ocaml_function.call3_exn::<Str, Value, Array>(
+                    Str::from(chain_id.as_str()),
+                    Value::from(block_header_tuple),
+                    operations_to_ocaml_array(operations)
         ) {
             Ok(validation_result) => {
                 let validation_result: Str = validation_result.into();
