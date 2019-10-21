@@ -61,7 +61,7 @@ async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
             let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash());
             BootstrapInfo::new(hash.into(), timestamp())
         } else {
-            BootstrapInfo::new("".into(), timestamp())
+            BootstrapInfo::new(String::new().into(), timestamp())
         })?;
         Ok(Response::new(Body::from(resp)))
     } else {

@@ -3,6 +3,7 @@ name = "rpc"
 version = "0.1.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,3 +21,6 @@ chrono = "0.4.9"
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 tezos_encoding = { path = "../tezos/encoding" }
+
+[build-dependencies]
+git2 = "0.10"
