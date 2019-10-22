@@ -1,4 +1,8 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::time::Instant;
+
 use crate::handlers::handler_messages::IncomingTransferMetrics;
 
 /// General statistics about incoming transfer

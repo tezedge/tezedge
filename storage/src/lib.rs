@@ -7,9 +7,9 @@ use failure::Fail;
 use slog::info;
 use slog::Logger;
 
-use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
-use networking::p2p::encoding::prelude::BlockHeader;
 use tezos_encoding::hash::{BlockHash, HashType};
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
+use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
 pub use crate::block_storage::{BlockStorage, BlockStorageDatabase, BlockStorageReader};

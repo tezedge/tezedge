@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashSet;
 
 use tezos_client::client;

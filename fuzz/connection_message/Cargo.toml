@@ -9,4 +9,4 @@ publish = false
 honggfuzz = "0.5"
 log = "0.4.8"
 # Local dependencies
-networking = { path = "../../networking" }
+tezos_messages = { path = "../../tezos/messages" }

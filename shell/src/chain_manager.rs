@@ -10,13 +10,13 @@ use itertools::Itertools;
 use riker::actors::*;
 use slog::{debug, FnValue, info, trace, warn};
 
-use networking::p2p::binary_message::MessageHash;
-use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use tezos_client::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
+use tezos_messages::p2p::binary_message::MessageHash;
+use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events};
 use crate::block_state::{BlockState, MissingBlock};

@@ -7,9 +7,9 @@ use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use networking::p2p::encoding::prelude::*;
 use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase, StorageError};
 use tezos_encoding::hash::BlockHash;
+use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::collections::{BlockData, UniqueBlockData};
 

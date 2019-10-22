@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 mod peer_monitor;
 mod bootstrap_monitor;
 mod blocks_monitor;

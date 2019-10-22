@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{time::Instant, net::SocketAddr};
+use std::{net::SocketAddr, time::Instant};
+
 use riker::actor::ActorUri;
+
 use crate::handlers::handler_messages::PeerMetrics;
 
 /// Peer specific details about transfer *FROM* peer.

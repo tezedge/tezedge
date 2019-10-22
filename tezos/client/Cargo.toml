@@ -5,9 +5,7 @@ authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-custom_derive = "0.1.7"
 dirs = "1.0.4"
-enum_derive = "0.1.7"
 failure = "0.1.5"
 failure_derive = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
@@ -19,4 +17,4 @@ slog = "2.5"
 # local dependencies
 tezos_encoding = { path = "../encoding" }
 tezos_interop = { path = "../interop" }
-networking = { path = "../../networking" }
+tezos_messages = { path = "../messages" }

@@ -1,8 +1,9 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::handlers::handler_messages::BlockMetrics;
 use std::time::Instant;
+
+use crate::handlers::handler_messages::BlockMetrics;
 
 #[derive(Debug, Clone)]
 pub struct BlocksMonitor {

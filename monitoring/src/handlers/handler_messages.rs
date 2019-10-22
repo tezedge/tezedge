@@ -4,9 +4,9 @@
 use std::iter::FromIterator;
 
 use serde::Serialize;
+use slog_derive::SerdeValue;
 
 use crate::monitors::PeerMonitor;
-use slog_derive::SerdeValue;
 
 // -------------------------- GENERAL METRICS -------------------------- //
 #[derive(Serialize, Debug, Clone)]

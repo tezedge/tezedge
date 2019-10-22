@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use tezos_client::environment;
 use tezos_client::environment::TezosEnvironment;
 use tezos_interop::ffi;

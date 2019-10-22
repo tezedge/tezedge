@@ -10,12 +10,12 @@ use std::time::Duration;
 use dns_lookup::LookupError;
 use rand::seq::SliceRandom;
 use riker::actors::*;
-use slog::{info, warn, Logger};
+use slog::{info, Logger, warn};
 
-use networking::p2p::encoding::prelude::*;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
 use networking::p2p::network_manager::{ConnectToPeer, NetworkManagerRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
+use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 

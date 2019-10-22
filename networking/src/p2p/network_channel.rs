@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use riker::actors::*;
 
-use crate::p2p::encoding::peer::PeerMessageResponse;
+use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
 use super::peer::PeerRef;
 

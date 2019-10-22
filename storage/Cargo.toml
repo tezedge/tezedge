@@ -11,3 +11,4 @@ rocksdb = "0.12.3"
 slog = "2.5"
 networking = { path = "../networking" }
 tezos_encoding = { path = "../tezos/encoding" }
+tezos_messages = { path = "../tezos/messages" }

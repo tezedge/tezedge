@@ -17,9 +17,9 @@ use crypto::crypto_box::precompute;
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
+use tezos_messages::p2p::encoding::prelude::*;
 
-use super::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
-use super::encoding::prelude::*;
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
