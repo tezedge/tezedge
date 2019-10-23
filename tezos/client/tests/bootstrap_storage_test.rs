@@ -1,6 +1,6 @@
 use std::stringify;
 
-use networking::p2p::binary_message::{Hexable, MessageHash};
+use networking::p2p::binary_message::{BinaryMessage, MessageHash};
 use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
 use tezos_client::client::{TezosRuntimeConfiguration, TezosStorageInitInfo};
@@ -51,13 +51,13 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
 
     let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
+    assert_eq!(genesis_header.unwrap(), current_header);
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
@@ -73,7 +73,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
@@ -89,7 +89,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
@@ -117,13 +117,13 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
 
     let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
+    assert_eq!(genesis_header.unwrap(), current_header);
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
@@ -148,13 +148,13 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
 
     let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
+    assert_eq!(genesis_header.unwrap(), current_header);
 
     // apply second block - level 3 has validation_pass = 4
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_3.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
         vec![None].as_ref(),
     );
     assert!(apply_block_result.is_err());
@@ -176,13 +176,13 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
 
     let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
+    assert_eq!(genesis_header.unwrap(), current_header);
 
     // apply second block - level 1 ok
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
@@ -194,7 +194,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_2.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
@@ -219,13 +219,13 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
 
     let genesis_header = client::get_block_header(&chain_id, &genesis_block_header_hash)?;
     assert!(genesis_header.is_some());
-    assert_eq!(genesis_header.unwrap().to_hex()?, current_header.to_hex()?);
+    assert_eq!(genesis_header.unwrap(), current_header);
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(
         &chain_id,
         &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
-        &BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
@@ -265,7 +265,7 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
     // current hash must be equal to genesis
     assert_eq!(alphanet_init_info.genesis_block_header_hash, alphanet_init_info.current_block_header_hash);
 
-    let alphanet_block_header_hash_level1 = BlockHeader::from_hex(test_data::BLOCK_HEADER_LEVEL_1.to_string())?;
+    let alphanet_block_header_hash_level1 = BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?;
 
     // ALPHANET - apply first block - level 1
     let apply_block_result = client::apply_block(
@@ -312,7 +312,7 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
 }
 
 mod test_data {
-    use networking::p2p::binary_message::Hexable;
+    use networking::p2p::binary_message::BinaryMessage;
     use networking::p2p::encoding::prelude::*;
     use tezos_client::environment::TezosEnvironment;
 
@@ -358,8 +358,8 @@ mod test_data {
             .map(|bo| {
                 let ops = bo
                     .into_iter()
-                    .map(|op| Operation::from_hex(op).unwrap())
-                    .collect();
+                    .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
+                        .collect();
                 Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
             })
             .collect()

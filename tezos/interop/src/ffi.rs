@@ -1,8 +1,34 @@
 use failure::Fail;
-use ocaml::{Array, Error, Str, Tag, Tuple, Value};
+use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
+
+pub type OcamlBytes = Array1<u8>;
+pub type RustBytes = Vec<u8>;
+
+pub trait Interchange<T> {
+    fn convert_to(&self) -> T;
+}
+
+impl Interchange<OcamlBytes> for RustBytes {
+    fn convert_to(&self) -> OcamlBytes {
+        // convert RustBytes to dedicated struct for ocaml ffi
+        // Array1.as_slice dont work here, so we have to copy manually
+        // create vs as_slice differs in bigarray::Managed
+        let mut array: OcamlBytes = Array1::<u8>::create(self.len());
+        for (idx, byte) in self.iter().enumerate() {
+            array.data_mut()[idx] = *byte;
+        }
+        array
+    }
+}
+
+impl Interchange<RustBytes> for OcamlBytes {
+    fn convert_to(&self) -> RustBytes {
+        self.data().to_vec()
+    }
+}
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
 #[derive(Debug)]
@@ -47,10 +73,10 @@ pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Resu
 
 #[derive(Debug)]
 pub struct OcamlStorageInitInfo {
-    pub chain_id: String,
-    pub genesis_block_header_hash: String,
-    pub genesis_block_header: String,
-    pub current_block_header_hash: String,
+    pub chain_id: RustBytes,
+    pub genesis_block_header_hash: RustBytes,
+    pub genesis_block_header: RustBytes,
+    pub current_block_header_hash: RustBytes,
 }
 
 #[derive(Debug, Fail)]
@@ -98,15 +124,15 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
         match ocaml_function.call2_exn::<Str, Value>(storage_data_dir.as_str().into(), Value::from(genesis_tuple)) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
-                let chain_id: Str = ocaml_result.get(0).unwrap().into();
-                let genesis_block_header_hash: Str = ocaml_result.get(1).unwrap().into();
-                let genesis_block_header: Str = ocaml_result.get(2).unwrap().into();
-                let current_block_header_hash: Str = ocaml_result.get(3).unwrap().into();
+                let chain_id: OcamlBytes = ocaml_result.get(0).unwrap().into();
+                let genesis_block_header_hash: OcamlBytes = ocaml_result.get(1).unwrap().into();
+                let genesis_block_header: OcamlBytes = ocaml_result.get(2).unwrap().into();
+                let current_block_header_hash: OcamlBytes = ocaml_result.get(3).unwrap().into();
                 Ok(OcamlStorageInitInfo {
-                    chain_id: chain_id.as_str().to_string(),
-                    genesis_block_header_hash: genesis_block_header_hash.as_str().to_string(),
-                    genesis_block_header: genesis_block_header.as_str().to_string(),
-                    current_block_header_hash: current_block_header_hash.as_str().to_string(),
+                    chain_id: chain_id.convert_to(),
+                    genesis_block_header_hash: genesis_block_header_hash.convert_to(),
+                    genesis_block_header: genesis_block_header.convert_to(),
+                    current_block_header_hash: current_block_header_hash.convert_to(),
                 })
             }
             Err(e) => {
@@ -139,16 +165,16 @@ impl From<ocaml::Error> for BlockHeaderError {
     }
 }
 
-pub fn get_current_block_header(chain_id: String) -> Result<Result<String, BlockHeaderError>, OcamlError> {
+pub fn get_current_block_header(chain_id: RustBytes) -> Result<Result<RustBytes, BlockHeaderError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("get_current_block_header").expect("function 'get_current_block_header' is not registered");
-        match ocaml_function.call_exn::<Str>(chain_id.as_str().into()) {
+        match ocaml_function.call_exn::<OcamlBytes>(chain_id.convert_to()) {
             Ok(block_header) => {
-                let block_header: Str = block_header.into();
+                let block_header: OcamlBytes = block_header.into();
                 if block_header.is_empty() {
                     Err(BlockHeaderError::ExpectedButNotFound)
                 } else {
-                    Ok(block_header.as_str().to_string())
+                    Ok(block_header.convert_to())
                 }
             }
             Err(e) => {
@@ -158,16 +184,16 @@ pub fn get_current_block_header(chain_id: String) -> Result<Result<String, Block
     })
 }
 
-pub fn get_block_header(chain_id: String, block_header_hash: String) -> Result<Result<Option<String>, BlockHeaderError>, OcamlError> {
+pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Result<Result<Option<RustBytes>, BlockHeaderError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("get_block_header").expect("function 'get_block_header' is not registered");
-        match ocaml_function.call2_exn::<Str, Str>(chain_id.as_str().into(), block_header_hash.as_str().into()) {
+        match ocaml_function.call2_exn::<OcamlBytes, OcamlBytes>(chain_id.convert_to(), block_header_hash.convert_to()) {
             Ok(block_header) => {
-                let block_header: Str = block_header.into();
+                let block_header: OcamlBytes = block_header.into();
                 if block_header.is_empty() {
                     Ok(None)
                 } else {
-                    Ok(Some(block_header.as_str().to_string()))
+                    Ok(Some(block_header.convert_to()))
                 }
             }
             Err(e) => {
@@ -195,8 +221,14 @@ pub enum ApplyBlockError {
     },
     #[fail(display = "Unknown predecessor - try to fetch predecessor at first!")]
     UnknownPredecessor,
-    #[fail(display = "Invalid block header data")]
-    InvalidBlockHeaderData,
+    #[fail(display = "Invalid block header data - message: {}!", message)]
+    InvalidBlockHeaderData {
+        message: String,
+    },
+    #[fail(display = "Invalid operations data - message: {}!", message)]
+    InvalidOperationsData {
+        message: String,
+    },
 }
 
 impl From<ocaml::Error> for ApplyBlockError {
@@ -222,19 +254,24 @@ impl From<ocaml::Error> for ApplyBlockError {
     }
 }
 
-pub fn apply_block(chain_id: String, block_header_hash: String, block_header: String, operations: Vec<Option<Vec<String>>>)
-                   -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
+pub fn apply_block(
+    chain_id: RustBytes,
+    block_header_hash: RustBytes,
+    block_header: RustBytes,
+    operations: Vec<Option<Vec<RustBytes>>>)
+    -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
 
-        let mut block_header_tuple: Tuple = Tuple::new(2);
-        block_header_tuple.set(0, Str::from(block_header_hash.as_str()).into()).unwrap();
-        block_header_tuple.set(1, Str::from(block_header.as_str()).into()).unwrap();
+        // convert to ocaml types
+        let block_header_tuple: Tuple = block_header_to_ocaml(&block_header_hash, &block_header)?;
+        let operations = operations_to_ocaml(&operations);
 
-        match ocaml_function.call3_exn::<Str, Value, Array>(
-                    Str::from(chain_id.as_str()),
-                    Value::from(block_header_tuple),
-                    operations_to_ocaml_array(operations)
+        // call ffi
+        match ocaml_function.call3_exn::<OcamlBytes, Value, List>(
+            chain_id.convert_to(),
+            block_header_tuple.into(),
+            operations,
         ) {
             Ok(validation_result) => {
                 let validation_result: Str = validation_result.into();
@@ -249,31 +286,31 @@ pub fn apply_block(chain_id: String, block_header_hash: String, block_header: St
     })
 }
 
-fn operations_to_ocaml_array(operations: Vec<Option<Vec<String>>>) -> Array {
-    let mut operations_for_ocaml = Array::new(operations.len());
+pub fn operations_to_ocaml(operations: &Vec<Option<Vec<RustBytes>>>) -> List {
+    let mut operations_for_ocaml = List::new();
 
-    operations.iter()
-        .enumerate()
-        .for_each(|(ops_idx, ops_option)| {
+    operations.into_iter().rev()
+        .for_each(|ops_option| {
             let ops_array = if let Some(ops) = ops_option {
-                let mut ops_array = Array::new(ops.len());
-                ops.iter()
-                    .enumerate()
-                    .for_each(|(op_idx, op)| {
-                        ops_array
-                            .set(op_idx, Str::from(op.as_str()).into())
-                            .expect("Failed to add operation to Array!");
-                    });
+                let mut ops_array = List::new();
+                ops.into_iter().rev().for_each(|op| {
+                    ops_array.push_hd(Value::from(op.convert_to()));
+                });
                 ops_array
             } else {
-                Array::new(0)
+                List::new()
             };
-            operations_for_ocaml
-                .set(ops_idx, ops_array.into())
-                .expect("Failed to add operations to Array!");
+            operations_for_ocaml.push_hd(Value::from(ops_array));
         });
 
     operations_for_ocaml
+}
+
+pub fn block_header_to_ocaml(block_header_hash: &RustBytes, block_header: &RustBytes) -> Result<Tuple, ocaml::Error> {
+    let mut block_header_tuple: Tuple = Tuple::new(2);
+    block_header_tuple.set(0, Value::from(block_header_hash.convert_to()))?;
+    block_header_tuple.set(1, Value::from(block_header.convert_to()))?;
+    Ok(block_header_tuple)
 }
 
 fn parse_error_message(ffi_error: Value) -> Option<String> {
