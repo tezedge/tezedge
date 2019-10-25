@@ -5,7 +5,7 @@ use std::fmt;
 
 use networking::p2p::binary_message::BinaryMessage;
 use networking::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType, ProtocolHash};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo};
 
@@ -31,6 +31,7 @@ pub struct TezosStorageInitInfo {
     pub genesis_block_header_hash: BlockHash,
     pub genesis_block_header: BlockHeader,
     pub current_block_header_hash: BlockHash,
+    pub supported_protocol_hashes: Vec<ProtocolHash>,
 }
 
 impl TezosStorageInitInfo {
@@ -44,6 +45,7 @@ impl TezosStorageInitInfo {
             genesis_block_header_hash: storage_init_info.genesis_block_header_hash,
             genesis_block_header: genesis_header,
             current_block_header_hash: storage_init_info.current_block_header_hash,
+            supported_protocol_hashes: storage_init_info.supported_protocol_hashes,
         })
     }
 }
