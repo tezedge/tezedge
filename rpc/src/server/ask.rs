@@ -8,6 +8,8 @@ use futures::FutureExt;
 
 use riker::actors::*;
 
+/// Fork of ask pattern from the `riker-patterns` repo.
+/// Send specific actor an message, and await the response
 pub fn ask<Msg, Ctx, R, T>(ctx: &Ctx, receiver: &T, msg: Msg) -> RemoteHandle<R>
     where
         Msg: Message,

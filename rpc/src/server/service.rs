@@ -12,6 +12,7 @@ use tezos_encoding::hash::{HashEncoding, HashType};
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
+/// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) -> impl Future<Output=Result<(), Error>> {
     Server::bind(addr)
         .serve(make_service_fn(move |_| {
@@ -31,22 +32,26 @@ pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) ->
         }))
 }
 
+/// Helper function for generating current TimeStamp
 fn timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
 }
 
+/// Generate 404 response
 fn not_found() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(404)?)
         .body(Body::from("not found"))?)
 }
 
+/// Generate empty response
 fn empty() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(204)?)
         .body(Body::empty())?)
 }
 
+/// GET /monitor/boostrapped endpoint handler
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     use crate::server::control_msg::GetCurrentHead;
     use crate::encoding::monitor::BootstrapInfo;
@@ -65,12 +70,13 @@ async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     }
 }
 
+/// GET /monitor/commit_hash endpoint handler
 async fn commit_hash(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
     let resp = serde_json::to_string(&UniString::from(env!("GIT_HASH")))?;
     Ok(Response::new(Body::from(resp)))
 }
 
-
+/// Simple endpoint routing handler
 async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/monitor/bootstrapped") => bootstrapped(sys, actor).await,

@@ -25,6 +25,7 @@ pub enum ChainStatus {
 }
 
 impl ChainStatus {
+    /// Create basic chain status report without test_protocol and expiration_date
     pub fn basic<T: Into<UniString>>(chain_id: T) -> Self {
         Self::Active {
             chain_id: chain_id.into(),
@@ -33,6 +34,7 @@ impl ChainStatus {
         }
     }
 
+    /// Create detailed chain status with all attributes
     pub fn detailed<C: Into<UniString>, H: Into<UniString>>(chain_id: C, test_protocol: H, expiration_date: TimeStamp) -> Self {
         Self::Active {
             chain_id: chain_id.into(),
@@ -41,6 +43,7 @@ impl ChainStatus {
         }
     }
 
+    /// Create chain status for a stopping chain
     pub fn stopping<T: Into<UniString>>(chain_id: T) -> Self {
         Self::Stopping {
             stopping: chain_id.into(),
@@ -54,6 +57,7 @@ pub type ActiveChains = Vec<ChainStatus>;
 
 pub type BlockHash = UniString;
 
+/// Bootstrap streaming info
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BootstrapInfo {
     block: BlockHash,
