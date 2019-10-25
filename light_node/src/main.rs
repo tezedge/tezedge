@@ -18,6 +18,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannel;
+use rpc::rpc_actor::RpcServer;
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_client::client;
@@ -90,8 +91,10 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create chain feeder");
     let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel, rocks_db.clone())
+    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
+    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], 3030).into(), &tokio_runtime)
+        .expect("Failed to create RPC server");
     if configuration::ENV.record {
         info!(log, "Running in record mode");
         let _ = NetworkChannelListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
