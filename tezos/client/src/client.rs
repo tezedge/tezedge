@@ -3,11 +3,14 @@
 
 use std::fmt;
 
-use networking::p2p::binary_message::Hexable;
+use networking::p2p::binary_message::BinaryMessage;
 use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo};
+
+use crate::environment;
+use crate::environment::{TezosEnvironment, TezosEnvironmentConfiguration};
 
 pub type TezosRuntimeConfiguration = OcamlRuntimeConfiguration;
 
@@ -32,15 +35,15 @@ pub struct TezosStorageInitInfo {
 
 impl TezosStorageInitInfo {
     fn new(storage_init_info: OcamlStorageInitInfo) -> Result<Self, OcamlStorageInitError> {
-        let genesis_header = match BlockHeader::from_hex(storage_init_info.genesis_block_header) {
+        let genesis_header = match BlockHeader::from_bytes(storage_init_info.genesis_block_header) {
             Ok(header) => header,
             Err(e) => return Err(OcamlStorageInitError::InitializeError { message: format!("Decoding from hex failed! Reason: {:?}", e) })
         };
         Ok(TezosStorageInitInfo {
-            chain_id: hex::decode(storage_init_info.chain_id).unwrap(),
-            genesis_block_header_hash: hex::decode(storage_init_info.genesis_block_header_hash).unwrap(),
+            chain_id: storage_init_info.chain_id,
+            genesis_block_header_hash: storage_init_info.genesis_block_header_hash,
             genesis_block_header: genesis_header,
-            current_block_header_hash: hex::decode(storage_init_info.current_block_header_hash).unwrap(),
+            current_block_header_hash: storage_init_info.current_block_header_hash,
         })
     }
 }
@@ -58,8 +61,14 @@ impl fmt::Debug for TezosStorageInitInfo {
 
 
 /// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {
-    match ffi::init_storage(storage_data_dir) {
+pub fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, OcamlStorageInitError> {
+    let cfg: &TezosEnvironmentConfiguration = match environment::TEZOS_ENV.get(&tezos_environment) {
+        None => return Err(OcamlStorageInitError::InitializeError {
+            message: format!("FFI 'init_storage' failed, because there is no tezos environment configured for: {:?}", tezos_environment)
+        }),
+        Some(cfg) => cfg
+    };
+    match ffi::init_storage(storage_data_dir, &cfg.genesis) {
         Ok(result) => Ok(TezosStorageInitInfo::new(result?)?),
         Err(e) => {
             Err(OcamlStorageInitError::InitializeError {
@@ -71,13 +80,13 @@ pub fn init_storage(storage_data_dir: String) -> Result<TezosStorageInitInfo, Oc
 
 /// Get current header block from storage
 pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, BlockHeaderError> {
-    match ffi::get_current_block_header(hex::encode(chain_id)) {
+    match ffi::get_current_block_header(chain_id.clone()) {
         Ok(result) => {
-            match BlockHeader::from_hex(result?) {
+            match BlockHeader::from_bytes(result?) {
                 Ok(header) => Ok(header),
                 Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
             }
-        },
+        }
         Err(e) => {
             Err(BlockHeaderError::ReadError {
                 message: format!("FFI 'get_current_block_header' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
@@ -87,20 +96,20 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
 }
 
 /// Get block header from storage or None
-pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHeader>, BlockHeaderError> {
-    match ffi::get_block_header(hex::encode(block_header_hash)) {
+pub fn get_block_header(chain_id: &ChainId, block_header_hash: &BlockHash) -> Result<Option<BlockHeader>, BlockHeaderError> {
+    match ffi::get_block_header(chain_id.clone(), block_header_hash.clone()) {
         Ok(result) => {
             let header = result?;
             match header {
                 None => Ok(None),
                 Some(header) => {
-                    match BlockHeader::from_hex(header) {
+                    match BlockHeader::from_bytes(header) {
                         Ok(header) => Ok(Some(header)),
                         Err(e) => Err(BlockHeaderError::ReadError { message: format!("Decoding from hex failed! Reason: {:?}", e) })
                     }
                 }
             }
-        },
+        }
         Err(e) => {
             Err(BlockHeaderError::ReadError {
                 message: format!("FFI 'get_block_header' failed! Something is wrong! Reason: {:?}", e)
@@ -115,9 +124,12 @@ pub fn get_block_header(block_header_hash: &BlockHash) -> Result<Option<BlockHea
 /// - new current head is evaluated
 /// - returns validation_result.message
 pub fn apply_block(
+    chain_id: &ChainId,
     block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
+
+    // check operations count by validation_pass
     if (block_header.validation_pass() as usize) != operations.len() {
         return Err(ApplyBlockError::IncompleteOperations {
             expected: block_header.validation_pass() as usize,
@@ -125,15 +137,19 @@ pub fn apply_block(
         });
     }
 
-    let block_header = block_header.to_hex();
-    if block_header.is_err() {
-        return Err(ApplyBlockError::InvalidBlockHeaderData);
-    }
-    let block_header = block_header.unwrap();
-    let operations = to_hex_vec(operations);
+    let block_header = match block_header.as_bytes() {
+        Err(e) => return Err(
+            ApplyBlockError::InvalidBlockHeaderData {
+                message: format!("Block header as_bytes failed: {:?}, block: {:?}", e, block_header)
+            }
+        ),
+        Ok(data) => data
+    };
+    let operations = to_bytes(operations)?;
 
     match ffi::apply_block(
-        hex::encode(block_header_hash),
+        chain_id.clone(),
+        block_header_hash.clone(),
         block_header,
         operations,
     ) {
@@ -146,20 +162,28 @@ pub fn apply_block(
     }
 }
 
-fn to_hex_vec(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Option<Vec<String>>> {
-    block_operations
-        .iter()
-        .map(|bo| {
-            if let Some(bo_ops) = bo {
-                Some(
-                    bo_ops.operations()
-                        .iter()
-                        .map(|op| op.to_hex().unwrap())
-                        .collect()
-                )
-            } else {
-                None
+fn to_bytes(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<Vec<Option<Vec<Vec<u8>>>>, ApplyBlockError> {
+    let mut operations = Vec::with_capacity(block_operations.len());
+
+    for block_ops in block_operations {
+        if let Some(bo_ops) = block_ops {
+            let mut operations_by_pass = Vec::new();
+            for bop in bo_ops.operations() {
+                let op: Vec<u8> = match bop.as_bytes() {
+                    Err(e) => return Err(
+                        ApplyBlockError::InvalidOperationsData {
+                            message: format!("Operation as_bytes failed: {:?}, operation: {:?}", e, bop)
+                        }
+                    ),
+                    Ok(op_bytes) => op_bytes
+                };
+                operations_by_pass.push(op);
             }
-        })
-        .collect()
+            operations.push(Some(operations_by_pass));
+        } else {
+            operations.push(None);
+        }
+    }
+
+    Ok(operations)
 }

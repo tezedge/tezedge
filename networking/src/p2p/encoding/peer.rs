@@ -5,6 +5,7 @@ use std::mem::size_of;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
+use lazy_static::lazy_static;
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 
