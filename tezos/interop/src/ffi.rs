@@ -1,5 +1,6 @@
 use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
+use ocaml::core::mlvalues::empty_list;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -28,6 +29,20 @@ impl Interchange<RustBytes> for OcamlBytes {
     fn convert_to(&self) -> RustBytes {
         self.data().to_vec()
     }
+}
+
+// TODO: remove after PR will be merged and released new ocaml-rs 0.8.0
+// https://github.com/zshipko/ocaml-rs/pull/13
+/// List as vector
+pub fn to_vec(list: List) -> Vec<Value> {
+    let mut vec: Vec<Value> = Vec::new();
+    let mut tmp = Value::from(list);
+    while tmp.0 != empty_list() {
+        let val = tmp.field(0);
+        vec.push(val);
+        tmp = tmp.field(1);
+    }
+    vec
 }
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
@@ -77,6 +92,7 @@ pub struct OcamlStorageInitInfo {
     pub genesis_block_header_hash: RustBytes,
     pub genesis_block_header: RustBytes,
     pub current_block_header_hash: RustBytes,
+    pub supported_protocol_hashes: Vec<RustBytes>,
 }
 
 #[derive(Debug, Fail)]
@@ -124,15 +140,29 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
         match ocaml_function.call2_exn::<Str, Value>(storage_data_dir.as_str().into(), Value::from(genesis_tuple)) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
-                let chain_id: OcamlBytes = ocaml_result.get(0).unwrap().into();
-                let genesis_block_header_hash: OcamlBytes = ocaml_result.get(1).unwrap().into();
-                let genesis_block_header: OcamlBytes = ocaml_result.get(2).unwrap().into();
-                let current_block_header_hash: OcamlBytes = ocaml_result.get(3).unwrap().into();
+
+                let headers: Tuple = ocaml_result.get(0).unwrap().into();
+
+                let chain_id: OcamlBytes = headers.get(0).unwrap().into();
+                let genesis_block_header_hash: OcamlBytes = headers.get(1).unwrap().into();
+                let genesis_block_header: OcamlBytes = headers.get(2).unwrap().into();
+                let current_block_header_hash: OcamlBytes = headers.get(3).unwrap().into();
+
+                // list
+                let supported_protocol_hashes: Vec<RustBytes> = to_vec(ocaml_result.get(1).unwrap().into())
+                    .iter()
+                    .map(|protocol_hash| {
+                        let protocol_hash: OcamlBytes = protocol_hash.clone().into();
+                        protocol_hash.convert_to()
+                    })
+                    .collect();
+
                 Ok(OcamlStorageInitInfo {
                     chain_id: chain_id.convert_to(),
                     genesis_block_header_hash: genesis_block_header_hash.convert_to(),
                     genesis_block_header: genesis_block_header.convert_to(),
                     current_block_header_hash: current_block_header_hash.convert_to(),
+                    supported_protocol_hashes,
                 })
             }
             Err(e) => {

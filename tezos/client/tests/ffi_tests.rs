@@ -13,7 +13,7 @@ fn test_init_storage_and_change_configuration() {
     ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap().unwrap();
 
     // init empty storage for test
-    let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash } = prepare_empty_storage("test_storage_01");
+    let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash, .. } = prepare_empty_storage("test_storage_01");
     assert!(!current_block_header_hash.is_empty());
     assert!(!genesis_block_header.is_empty());
     assert_eq!(genesis_block_header_hash, current_block_header_hash);

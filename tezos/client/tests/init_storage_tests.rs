@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use tezos_client::client;
 use tezos_client::client::TezosRuntimeConfiguration;
 use tezos_client::environment::{TezosEnvironment, TezosEnvironmentVariants};
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, ProtocolHash};
 
 mod common;
 
@@ -18,10 +18,14 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
     let mut chains: HashSet<ChainId> = HashSet::new();
     let mut genesises: HashSet<BlockHash> = HashSet::new();
     let mut current_heads: HashSet<BlockHash> = HashSet::new();
+    let mut protocol_hashes: HashSet<ProtocolHash> = HashSet::new();
 
     // run init storage for all nets
     let iterator: TezosEnvironmentVariants = TezosEnvironment::iter_variants();
+    let mut environment_counter = 0;
     iterator.for_each(|net| {
+        environment_counter += 1;
+
         match client::init_storage(
             common::prepare_empty_dir(&storage_data_dir),
             net,
@@ -31,14 +35,19 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
                 chains.insert(init_info.chain_id);
                 genesises.insert(init_info.genesis_block_header_hash);
                 current_heads.insert(init_info.current_block_header_hash);
+
+                init_info.supported_protocol_hashes.iter().for_each(|protocol_hash| {
+                    protocol_hashes.insert(protocol_hash.clone());
+                });
             }
         }
     });
 
     // check result - we should have
-    assert_eq!(4, chains.len());
-    assert_eq!(4, genesises.len());
-    assert_eq!(4, current_heads.len());
+    assert_eq!(environment_counter, chains.len());
+    assert_eq!(environment_counter, genesises.len());
+    assert_eq!(environment_counter, current_heads.len());
+    assert!(protocol_hashes.len() > 1);
 
     Ok(())
 }
