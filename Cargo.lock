@@ -493,6 +493,24 @@ version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "enum-iterator"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "enum-iterator-derive 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "enum-iterator-derive"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "proc-macro2 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1117,26 +1135,15 @@ dependencies = [
 name = "networking"
 version = "0.1.0"
 dependencies = [
- "bitvec 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "crypto 0.1.0",
- "derive-new 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "derive_builder 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "dns-lookup 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-preview 0.3.0-alpha.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "getset 0.0.8 (git+https://github.com/Hoverbear/getset.git)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.13.0-alpha.4 (git+https://github.com/hyperium/hyper.git)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-bigint 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-traits 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "riker 0.3.2 (git+https://github.com/simplestaking/riker.git?branch=slog-support)",
  "riker-patterns 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
@@ -2075,6 +2082,7 @@ name = "tezos_client"
 version = "0.1.0"
 dependencies = [
  "dirs 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "enum-iterator 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-preview 0.3.0-alpha.19 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2643,6 +2651,8 @@ dependencies = [
 "checksum dirs 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "3fd78930633bd1c6e35c4b42b1df7b0cbc6bc191146e512bb3bedf243fcc3901"
 "checksum dns-lookup 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "13988670860b076248c74e1b54444efc4f1dec70c8bb25da4b7c0024396b72bf"
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
+"checksum enum-iterator 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "de783877b4c72e6ec1c1b4b32eb4a6446e7b8021c8b1898e419f973fd09c4291"
+"checksum enum-iterator-derive 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "eb3f06af72cbd86aa47dc2efeac193199e1ad3d2c4b4c8ee39175a6d643eb5e6"
 "checksum env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "aafcde04e90a5226a6443b7aabdb016ba2f8307c847d524724bd9b346dd1a2d3"
 "checksum erased-serde 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)" = "3beee4bc16478a1b26f2e80ad819a52d24745e292f521a63c16eea5f74b7eb60"
 "checksum failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "795bd83d3abeb9220f257e597aa0080a508b27533824adf336529648f6abf7e2"

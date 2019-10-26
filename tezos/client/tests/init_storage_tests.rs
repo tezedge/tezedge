@@ -3,9 +3,11 @@
 
 use std::collections::HashSet;
 
+use enum_iterator::IntoEnumIterator;
+
 use tezos_client::client;
 use tezos_client::client::TezosRuntimeConfiguration;
-use tezos_client::environment::{TezosEnvironment, TezosEnvironmentVariants};
+use tezos_client::environment::TezosEnvironment;
 use tezos_encoding::hash::{BlockHash, ChainId, ProtocolHash};
 
 mod common;
@@ -24,7 +26,7 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
     let mut protocol_hashes: HashSet<ProtocolHash> = HashSet::new();
 
     // run init storage for all nets
-    let iterator: TezosEnvironmentVariants = TezosEnvironment::iter_variants();
+    let iterator = TezosEnvironment::into_enum_iter();
     let mut environment_counter = 0;
     iterator.for_each(|net| {
         environment_counter += 1;

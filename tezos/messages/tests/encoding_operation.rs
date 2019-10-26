@@ -1,8 +1,10 @@
-use failure::Error;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
 
-use networking::p2p::encoding::prelude::*;
-use networking::p2p::binary_message::BinaryMessage;
+use failure::Error;
 use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]
 fn can_deserialize() -> Result<(), Error> {

@@ -3,7 +3,9 @@
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use serde::{Serialize, Deserialize};
+
+use enum_iterator::IntoEnumIterator;
+use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
 use tezos_interop::ffi::GenesisChain;
@@ -12,7 +14,7 @@ lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, IntoEnumIterator)]
 pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,

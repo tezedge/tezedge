@@ -114,8 +114,8 @@ pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: 
 mod tests {
     use failure::Error;
 
-    use networking::p2p::encoding::prelude::BlockHeaderBuilder;
     use tezos_encoding::hash::{HashEncoding, HashType};
+    use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
     use super::*;
 

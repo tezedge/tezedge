@@ -315,9 +315,9 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
 }
 
 mod test_data {
-    use networking::p2p::binary_message::BinaryMessage;
-    use networking::p2p::encoding::prelude::*;
     use tezos_client::environment::TezosEnvironment;
+    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
 
