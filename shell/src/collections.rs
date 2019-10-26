@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::{BinaryHeap, HashSet};
 
 use tezos_encoding::hash::BlockHash;

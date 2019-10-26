@@ -1,26 +1,28 @@
 // Copyright (c) SimpleStaking and Tezos-RS Contributors
 // SPDX-License-Identifier: MIT
 
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use riker::{
+    actor::*, actors::SystemMsg,
+    system::SystemEvent, system::Timer,
+};
+use rocksdb::DB;
+use slog::{Logger, warn};
+
 use networking::p2p::{
     network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
 };
-use shell::shell_channel::{ShellChannelRef, ShellChannelMsg, ShellChannelTopic};
-use riker::{
-    system::SystemEvent, actor::*,
-    system::Timer, actors::SystemMsg,
-};
-use std::{collections::HashMap, time::Duration, sync::Arc};
+use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::{BlockMetaStorage, IteratorMode};
+use tezos_messages::p2p::binary_message::BinaryMessage;
+
 use crate::{
-    monitors::*,
     handlers::handler_messages::PeerConnectionStatus,
     handlers::WebsocketHandlerMsg,
+    monitors::*,
 };
 use crate::handlers::handler_messages::HandlerMessage;
-use rocksdb::DB;
-use networking::p2p::binary_message::BinaryMessage;
-use slog::{Logger, warn};
-
 
 #[derive(Clone, Debug)]
 pub enum BroadcastSignal {
@@ -79,7 +81,7 @@ impl Monitor {
 
     fn process_peer_message(&mut self, msg: PeerMessageReceived, log: Logger) {
         use std::mem::size_of_val;
-        use networking::p2p::encoding::peer::PeerMessage;
+        use tezos_messages::p2p::encoding::peer::PeerMessage;
 
         for message in msg.message.messages() {
             match message {

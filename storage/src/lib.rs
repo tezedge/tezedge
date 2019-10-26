@@ -7,9 +7,9 @@ use failure::Fail;
 use slog::info;
 use slog::Logger;
 
-use networking::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
-use networking::p2p::encoding::prelude::BlockHeader;
 use tezos_encoding::hash::{BlockHash, HashType};
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
+use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
 pub use crate::block_storage::{BlockStorage, BlockStorageDatabase, BlockStorageReader};
@@ -114,8 +114,8 @@ pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: 
 mod tests {
     use failure::Error;
 
-    use networking::p2p::encoding::prelude::BlockHeaderBuilder;
     use tezos_encoding::hash::{HashEncoding, HashType};
+    use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
     use super::*;
 

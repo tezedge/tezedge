@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 
-use networking::p2p::binary_message::BinaryMessage;
-use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::{BlockHash, HashType};
+use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::StorageError;
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
+use crate::StorageError;
 
 pub type OperationsStorageDatabase = dyn DatabaseWithSchema<OperationsStorage> + Sync + Send;
 

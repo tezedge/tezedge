@@ -1,11 +1,14 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::stringify;
 
-use networking::p2p::binary_message::{BinaryMessage, MessageHash};
-use networking::p2p::encoding::prelude::*;
 use tezos_client::client;
 use tezos_client::client::{TezosRuntimeConfiguration, TezosStorageInitInfo};
 use tezos_client::environment::TezosEnvironment;
 use tezos_interop::ffi::ApplyBlockError;
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::encoding::prelude::*;
 
 mod common;
 
@@ -312,9 +315,9 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
 }
 
 mod test_data {
-    use networking::p2p::binary_message::BinaryMessage;
-    use networking::p2p::encoding::prelude::*;
     use tezos_client::environment::TezosEnvironment;
+    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
 

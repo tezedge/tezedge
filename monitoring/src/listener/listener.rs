@@ -9,8 +9,8 @@ use riker::actor::*;
 use rocksdb::DB;
 use slog::warn;
 
-use networking::p2p::binary_message::BinaryMessage;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
+use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::listener::events::{Event, EventPayloadStorage, EventStorage, EventType};
 

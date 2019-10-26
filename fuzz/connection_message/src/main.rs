@@ -1,8 +1,8 @@
 use honggfuzz::fuzz;
 use log::debug;
 
-use networking::p2p::binary_message::BinaryMessage;
-use networking::p2p::encoding::prelude::*;
+use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::encoding::prelude::*;
 
 fn main() {
     loop {

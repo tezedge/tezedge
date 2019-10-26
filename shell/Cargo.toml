@@ -18,3 +18,4 @@ networking = { path = "../networking" }
 storage = { path = "../storage" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_client = { path = "../tezos/client" }
+tezos_messages = { path = "../tezos/messages" }

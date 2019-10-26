@@ -1,14 +1,17 @@
 [workspace]
 members = [
     "crypto",
+    "tezos/messages",
     "tezos/interop",
     "tezos/encoding",
     "tezos/client",
+    "tezos/wrapper",
     "networking",
     "shell",
     "storage",
     "light_node",
     "monitoring",
+    "protocol_runner",
     "rpc",
     "fuzz/connection_message"
 ]

@@ -17,12 +17,12 @@ use tokio_io::split::{ReadHalf, WriteHalf};
 use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
 use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
 
-use crate::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
 use crate::p2p::peer::PeerId;
 
 /// Max allowed content length in bytes when taking into account extra data added by encryption
-pub const CONTENT_LENGTH_MAX: usize = crate::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
+pub const CONTENT_LENGTH_MAX: usize = tezos_messages::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
 
 const READ_TIMEOUT: Duration = Duration::from_secs(8);
 

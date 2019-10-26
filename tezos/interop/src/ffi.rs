@@ -1,6 +1,7 @@
 use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
 use ocaml::core::mlvalues::empty_list;
+use serde::{Deserialize, Serialize};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -46,12 +47,12 @@ pub fn to_vec(list: List) -> Vec<Value> {
 }
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OcamlRuntimeConfiguration {
     pub log_enabled: bool
 }
 
-#[derive(Debug, Fail)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum OcamlRuntimeConfigurationError {
     #[fail(display = "Change ocaml settings failed, message: {}!", message)]
     ChangeConfigurationError {
@@ -95,7 +96,7 @@ pub struct OcamlStorageInitInfo {
     pub supported_protocol_hashes: Vec<RustBytes>,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum OcamlStorageInitError {
     #[fail(display = "Ocaml storage init failed, message: {}!", message)]
     InitializeError {
@@ -233,12 +234,12 @@ pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Re
     })
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ApplyBlockResult {
     pub validation_result_message: String
 }
 
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum ApplyBlockError {
     #[fail(display = "Incomplete operations, exptected: {}, has actual: {}!", expected, actual)]
     IncompleteOperations {

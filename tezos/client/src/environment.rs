@@ -4,9 +4,9 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use enum_derive::{enum_derive_util, IterVariants};
+use enum_iterator::IntoEnumIterator;
+use serde::{Deserialize, Serialize};
 
-use custom_derive::custom_derive;
 use lazy_static::lazy_static;
 use tezos_interop::ffi::GenesisChain;
 
@@ -14,14 +14,12 @@ lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
-custom_derive! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, IterVariants(TezosEnvironmentVariants))]
-    pub enum TezosEnvironment {
-        Alphanet,
-        Babylonnet,
-        Mainnet,
-        Zeronet
-    }
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, IntoEnumIterator)]
+pub enum TezosEnvironment {
+    Alphanet,
+    Babylonnet,
+    Mainnet,
+    Zeronet
 }
 
 #[derive(Debug, Clone)]

@@ -3,11 +3,13 @@
 
 use std::fmt;
 
-use networking::p2p::binary_message::BinaryMessage;
-use networking::p2p::encoding::prelude::*;
+use serde::{Deserialize, Serialize};
+
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType, ProtocolHash};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo};
+use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::environment;
 use crate::environment::{TezosEnvironment, TezosEnvironmentConfiguration};
@@ -26,6 +28,7 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
 }
 
 /// Struct represent init information about Tezos OCaml storage
+#[derive(Serialize, Deserialize)]
 pub struct TezosStorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,

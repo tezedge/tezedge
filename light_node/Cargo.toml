@@ -25,6 +25,7 @@ tezos_encoding = { path = "../tezos/encoding" }
 tezos_client = { path = "../tezos/client" }
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
+protocol_runner = { path = "../protocol_runner" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }

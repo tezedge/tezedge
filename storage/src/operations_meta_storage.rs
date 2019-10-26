@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
-use networking::p2p::encoding::prelude::*;
 use tezos_encoding::hash::BlockHash;
+use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
@@ -219,8 +219,9 @@ mod tests {
 
     use failure::Error;
 
-    use super::*;
     use tezos_encoding::hash::{HashEncoding, HashType};
+
+    use super::*;
 
     #[test]
     fn operations_meta_encoded_equals_decoded() -> Result<(), Error> {
