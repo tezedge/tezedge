@@ -1,10 +1,9 @@
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic, NetworkChannelRef};
-use shell::shell_channel::{ShellChannelRef, ShellChannelMsg, ShellChannelTopic};
+use shell::shell_channel::{ShellChannelRef, ShellChannelMsg, ShellChannelTopic, BlockApplied};
 use riker::{
     actors::*,
 };
 use crate::{
-    helpers::*,
     server::{spawn_server, control_msg::*},
 };
 use slog::warn;
@@ -18,7 +17,7 @@ pub struct RpcServer {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     // Stats
-    current_head: Option<CurrentHead>,
+    current_head: Option<BlockApplied>,
 }
 
 impl RpcServer {
@@ -84,11 +83,11 @@ impl Receive<ShellChannelMsg> for RpcServer {
         match msg {
             ShellChannelMsg::BlockApplied(data) => {
                 if let Some(ref current_head) = self.current_head {
-                    if current_head.level() < data.level {
-                        self.current_head = Some(CurrentHead::new(data.level, data.hash.clone()));
+                    if current_head.level < data.level {
+                        self.current_head = Some(data);
                     }
                 } else {
-                    self.current_head = Some(CurrentHead::new(data.level, data.hash.clone()));
+                    self.current_head = Some(data);
                 }
             }
             _ => (/* Not yet implemented, do nothing */),

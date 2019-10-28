@@ -9,6 +9,7 @@ use serde_json;
 use chrono::prelude::*;
 use crate::encoding::base_types::*;
 use tezos_encoding::hash::{HashEncoding, HashType};
+use crate::encoding::monitor::BootstrapInfo;
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
@@ -33,8 +34,14 @@ pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) ->
 }
 
 /// Helper function for generating current TimeStamp
+#[allow(dead_code)]
 fn timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
+}
+
+fn ts_to_rfc3339(ts: i64) -> String {
+    Utc.from_utc_datetime(&NaiveDateTime::from_timestamp(ts, 0))
+        .to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 /// Generate 404 response
@@ -54,15 +61,17 @@ fn empty() -> ServiceResult {
 /// GET /monitor/boostrapped endpoint handler
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     use crate::server::control_msg::GetCurrentHead;
-    use crate::encoding::monitor::BootstrapInfo;
+    use shell::shell_channel::BlockApplied;
 
     let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
     if let GetCurrentHead::Response(current_head) = current_head {
-        let resp = serde_json::to_string(&if let Some(current_head) = current_head {
-            let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash());
-            BootstrapInfo::new(hash.into(), timestamp())
+        let resp = serde_json::to_string(&if current_head.is_some() {
+            let current_head: BlockApplied = current_head.unwrap();
+            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
+            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
+            BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         } else {
-            BootstrapInfo::new(String::new().into(), timestamp())
+            BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
         })?;
         Ok(Response::new(Body::from(resp)))
     } else {
