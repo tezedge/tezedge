@@ -1,6 +1,6 @@
+use derive_new::new;
 use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
-use ocaml::core::mlvalues::empty_list;
 use serde::{Deserialize, Serialize};
 
 use crate::runtime;
@@ -30,20 +30,6 @@ impl Interchange<RustBytes> for OcamlBytes {
     fn convert_to(&self) -> RustBytes {
         self.data().to_vec()
     }
-}
-
-// TODO: remove after PR will be merged and released new ocaml-rs 0.8.0
-// https://github.com/zshipko/ocaml-rs/pull/13
-/// List as vector
-pub fn to_vec(list: List) -> Vec<Value> {
-    let mut vec: Vec<Value> = Vec::new();
-    let mut tmp = Value::from(list);
-    while tmp.0 != empty_list() {
-        let val = tmp.field(0);
-        vec.push(val);
-        tmp = tmp.field(1);
-    }
-    vec
 }
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
@@ -90,10 +76,18 @@ pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Resu
 #[derive(Debug)]
 pub struct OcamlStorageInitInfo {
     pub chain_id: RustBytes,
+    pub test_chain: Option<TestChain>,
     pub genesis_block_header_hash: RustBytes,
     pub genesis_block_header: RustBytes,
     pub current_block_header_hash: RustBytes,
     pub supported_protocol_hashes: Vec<RustBytes>,
+}
+
+#[derive(Debug, new, Serialize, Deserialize)]
+pub struct TestChain {
+    pub chain_id: RustBytes,
+    pub protocol_hash: RustBytes,
+    pub expiration_date: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
@@ -142,15 +136,34 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
 
-                let headers: Tuple = ocaml_result.get(0).unwrap().into();
+                // expecting 3 tuples
+                // 1. main and test chain
+                let chains: Tuple = ocaml_result.get(0).unwrap().into();
+                let main_chain_id: OcamlBytes = chains.get(0).unwrap().into();
 
-                let chain_id: OcamlBytes = headers.get(0).unwrap().into();
-                let genesis_block_header_hash: OcamlBytes = headers.get(1).unwrap().into();
-                let genesis_block_header: OcamlBytes = headers.get(2).unwrap().into();
-                let current_block_header_hash: OcamlBytes = headers.get(3).unwrap().into();
+                let test_chain: Tuple = chains.get(1).unwrap().into();
+                let test_chain_id: OcamlBytes = test_chain.get(0).unwrap().into();
+                let test_chain: Option<TestChain> = if test_chain_id.is_empty() {
+                    None
+                } else {
+                    let protocol: OcamlBytes = test_chain.get(1).unwrap().into();
+                    let time: Str = test_chain.get(2).unwrap().into();
+                    Some(TestChain::new(
+                        test_chain_id.convert_to(),
+                        protocol.convert_to(),
+                        String::from(time.as_str()),
+                    ))
+                };
 
-                // list
-                let supported_protocol_hashes: Vec<RustBytes> = to_vec(ocaml_result.get(1).unwrap().into())
+                // 2. genesis and current head
+                let headers: Tuple = ocaml_result.get(1).unwrap().into();
+                let genesis_block_header_hash: OcamlBytes = headers.get(0).unwrap().into();
+                let genesis_block_header: OcamlBytes = headers.get(1).unwrap().into();
+                let current_block_header_hash: OcamlBytes = headers.get(2).unwrap().into();
+
+                // 3. list known protocols
+                let supported_protocol_hashes: List = ocaml_result.get(2).unwrap().into();
+                let supported_protocol_hashes: Vec<RustBytes> = supported_protocol_hashes.to_vec()
                     .iter()
                     .map(|protocol_hash| {
                         let protocol_hash: OcamlBytes = protocol_hash.clone().into();
@@ -159,7 +172,8 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
                     .collect();
 
                 Ok(OcamlStorageInitInfo {
-                    chain_id: chain_id.convert_to(),
+                    chain_id: main_chain_id.convert_to(),
+                    test_chain,
                     genesis_block_header_hash: genesis_block_header_hash.convert_to(),
                     genesis_block_header: genesis_block_header.convert_to(),
                     current_block_header_hash: current_block_header_hash.convert_to(),
