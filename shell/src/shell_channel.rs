@@ -4,11 +4,14 @@
 use riker::actors::*;
 
 use tezos_encoding::hash::BlockHash;
+use std::sync::Arc;
+use tezos_messages::p2p::encoding::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct BlockApplied {
     pub hash: BlockHash,
     pub level: i32,
+    pub header: Arc<BlockHeader>,
 }
 
 #[derive(Clone, Debug)]

@@ -35,9 +35,7 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
-
     pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo, log: Logger) -> Result<ChainFeederRef, CreateError> {
-
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let apply_block_run = apply_block_run.clone();
@@ -63,7 +61,6 @@ impl ChainFeeder {
             ChainFeeder::name())?;
 
 
-
         Ok(myself)
     }
 
@@ -76,11 +73,9 @@ impl ChainFeeder {
     fn new((block_applier_run, block_applier_thread): (Arc<AtomicBool>, SharedJoinHandle)) -> Self {
         ChainFeeder {
             block_applier_run,
-            block_applier_thread
+            block_applier_thread,
         }
     }
-
-
 }
 
 impl Actor for ChainFeeder {
@@ -133,11 +128,9 @@ fn feed_chain_to_protocol(
     operations_meta_storage: OperationsMetaStorage,
     log: Logger,
 ) -> Result<(), Error> {
-
     let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
 
     while apply_block_run.load(Ordering::Acquire) {
-
         match block_meta_storage.get(&current_head_hash)? {
             Some(mut current_head_meta) => {
                 if current_head_meta.is_applied {
@@ -147,7 +140,7 @@ fn feed_chain_to_protocol(
                         Some(successor_hash) => {
                             current_head_hash = successor_hash;
                             continue;
-                        },
+                        }
                         None => ( /* successor is not yet available, we do nothing for now */ )
                     }
                 } else {
@@ -158,7 +151,6 @@ fn feed_chain_to_protocol(
                             // Good, we have block data available, let's' look is we have all operations
                             // available. If yes we will apply them. If not, we will do nothing.
                             if operations_meta_storage.is_complete(&current_head.hash)? {
-
                                 info!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
                                 let operations = operations_storage.get_operations(&current_head_hash)?
                                     .drain(..)
@@ -172,7 +164,11 @@ fn feed_chain_to_protocol(
                                 // notify others that the block successfully applied
                                 shell_channel.tell(
                                     Publish {
-                                        msg: BlockApplied { hash: current_head.hash.clone(), level: current_head.header.level() }.into(),
+                                        msg: BlockApplied {
+                                            hash: current_head.hash.clone(),
+                                            level: current_head.header.level(),
+                                            header: current_head.header.clone(),
+                                        }.into(),
                                         topic: ShellChannelTopic::ShellEvents.into(),
                                     }, None);
 
@@ -182,17 +178,17 @@ fn feed_chain_to_protocol(
                                     Some(successor_hash) => {
                                         current_head_hash = successor_hash;
                                         continue;
-                                    },
+                                    }
                                     None => ( /* successor is not yet available, we do nothing for now */ )
                                 }
                             } else {
                                 // we don't have all operations available, do nothing
                             }
-                        },
+                        }
                         None => ( /* it's possible that data was not yet written do the storage, so don't panic! */ )
                     }
                 }
-            },
+            }
             None => warn!(log, "No meta info record was found in database for the current head"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
         }
 
