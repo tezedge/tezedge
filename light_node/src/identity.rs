@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::fs;
