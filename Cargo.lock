@@ -662,7 +662,97 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzz_ack_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_advertise_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_block_header_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
 name = "fuzz_connection_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_current_branch_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_current_head_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_metadata_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_operation_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_operations_for_blocks_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_peer_response_message"
+version = "0.0.0"
+dependencies = [
+ "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "fuzz_protocol_message"
 version = "0.0.0"
 dependencies = [
  "honggfuzz 0.5.45 (registry+https://github.com/rust-lang/crates.io-index)",
