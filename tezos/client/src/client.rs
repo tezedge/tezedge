@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType, ProtocolHash};
 use tezos_interop::ffi;
-use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo};
+use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, OcamlRuntimeConfiguration, OcamlRuntimeConfigurationError, OcamlStorageInitError, OcamlStorageInitInfo, TestChain};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -31,11 +31,14 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
 #[derive(Serialize, Deserialize)]
 pub struct TezosStorageInitInfo {
     pub chain_id: ChainId,
+    pub test_chain: Option<TezosTestChain>,
     pub genesis_block_header_hash: BlockHash,
     pub genesis_block_header: BlockHeader,
     pub current_block_header_hash: BlockHash,
     pub supported_protocol_hashes: Vec<ProtocolHash>,
 }
+
+pub type TezosTestChain = TestChain;
 
 impl TezosStorageInitInfo {
     fn new(storage_init_info: OcamlStorageInitInfo) -> Result<Self, OcamlStorageInitError> {
@@ -45,6 +48,7 @@ impl TezosStorageInitInfo {
         };
         Ok(TezosStorageInitInfo {
             chain_id: storage_init_info.chain_id,
+            test_chain: storage_init_info.test_chain,
             genesis_block_header_hash: storage_init_info.genesis_block_header_hash,
             genesis_block_header: genesis_header,
             current_block_header_hash: storage_init_info.current_block_header_hash,

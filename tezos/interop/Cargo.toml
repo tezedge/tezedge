@@ -5,6 +5,7 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
+derive-new = "0.5.8"
 failure = "0.1.5"
 failure_derive = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
