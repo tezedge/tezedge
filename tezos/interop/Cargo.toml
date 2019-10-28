@@ -10,7 +10,7 @@ failure_derive = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4.0"
 lazy_static = "1.4.0"
-ocaml = "0.7.0"
+ocaml = "0.8.0"
 serde = { version = "1.0.101", features = ["derive"] }
 slog = "2.5"
 
