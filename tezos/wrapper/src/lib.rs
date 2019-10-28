@@ -2,5 +2,5 @@
 // SPDX-License-Identifier: MIT
 
 pub mod ipc;
-pub mod api;
+pub mod protocol;
 pub mod service;

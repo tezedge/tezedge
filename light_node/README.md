@@ -96,7 +96,7 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 
 e.g.:
 ```
-cargo run -- --network Zeronet --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false
+cargo run -- --network Zeronet --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false --protocol-runner ../target/debug/protocol_runner
 ```
 
 

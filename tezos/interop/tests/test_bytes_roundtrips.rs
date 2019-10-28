@@ -1,9 +1,13 @@
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use std::env;
 
 use ocaml::{Error, List, Tuple, Value};
 
+use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
 use tezos_interop::ffi;
-use tezos_interop::ffi::{Interchange, OcamlBytes, OcamlRuntimeConfiguration, RustBytes};
+use tezos_interop::ffi::{Interchange, OcamlBytes};
 use tezos_interop::runtime;
 
 const HEADER_HASH: &str = "60ab6d8d2a6b1c7a391f00aa6c1fc887eb53797214616fd2ce1b9342ad4965a4";
@@ -21,7 +25,7 @@ fn sample_operations() -> Vec<Option<Vec<RustBytes>>> {
 
 #[test]
 fn test_block_header_roundtrip() {
-    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
+    ffi::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
 
     let header_hash = hex::decode(HEADER_HASH).unwrap();
     let header = hex::decode(HEADER).unwrap();
@@ -53,7 +57,7 @@ fn test_block_header_roundtrip() {
 
 #[test]
 fn test_operation_roundtrip() {
-    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
+    ffi::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
 
     let operation: RustBytes = hex::decode(OPERATION).unwrap();
 
@@ -75,7 +79,7 @@ fn test_operation_roundtrip() {
 
 #[test]
 fn test_operations_list_list_roundtrip() {
-    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
+    ffi::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
 
     let result = runtime::execute(move || {
         let operations_list_list_ocaml = ffi::operations_to_ocaml(&sample_operations());

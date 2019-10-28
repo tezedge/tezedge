@@ -4,9 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use tokio::runtime::current_thread::Runtime;
-
-use protocol_wrapper::ipc::*;
+use tezos_wrapper::ipc::*;
 
 mod common;
 
@@ -24,43 +22,34 @@ fn fork_and_exchange() -> Result<(), failure::Error> {
         }
 
         let client: IpcClient<String, String> = IpcClient::new(&sock_path);
-        let mut rt = Runtime::new().unwrap();
-        rt.block_on(async move {
-            let (mut rx, mut tx) = client.connect().await.unwrap();
-            tx.send(&String::from("hello")).await.unwrap();
-            let recv = rx.receive().await.unwrap();
-            assert_eq!(recv, "quick");
+        let (mut rx, mut tx) = client.connect().unwrap();
+        tx.send(&String::from("hello")).unwrap();
+        let recv = rx.receive().unwrap();
+        assert_eq!(recv, "quick");
 
-            tx.send(&String::from("this is")).await.unwrap();
-            let recv = rx.receive().await.unwrap();
-            assert_eq!(recv, "brown");
+        tx.send(&String::from("this is")).unwrap();
+        let recv = rx.receive().unwrap();
+        assert_eq!(recv, "brown");
 
-            tx.send(&String::from("dog")).await.unwrap();
-            let recv = rx.receive().await.unwrap();
-            assert_eq!(recv, "fox");
-        });
-
+        tx.send(&String::from("dog")).unwrap();
+        let recv = rx.receive().unwrap();
+        assert_eq!(recv, "fox");
     });
     assert!(child_pid > 0);
 
     let mut server: IpcServer<String, String> = IpcServer::bind_path(&sock_path)?;
+    let (mut rx, mut tx) = server.accept().unwrap();
+    tx.send(&String::from("quick")).unwrap();
+    let recv = rx.receive().unwrap();
+    assert_eq!(recv, "hello");
 
+    tx.send(&String::from("brown")).unwrap();
+    let recv = rx.receive().unwrap();
+    assert_eq!(recv, "this is");
 
-    let mut rt = Runtime::new().unwrap();
-    rt.block_on(async move {
-        let (mut rx, mut tx) = server.accept().await.unwrap();
-        tx.send(&String::from("quick")).await.unwrap();
-        let recv = rx.receive().await.unwrap();
-        assert_eq!(recv, "hello");
-
-        tx.send(&String::from("brown")).await.unwrap();
-        let recv = rx.receive().await.unwrap();
-        assert_eq!(recv, "this is");
-
-        tx.send(&String::from("fox")).await.unwrap();
-        let recv = rx.receive().await.unwrap();
-        assert_eq!(recv, "dog");
-    });
+    tx.send(&String::from("fox")).unwrap();
+    let recv = rx.receive().unwrap();
+    assert_eq!(recv, "dog");
 
     Ok(())
 }
@@ -78,32 +67,44 @@ fn fork_and_panic() -> Result<(), failure::Error> {
         }
 
         let client: IpcClient<String, String> = IpcClient::new(&sock_path);
-        let mut rt = Runtime::new().unwrap();
-        rt.block_on(async move {
-            let (mut rx, mut tx) = client.connect().await.unwrap();
-            tx.send(&String::from("hello")).await.unwrap();
-            let recv = rx.receive().await.unwrap();
-            assert_eq!(recv, "quick");
+        let (mut rx, mut tx) = client.connect().unwrap();
+        tx.send(&String::from("hello")).unwrap();
+        let recv = rx.receive().unwrap();
+        assert_eq!(recv, "quick");
 
-            panic!("oooops");
-        });
-
+        panic!("oooops");
     });
     assert!(child_pid > 0);
 
     let mut server: IpcServer<String, String> = IpcServer::bind_path(&sock_path)?;
+    let (mut rx, mut tx) = server.accept().unwrap();
+    tx.send(&String::from("quick")).unwrap();
+    let recv = rx.receive().unwrap();
+    assert_eq!(recv, "hello");
 
-
-    let mut rt = Runtime::new().unwrap();
-    rt.block_on(async move {
-        let (mut rx, mut tx) = server.accept().await.unwrap();
-        tx.send(&String::from("quick")).await.unwrap();
-        let recv = rx.receive().await.unwrap();
-        assert_eq!(recv, "hello");
-
-        assert!(rx.receive().await.is_err());
-    });
+    assert!(rx.receive().is_err());
 
     Ok(())
 }
 
+
+#[test]
+fn connect_panic() -> Result<(), failure::Error> {
+    let sock_path = temp_sock();
+
+    let child_pid = common::fork(|| {
+
+        // wait for parent to be ready
+        let sock_path = sock_path.as_path();
+        while !sock_path.exists() {
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!("oooops");
+    });
+    assert!(child_pid > 0);
+
+    let mut server: IpcServer<String, String> = IpcServer::bind_path(&sock_path)?;
+    assert!(server.accept().is_err());
+
+    Ok(())
+}
