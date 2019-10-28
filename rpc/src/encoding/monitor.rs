@@ -70,6 +70,66 @@ impl BootstrapInfo {
     }
 }
 
+
+// GET /monitor/heads/<chain_id>?(next_protocol=<Protocol_hash>)*
+
+pub type OperationListHash = Vec<Vec<String>>;
+pub type Fitness = String;
+pub type ContextHash = UniString;
+
+//  Monitor all blocks that are successfully validated by the node and selected as the new head of the given chain.
+//  Optional query arguments :
+//    - next_protocol = <Protocol_hash>
+//  { "hash": $block_hash,
+//    "level": integer ∈ [-2^31-2, 2^31+2],
+//    "proto": integer ∈ [0, 255],
+//    "predecessor": $block_hash,
+//    "timestamp": $timestamp.protocol,
+//    "validation_pass": integer ∈ [0, 255],
+//    "operations_hash": $Operation_list_list_hash,
+//    "fitness": $fitness,
+//    "context": $Context_hash,
+//    "protocol_data": /^[a-zA-Z0-9]+$/ }
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct ChainHeads {
+    hash: BlockHash,
+    level: i32,
+    proto: u8,
+    predecessor: BlockHash,
+    timestamp: TimeStamp,
+    validation_pass: u8,
+    operations_hash: OperationListHash,
+    fitness: Fitness,
+    context: ContextHash,
+    protocol_data: String,
+}
+
+// GET /monitor/valid_blocks?(protocol=<Protocol_hash>)*&(next_protocol=<Protocol_hash>)*&(chain=<chain_id>)*
+
+// Monitor all blocks that are successfully validated by the node, disregarding whether they were selected as the new head or not.
+// Optional query arguments :
+//    protocol = <Protocol_hash>
+//    next_protocol = <Protocol_hash>
+//    chain = <chain_id>
+
+// { "chain_id": $Chain_id,
+//    "hash": $block_hash,
+//    "level": integer ∈ [-2^31-2, 2^31+2],
+//    "proto": integer ∈ [0, 255],
+//    "predecessor": $block_hash,
+//    "timestamp": $timestamp.protocol,
+//    "validation_pass": integer ∈ [0, 255],
+//    "operations_hash": $Operation_list_list_hash,
+//    "fitness": $fitness,
+//    "context": $Context_hash,
+//    "protocol_data": /^[a-zA-Z0-9]+$/ }
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct ValidBlocks {
+    chain_id: ChainId,
+    #[serde(flatten)]
+    inner: ChainHeads,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
