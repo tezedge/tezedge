@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
 use clap::{App, Arg};
 
-use shell::peer_manager::Threshold;
-use tezos_client::environment;
-use tezos_client::environment::TezosEnvironment;
-
 use lazy_static::lazy_static;
+use shell::peer_manager::Threshold;
+use tezos_api::environment;
+use tezos_api::environment::TezosEnvironment;
 
 lazy_static! {
     pub static ref ENV: Environment = Environment::from_cli_args();
@@ -45,7 +45,7 @@ pub struct Storage {
 #[derive(Debug, Clone)]
 pub enum LogFormat {
     Json,
-    Simple
+    Simple,
 }
 
 impl std::str::FromStr for LogFormat {
@@ -70,6 +70,7 @@ pub struct Environment {
     pub record: bool,
     pub identity_json_file_path: Option<PathBuf>,
     pub tezos_network: TezosEnvironment,
+    pub protocol_runner: PathBuf,
 }
 
 macro_rules! parse_validator_fn {
@@ -116,13 +117,21 @@ impl Environment {
                 .short("B")
                 .long("bootstrap-db-path")
                 .takes_value(true)
-                .help("Path to bootstrap database directory. Default: bootstrap_db-<Tezos_network_suffix>"))
+                .default_value("bootstrap_db")
+                .help("Path to bootstrap database directory. Default: bootstrap_db"))
             .arg(Arg::with_name("tezos-data-dir")
                 .short("d")
                 .long("tezos-data-dir")
                 .takes_value(true)
-                .default_value("tezos_storage_db")
-                .help("A directory for Tezos OCaml runtime storage (context/store)"))
+                .help("A directory for Tezos OCaml runtime storage (context/store)")
+                .validator(|v| {
+                    let dir = Path::new(&v);
+                    if dir.exists() && dir.is_dir() {
+                        Ok(())
+                    } else {
+                        Err(format!("Required tezos data dir '{}' is not a directory or does not exist!", v))
+                    }
+                }))
             .arg(Arg::with_name("peer-thresh-low")
                 .long("peer-thresh-low")
                 .takes_value(true)
@@ -170,6 +179,14 @@ impl Environment {
                 .required(true)
                 .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet"])
                 .help("Choose the Tezos environment"))
+            .arg(Arg::with_name("protocol-runner")
+                .short("P")
+                .long("protocol-runner")
+                .takes_value(true)
+                .default_value("./protocol_runner")
+                .value_name("PATH")
+                .help("Path to a tezos protocol runner executable")
+                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
             .get_matches();
 
         let tezos_network: TezosEnvironment = args
@@ -192,10 +209,10 @@ impl Environment {
                         .map(|address| address.to_string())
                         .collect()
                     ).unwrap_or_else(|| match environment::TEZOS_ENV.get(&tezos_network) {
-                            None => panic!("No tezos environment configured for: {:?}", tezos_network),
-                            Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
-                        }
-                    ),
+                    None => panic!("No tezos environment configured for: {:?}", tezos_network),
+                    Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
+                }
+                ),
                 initial_peers: args.value_of("peers")
                     .map(|peers_str| peers_str
                         .split(',')
@@ -211,7 +228,7 @@ impl Environment {
                         .unwrap_or_default()
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
-                )
+                ),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
@@ -243,13 +260,18 @@ impl Environment {
                     .expect("Provided value cannot be converted to path"),
                 // default value is corrected by tezos network suffix
                 bootstrap_db_path: args.value_of("bootstrap-db-path")
-                    .unwrap_or(&format!("bootstrap_db-{:?}", tezos_network))
+                    .unwrap_or_default()
                     .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path")
+                    .expect("Provided value cannot be converted to path"),
             },
             identity_json_file_path: args.value_of("identity")
                 .map(PathBuf::from),
             record: args.is_present("record"),
+            protocol_runner: args
+                .value_of("protocol-runner")
+                .unwrap_or_default()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path"),
             tezos_network,
         }
     }

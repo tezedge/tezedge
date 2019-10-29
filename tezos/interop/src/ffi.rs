@@ -1,13 +1,16 @@
-use derive_new::new;
+// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// SPDX-License-Identifier: MIT
+
 use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
 use serde::{Deserialize, Serialize};
+
+use tezos_api::ffi::{GenesisChain, TezosRuntimeConfiguration, OcamlStorageInitInfo, RustBytes, TestChain};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
 
 pub type OcamlBytes = Array1<u8>;
-pub type RustBytes = Vec<u8>;
 
 pub trait Interchange<T> {
     fn convert_to(&self) -> T;
@@ -32,25 +35,19 @@ impl Interchange<RustBytes> for OcamlBytes {
     }
 }
 
-/// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OcamlRuntimeConfiguration {
-    pub log_enabled: bool
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum OcamlRuntimeConfigurationError {
+pub enum TezosRuntimeConfigurationError {
     #[fail(display = "Change ocaml settings failed, message: {}!", message)]
     ChangeConfigurationError {
         message: String
     }
 }
 
-impl From<ocaml::Error> for OcamlRuntimeConfigurationError {
+impl From<ocaml::Error> for TezosRuntimeConfigurationError {
     fn from(error: ocaml::Error) -> Self {
         match error {
             Error::Exception(ffi_error) => {
-                OcamlRuntimeConfigurationError::ChangeConfigurationError {
+                TezosRuntimeConfigurationError::ChangeConfigurationError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
@@ -59,7 +56,7 @@ impl From<ocaml::Error> for OcamlRuntimeConfigurationError {
     }
 }
 
-pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Result<Result<(), OcamlRuntimeConfigurationError>, OcamlError> {
+pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<Result<(), TezosRuntimeConfigurationError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
         match ocaml_function.call_exn::<Value>(Value::bool(settings.log_enabled)) {
@@ -67,42 +64,25 @@ pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Resu
                 Ok(())
             }
             Err(e) => {
-                Err(OcamlRuntimeConfigurationError::from(e))
+                Err(TezosRuntimeConfigurationError::from(e))
             }
         }
     })
 }
 
-#[derive(Debug)]
-pub struct OcamlStorageInitInfo {
-    pub chain_id: RustBytes,
-    pub test_chain: Option<TestChain>,
-    pub genesis_block_header_hash: RustBytes,
-    pub genesis_block_header: RustBytes,
-    pub current_block_header_hash: RustBytes,
-    pub supported_protocol_hashes: Vec<RustBytes>,
-}
-
-#[derive(Debug, new, Serialize, Deserialize)]
-pub struct TestChain {
-    pub chain_id: RustBytes,
-    pub protocol_hash: RustBytes,
-    pub expiration_date: String,
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum OcamlStorageInitError {
+pub enum TezosStorageInitError {
     #[fail(display = "Ocaml storage init failed, message: {}!", message)]
     InitializeError {
         message: String
     }
 }
 
-impl From<ocaml::Error> for OcamlStorageInitError {
+impl From<ocaml::Error> for TezosStorageInitError {
     fn from(error: ocaml::Error) -> Self {
         match error {
             Error::Exception(ffi_error) => {
-                OcamlStorageInitError::InitializeError {
+                TezosStorageInitError::InitializeError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
@@ -111,20 +91,13 @@ impl From<ocaml::Error> for OcamlStorageInitError {
     }
 }
 
-impl slog::Value for OcamlStorageInitError {
+impl slog::Value for TezosStorageInitError {
     fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
-#[derive(Debug)]
-pub struct GenesisChain {
-    pub time: String,
-    pub block: String,
-    pub protocol: String,
-}
-
-pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) -> Result<Result<OcamlStorageInitInfo, OcamlStorageInitError>, OcamlError> {
+pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
         let mut genesis_tuple: Tuple = Tuple::new(3);
         genesis_tuple.set(0, Str::from(genesis.time.as_str()).into()).unwrap();
@@ -181,7 +154,7 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
                 })
             }
             Err(e) => {
-                Err(OcamlStorageInitError::from(e))
+                Err(TezosStorageInitError::from(e))
             }
         }
     })

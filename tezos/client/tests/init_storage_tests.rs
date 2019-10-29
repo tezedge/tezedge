@@ -5,9 +5,9 @@ use std::collections::HashSet;
 
 use enum_iterator::IntoEnumIterator;
 
+use tezos_api::environment::TezosEnvironment;
+use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
-use tezos_client::client::TezosRuntimeConfiguration;
-use tezos_client::environment::TezosEnvironment;
 use tezos_encoding::hash::{BlockHash, ChainId, ProtocolHash};
 
 mod common;

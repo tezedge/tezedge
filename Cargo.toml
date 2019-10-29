@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crypto",
+    "tezos/api",
     "tezos/messages",
     "tezos/interop",
     "tezos/encoding",

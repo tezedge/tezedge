@@ -8,7 +8,8 @@ use enum_iterator::IntoEnumIterator;
 use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
-use tezos_interop::ffi::GenesisChain;
+
+use crate::ffi::GenesisChain;
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
@@ -44,7 +45,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     let mut env: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = HashMap::new();
 
     env.insert(TezosEnvironment::Alphanet, TezosEnvironmentConfiguration {
-        genesis: TezosGenesisChain {
+        genesis: GenesisChain {
             time: "2018-11-30T15:30:56Z".to_string(),
             block: "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".to_string(),
             protocol: "Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H".to_string(),
@@ -57,7 +58,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     });
 
     env.insert(TezosEnvironment::Babylonnet, TezosEnvironmentConfiguration {
-        genesis: TezosGenesisChain {
+        genesis: GenesisChain {
             time: "2019-09-27T07:43:32Z".to_string(),
             block: "BLockGenesisGenesisGenesisGenesisGenesisd1f7bcGMoXy".to_string(),
             protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
@@ -72,7 +73,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     });
 
     env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
-        genesis: TezosGenesisChain {
+        genesis: GenesisChain {
             time: "2018-06-30T16:07:32Z".to_string(),
             block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
             protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
@@ -84,7 +85,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     });
 
     env.insert(TezosEnvironment::Zeronet, TezosEnvironmentConfiguration {
-        genesis: TezosGenesisChain {
+        genesis: GenesisChain {
             time: "2019-08-06T15:18:56Z".to_string(),
             block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94".to_string(),
             protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
@@ -99,10 +100,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     env
 }
 
-pub type TezosGenesisChain = GenesisChain;
-
 pub struct TezosEnvironmentConfiguration {
-    pub genesis: TezosGenesisChain,
+    pub genesis: GenesisChain,
     pub bootstrap_lookup_addresses: Vec<String>,
     pub version: String,
 }
