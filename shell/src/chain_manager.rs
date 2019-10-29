@@ -98,7 +98,7 @@ impl ChainManager {
             block_storage: Box::new(BlockStorage::new(rocks_db.clone())),
             operations_storage: Box::new(OperationsStorage::new(rocks_db.clone())),
             block_state: BlockState::new(rocks_db.clone(), rocks_db.clone(), &chain_id),
-            operations_state: OperationsState::new(rocks_db.clone(), rocks_db),
+            operations_state: OperationsState::new(rocks_db.clone(), rocks_db, &chain_id),
             peers: HashMap::new(),
             current_head,
         }

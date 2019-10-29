@@ -7,7 +7,7 @@ use failure::Fail;
 use slog::info;
 use slog::Logger;
 
-use tezos_encoding::hash::{BlockHash, HashType};
+use tezos_encoding::hash::{BlockHash, HashType, ChainId};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
@@ -92,7 +92,7 @@ impl slog::Value for StorageError {
 /// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
 /// Which means that successor of the genesis block is also genesis block. By combining those
 /// two statements we get cyclic relationship and everything breaks..
-pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, db: Arc<rocksdb::DB>, log: Logger) -> Result<(), StorageError> {
+pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, genesis_chain_id: &ChainId, db: Arc<rocksdb::DB>, log: Logger) -> Result<(), StorageError> {
     let genesis_with_hash = BlockHeaderWithHash {
         hash: genesis_hash.clone(),
         header: Arc::new(genesis.clone()),
@@ -102,9 +102,9 @@ pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: 
         info!(log, "Initializing storage with genesis block");
         block_storage.put_block_header(&genesis_with_hash)?;
         let mut block_meta_storage = BlockMetaStorage::new(db.clone());
-        block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash))?;
+        block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash, genesis_chain_id))?;
         let mut operations_meta_storage = OperationsMetaStorage::new(db);
-        operations_meta_storage.put(&genesis_with_hash.hash, &operations_meta_storage::Meta::genesis_meta())?;
+        operations_meta_storage.put(&genesis_with_hash.hash, &operations_meta_storage::Meta::genesis_meta(genesis_chain_id))?;
     }
 
     Ok(())

@@ -178,7 +178,7 @@ fn main() {
     };
     debug!(log, "Loaded RocksDB database");
 
-    match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, rocks_db.clone(), log.clone()) {
+    match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
         Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_service, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
