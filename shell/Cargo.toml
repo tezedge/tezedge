@@ -16,6 +16,7 @@ slog = "2.5"
 # local dependencies
 networking = { path = "../networking" }
 storage = { path = "../storage" }
+tezos_api = { path = "../tezos/api" }
 tezos_encoding = { path = "../tezos/encoding" }
-tezos_client = { path = "../tezos/client" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_wrapper = { path = "../tezos/wrapper" }

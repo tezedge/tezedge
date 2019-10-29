@@ -1,6 +1,6 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 pub mod ipc;
-pub mod api;
+pub mod protocol;
 pub mod service;

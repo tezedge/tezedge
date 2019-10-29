@@ -1,0 +1,14 @@
+[package]
+name = "tezos_api"
+version = "0.1.0"
+authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
+edition = "2018"
+
+[dependencies]
+enum-iterator = "0.5.0"
+derive-new = "0.5.8"
+lazy_static = "1.4.0"
+serde = { version = "1.0.101", features = ["derive"] }
+# local dependencies
+tezos_encoding = { path = "../encoding" }
+tezos_messages = { path = "../messages" }

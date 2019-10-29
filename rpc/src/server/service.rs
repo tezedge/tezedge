@@ -8,10 +8,11 @@ use crate::server::ask::ask;
 use serde_json;
 use chrono::prelude::*;
 use crate::encoding::base_types::*;
-use tezos_encoding::hash::{HashEncoding, HashType, ProtocolHash};
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 use regex::Regex;
+use tezos_encoding::hash::{HashEncoding, HashType};
+use crate::encoding::monitor::BootstrapInfo;
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
@@ -36,8 +37,14 @@ pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) ->
 }
 
 /// Helper function for generating current TimeStamp
+#[allow(dead_code)]
 fn timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
+}
+
+fn ts_to_rfc3339(ts: i64) -> String {
+    Utc.from_utc_datetime(&NaiveDateTime::from_timestamp(ts, 0))
+        .to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 /// Generate 404 response
@@ -75,15 +82,17 @@ fn parse_queries(query: &str) -> HashMap<&str, Vec<&str>> {
 /// GET /monitor/bootstrapped endpoint handler
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     use crate::server::control_msg::GetCurrentHead;
-    use crate::encoding::monitor::BootstrapInfo;
+    use shell::shell_channel::BlockApplied;
 
     let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
     if let GetCurrentHead::Response(current_head) = current_head {
-        let resp = serde_json::to_string(&if let Some(current_head) = current_head {
-            let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash());
-            BootstrapInfo::new(hash.into(), timestamp())
+        let resp = serde_json::to_string(&if current_head.is_some() {
+            let current_head: BlockApplied = current_head.unwrap();
+            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
+            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
+            BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         } else {
-            BootstrapInfo::new(String::new().into(), timestamp())
+            BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
         })?;
         Ok(Response::new(Body::from(resp)))
     } else {
@@ -105,11 +114,11 @@ async fn protocols(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
     empty()
 }
 
-async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<ProtocolHash>, _next_protocol: Vec<ProtocolHash>, _chain: Vec<UniString>) -> ServiceResult {
+async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<String>, _next_protocol: Vec<String>, _chain: Vec<UniString>) -> ServiceResult {
     empty()
 }
 
-async fn head_chain(_sys: ActorSystem, _actor: RpcServerRef, _chain_id: &str, _next_protocol: Vec<ProtocolHash>) -> ServiceResult {
+async fn head_chain(_sys: ActorSystem, _actor: RpcServerRef, _chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
     empty()
 }
 
@@ -125,19 +134,19 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
         (&Method::GET, "/monitor/active_chains") => active_chains(sys, actor).await,
         (&Method::GET, "/monitor/protocols") => protocols(sys, actor).await,
         (&Method::GET, "/monitor/valid_blocks") => {
-            let mut protocol: Vec<ProtocolHash> = Vec::new();
-            let mut next_protocol: Vec<ProtocolHash> = Vec::new();
+            let mut protocol: Vec<String> = Vec::new();
+            let mut next_protocol: Vec<String> = Vec::new();
             let mut chain: Vec<UniString> = Vec::new();
             if let Some(query) = req.uri().query() {
                 let parts = parse_queries(query);
                 if let Some(protocols) = parts.get("protocol") {
                     for proto in protocols {
-                        protocol.push(proto.as_bytes().into());
+                        protocol.push(proto.to_string());
                     }
                 }
                 if let Some(next_protocols) = parts.get("next_protocol") {
                     for next in next_protocols {
-                        next_protocol.push(next.as_bytes().into());
+                        next_protocol.push(next.to_string());
                     }
                 }
                 if let Some(chains) = parts.get("chain") {
@@ -153,12 +162,12 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
             if req.method() == Method::GET {
                 if let Some(captures) = HEADS_CHAIN.captures(req.uri().path()) {
                     let chain_id = &captures["chain_id"];
-                    let mut next_protocol: Vec<ProtocolHash> = Vec::new();
+                    let mut next_protocol: Vec<String> = Vec::new();
                     if let Some(query) = req.uri().query() {
                         let parts = parse_queries(query);
                         if let Some(protos) = parts.get("next_protocol") {
                             for proto in protos {
-                                next_protocol.push(proto.as_bytes().into());
+                                next_protocol.push(proto.to_string());
                             }
                         }
                     }

@@ -1,10 +1,9 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use tezos_client::environment;
-use tezos_client::environment::TezosEnvironment;
+use tezos_api::environment::{self, TezosEnvironment};
+use tezos_api::ffi::{OcamlStorageInitInfo, TezosRuntimeConfiguration};
 use tezos_interop::ffi;
-use tezos_interop::ffi::{OcamlRuntimeConfiguration, OcamlStorageInitInfo};
 
 mod common;
 
@@ -13,7 +12,7 @@ pub const CHAIN_ID: &str = "8eceda2f";
 #[test]
 fn test_init_storage_and_change_configuration() {
     // change cfg
-    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap().unwrap();
+    ffi::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap().unwrap();
 
     // init empty storage for test
     let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash, .. } = prepare_empty_storage("test_storage_01");
@@ -36,7 +35,7 @@ fn test_init_storage_and_change_configuration() {
 
 #[test]
 fn test_fn_get_block_header_not_found_return_none() {
-    ffi::change_runtime_configuration(OcamlRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap().unwrap();
+    ffi::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap().unwrap();
 
     // init empty storage for test
     let OcamlStorageInitInfo { chain_id, .. } = prepare_empty_storage("test_storage_02");

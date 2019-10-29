@@ -11,7 +11,7 @@ The current PoC of the Tezos node consists of multiple components which are yet 
 
 * **storage/db:** In the current phase (PoC), this is a very simplistic in memory DB for storing information about the current state of the blockchain.
 
-* **rpc/server:** the component used for the implementation of tezos-rs REST API. Using the nodes REST api, the user is able to get insights about the current state of the node as well as execute commands on the node
+* **rpc/server:** the component used for the implementation of Tezedge REST API. Using the nodes REST api, the user is able to get insights about the current state of the node as well as execute commands on the node
 
 The relations between individual components are described in the diagram depicted below.
 
@@ -96,7 +96,7 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 
 e.g.:
 ```
-cargo run -- --network Zeronet --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false
+cargo run -- --network Zeronet --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false --protocol-runner ../target/debug/protocol-runner
 ```
 
 

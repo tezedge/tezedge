@@ -1,13 +1,16 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
-use ocaml::core::mlvalues::empty_list;
 use serde::{Deserialize, Serialize};
+
+use tezos_api::ffi::{GenesisChain, TezosRuntimeConfiguration, OcamlStorageInitInfo, RustBytes, TestChain};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
 
 pub type OcamlBytes = Array1<u8>;
-pub type RustBytes = Vec<u8>;
 
 pub trait Interchange<T> {
     fn convert_to(&self) -> T;
@@ -32,39 +35,19 @@ impl Interchange<RustBytes> for OcamlBytes {
     }
 }
 
-// TODO: remove after PR will be merged and released new ocaml-rs 0.8.0
-// https://github.com/zshipko/ocaml-rs/pull/13
-/// List as vector
-pub fn to_vec(list: List) -> Vec<Value> {
-    let mut vec: Vec<Value> = Vec::new();
-    let mut tmp = Value::from(list);
-    while tmp.0 != empty_list() {
-        let val = tmp.field(0);
-        vec.push(val);
-        tmp = tmp.field(1);
-    }
-    vec
-}
-
-/// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OcamlRuntimeConfiguration {
-    pub log_enabled: bool
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum OcamlRuntimeConfigurationError {
+pub enum TezosRuntimeConfigurationError {
     #[fail(display = "Change ocaml settings failed, message: {}!", message)]
     ChangeConfigurationError {
         message: String
     }
 }
 
-impl From<ocaml::Error> for OcamlRuntimeConfigurationError {
+impl From<ocaml::Error> for TezosRuntimeConfigurationError {
     fn from(error: ocaml::Error) -> Self {
         match error {
             Error::Exception(ffi_error) => {
-                OcamlRuntimeConfigurationError::ChangeConfigurationError {
+                TezosRuntimeConfigurationError::ChangeConfigurationError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
@@ -73,7 +56,7 @@ impl From<ocaml::Error> for OcamlRuntimeConfigurationError {
     }
 }
 
-pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Result<Result<(), OcamlRuntimeConfigurationError>, OcamlError> {
+pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<Result<(), TezosRuntimeConfigurationError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
         match ocaml_function.call_exn::<Value>(Value::bool(settings.log_enabled)) {
@@ -81,34 +64,25 @@ pub fn change_runtime_configuration(settings: OcamlRuntimeConfiguration) -> Resu
                 Ok(())
             }
             Err(e) => {
-                Err(OcamlRuntimeConfigurationError::from(e))
+                Err(TezosRuntimeConfigurationError::from(e))
             }
         }
     })
 }
 
-#[derive(Debug)]
-pub struct OcamlStorageInitInfo {
-    pub chain_id: RustBytes,
-    pub genesis_block_header_hash: RustBytes,
-    pub genesis_block_header: RustBytes,
-    pub current_block_header_hash: RustBytes,
-    pub supported_protocol_hashes: Vec<RustBytes>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum OcamlStorageInitError {
+pub enum TezosStorageInitError {
     #[fail(display = "Ocaml storage init failed, message: {}!", message)]
     InitializeError {
         message: String
     }
 }
 
-impl From<ocaml::Error> for OcamlStorageInitError {
+impl From<ocaml::Error> for TezosStorageInitError {
     fn from(error: ocaml::Error) -> Self {
         match error {
             Error::Exception(ffi_error) => {
-                OcamlStorageInitError::InitializeError {
+                TezosStorageInitError::InitializeError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
             },
@@ -117,20 +91,13 @@ impl From<ocaml::Error> for OcamlStorageInitError {
     }
 }
 
-impl slog::Value for OcamlStorageInitError {
+impl slog::Value for TezosStorageInitError {
     fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
-#[derive(Debug)]
-pub struct GenesisChain {
-    pub time: String,
-    pub block: String,
-    pub protocol: String,
-}
-
-pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) -> Result<Result<OcamlStorageInitInfo, OcamlStorageInitError>, OcamlError> {
+pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
         let mut genesis_tuple: Tuple = Tuple::new(3);
         genesis_tuple.set(0, Str::from(genesis.time.as_str()).into()).unwrap();
@@ -142,15 +109,34 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
 
-                let headers: Tuple = ocaml_result.get(0).unwrap().into();
+                // expecting 3 tuples
+                // 1. main and test chain
+                let chains: Tuple = ocaml_result.get(0).unwrap().into();
+                let main_chain_id: OcamlBytes = chains.get(0).unwrap().into();
 
-                let chain_id: OcamlBytes = headers.get(0).unwrap().into();
-                let genesis_block_header_hash: OcamlBytes = headers.get(1).unwrap().into();
-                let genesis_block_header: OcamlBytes = headers.get(2).unwrap().into();
-                let current_block_header_hash: OcamlBytes = headers.get(3).unwrap().into();
+                let test_chain: Tuple = chains.get(1).unwrap().into();
+                let test_chain_id: OcamlBytes = test_chain.get(0).unwrap().into();
+                let test_chain: Option<TestChain> = if test_chain_id.is_empty() {
+                    None
+                } else {
+                    let protocol: OcamlBytes = test_chain.get(1).unwrap().into();
+                    let time: Str = test_chain.get(2).unwrap().into();
+                    Some(TestChain::new(
+                        test_chain_id.convert_to(),
+                        protocol.convert_to(),
+                        String::from(time.as_str()),
+                    ))
+                };
 
-                // list
-                let supported_protocol_hashes: Vec<RustBytes> = to_vec(ocaml_result.get(1).unwrap().into())
+                // 2. genesis and current head
+                let headers: Tuple = ocaml_result.get(1).unwrap().into();
+                let genesis_block_header_hash: OcamlBytes = headers.get(0).unwrap().into();
+                let genesis_block_header: OcamlBytes = headers.get(1).unwrap().into();
+                let current_block_header_hash: OcamlBytes = headers.get(2).unwrap().into();
+
+                // 3. list known protocols
+                let supported_protocol_hashes: List = ocaml_result.get(2).unwrap().into();
+                let supported_protocol_hashes: Vec<RustBytes> = supported_protocol_hashes.to_vec()
                     .iter()
                     .map(|protocol_hash| {
                         let protocol_hash: OcamlBytes = protocol_hash.clone().into();
@@ -159,7 +145,8 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
                     .collect();
 
                 Ok(OcamlStorageInitInfo {
-                    chain_id: chain_id.convert_to(),
+                    chain_id: main_chain_id.convert_to(),
+                    test_chain,
                     genesis_block_header_hash: genesis_block_header_hash.convert_to(),
                     genesis_block_header: genesis_block_header.convert_to(),
                     current_block_header_hash: current_block_header_hash.convert_to(),
@@ -167,7 +154,7 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) ->
                 })
             }
             Err(e) => {
-                Err(OcamlStorageInitError::from(e))
+                Err(TezosStorageInitError::from(e))
             }
         }
     })

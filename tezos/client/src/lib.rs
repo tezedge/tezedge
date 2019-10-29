@@ -1,6 +1,4 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 pub mod client;
-pub mod environment;
-pub mod identity;

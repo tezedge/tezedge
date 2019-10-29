@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::path::{Path, PathBuf};
@@ -14,22 +14,23 @@ use monitoring::{listener::{
 }, Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::p2p::network_manager::NetworkManager;
+use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannel;
-use rpc::rpc_actor::RpcServer;
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
-use tezos_client::client;
-use tezos_client::client::{TezosRuntimeConfiguration, TezosStorageInitInfo};
-use tezos_client::environment;
-use tezos_client::identity;
-use tezos_client::identity::Identity;
+use tezos_api::client::TezosStorageInitInfo;
+use tezos_api::environment;
+use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::identity::Identity;
+use tezos_wrapper::service::{ProtocolService, ProtocolServiceConfiguration};
 
 use crate::configuration::LogFormat;
 
 mod configuration;
+mod identity;
 mod slog_detailed_json;
 
 
@@ -56,7 +57,7 @@ fn create_logger() -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, log: Logger) {
+fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_service: ProtocolService, log: Logger) {
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -87,7 +88,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
         .expect("Failed to create chain manager");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, log.clone())
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, protocol_service, log.clone())
         .expect("Failed to create chain feeder");
     let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -131,27 +132,37 @@ fn main() {
             }
         });
 
-    // setup tezos ocaml runtime
-    if let Err(e) = client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled }) {
-        shutdown_and_exit!(error!(log, "Failed to change ocaml runtime configuration: '{:?}'", e), actor_system);
-    }
-    let identity = match identity::load_identity(identity_json_file_path) {
+
+    // obtain required tezos info
+    let tezos_identity = match identity::load_identity(identity_json_file_path) {
         Ok(identity) => identity,
         Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity. Reason: {:?}", e), actor_system),
     };
+
+    // create tezos wrapper + service
+    let mut protocol_service = ProtocolService::bind(ProtocolServiceConfiguration::new(
+        TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
+        configuration::ENV.tezos_network,
+        &configuration::ENV.storage.tezos_data_dir,
+        &configuration::ENV.protocol_runner
+    ));
+    let mut protocol_wrapper = match protocol_service.spawn_protocol_wrapper() {
+        Ok(protocol_wrapper) => protocol_wrapper,
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol wrapper. Reason: {:?}", e), actor_system),
+    };
+
+    // setup tezos ocaml runtime
     let tezos_storage_init_info = {
-        let tezos_data_dir = &configuration::ENV.storage.tezos_data_dir;
-        if !(tezos_data_dir.exists() && tezos_data_dir.is_dir()) {
-            shutdown_and_exit!(error!(log, "Required tezos data dir '{:?}' is not a directory or does not exist!", tezos_data_dir), actor_system);
+        if let Err(e) = protocol_wrapper.change_runtime_configuration(protocol_service.configuration().runtime_configuration().clone()) {
+            shutdown_and_exit!(error!(log, "Failed to change ocaml runtime configuration: '{:?}'", e), actor_system);
         }
-        let tezos_data_dir = tezos_data_dir.to_str().unwrap();
-        match client::init_storage(tezos_data_dir.to_string(), configuration::ENV.tezos_network) {
+        match protocol_wrapper.init_storage(protocol_service.configuration().data_dir().to_str().unwrap().to_string(), protocol_service.configuration().environment()) {
             Ok(res) => res,
-            Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "directory" => tezos_data_dir, "reason" => err), actor_system)
+            Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "reason" => err), actor_system)
         }
     };
     debug!(log, "Loaded Tezos constants: {:?}", &tezos_storage_init_info);
-
+    drop(protocol_wrapper);
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
@@ -168,7 +179,7 @@ fn main() {
     debug!(log, "Loaded RocksDB database");
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(actor_system, identity, tezos_storage_init_info, rocks_db.clone(), log),
+        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_service, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
 

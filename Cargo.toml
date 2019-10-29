@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crypto",
+    "tezos/api",
     "tezos/messages",
     "tezos/interop",
     "tezos/encoding",
@@ -13,5 +14,15 @@ members = [
     "monitoring",
     "protocol_runner",
     "rpc",
-    "fuzz/connection_message"
+    "fuzz/ack_message",
+    "fuzz/advertise_message",
+    "fuzz/block_header_message",
+    "fuzz/current_branch_message",
+    "fuzz/current_head_message",
+    "fuzz/connection_message",
+    "fuzz/metadata_message",
+    "fuzz/operation_message",
+    "fuzz/operations_for_blocks_message",
+    "fuzz/peer_response_message",
+    "fuzz/protocol_message",
 ]
