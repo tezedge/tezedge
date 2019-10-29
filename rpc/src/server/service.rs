@@ -15,6 +15,7 @@ use tezos_encoding::hash::{HashEncoding, HashType};
 use crate::encoding::monitor::BootstrapInfo;
 use crate::server::control_msg::{GetCurrentHead, GetFullCurrentHead};
 use shell::shell_channel::BlockApplied;
+use crate::ts_to_rfc3339;
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
@@ -42,11 +43,6 @@ pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) ->
 #[allow(dead_code)]
 fn timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
-}
-
-fn ts_to_rfc3339(ts: i64) -> String {
-    Utc.from_utc_datetime(&NaiveDateTime::from_timestamp(ts, 0))
-        .to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
 /// Generate 404 response
