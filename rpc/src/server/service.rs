@@ -13,7 +13,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use tezos_encoding::hash::{HashEncoding, HashType};
 use crate::encoding::monitor::BootstrapInfo;
-use crate::server::control_msg::GetCurrentHead;
+use crate::server::control_msg::{GetCurrentHead, GetFullCurrentHead};
 use shell::shell_channel::BlockApplied;
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
@@ -119,9 +119,9 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
 
 async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
     if chain_id == "main" {
-        let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
-        if let GetCurrentHead::Response(Some(current_head)) = current_head {
-            Ok(Response::new(Body::from(serde_json::to_string(&current_head.header)?)))
+        let current_head = ask(&sys, &actor, GetFullCurrentHead::Request).await;
+        if let GetFullCurrentHead::Response(Some(_current_head)) = current_head {
+            empty()
         } else {
             empty()
         }
@@ -130,8 +130,24 @@ async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next
     }
 }
 
+async fn chains_block_id(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, block_id: &str) -> ServiceResult {
+    use crate::encoding::chain::BlockInfo;
+    if chain_id != "main" || block_id != "head" {
+        empty()
+    } else {
+        let current_head: GetFullCurrentHead = ask(&sys, &actor, GetFullCurrentHead::Request).await;
+        if let GetFullCurrentHead::Response(Some(current_head)) = current_head {
+            let resp: BlockInfo = current_head.into();
+            Ok(Response::new(Body::from(serde_json::to_string(&resp)?)))
+        } else {
+            empty()
+        }
+    }
+}
+
 lazy_static! {
     static ref HEADS_CHAIN: Regex = Regex::new(r"/monitor/heads/(?P<chain_id>\w+)").expect("Invalid regex");
+    static ref CHAIN_BLOCK_ID: Regex = Regex::new(r"/chains/(?P<chain_id>\w+)/blocks/(?P<block_id>\w+)").expect("Invalid regex");
 }
 
 /// Simple endpoint routing handler
@@ -180,6 +196,10 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
                         }
                     }
                     head_chain(sys, actor, chain_id, next_protocol).await
+                } else if let Some(captures) = CHAIN_BLOCK_ID.captures(req.uri().path()) {
+                    let chain_id = &captures["chain_id"];
+                    let block_id = &captures["block_id"];
+                    chains_block_id(sys, actor, chain_id, block_id).await
                 } else {
                     not_found()
                 }

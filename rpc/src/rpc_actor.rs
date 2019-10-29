@@ -109,3 +109,34 @@ impl Receive<GetCurrentHead> for RpcServer {
         }
     }
 }
+
+impl Receive<GetFullCurrentHead> for RpcServer {
+    type Msg = RpcServerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetFullCurrentHead, sender: Sender) {
+        if let GetFullCurrentHead::Request = msg {
+            if let Some(sender) = sender {
+                let me: Option<BasicActorRef> = ctx.myself().into();
+                let current_head = self.current_head.clone();
+                let resp = GetFullCurrentHead::Response(if let Some(head) = current_head {
+                    let ops_storage = OperationsStorage::new(self.db.clone());
+                    let ops = ops_storage.get_operations(&head.hash).unwrap_or_default();
+                    Some(FullBlockInfo {
+                        operations: ops,
+                        metadata: (),
+                        header: BlockHeaderWithHash {
+                            hash: head.hash.clone(),
+                            header: head.header.clone(),
+                        },
+                    })
+                } else {
+                    None
+                });
+
+                if sender.try_tell(resp, me).is_err() {
+                    warn!(ctx.system.log(), "Failed to send response for GetFullCurrentHead");
+                }
+            }
+        }
+    }
+}

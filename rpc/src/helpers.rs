@@ -1,24 +1,11 @@
-use tezos_encoding::hash::BlockHash;
+use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::prelude::*;
+
+pub type BlockMeta = ();
 
 #[derive(Debug, Clone)]
-pub struct CurrentHead {
-    level: i32,
-    block_hash: BlockHash,
-}
-
-impl CurrentHead {
-    pub fn new(level: i32, block_hash: BlockHash) -> Self {
-        Self {
-            level,
-            block_hash,
-        }
-    }
-
-    pub fn hash(&self) -> BlockHash {
-        self.block_hash.clone()
-    }
-
-    pub fn level(&self) -> i32 {
-        self.level
-    }
+pub struct FullBlockInfo {
+    pub header: BlockHeaderWithHash,
+    pub metadata: BlockMeta,
+    pub operations: Vec<OperationsForBlocksMessage>,
 }
