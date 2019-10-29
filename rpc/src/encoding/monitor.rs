@@ -1,5 +1,6 @@
 use super::base_types::*;
 use serde::{Serialize, Deserialize};
+use tezos_messages::p2p::encoding::prelude::*;
 
 type ChainId = UniString;
 
@@ -77,32 +78,7 @@ pub type OperationListHash = Vec<Vec<String>>;
 pub type Fitness = String;
 pub type ContextHash = UniString;
 
-//  Monitor all blocks that are successfully validated by the node and selected as the new head of the given chain.
-//  Optional query arguments :
-//    - next_protocol = <Protocol_hash>
-//  { "hash": $block_hash,
-//    "level": integer ∈ [-2^31-2, 2^31+2],
-//    "proto": integer ∈ [0, 255],
-//    "predecessor": $block_hash,
-//    "timestamp": $timestamp.protocol,
-//    "validation_pass": integer ∈ [0, 255],
-//    "operations_hash": $Operation_list_list_hash,
-//    "fitness": $fitness,
-//    "context": $Context_hash,
-//    "protocol_data": /^[a-zA-Z0-9]+$/ }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
-pub struct ChainHeads {
-    hash: BlockHash,
-    level: i32,
-    proto: u8,
-    predecessor: BlockHash,
-    timestamp: TimeStamp,
-    validation_pass: u8,
-    operations_hash: OperationListHash,
-    fitness: Fitness,
-    context: ContextHash,
-    protocol_data: String,
-}
+pub type ChainHead = BlockHeader;
 
 // GET /monitor/valid_blocks?(protocol=<Protocol_hash>)*&(next_protocol=<Protocol_hash>)*&(chain=<chain_id>)*
 
@@ -123,11 +99,11 @@ pub struct ChainHeads {
 //    "fitness": $fitness,
 //    "context": $Context_hash,
 //    "protocol_data": /^[a-zA-Z0-9]+$/ }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValidBlocks {
     chain_id: ChainId,
     #[serde(flatten)]
-    inner: ChainHeads,
+    inner: ChainHead,
 }
 
 #[cfg(test)]

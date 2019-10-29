@@ -13,6 +13,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use tezos_encoding::hash::{HashEncoding, HashType};
 use crate::encoding::monitor::BootstrapInfo;
+use crate::server::control_msg::GetCurrentHead;
+use shell::shell_channel::BlockApplied;
 
 type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
@@ -81,9 +83,6 @@ fn parse_queries(query: &str) -> HashMap<&str, Vec<&str>> {
 
 /// GET /monitor/bootstrapped endpoint handler
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
-    use crate::server::control_msg::GetCurrentHead;
-    use shell::shell_channel::BlockApplied;
-
     let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
     if let GetCurrentHead::Response(current_head) = current_head {
         let resp = serde_json::to_string(&if current_head.is_some() {
@@ -118,8 +117,17 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
     empty()
 }
 
-async fn head_chain(_sys: ActorSystem, _actor: RpcServerRef, _chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
-    empty()
+async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
+    if chain_id == "main" {
+        let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
+        if let GetCurrentHead::Response(Some(current_head)) = current_head {
+            Ok(Response::new(Body::from(serde_json::to_string(&current_head.header)?)))
+        } else {
+            empty()
+        }
+    } else {
+        empty()
+    }
 }
 
 lazy_static! {
