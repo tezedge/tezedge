@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezos-RS Contributors
+// Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::net::SocketAddr;
@@ -183,7 +183,7 @@ impl Environment {
                 .short("P")
                 .long("protocol-runner")
                 .takes_value(true)
-                .default_value("./protocol_runner")
+                .default_value("./protocol-runner")
                 .value_name("PATH")
                 .help("Path to a tezos protocol runner executable")
                 .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
