@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
-use tezos_encoding::hash::BlockHash;
+use tezos_encoding::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
@@ -27,13 +27,14 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
             &Meta {
                 validation_passes: block_header.header.validation_pass(),
                 is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
                 is_complete: block_header.header.validation_pass() == 0,
-                level: block_header.header.level()
+                level: block_header.header.level(),
+                chain_id: chain_id.clone(),
             }
         )
     }
@@ -132,7 +133,8 @@ pub struct Meta {
     validation_passes: u8,
     is_validation_pass_present: Vec<u8>,
     is_complete: bool,
-    level: i32
+    level: i32,
+    pub chain_id: ChainId,
 }
 
 impl Meta {
@@ -140,12 +142,13 @@ impl Meta {
         self.is_complete
     }
 
-    pub fn genesis_meta() -> Self {
+    pub fn genesis_meta(chain_id: &ChainId) -> Self {
         Meta {
             is_complete: true,
             validation_passes: 0,
             is_validation_pass_present: vec![],
-            level: 0
+            level: 0,
+            chain_id: chain_id.clone(),
         }
     }
 
@@ -168,7 +171,7 @@ impl Meta {
 
 /// Codec for `Meta`
 ///
-/// * bytes layout: `[validation_passes(1)][is_validation_pass_present(validation_passes * 1)][is_complete(1)][level(4)]`
+/// * bytes layout: `[validation_passes(1)][is_validation_pass_present(validation_passes * 1)][is_complete(1)][level(4)][chain_id(4)]`
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if !bytes.is_empty() {
@@ -184,7 +187,10 @@ impl Codec for Meta {
             level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
             let level = i32::from_le_bytes(level_bytes);
             assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
-            Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level })
+            // chain_id
+            let chain_id_pos = level_pos + level_bytes.len();
+            let chain_id = bytes[chain_id_pos..chain_id_pos + 4].to_vec();
+            Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level, chain_id })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -197,6 +203,7 @@ impl Codec for Meta {
             value.extend(&self.is_validation_pass_present);
             value.push(self.is_complete as u8);
             value.extend(&self.level.to_le_bytes());
+            value.extend(&self.chain_id);
             assert_eq!(expected_data_length(self.validation_passes), value.len(), "Was expecting value to have length {} but instead found {}", expected_data_length(self.validation_passes), value.len());
             Ok(value)
         } else {
@@ -207,10 +214,11 @@ impl Codec for Meta {
 
 #[inline]
 fn expected_data_length(validation_passes: u8) -> usize {
-    std::mem::size_of::<u8>()            // validation_passes
-        + std::mem::size_of::<u8>()      // is_complete
-        + std::mem::size_of::<i32>()     // level
+    std::mem::size_of::<u8>()           // validation_passes
+        + std::mem::size_of::<u8>()     // is_complete
+        + std::mem::size_of::<i32>()    // level
         + (validation_passes as usize) * std::mem::size_of::<u8>()  // is_validation_pass_present
+        + HashType::ChainId.size()     // chain_id
 }
 
 #[cfg(test)]
@@ -230,6 +238,7 @@ mod tests {
             is_complete: false,
             validation_passes: 5,
             level: 93_422,
+            chain_id: vec![44; 4],
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -252,7 +261,7 @@ mod tests {
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let v = Meta::genesis_meta();
+            let v = Meta::genesis_meta(&vec![44; 4]);
             let mut storage = OperationsMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
             match storage.get(&k)? {
@@ -261,7 +270,8 @@ mod tests {
                         validation_passes: 0,
                         is_validation_pass_present: vec![],
                         is_complete: true,
-                        level: 0
+                        level: 0,
+                        chain_id: vec![44; 4],
                     };
                     assert_eq!(expected, value);
                 },
@@ -292,7 +302,8 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
-                level: 785
+                level: 785,
+                chain_id: vec![44; 4],
             };
             let mut storage = OperationsMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
@@ -309,7 +320,8 @@ mod tests {
                 Some(value) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
-                    assert_eq!(785, value.level)
+                    assert_eq!(785, value.level);
+                    assert_eq!(vec![44; 4], value.chain_id);
                 },
                 _ => panic!("value not present"),
             }
@@ -339,7 +351,8 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
-                level: 31_337
+                level: 31_337,
+                chain_id: vec![44; 4],
             };
             let p = OperationsMetaStorageDatabase::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -357,7 +370,8 @@ mod tests {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
-                    assert_eq!(31_337, value.level)
+                    assert_eq!(31_337, value.level);
+                    assert_eq!(vec![44; 4], value.chain_id);
                 },
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
@@ -384,7 +398,8 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![false as u8; 5],
                 validation_passes: 5,
-                level: 785
+                level: 785,
+                chain_id: vec![44; 4],
             };
             let k_missing_1 = vec![0, 1, 2];
             let k_added_later = vec![6, 7, 8, 9];

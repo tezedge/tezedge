@@ -37,7 +37,7 @@ impl BlockState {
         // store block
         self.block_storage.put_block_header(block_header)?;
         // update meta
-        self.block_meta_storage.put_block_header(block_header)?;
+        self.block_meta_storage.put_block_header(block_header, &self.chain_id)?;
 
         Ok(())
     }
@@ -65,7 +65,7 @@ impl BlockState {
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
             let (key, value) = (key?, value?);
-            if value.predecessor.is_none() {
+            if value.predecessor.is_none() && (value.chain_id == self.chain_id) {
                 self.missing_blocks.push(MissingBlock {
                     block_hash: key,
                     level: value.level
