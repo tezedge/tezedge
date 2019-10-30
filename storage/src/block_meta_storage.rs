@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
-use tezos_encoding::hash::BlockHash;
+use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
@@ -25,7 +25,7 @@ impl BlockMetaStorage {
         BlockMetaStorage { db }
     }
 
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {
@@ -37,7 +37,8 @@ impl BlockMetaStorage {
                     is_applied: false,
                     predecessor: Some(block_header.header.predecessor().clone()),
                     successor: None,
-                    level: block_header.header.level()
+                    level: block_header.header.level(),
+                    chain_id: chain_id.clone(),
                 };
                 self.put(&block_header.hash, &meta)?;
             }
@@ -54,7 +55,8 @@ impl BlockMetaStorage {
                     is_applied: false,
                     predecessor: None,
                     successor: Some(block_header.hash.clone()),
-                    level: block_header.header.level() - 1
+                    level: block_header.header.level() - 1,
+                    chain_id: chain_id.clone(),
                 };
                 self.put(block_header.header.predecessor(), &meta)?;
             }
@@ -83,6 +85,7 @@ impl BlockMetaStorage {
 }
 
 const BLOCK_HASH_LEN: usize = 32;
+const CHAIN_ID_LEN: usize = 4;
 
 const MASK_IS_APPLIED: u8    = 0b0000_0001;
 const MASK_HAS_SUCCESSOR: u8   = 0b0000_0010;
@@ -92,9 +95,11 @@ const IDX_MASK: usize = 0;
 const IDX_PREDECESSOR: usize = IDX_MASK + 1;
 const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + BLOCK_HASH_LEN;
 const IDX_LEVEL: usize = IDX_SUCCESSOR + BLOCK_HASH_LEN;
+const IDX_CHAIN_ID: usize = IDX_LEVEL + std::mem::size_of::<i32>();
+const IDX_END: usize = IDX_CHAIN_ID + CHAIN_ID_LEN;
 
 const BLANK_BLOCK_HASH: [u8; BLOCK_HASH_LEN] = [0; BLOCK_HASH_LEN];
-const META_LEN: usize = std::mem::size_of::<u8>() + BLOCK_HASH_LEN + BLOCK_HASH_LEN + std::mem::size_of::<i32>();
+const META_LEN: usize = std::mem::size_of::<u8>() + BLOCK_HASH_LEN + BLOCK_HASH_LEN + std::mem::size_of::<i32>() + CHAIN_ID_LEN;
 
 macro_rules! is_applied {
     ($mask:expr) => {{ ($mask & MASK_IS_APPLIED) != 0 }}
@@ -112,28 +117,32 @@ pub struct Meta {
     pub predecessor: Option<BlockHash>,
     pub successor: Option<BlockHash>,
     pub is_applied: bool,
-    pub level: i32
+    pub level: i32,
+    pub chain_id: ChainId,
 }
 
 impl Meta {
-    pub fn genesis_meta(genesis_hash: &BlockHash) -> Self {
+    pub fn genesis_meta(genesis_hash: &BlockHash, genesis_chain_id: &ChainId) -> Self {
         Meta {
             is_applied: true, // we consider genesis as already applied
             predecessor: Some(genesis_hash.clone()), // this is what we want
             successor: None, // we do not know (yet) successor of the genesis
-            level: 0
+            level: 0,
+            chain_id: genesis_chain_id.clone(),
         }
     }
 }
 
 /// Codec for `Meta`
 ///
-/// * bytes layout: `[mask(1)][predecessor(32)][successor(32)][level(4)]`
+/// * bytes layout: `[mask(1)][predecessor(32)][successor(32)][level(4)][chain_id(4)]`
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if META_LEN == bytes.len() {
+            // mask
             let mask = bytes[IDX_MASK];
             let is_processed = is_applied!(mask);
+            // predecessor
             let predecessor = if has_predecessor!(mask) {
                 let block_hash = bytes[IDX_PREDECESSOR..IDX_SUCCESSOR].to_vec();
                 assert_eq!(BLOCK_HASH_LEN, block_hash.len(), "Predecessor expected length is {} but found {}", BLOCK_HASH_LEN, block_hash.len());
@@ -141,6 +150,7 @@ impl Codec for Meta {
             } else {
                 None
             };
+            // successor
             let successor = if has_successor!(mask) {
                 let block_hash = bytes[IDX_SUCCESSOR..IDX_LEVEL].to_vec();
                 assert_eq!(BLOCK_HASH_LEN, block_hash.len(), "Successor expected length is {} but found {}", BLOCK_HASH_LEN, block_hash.len());
@@ -152,7 +162,10 @@ impl Codec for Meta {
             let mut level_bytes: [u8; 4] = Default::default();
             level_bytes.copy_from_slice(&bytes[IDX_LEVEL..IDX_LEVEL + 4]);
             let level = i32::from_le_bytes(level_bytes);
-            Ok(Meta { predecessor, successor, is_applied: is_processed, level })
+            // chain_id
+            let chain_id = bytes[IDX_CHAIN_ID..IDX_END].to_vec();
+            assert_eq!(CHAIN_ID_LEN, chain_id.len(), "Chain ID expected length is {} but found {}", CHAIN_ID_LEN, chain_id.len());
+            Ok(Meta { predecessor, successor, is_applied: is_processed, level, chain_id })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -181,6 +194,7 @@ impl Codec for Meta {
             None => value.extend(&BLANK_BLOCK_HASH)
         }
         value.extend(&self.level.to_le_bytes());
+        value.extend(&self.chain_id);
         assert_eq!(META_LEN, value.len(), "Invalid size. predecessor={:?}, successor={:?}, level={:?}, data={:?}", &self.predecessor, &self.successor, self.level, &value);
 
         Ok(value)
@@ -236,8 +250,9 @@ mod tests {
 
     use failure::Error;
 
-    use super::*;
     use tezos_encoding::hash::{HashEncoding, HashType};
+
+    use super::*;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -245,7 +260,8 @@ mod tests {
             is_applied: false,
             predecessor: Some(vec![98; 32]),
             successor: Some(vec![21; 32]),
-            level: 34
+            level: 34,
+            chain_id: vec![44; 4],
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -268,7 +284,8 @@ mod tests {
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let v = Meta::genesis_meta(&k);
+            let chain_id = HashEncoding::new(HashType::ChainId).string_to_bytes("NetXgtSLGNJvNye")?;
+            let v = Meta::genesis_meta(&k, &chain_id);
             let mut storage = BlockMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
             match storage.get(&k)? {
@@ -277,7 +294,8 @@ mod tests {
                         is_applied: true,
                         predecessor: Some(k.clone()),
                         successor: None,
-                        level: 0
+                        level: 0,
+                        chain_id: chain_id.clone(),
                     };
                     assert_eq!(expected, value);
                 },
@@ -305,7 +323,8 @@ mod tests {
                 is_applied: false,
                 predecessor: None,
                 successor: None,
-                level: 1_245_762
+                level: 1_245_762,
+                chain_id: vec![44; 4],
             };
             let mut storage = BlockMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;
@@ -326,7 +345,8 @@ mod tests {
                         is_applied: true,
                         predecessor: Some(vec![98; 32]),
                         successor: Some(vec![21; 32]),
-                        level: 1_245_762
+                        level: 1_245_762,
+                        chain_id: vec![44; 4],
                     };
                     assert_eq!(expected, value);
                 },
@@ -354,7 +374,8 @@ mod tests {
                 is_applied: false,
                 predecessor: None,
                 successor: None,
-                level: 2
+                level: 2,
+                chain_id: vec![44; 4],
             };
             let p = BlockMetaStorageDatabase::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -374,7 +395,8 @@ mod tests {
                         is_applied: true,
                         predecessor: Some(vec![98; 32]),
                         successor: Some(vec![21; 32]),
-                        level: 2
+                        level: 2,
+                        chain_id: vec![44; 4],
                     };
                     assert_eq!(expected, value);
                 },

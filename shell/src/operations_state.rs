@@ -8,7 +8,7 @@ use std::convert::TryInto;
 use std::sync::Arc;
 
 use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase, StorageError};
-use tezos_encoding::hash::BlockHash;
+use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::collections::{BlockData, UniqueBlockData};
@@ -17,15 +17,17 @@ pub struct OperationsState {
     operations_storage: OperationsStorage,
     operations_meta_storage: OperationsMetaStorage,
     missing_operations_for_blocks: UniqueBlockData<MissingOperations>,
+    chain_id: ChainId,
 }
 
 impl OperationsState {
 
-    pub fn new(db: Arc<OperationsStorageDatabase>, meta_db: Arc<OperationsMetaStorageDatabase>) -> Self {
+    pub fn new(db: Arc<OperationsStorageDatabase>, meta_db: Arc<OperationsMetaStorageDatabase>, chain_id: &ChainId) -> Self {
         OperationsState {
             operations_storage: OperationsStorage::new(db),
             operations_meta_storage: OperationsMetaStorage::new(meta_db),
             missing_operations_for_blocks: UniqueBlockData::new(),
+            chain_id: chain_id.clone(),
         }
     }
 
@@ -47,7 +49,7 @@ impl OperationsState {
                     level: block_header.header.level()
                 });
             }
-            self.operations_meta_storage.put_block_header(block_header)?;
+            self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
             Ok(true)
         } else {
             Ok(false)
@@ -88,7 +90,7 @@ impl OperationsState {
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.operations_meta_storage.iter(IteratorMode::Start)? {
             let (key, value) = (key?, value?);
-            if !value.is_complete() {
+            if !value.is_complete() && (value.chain_id == self.chain_id) {
                 self.missing_operations_for_blocks.push(MissingOperations {
                     block_hash: key,
                     validation_passes: value.get_missing_validation_passes(),
