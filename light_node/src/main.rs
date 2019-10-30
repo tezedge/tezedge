@@ -75,7 +75,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         environment::TEZOS_ENV
             .get(&configuration::ENV.tezos_network)
             .map(|cfg| cfg.version.clone())
-            .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network))
+            .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network)),
     ).expect("Failed to create network manager");
     let _ = PeerManager::actor(
         &actor_system,
@@ -94,7 +94,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], 3030).into(), &tokio_runtime)
+    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], 3030).into(), &tokio_runtime, rocks_db.clone())
         .expect("Failed to create RPC server");
     if configuration::ENV.record {
         info!(log, "Running in record mode");
@@ -144,7 +144,7 @@ fn main() {
         TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
         configuration::ENV.tezos_network,
         &configuration::ENV.storage.tezos_data_dir,
-        &configuration::ENV.protocol_runner
+        &configuration::ENV.protocol_runner,
     ));
     let mut protocol_wrapper = match protocol_service.spawn_protocol_wrapper() {
         Ok(protocol_wrapper) => protocol_wrapper,

@@ -77,18 +77,20 @@ fn parse_queries(query: &str) -> HashMap<&str, Vec<&str>> {
 /// GET /monitor/bootstrapped endpoint handler
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
-    if let GetCurrentHead::Response(current_head) = current_head {
-        let resp = if current_head.is_some() {
-            let current_head: BlockApplied = current_head.unwrap();
-            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
-            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
-            BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
+    loop {
+        if let GetCurrentHead::Response(current_head) = current_head {
+            let resp = if current_head.is_some() {
+                let current_head: BlockApplied = current_head.unwrap();
+                let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
+                let timestamp = ts_to_rfc3339(current_head.header.timestamp());
+                BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
+            } else {
+                BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
+            };
+            return make_json_response(&resp);
         } else {
-            BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
-        };
-        make_json_response(&resp)
-    } else {
-        empty()
+            tokio::timer::delay_for(std::time::Duration::from_secs(1)).await
+        }
     }
 }
 

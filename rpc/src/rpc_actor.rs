@@ -9,31 +9,47 @@ use crate::{
 use slog::warn;
 use std::net::SocketAddr;
 use tokio::runtime::Runtime;
+use std::sync::Arc;
+use crate::encoding::monitor::BlockHash;
+use storage::{BlockStorageReader, BlockHeaderWithHash};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
-#[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead)]
+#[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead, GetFullCurrentHead)]
 pub struct RpcServer {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     // Stats
     current_head: Option<BlockApplied>,
+    db: Arc<rocksdb::DB>,
 }
 
 impl RpcServer {
     pub fn name() -> &'static str { "rpc-server" }
 
-    fn new((network_channel, shell_channel): (NetworkChannelRef, ShellChannelRef)) -> Self {
+    fn new((network_channel, shell_channel, db): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>)) -> Self {
+        let current_head = if let Some(h) = Self::load_current_head(db.clone()) {
+            Some(BlockApplied {
+                hash: h.hash,
+                level: h.header.level(),
+                header: h.header,
+            })
+        } else {
+            None
+        };
+
         Self {
             network_channel,
             shell_channel,
-            current_head: None,
+            current_head,
+            db,
         }
     }
 
-    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>) -> Result<RpcServerRef, CreateError> {
         let ret = sys.actor_of(
-            Props::new_args(Self::new, (network_channel, shell_channel)),
+            Props::new_args(Self::new, (network_channel, shell_channel, db)),
             Self::name(),
         )?;
 
@@ -45,6 +61,31 @@ impl RpcServer {
             }
         });
         Ok(ret)
+    }
+
+    fn load_current_head(db: Arc<rocksdb::DB>) -> Option<BlockHeaderWithHash> {
+        use storage::{BlockMetaStorage, BlockStorage, IteratorMode, };
+        use tezos_encoding::hash::BlockHash as RawBlockHash;
+
+        let meta_storage = BlockMetaStorage::new(db.clone());
+        let mut head: Option<RawBlockHash> = None;
+        if let Ok(iter) = meta_storage.iter(IteratorMode::End) {
+            let cur_level = -1;
+            for (key, value) in iter {
+                if let Ok(value) = value {
+                    if cur_level < value.level {
+                        head = Some(key.unwrap())
+                    }
+                }
+            }
+            if let Some(head) = head {
+                let block_storage = BlockStorage::new(db.clone());
+                if let Ok(Some(head)) = block_storage.get(&head) {
+                    return Some(head);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -114,6 +155,9 @@ impl Receive<GetFullCurrentHead> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetFullCurrentHead, sender: Sender) {
+        use crate::helpers::FullBlockInfo;
+        use storage::{OperationsStorage, operations_storage::OperationsStorageReader};
+
         if let GetFullCurrentHead::Request = msg {
             if let Some(sender) = sender {
                 let me: Option<BasicActorRef> = ctx.myself().into();
