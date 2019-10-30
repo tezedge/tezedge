@@ -1,23 +1,20 @@
 use hyper::{Body, Response, Error, Server, Request, StatusCode, Method};
 use hyper::service::{service_fn, make_service_fn};
-use std::net::SocketAddr;
 use futures::Future;
-use crate::rpc_actor::RpcServerRef;
 use riker::actors::ActorSystem;
-use crate::server::ask::ask;
-use serde_json;
 use chrono::prelude::*;
-use crate::encoding::base_types::*;
-use std::collections::HashMap;
 use lazy_static::lazy_static;
 use regex::Regex;
 use tezos_encoding::hash::{HashEncoding, HashType};
-use crate::encoding::monitor::BootstrapInfo;
-use crate::server::control_msg::{GetCurrentHead, GetFullCurrentHead};
 use shell::shell_channel::BlockApplied;
-use crate::ts_to_rfc3339;
-
-type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use crate::{
+    ts_to_rfc3339, ServiceResult, make_json_response,
+    server::{control_msg::{GetCurrentHead, GetFullCurrentHead}, ask::ask},
+    encoding::{monitor::BootstrapInfo, base_types::*},
+    rpc_actor::RpcServerRef,
+};
 
 /// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) -> impl Future<Output=Result<(), Error>> {
@@ -81,15 +78,15 @@ fn parse_queries(query: &str) -> HashMap<&str, Vec<&str>> {
 async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
     let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
     if let GetCurrentHead::Response(current_head) = current_head {
-        let resp = serde_json::to_string(&if current_head.is_some() {
+        let resp = if current_head.is_some() {
             let current_head: BlockApplied = current_head.unwrap();
             let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
             let timestamp = ts_to_rfc3339(current_head.header.timestamp());
             BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         } else {
             BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
-        })?;
-        Ok(Response::new(Body::from(resp)))
+        };
+        make_json_response(&resp)
     } else {
         empty()
     }
@@ -97,8 +94,8 @@ async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
 
 /// GET /monitor/commit_hash endpoint handler
 async fn commit_hash(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
-    let resp = serde_json::to_string(&UniString::from(env!("GIT_HASH")))?;
-    Ok(Response::new(Body::from(resp)))
+    let resp = &UniString::from(env!("GIT_HASH"));
+    make_json_response(&resp)
 }
 
 async fn active_chains(_sys: ActorSystem, _actor: RpcServerRef) -> ServiceResult {
@@ -134,7 +131,7 @@ async fn chains_block_id(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, 
         let current_head: GetFullCurrentHead = ask(&sys, &actor, GetFullCurrentHead::Request).await;
         if let GetFullCurrentHead::Response(Some(current_head)) = current_head {
             let resp: BlockInfo = current_head.into();
-            Ok(Response::new(Body::from(serde_json::to_string(&resp)?)))
+            make_json_response(&resp)
         } else {
             empty()
         }
