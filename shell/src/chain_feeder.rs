@@ -178,7 +178,8 @@ fn feed_chain_to_protocol(
                                     .map(Some)
                                     .collect();
                                 // apply block and it's operations
-                                protocol_wrapper_ipc.apply_block(&chain_id, &current_head.hash, &current_head.header, &operations)?;
+                                let apply_block_result = protocol_wrapper_ipc.apply_block(&chain_id, &current_head.hash, &current_head.header, &operations)?;
+                                info!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => apply_block_result.validation_result_message);
                                 // mark current head as applied
                                 current_head_meta.is_applied = true;
                                 block_meta_storage.put(&current_head.hash, &current_head_meta)?;

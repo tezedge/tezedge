@@ -1498,7 +1498,7 @@ dependencies = [
  "tezos_api 0.1.0",
  "tezos_client 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.2.0",
+ "tezos_interop 0.0.1-pre14",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2268,7 +2268,7 @@ dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.2.0",
+ "tezos_interop 0.0.1-pre14",
  "tezos_messages 0.1.0",
 ]
 
@@ -2292,7 +2292,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.2.0"
+version = "0.0.1-pre14"
 dependencies = [
  "colored 1.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2343,7 +2343,7 @@ dependencies = [
  "tezos_api 0.1.0",
  "tezos_client 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.2.0",
+ "tezos_interop 0.0.1-pre14",
  "tezos_messages 0.1.0",
  "timeout_io 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "wait-timeout 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
