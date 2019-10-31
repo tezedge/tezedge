@@ -223,7 +223,9 @@ pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Re
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ApplyBlockResult {
-    pub validation_result_message: String
+    pub validation_result_message: String,
+    pub block_header_proto_json: String,
+    pub block_header_proto_metadata_json: String
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
@@ -292,9 +294,17 @@ pub fn apply_block(
             operations,
         ) {
             Ok(validation_result) => {
-                let validation_result: Str = validation_result.into();
+                let validation_result: Tuple = validation_result.into();
+
+                let validation_result_message: Str = validation_result.get(0).unwrap().into();
+                // get(1) is context_hash, which we dont use right now
+                let block_header_proto_json: Str = validation_result.get(2).unwrap().into();
+                let block_header_proto_metadata_json: Str = validation_result.get(3).unwrap().into();
+
                 Ok(ApplyBlockResult {
-                    validation_result_message: validation_result.as_str().to_string()
+                    validation_result_message: validation_result_message.as_str().to_string(),
+                    block_header_proto_json: block_header_proto_json.as_str().to_string(),
+                    block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string()
                 })
             },
             Err(e) => {

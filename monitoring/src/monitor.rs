@@ -42,6 +42,7 @@ pub struct Monitor {
     peer_monitors: HashMap<ActorUri, PeerMonitor>,
     bootstrap_monitor: BootstrapMonitor,
     blocks_monitor: BlocksMonitor,
+    block_application_monitor: ApplicationMonitor,
 }
 
 impl Monitor {
@@ -69,6 +70,7 @@ impl Monitor {
             peer_monitors: HashMap::new(),
             bootstrap_monitor,
             blocks_monitor: BlocksMonitor::new(4096, downloaded),
+            block_application_monitor: ApplicationMonitor::new(),
         }
     }
 
@@ -170,22 +172,24 @@ impl Receive<SystemEvent> for Monitor {
 impl Receive<BroadcastSignal> for Monitor {
     type Msg = MonitorMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
         match msg {
             BroadcastSignal::PublishPeerStatistics => {
                 let peer_stats: HandlerMessage = self.peer_monitors.values_mut().collect();
-                self.msg_channel.tell(peer_stats, None);
+                self.msg_channel.tell(peer_stats, ctx.myself().into());
             }
             BroadcastSignal::PublishBlocksStatistics => {
                 let bootstrap_stats: HandlerMessage = self.bootstrap_monitor.snapshot().into();
-                self.msg_channel.tell(bootstrap_stats, None);
+                self.msg_channel.tell(bootstrap_stats, ctx.myself().into());
 
                 let payload = self.blocks_monitor.snapshot();
-                self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, None);
+                self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
+                let payload = self.block_application_monitor.snapshot();
+                self.msg_channel.tell(HandlerMessage::BlockApplicationStatus { payload }, ctx.myself().into())
             }
             BroadcastSignal::PeerUpdate(msg) => {
                 let msg: HandlerMessage = msg.into();
-                self.msg_channel.tell(msg, None)
+                self.msg_channel.tell(msg, ctx.myself().into())
             }
         }
     }
@@ -235,8 +239,9 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.blocks_monitor.accept_block();
                 self.bootstrap_monitor.increase_headers_count();
             }
-            ShellChannelMsg::BlockApplied(_msg) => {
+            ShellChannelMsg::BlockApplied(msg) => {
                 self.blocks_monitor.block_was_applied_by_protocol();
+                self.block_application_monitor.block_was_applied(msg);
             }
             ShellChannelMsg::AllBlockOperationsReceived(_msg) => {
                 self.bootstrap_monitor.increase_block_count();
