@@ -126,6 +126,9 @@ pub enum HandlerMessage {
     BlockStatus {
         payload: Vec<BlockMetrics>
     },
+    BlockApplicationStatus {
+        payload: BlockApplicationMessage,
+    },
     NotImplemented(String),
 }
 
@@ -150,4 +153,20 @@ impl From<IncomingTransferMetrics> for HandlerMessage {
     fn from(payload: IncomingTransferMetrics) -> Self {
         Self::IncomingTransfer { payload }
     }
+}
+
+// -------------------------- BLOCK APPLICATION MESSAGE -------------------------- //
+#[derive(Clone, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockApplicationMessage {
+    pub(crate) current_application_speed: f32,
+    pub(crate) average_application_speed: f32,
+    pub(crate) last_applied_block: Option<BlockInfo>,
+}
+
+#[derive(Clone, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockInfo {
+    pub(crate) hash: String,
+    pub(crate) level: i32,
 }

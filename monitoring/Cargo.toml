@@ -21,3 +21,4 @@ slog_derive = "0.1.1"
 # local dependencies
 networking = { path = "../networking" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_encoding = { path = "../tezos/encoding" }
