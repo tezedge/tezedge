@@ -124,7 +124,7 @@ async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next
         empty()
     }
 }
-
+/// GET /chains/<chain_id>/blocks/<block_id> endpoint handler
 async fn chains_block_id(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, block_id: &str) -> ServiceResult {
     use crate::encoding::chain::BlockInfo;
     if chain_id != "main" || block_id != "head" {

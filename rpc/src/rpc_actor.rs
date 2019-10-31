@@ -10,9 +10,7 @@ use slog::warn;
 use std::net::SocketAddr;
 use tokio::runtime::Runtime;
 use std::sync::Arc;
-use crate::encoding::monitor::BlockHash;
 use storage::{BlockStorageReader, BlockHeaderWithHash};
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -34,6 +32,8 @@ impl RpcServer {
                 hash: h.hash,
                 level: h.header.level(),
                 header: h.header,
+                block_header_proto_info: Default::default(),
+                block_header_info: None,
             })
         } else {
             None
@@ -64,7 +64,7 @@ impl RpcServer {
     }
 
     fn load_current_head(db: Arc<rocksdb::DB>) -> Option<BlockHeaderWithHash> {
-        use storage::{BlockMetaStorage, BlockStorage, IteratorMode, };
+        use storage::{BlockMetaStorage, BlockStorage, IteratorMode};
         use tezos_encoding::hash::BlockHash as RawBlockHash;
 
         let meta_storage = BlockMetaStorage::new(db.clone());
@@ -155,7 +155,6 @@ impl Receive<GetFullCurrentHead> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetFullCurrentHead, sender: Sender) {
-        use crate::helpers::FullBlockInfo;
         use storage::{OperationsStorage, operations_storage::OperationsStorageReader};
 
         if let GetFullCurrentHead::Request = msg {
@@ -164,15 +163,8 @@ impl Receive<GetFullCurrentHead> for RpcServer {
                 let current_head = self.current_head.clone();
                 let resp = GetFullCurrentHead::Response(if let Some(head) = current_head {
                     let ops_storage = OperationsStorage::new(self.db.clone());
-                    let ops = ops_storage.get_operations(&head.hash).unwrap_or_default();
-                    Some(FullBlockInfo {
-                        operations: ops,
-                        metadata: (),
-                        header: BlockHeaderWithHash {
-                            hash: head.hash.clone(),
-                            header: head.header.clone(),
-                        },
-                    })
+                    let _ops = ops_storage.get_operations(&head.hash).unwrap_or_default();
+                    Some(head.into())
                 } else {
                     None
                 });

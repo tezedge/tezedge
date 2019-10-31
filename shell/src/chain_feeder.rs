@@ -44,7 +44,6 @@ impl ChainFeeder {
             let chain_id = tezos_init.chain_id.clone();
 
             thread::spawn(move || {
-
                 let block_storage = BlockStorage::new(rocks_db.clone());
                 let mut block_meta_storage = BlockMetaStorage::new(rocks_db.clone());
                 let operations_storage = OperationsStorage::new(rocks_db.clone());
@@ -190,6 +189,8 @@ fn feed_chain_to_protocol(
                                             hash: current_head.hash.clone(),
                                             level: current_head.header.level(),
                                             header: current_head.header.clone(),
+                                            block_header_info: apply_block_result.block_header_proto_json.parse().ok(),
+                                            block_header_proto_info: serde_json::from_str(&apply_block_result.block_header_proto_metadata_json).unwrap_or_default(),
                                         }.into(),
                                         topic: ShellChannelTopic::ShellEvents.into(),
                                     }, None);
@@ -223,7 +224,7 @@ fn feed_chain_to_protocol(
     Ok(())
 }
 
-fn init_protocol_env(protocol_wrapper: &mut ProtocolWrapperIpc, configuration: &ProtocolServiceConfiguration) -> Result<(), ProtocolServiceError>{
+fn init_protocol_env(protocol_wrapper: &mut ProtocolWrapperIpc, configuration: &ProtocolServiceConfiguration) -> Result<(), ProtocolServiceError> {
     protocol_wrapper.change_runtime_configuration(configuration.runtime_configuration().clone())?;
     protocol_wrapper.init_storage(configuration.data_dir().to_str().unwrap().to_string(), configuration.environment())?;
     Ok(())
