@@ -6,12 +6,40 @@ use riker::actors::*;
 use tezos_encoding::hash::BlockHash;
 use std::sync::Arc;
 use tezos_messages::p2p::encoding::prelude::*;
+use failure::_core::str::FromStr;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct BlockApplied {
     pub hash: BlockHash,
     pub level: i32,
     pub header: Arc<BlockHeader>,
+    pub block_header_info: Option<BlockHeaderInfo>,
+    pub block_header_proto_info: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BlockHeaderInfo {
+    pub priority: i32,
+    pub proof_of_work_nonce: String,
+    pub signature: String,
+}
+
+impl FromStr for BlockHeaderInfo {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let des: HashMap<&str, &str> = serde_json::from_str(s)?;
+        Ok(Self {
+            priority: if let Some(val) = des.get("priority") {
+                val.parse().unwrap_or(0)
+            } else {
+                0
+            },
+            proof_of_work_nonce: (*des.get("proof_of_work_nonce").unwrap_or(&"")).into(),
+            signature: (*des.get("signature").unwrap_or(&"")).into(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

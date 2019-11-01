@@ -1,5 +1,6 @@
 pub mod base_types;
 pub mod monitor;
+pub mod chain;
 
 #[cfg(test)]
 pub mod test_helpers {
