@@ -8,6 +8,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone)]
 pub struct FullBlockInfo {
     pub hash: String,
+    pub chain_id: String,
     pub header: InnerBlockHeader,
     pub metadata: HashMap<String, String>,
     pub operations: Vec<OperationsForBlocksMessage>,
@@ -47,6 +48,7 @@ impl From<BlockApplied> for FullBlockInfo {
 
         Self {
             hash: hash,
+            chain_id: "".into(),
             header: InnerBlockHeader {
                 level: val.header.level(),
                 proto: val.header.proto(),

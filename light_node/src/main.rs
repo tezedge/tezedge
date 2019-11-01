@@ -94,7 +94,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], 3030).into(), &tokio_runtime, rocks_db.clone())
+    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], 3030).into(), &tokio_runtime, rocks_db.clone(), init_info.chain_id, init_info.supported_protocol_hashes)
         .expect("Failed to create RPC server");
     if configuration::ENV.record {
         info!(log, "Running in record mode");

@@ -11,6 +11,8 @@ use std::net::SocketAddr;
 use tokio::runtime::Runtime;
 use std::sync::Arc;
 use storage::{BlockStorageReader, BlockHeaderWithHash};
+use tezos_encoding::hash::{ChainId, ProtocolHash, HashEncoding, HashType};
+use crate::helpers::FullBlockInfo;
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -19,6 +21,8 @@ pub struct RpcServer {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     // Stats
+    chain_id: ChainId,
+    _supported_protocols: Vec<ProtocolHash>,
     current_head: Option<BlockApplied>,
     db: Arc<rocksdb::DB>,
 }
@@ -26,7 +30,7 @@ pub struct RpcServer {
 impl RpcServer {
     pub fn name() -> &'static str { "rpc-server" }
 
-    fn new((network_channel, shell_channel, db): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>)) -> Self {
+    fn new((network_channel, shell_channel, db, chain_id, supported_protocols): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId, Vec<ProtocolHash>)) -> Self {
         let current_head = if let Some(h) = Self::load_current_head(db.clone()) {
             Some(BlockApplied {
                 hash: h.hash,
@@ -42,14 +46,16 @@ impl RpcServer {
         Self {
             network_channel,
             shell_channel,
+            chain_id,
+            _supported_protocols: supported_protocols,
             current_head,
             db,
         }
     }
 
-    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, chain_id: ChainId, protocols: Vec<ProtocolHash>) -> Result<RpcServerRef, CreateError> {
         let ret = sys.actor_of(
-            Props::new_args(Self::new, (network_channel, shell_channel, db)),
+            Props::new_args(Self::new, (network_channel, shell_channel, db, chain_id, protocols)),
             Self::name(),
         )?;
 
@@ -164,7 +170,9 @@ impl Receive<GetFullCurrentHead> for RpcServer {
                 let resp = GetFullCurrentHead::Response(if let Some(head) = current_head {
                     let ops_storage = OperationsStorage::new(self.db.clone());
                     let _ops = ops_storage.get_operations(&head.hash).unwrap_or_default();
-                    Some(head.into())
+                    let mut head: FullBlockInfo = head.into();
+                    head.chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(&self.chain_id);
+                    Some(head)
                 } else {
                     None
                 });

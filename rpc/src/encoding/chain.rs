@@ -23,7 +23,7 @@ impl From<FullBlockInfo> for BlockInfo {
     fn from(val: FullBlockInfo) -> Self {
         Self {
             protocol: None,
-            chain_id: None,
+            chain_id: Some(val.chain_id.into()),
             hash: Some(val.hash.into()),
             header: val.header,
             operations: val.operations,
