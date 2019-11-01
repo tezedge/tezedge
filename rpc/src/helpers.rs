@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone)]
+/// Object containing information to recreate the full block information
 pub struct FullBlockInfo {
     pub hash: String,
     pub chain_id: String,
@@ -15,6 +16,7 @@ pub struct FullBlockInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+/// Object containing all block header information
 pub struct InnerBlockHeader {
     pub level: i32,
     pub proto: u8,
