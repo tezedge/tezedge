@@ -36,3 +36,11 @@ pub struct TestChain {
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool
 }
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct ApplyBlockResult {
+    pub validation_result_message: String,
+    pub context_hash: RustBytes,
+    pub block_header_proto_json: String,
+    pub block_header_proto_metadata_json: String
+}

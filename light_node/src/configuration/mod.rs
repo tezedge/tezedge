@@ -123,6 +123,7 @@ impl Environment {
                 .short("d")
                 .long("tezos-data-dir")
                 .takes_value(true)
+                .default_value("tezos_data_db")
                 .help("A directory for Tezos OCaml runtime storage (context/store)")
                 .validator(|v| {
                     let dir = Path::new(&v);
@@ -258,7 +259,6 @@ impl Environment {
                     .unwrap_or_default()
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path"),
-                // default value is corrected by tezos network suffix
                 bootstrap_db_path: args.value_of("bootstrap-db-path")
                     .unwrap_or_default()
                     .parse::<PathBuf>()

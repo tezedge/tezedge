@@ -24,11 +24,12 @@ fn run_tests() {
 
     // We cannot run tests in parallel, because tezos does not handle situation when multiple storage
     // directories are initialized
-    let tests: [(&str, fn() -> Result<(), failure::Error>); 6] = [
+    let tests: [(&str, fn() -> Result<(), failure::Error>); 7] = [
         tezos_test!(test_bootstrap_empty_storage_with_first_three_blocks),
         tezos_test!(test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor),
         tezos_test!(test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operations),
         tezos_test!(test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_fail_invalid_operations),
+        tezos_test!(test_bootstrap_empty_storage_with_first_block_twice),
         tezos_test!(test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_directory),
         tezos_test!(test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_directory)
     ];
@@ -67,7 +68,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
             test_data::block_header_level1_operations(),
         ),
     );
-    assert_eq!("activate PsddFKi32cMJ", &apply_block_result?.validation_result_message);
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result?.context_hash);
 
     // check current head changed to level 1
     let current_header = client::get_current_block_header(&chain_id)?;
@@ -104,6 +105,54 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     // check current head changed to level 3
     let current_header = client::get_current_block_header(&chain_id)?;
     Ok(assert_eq!(3, current_header.level()))
+}
+
+fn test_bootstrap_empty_storage_with_first_block_twice() -> Result<(), failure::Error> {
+
+    // init empty storage for test
+    let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
+        common::prepare_empty_dir("bootstrap_test_storage_09"),
+        test_data::TEZOS_ENV,
+    )?;
+    // current hash must be equal to genesis
+    assert_eq!(genesis_block_header_hash, current_block_header_hash);
+
+    // apply first block - level 0
+    let apply_block_result_1 = client::apply_block(
+        &chain_id,
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        ),
+    );
+    let apply_block_result_1 = apply_block_result_1?;
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result_1.context_hash);
+
+    // check current head changed to level 1
+    let current_header = client::get_current_block_header(&chain_id)?;
+    assert_eq!(1, current_header.level());
+
+    // apply first block second time - level 0
+    let apply_block_result_2 = client::apply_block(
+        &chain_id,
+        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        ),
+    );
+    let apply_block_result_2 = apply_block_result_2?;
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result_2.context_hash);
+
+    // results should be eq
+    assert_eq!(apply_block_result_1, apply_block_result_2);
+
+    // check current head changed to level 1
+    let current_header = client::get_current_block_header(&chain_id)?;
+    Ok(assert_eq!(1, current_header.level()))
 }
 
 fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecessor() -> Result<(), failure::Error> {
@@ -235,7 +284,7 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
             test_data::block_header_level1_operations(),
         ),
     );
-    assert_eq!("activate PsddFKi32cMJ", &apply_block_result?.validation_result_message);
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result?.context_hash);
 
     // check current head changed to level 1
     let current_header = client::get_current_block_header(&chain_id)?;
@@ -281,7 +330,7 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
             test_data::block_header_level1_operations(),
         ),
     );
-    assert_eq!("activate PsddFKi32cMJ", &apply_block_result?.validation_result_message);
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result?.context_hash);
 
     // MAINNET reinit storage in the same directory for test
     let mainnet_init_info: TezosStorageInitInfo = client::init_storage(
@@ -317,14 +366,22 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
 
 mod test_data {
     use tezos_api::environment::TezosEnvironment;
+    use tezos_encoding::hash::{ContextHash, HashEncoding, HashType};
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
 
+    pub fn context_hash(hash: &str) -> ContextHash {
+        HashEncoding::new(HashType::ContextHash)
+            .string_to_bytes(hash)
+            .unwrap()
+    }
+
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
     pub const BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";
     pub const BLOCK_HEADER_LEVEL_1: &str = include_str!("resources/block_header_level1.bytes");
+    pub const BLOCK_HEADER_LEVEL_1_CONTEXT_HASH: &str = "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE";
 
     pub fn block_header_level1_operations() -> Vec<Vec<String>> {
         vec![]
@@ -363,7 +420,7 @@ mod test_data {
                 let ops = bo
                     .into_iter()
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
-                        .collect();
+                    .collect();
                 Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
             })
             .collect()

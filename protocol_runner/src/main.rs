@@ -42,10 +42,10 @@ fn main() {
 mod tezos {
     use tezos_api::client::TezosStorageInitInfo;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::TezosRuntimeConfiguration;
+    use tezos_api::ffi::{ApplyBlockResult, TezosRuntimeConfiguration};
     use tezos_client::client::{apply_block, change_runtime_configuration, init_storage};
     use tezos_encoding::hash::{BlockHash, ChainId};
-    use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, TezosRuntimeConfigurationError, TezosStorageInitError};
+    use tezos_interop::ffi::{ApplyBlockError, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
