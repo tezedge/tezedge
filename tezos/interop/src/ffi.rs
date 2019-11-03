@@ -5,7 +5,7 @@ use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
 use serde::{Deserialize, Serialize};
 
-use tezos_api::ffi::{GenesisChain, TezosRuntimeConfiguration, OcamlStorageInitInfo, RustBytes, TestChain};
+use tezos_api::ffi::{ApplyBlockResult, GenesisChain, OcamlStorageInitInfo, RustBytes, TestChain, TezosRuntimeConfiguration};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -221,13 +221,6 @@ pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Re
     })
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ApplyBlockResult {
-    pub validation_result_message: String,
-    pub block_header_proto_json: String,
-    pub block_header_proto_metadata_json: String
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum ApplyBlockError {
     #[fail(display = "Incomplete operations, exptected: {}, has actual: {}!", expected, actual)]
@@ -297,12 +290,13 @@ pub fn apply_block(
                 let validation_result: Tuple = validation_result.into();
 
                 let validation_result_message: Str = validation_result.get(0).unwrap().into();
-                // get(1) is context_hash, which we dont use right now
+                let context_hash: OcamlBytes = validation_result.get(1).unwrap().into();
                 let block_header_proto_json: Str = validation_result.get(2).unwrap().into();
                 let block_header_proto_metadata_json: Str = validation_result.get(3).unwrap().into();
 
                 Ok(ApplyBlockResult {
                     validation_result_message: validation_result_message.as_str().to_string(),
+                    context_hash: context_hash.convert_to(),
                     block_header_proto_json: block_header_proto_json.as_str().to_string(),
                     block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string()
                 })

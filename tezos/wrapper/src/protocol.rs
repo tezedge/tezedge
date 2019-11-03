@@ -3,7 +3,7 @@
 
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
-use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::{ApplyBlockResult, TezosRuntimeConfiguration};
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi::*;
 use tezos_messages::p2p::encoding::prelude::*;

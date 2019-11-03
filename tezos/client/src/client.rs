@@ -3,10 +3,10 @@
 
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::{self, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::{ApplyBlockResult, TezosRuntimeConfiguration};
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
-use tezos_interop::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, TezosStorageInitError, TezosRuntimeConfigurationError};
+use tezos_interop::ffi::{ApplyBlockError, BlockHeaderError, TezosRuntimeConfigurationError, TezosStorageInitError};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 

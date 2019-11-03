@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop"
-version = "0.0.1-pre14"
+version = "0.0.1-pre15"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
