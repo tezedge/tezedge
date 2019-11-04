@@ -68,19 +68,12 @@ macro_rules! create_file_logger {
 }
 
 fn create_logger() -> Logger {
-    match &configuration::ENV.logging.file {
-        Some(log_file) => {
-            let drain = Duplicate::new(
-                create_terminal_logger!(configuration::ENV.logging.format),
-                create_file_logger!(configuration::ENV.logging.format, log_file)
-            ).filter_level(configuration::ENV.logging.level).fuse();
-            Logger::root(drain, slog::o!())
-        }
-        None => {
-            let drain = create_terminal_logger!(configuration::ENV.logging.format).filter_level(configuration::ENV.logging.level).fuse();
-            Logger::root(drain, slog::o!())
-        }
-    }
+    let drain = match &configuration::ENV.logging.file {
+        Some(log_file) => create_file_logger!(configuration::ENV.logging.format, log_file),
+        None => create_terminal_logger!(configuration::ENV.logging.format),
+    }.filter_level(configuration::ENV.logging.level).fuse();
+
+    Logger::root(drain, slog::o!())
 }
 
 fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_service: ProtocolService, log: Logger) {
