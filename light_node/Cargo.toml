@@ -6,14 +6,12 @@ edition = "2018"
 default-run = "light-node"
 
 [dependencies]
-chrono = "0.4.9"
 clap = "2.33.0"
 dirs = "2.0.2"
 failure = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4.0"
 lazy_static = "1.4.0"
-nix = "0.15.0"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 rocksdb = "0.12.3"
 serde = { version = "1.0.101", features = ["derive"] }
@@ -24,6 +22,7 @@ slog-json = "2.3"
 slog-term = "2.4"
 tokio = { version = "0.2.0-alpha.6", features = ["signal"] }
 # Local dependencies
+logging = { path = "../logging" }
 tezos_api = { path = "../tezos/api" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_wrapper = { path = "../tezos/wrapper" }

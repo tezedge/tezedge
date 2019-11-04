@@ -1,3 +1,4 @@
 # Log files
 /logs
 /bootstrap_db*
+*.log

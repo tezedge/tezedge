@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "ipc",
+    "logging",
     "crypto",
     "tezos/api",
     "tezos/messages",

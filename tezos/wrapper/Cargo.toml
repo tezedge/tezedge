@@ -5,17 +5,15 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-bincode = "1.2.0"
 getset = { git = "https://github.com/Hoverbear/getset.git" }
 failure = "0.1.5"
 failure_derive = "0.1.5"
-rand = "0.7"
 serde = { version = "1.0.101", features = ["derive"] }
 slog = "2.5"
 strum_macros = "0.16.0"
-timeout_io = "0.6.0"
 wait-timeout = "0.2.0"
 # local dependencies
+ipc = { path = "../../ipc" }
 tezos_api = { path = "../api" }
 tezos_client = { path = "../client" }
 tezos_interop = { path = "../interop" }

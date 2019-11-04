@@ -8,6 +8,8 @@ use riker::actors::*;
 use slog::*;
 use tokio::runtime::Runtime;
 
+use logging::detailed_json;
+use logging::file::FileAppenderBuilder;
 use monitoring::{listener::{
     EventPayloadStorage,
     EventStorage, NetworkChannelListener,
@@ -31,7 +33,6 @@ use crate::configuration::LogFormat;
 
 mod configuration;
 mod identity;
-mod slog_detailed_json;
 
 
 macro_rules! shutdown_and_exit {
@@ -42,17 +43,35 @@ macro_rules! shutdown_and_exit {
     }}
 }
 
-fn create_logger() -> Logger {
-    let drain = match configuration::ENV.logging.log_format {
-        LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
-        LogFormat::Json => slog_async::Async::new(slog_detailed_json::default(std::io::stdout()).fuse()).build()
-    };
+macro_rules! create_terminal_logger {
+    ($type:expr) => {{
+        match $type {
+            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
+            LogFormat::Json => slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse()).build(),
+        }
+    }}
+}
 
-    let drain = if configuration::ENV.logging.verbose {
-        drain.filter_level(Level::Debug).fuse()
-    } else {
-        drain.filter_level(Level::Info).fuse()
-    };
+macro_rules! create_file_logger {
+    ($type:expr, $path:expr) => {{
+        let appender = FileAppenderBuilder::new($path)
+            .rotate_size(10_485_760) // 10 MB
+            .rotate_keep(4)
+            .rotate_compress(true)
+            .build();
+
+        match $type {
+            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::PlainDecorator::new(appender)).build().fuse()).build(),
+            LogFormat::Json => slog_async::Async::new(detailed_json::default(appender).fuse()).build(),
+        }
+    }}
+}
+
+fn create_logger() -> Logger {
+    let drain = match &configuration::ENV.logging.file {
+        Some(log_file) => create_file_logger!(configuration::ENV.logging.format, log_file),
+        None => create_terminal_logger!(configuration::ENV.logging.format),
+    }.filter_level(configuration::ENV.logging.level).fuse();
 
     Logger::root(drain, slog::o!())
 }

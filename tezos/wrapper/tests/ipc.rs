@@ -4,7 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use tezos_wrapper::ipc::*;
+use ipc::*;
 
 mod common;
 

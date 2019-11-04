@@ -32,8 +32,9 @@ pub struct Rpc {
 #[derive(Debug, Clone)]
 pub struct Logging {
     pub ocaml_log_enabled: bool,
-    pub verbose: bool,
-    pub log_format: LogFormat,
+    pub level: slog::Level,
+    pub format: LogFormat,
+    pub file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +166,7 @@ impl Environment {
                 .short("v")
                 .long("verbose")
                 .takes_value(false)
+                .multiple(true)
                 .help("Turn verbose output on"))
             .arg(Arg::with_name("log-format")
                 .short("f")
@@ -173,6 +175,12 @@ impl Environment {
                 .default_value("simple")
                 .possible_values(&["json", "simple"])
                 .help("Set output format of the log. Possible values: simple, json"))
+            .arg(Arg::with_name("log-file")
+                .short("F")
+                .long("log-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Set path of a log file"))
             .arg(Arg::with_name("network")
                 .short("n")
                 .long("network")
@@ -247,12 +255,14 @@ impl Environment {
                     .unwrap()
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                verbose: args.is_present("verbose"),
-                log_format: args
+                level: verbose_occurrences_to_level(args.occurrences_of("verbose")),
+                format: args
                     .value_of("log-format")
                     .unwrap_or_default()
                     .parse::<LogFormat>()
                     .expect("Was expecting 'simple' or 'json'"),
+                file: args.value_of("log-file")
+                    .map(|v| v.parse::<PathBuf>().expect("Provided value cannot be converted to path")),
             },
             storage: crate::configuration::Storage {
                 tezos_data_dir: args.value_of("tezos-data-dir")
@@ -274,5 +284,13 @@ impl Environment {
                 .expect("Provided value cannot be converted to path"),
             tezos_network,
         }
+    }
+}
+
+fn verbose_occurrences_to_level(occurrences: u64) -> slog::Level {
+    match occurrences {
+        1 => slog::Level::Debug,
+        2 => slog::Level::Trace,
+        _ => slog::Level::Info,
     }
 }
