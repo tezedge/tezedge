@@ -67,23 +67,17 @@ macro_rules! create_file_logger {
     }}
 }
 
-fn create_logger(log_file: Option<PathBuf>) -> Logger {
-    let level = if configuration::ENV.logging.verbose {
-        Level::Debug
-    } else {
-        Level::Info
-    };
-
-    match log_file {
+fn create_logger() -> Logger {
+    match &configuration::ENV.logging.file {
         Some(log_file) => {
             let drain = Duplicate::new(
-                create_terminal_logger!(configuration::ENV.logging.log_format),
-                create_file_logger!(configuration::ENV.logging.log_format, &log_file)
-            ).filter_level(level).fuse();
+                create_terminal_logger!(configuration::ENV.logging.format),
+                create_file_logger!(configuration::ENV.logging.format, log_file)
+            ).filter_level(configuration::ENV.logging.level).fuse();
             Logger::root(drain, slog::o!())
         }
         None => {
-            let drain = create_terminal_logger!(configuration::ENV.logging.log_format).filter_level(level).fuse();
+            let drain = create_terminal_logger!(configuration::ENV.logging.format).filter_level(configuration::ENV.logging.level).fuse();
             Logger::root(drain, slog::o!())
         }
     }
@@ -149,7 +143,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
 }
 
 fn main() {
-    let log = create_logger(None);
+    let log = create_logger();
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
