@@ -69,13 +69,13 @@ impl FileAppenderBuilder {
         self
     }
 
-    fn build(self) -> FileAppender {
+    pub fn build(self) -> FileAppender {
         self.appender
     }
 }
 
 #[derive(Debug)]
-struct FileAppender {
+pub struct FileAppender {
     path: PathBuf,
     file: Option<BufWriter<File>>,
     truncate: bool,
@@ -288,7 +288,6 @@ fn default_rotate_keep() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use std::thread;
     use std::time::Duration;
 

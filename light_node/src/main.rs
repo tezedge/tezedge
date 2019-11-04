@@ -9,6 +9,7 @@ use slog::*;
 use tokio::runtime::Runtime;
 
 use logging::detailed_json;
+use logging::file::FileAppenderBuilder;
 use monitoring::{listener::{
     EventPayloadStorage,
     EventStorage, NetworkChannelListener,
@@ -42,19 +43,50 @@ macro_rules! shutdown_and_exit {
     }}
 }
 
-fn create_logger() -> Logger {
-    let drain = match configuration::ENV.logging.log_format {
-        LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
-        LogFormat::Json => slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse()).build()
-    };
+macro_rules! create_terminal_logger {
+    ($type:expr) => {{
+        match $type {
+            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
+            LogFormat::Json => slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse()).build(),
+        }
+    }}
+}
 
-    let drain = if configuration::ENV.logging.verbose {
-        drain.filter_level(Level::Debug).fuse()
+macro_rules! create_file_logger {
+    ($type:expr, $path:expr) => {{
+        let appender = FileAppenderBuilder::new($path)
+            .rotate_size(10_485_760) // 10 MB
+            .rotate_keep(4)
+            .rotate_compress(true)
+            .build();
+
+        match $type {
+            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::PlainDecorator::new(appender)).build().fuse()).build(),
+            LogFormat::Json => slog_async::Async::new(detailed_json::default(appender).fuse()).build(),
+        }
+    }}
+}
+
+fn create_logger(log_file: Option<PathBuf>) -> Logger {
+    let level = if configuration::ENV.logging.verbose {
+        Level::Debug
     } else {
-        drain.filter_level(Level::Info).fuse()
+        Level::Info
     };
 
-    Logger::root(drain, slog::o!())
+    match log_file {
+        Some(log_file) => {
+            let drain = Duplicate::new(
+                create_terminal_logger!(configuration::ENV.logging.log_format),
+                create_file_logger!(configuration::ENV.logging.log_format, &log_file)
+            ).filter_level(level).fuse();
+            Logger::root(drain, slog::o!())
+        }
+        None => {
+            let drain = create_terminal_logger!(configuration::ENV.logging.log_format).filter_level(level).fuse();
+            Logger::root(drain, slog::o!())
+        }
+    }
 }
 
 fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_service: ProtocolService, log: Logger) {
@@ -117,7 +149,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
 }
 
 fn main() {
-    let log = create_logger();
+    let log = create_logger(None);
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
     let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
