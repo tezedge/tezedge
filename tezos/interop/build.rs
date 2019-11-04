@@ -11,7 +11,7 @@ use serde_json;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "5721a1bef1688a50cc5265043fce91b26e866cf0";
+const GIT_COMMIT_HASH: &str = "121b0edf3021e1fd3c1b726f560bc3ab916c4071";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
@@ -240,6 +240,7 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", &out_dir);
     println!("cargo:rustc-link-lib=dylib=tezos");
+    println!("cargo:rustc-link-lib=dylib=tezos_context");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
     println!("cargo:rerun-if-env-changed=UPDATE_GIT_SUBMODULES");
 }

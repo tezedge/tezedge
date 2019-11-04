@@ -1,0 +1,11 @@
+[package]
+name = "tezos_context"
+version = "0.0.1-pre16-context-poc"
+authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
+edition = "2018"
+
+[dependencies]
+ocaml = "0.8.0"
+
+[lib]
+crate-type = ["dylib"]

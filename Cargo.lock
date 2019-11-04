@@ -1522,7 +1522,7 @@ dependencies = [
  "tezos_api 0.1.0",
  "tezos_client 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre16",
+ "tezos_interop 0.0.1-pre16-context-poc",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2306,8 +2306,15 @@ dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre16",
+ "tezos_interop 0.0.1-pre16-context-poc",
  "tezos_messages 0.1.0",
+]
+
+[[package]]
+name = "tezos_context"
+version = "0.0.1-pre16-context-poc"
+dependencies = [
+ "ocaml 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2330,7 +2337,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.0.1-pre16"
+version = "0.0.1-pre16-context-poc"
 dependencies = [
  "colored 1.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2346,6 +2353,7 @@ dependencies = [
  "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
+ "tezos_context 0.0.1-pre16-context-poc",
 ]
 
 [[package]]
@@ -2380,7 +2388,7 @@ dependencies = [
  "tezos_api 0.1.0",
  "tezos_client 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre16",
+ "tezos_interop 0.0.1-pre16-context-poc",
  "tezos_messages 0.1.0",
  "wait-timeout 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
