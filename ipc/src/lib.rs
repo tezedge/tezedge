@@ -73,8 +73,8 @@ impl<S: Serialize> IpcSender<S> {
 pub struct IpcReceiver<R>(UnixStream, PhantomData<R>);
 
 impl<R> IpcReceiver<R>
-where
-    R: for<'de> Deserialize<'de>
+    where
+        R: for<'de> Deserialize<'de>
 {
     pub fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 8];
@@ -111,9 +111,9 @@ impl<R, S> Drop for IpcServer<R, S> {
 }
 
 impl<R, S> IpcServer<R, S>
-where
-    R: for<'de> Deserialize<'de>,
-    S: Serialize
+    where
+        R: for<'de> Deserialize<'de>,
+        S: Serialize
 {
     pub fn bind() -> Result<Self, IpcError> {
         let path = temp_sock();
@@ -158,9 +158,9 @@ impl<R, S> IpcClient<R, S> {
 }
 
 impl<R, S> IpcClient<R, S>
-where
-    R: for<'de> Deserialize<'de>,
-    S: Serialize
+    where
+        R: for<'de> Deserialize<'de>,
+        S: Serialize
 {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         IpcClient {
@@ -188,9 +188,9 @@ pub fn temp_sock() -> PathBuf {
 }
 
 fn split<R, S>(stream: UnixStream, read_timeout: Option<Duration>) -> Result<(IpcReceiver<R>, IpcSender<S>), io::Error>
-where
-    R: for<'de> Deserialize<'de>,
-    S: Serialize
+    where
+        R: for<'de> Deserialize<'de>,
+        S: Serialize
 {
     stream.set_read_timeout(read_timeout)?;
     Ok((IpcReceiver(stream.try_clone()?, PhantomData), IpcSender(stream, PhantomData)))

@@ -1,0 +1,13 @@
+[package]
+name = "ipc"
+version = "0.1.0"
+authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
+edition = "2018"
+
+[dependencies]
+bincode = "1.2.0"
+failure = "0.1.5"
+failure_derive = "0.1.5"
+rand = "0.7"
+serde = { version = "1.0.101", features = ["derive"] }
+timeout_io = "0.6.0"

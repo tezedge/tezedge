@@ -8,6 +8,7 @@ use riker::actors::*;
 use slog::*;
 use tokio::runtime::Runtime;
 
+use logging::detailed_json;
 use monitoring::{listener::{
     EventPayloadStorage,
     EventStorage, NetworkChannelListener,
@@ -31,7 +32,6 @@ use crate::configuration::LogFormat;
 
 mod configuration;
 mod identity;
-mod slog_detailed_json;
 
 
 macro_rules! shutdown_and_exit {
@@ -45,7 +45,7 @@ macro_rules! shutdown_and_exit {
 fn create_logger() -> Logger {
     let drain = match configuration::ENV.logging.log_format {
         LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
-        LogFormat::Json => slog_async::Async::new(slog_detailed_json::default(std::io::stdout()).fuse()).build()
+        LogFormat::Json => slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse()).build()
     };
 
     let drain = if configuration::ENV.logging.verbose {
