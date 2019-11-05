@@ -1,3 +1,5 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 #![feature(test)]
 
 extern crate test;
@@ -7,8 +9,9 @@ use std::thread;
 use std::time::Duration;
 use test::Bencher;
 
-use rand::Rng;
 use serde::{Deserialize, Serialize};
+
+use rand::Rng;
 
 #[derive(Serialize, Deserialize)]
 struct BenchData {

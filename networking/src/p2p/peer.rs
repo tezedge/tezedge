@@ -5,11 +5,13 @@ use std::convert::TryFrom;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
 
 use failure::{Error, Fail};
 use futures::lock::Mutex;
 use riker::actors::*;
 use slog::{debug, info, Logger, trace, warn};
+use tokio::future::FutureExt;
 use tokio::net::TcpStream;
 use tokio::runtime::TaskExecutor;
 
@@ -22,6 +24,9 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
+
+const READ_TIMEOUT_SHORT: Duration = Duration::from_secs(6);
+const READ_TIMEOUT_LONG: Duration = Duration::from_secs(60);
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
@@ -82,6 +87,15 @@ impl From<BinaryChunkError> for PeerError {
 impl slog::Value for PeerError {
     fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
+    }
+}
+
+impl From<tokio::timer::timeout::Elapsed> for PeerError {
+    fn from(timeout: tokio::timer::timeout::Elapsed) -> Self {
+        PeerError::NetworkError {
+            message: "Connection timeout",
+            error: timeout.into()
+        }
     }
 }
 
@@ -291,9 +305,9 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
     };
 
     // receive connection message
-    let received_connection_msg = match msg_rx.read_message().await {
+    let received_connection_msg = match msg_rx.read_message().timeout(READ_TIMEOUT_SHORT).await? {
         Ok(msg) => msg,
-        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Received no response to our connection message" })
+        Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_msg, msg.incoming);
@@ -319,14 +333,14 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
     msg_tx.write_message(&metadata).await?;
 
     // receive metadata
-    let metadata_received = msg_rx.read_message::<MetadataMessage>().await?;
+    let metadata_received = msg_rx.read_message::<MetadataMessage>().timeout(READ_TIMEOUT_SHORT).await??;
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
     msg_tx.write_message(&AckMessage::Ack).await?;
 
     // receive ack
-    let ack_received = msg_rx.read_message().await?;
+    let ack_received = msg_rx.read_message().timeout(READ_TIMEOUT_SHORT).await??;
 
     match ack_received {
         AckMessage::Ack => {
@@ -354,28 +368,33 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
     info!(log, "Starting to accept messages");
 
     while rx_run.load(Ordering::SeqCst) {
-        match rx.read_message::<PeerMessageResponse>().await {
-            Ok(msg) => {
-                let should_broadcast_message = rx_run.load(Ordering::SeqCst);
-                if should_broadcast_message {
-                    trace!(log, "Message parsed successfully");
-                    event_channel.tell(
-                        Publish {
-                            msg: PeerMessageReceived {
-                                peer: myself.clone(),
-                                message: Arc::new(msg),
-                            }.into(),
-                            topic: NetworkChannelTopic::NetworkEvents.into(),
-                        }, Some(myself.clone().into()));
+        match rx.read_message::<PeerMessageResponse>().timeout(READ_TIMEOUT_LONG).await {
+            Ok(res) => match res {
+                Ok(msg) => {
+                    let should_broadcast_message = rx_run.load(Ordering::SeqCst);
+                    if should_broadcast_message {
+                        trace!(log, "Message parsed successfully");
+                        event_channel.tell(
+                            Publish {
+                                msg: PeerMessageReceived {
+                                    peer: myself.clone(),
+                                    message: Arc::new(msg),
+                                }.into(),
+                                topic: NetworkChannelTopic::NetworkEvents.into(),
+                            }, Some(myself.clone().into()));
+                    }
+                }
+                Err(e) => {
+                    if let StreamError::DeserializationError { error: BinaryReaderError::UnsupportedTag { .. } } = e {
+                        info!(log, "Messages with unsupported tags are ignored");
+                    } else {
+                        warn!(log, "Failed to read peer message"; "reason" => e);
+                        break;
+                    }
                 }
             }
-            Err(e) => {
-                if let StreamError::DeserializationError { error: BinaryReaderError::UnsupportedTag { .. } } = e {
-                    info!(log, "Messages with unsupported tags are ignored");
-                } else {
-                    warn!(log, "Failed to read message"; "reason" => e);
-                    break;
-                }
+            Err(_) => {
+                warn!(log, "Peer message read timed out"; "secs" => READ_TIMEOUT_LONG.as_secs());
             }
         }
     }

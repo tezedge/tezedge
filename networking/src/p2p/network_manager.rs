@@ -190,6 +190,7 @@ impl Receive<AcceptPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
+        info!(ctx.system.log(), "Connection from"; "ip" => msg.address);
         let peer = self.create_peer(ctx, &msg.address);
         peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
     }
@@ -197,13 +198,13 @@ impl Receive<AcceptPeer> for NetworkManager {
 
 
 /// Start to listen for incoming connections indefinitely.
-async fn begin_listen_incoming(listener_port: u16, connection_manager: NetworkManagerRef, rx_run: Arc<AtomicBool>) {
-    let listener_address = format!("127.0.0.1:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
+async fn begin_listen_incoming(listener_port: u16, network_manager: NetworkManagerRef, rx_run: Arc<AtomicBool>) {
+    let listener_address = format!("0.0.0.0:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
     let mut listener = TcpListener::bind(&listener_address).await.expect("Failed to bind to address");
 
     while rx_run.load(Ordering::Relaxed) {
         if let Ok((stream, address)) = listener.accept().await {
-            connection_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
+            network_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
         }
     }
 }

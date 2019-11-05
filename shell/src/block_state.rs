@@ -5,6 +5,8 @@ use std::cmp;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use rand::Rng;
+
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageDatabase, BlockStorage, BlockStorageDatabase, BlockStorageReader, IteratorMode, StorageError};
 use tezos_encoding::hash::{BlockHash, ChainId};
 
@@ -79,6 +81,23 @@ impl BlockState {
     #[inline]
     pub fn get_chain_id(&self) -> &ChainId {
         &self.chain_id
+    }
+
+    pub fn get_history(&self) -> Result<Vec<BlockHash>, StorageError> {
+        let history_max = 20;
+        let mut history = Vec::with_capacity(history_max);
+        let mut rng = rand::thread_rng();
+        for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
+            let pivot = (1 + rng.gen::<u8>() % 24) as i32;
+            let (key, value) = (key?, value?);
+            if value.is_applied && (value.level != 0) && (value.level % pivot == 0) && (value.chain_id == self.chain_id) {
+                history.push(key);
+                if history.len() >= history_max {
+                    break;
+                }
+            }
+        }
+        Ok(history)
     }
 }
 
