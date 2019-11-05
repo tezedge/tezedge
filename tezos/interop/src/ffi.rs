@@ -5,7 +5,7 @@ use failure::Fail;
 use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
 use serde::{Deserialize, Serialize};
 
-use tezos_api::ffi::{ApplyBlockResult, GenesisChain, OcamlStorageInitInfo, RustBytes, TestChain, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockResult, GenesisChain, OcamlStorageInitInfo, ProtocolOverrides, RustBytes, TestChain, TezosRuntimeConfiguration};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -50,7 +50,7 @@ impl From<ocaml::Error> for TezosRuntimeConfigurationError {
                 TezosRuntimeConfigurationError::ChangeConfigurationError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
-            },
+            }
             _ => panic!("Ocaml settings failed! Reason: {:?}", error)
         }
     }
@@ -85,7 +85,7 @@ impl From<ocaml::Error> for TezosStorageInitError {
                 TezosStorageInitError::InitializeError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
-            },
+            }
             _ => panic!("Storage initialization failed! Reason: {:?}", error)
         }
     }
@@ -97,15 +97,24 @@ impl slog::Value for TezosStorageInitError {
     }
 }
 
-pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain) -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
+pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides)
+                    -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
+        // genesis configuration
         let mut genesis_tuple: Tuple = Tuple::new(3);
         genesis_tuple.set(0, Str::from(genesis.time.as_str()).into()).unwrap();
         genesis_tuple.set(1, Str::from(genesis.block.as_str()).into()).unwrap();
         genesis_tuple.set(2, Str::from(genesis.protocol.as_str()).into()).unwrap();
 
+        // protocol overrides
+        let protocol_overrides_tuple: Tuple = protocol_overrides_to_ocaml(protocol_overrides)?;
+
         let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");
-        match ocaml_function.call2_exn::<Str, Value>(storage_data_dir.as_str().into(), Value::from(genesis_tuple)) {
+        match ocaml_function.call3_exn::<Str, Value, Value>(
+            storage_data_dir.as_str().into(),
+            Value::from(genesis_tuple),
+            Value::from(protocol_overrides_tuple)
+        ) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
 
@@ -177,7 +186,7 @@ impl From<ocaml::Error> for BlockHeaderError {
                 BlockHeaderError::ReadError {
                     message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
                 }
-            },
+            }
             _ => panic!("Storage initialization failed! Reason: {:?}", error)
         }
     }
@@ -261,7 +270,7 @@ impl From<ocaml::Error> for ApplyBlockError {
                         }
                     }
                 }
-            },
+            }
             _ => panic!("Unhandled ocaml error occurred for apply block! Error: {:?}", error)
         }
     }
@@ -298,9 +307,9 @@ pub fn apply_block(
                     validation_result_message: validation_result_message.as_str().to_string(),
                     context_hash: context_hash.convert_to(),
                     block_header_proto_json: block_header_proto_json.as_str().to_string(),
-                    block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string()
+                    block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string(),
                 })
-            },
+            }
             Err(e) => {
                 Err(ApplyBlockError::from(e))
             }
@@ -335,13 +344,39 @@ pub fn block_header_to_ocaml(block_header_hash: &RustBytes, block_header: &RustB
     Ok(block_header_tuple)
 }
 
+pub fn protocol_overrides_to_ocaml(protocol_overrides: &ProtocolOverrides) -> Result<Tuple, ocaml::Error> {
+
+    let mut forced_protocol_upgrades = List::new();
+    protocol_overrides.forced_protocol_upgrades.iter().rev()
+        .for_each(|(level, protocol_hash)| {
+            let mut tuple: Tuple = Tuple::new(2);
+            tuple.set(0, Value::int32(level.clone())).unwrap();
+            tuple.set(1, Str::from(protocol_hash.as_str()).into()).unwrap();
+            forced_protocol_upgrades.push_hd(Value::from(tuple));
+        });
+
+    let mut voted_protocol_overrides = List::new();
+    protocol_overrides.voted_protocol_overrides.iter().rev()
+        .for_each(|(protocol_hash1, protocol_hash2)| {
+            let mut tuple: Tuple = Tuple::new(2);
+            tuple.set(0, Str::from(protocol_hash1.as_str()).into()).unwrap();
+            tuple.set(1, Str::from(protocol_hash2.as_str()).into()).unwrap();
+            voted_protocol_overrides.push_hd(Value::from(tuple));
+        });
+
+    let mut protocol_overrides: Tuple = Tuple::new(2);
+    protocol_overrides.set(0, Value::from(forced_protocol_upgrades))?;
+    protocol_overrides.set(1, Value::from(voted_protocol_overrides))?;
+    Ok(protocol_overrides)
+}
+
 fn parse_error_message(ffi_error: Value) -> Option<String> {
     if ffi_error.is_block() {
         // for exceptions, in the field 2, there is a message for Failure or Ffi_error
         let error_message = ffi_error.field(1);
         if error_message.tag() == Tag::String {
             let error_message: Str = error_message.into();
-            return Some(error_message.as_str().to_string())
+            return Some(error_message.as_str().to_string());
         }
     }
     None

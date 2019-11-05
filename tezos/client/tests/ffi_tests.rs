@@ -50,13 +50,14 @@ fn test_fn_get_block_header_not_found_return_none() {
 
 /// Initializes empty dir for ocaml storage
 fn prepare_empty_storage(dir_name: &str) -> OcamlStorageInitInfo {
+    let cfg = environment::TEZOS_ENV.get(&TezosEnvironment::Alphanet).expect("no tezos environment configured");
+
     // init empty storage for test
     let storage_data_dir_path = common::prepare_empty_dir(dir_name);
     let storage_init_info = ffi::init_storage(
         storage_data_dir_path.to_string(),
-        &environment::TEZOS_ENV.get(&TezosEnvironment::Alphanet)
-            .expect("no tezos environment configured")
-            .genesis,
+        &cfg.genesis,
+        &cfg.protocol_overrides
     ).unwrap().unwrap();
 
     let expected_chain_id = hex::decode(CHAIN_ID).unwrap();

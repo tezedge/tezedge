@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
 
-use crate::ffi::GenesisChain;
+use crate::ffi::{GenesisChain, ProtocolOverrides};
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
@@ -20,7 +20,7 @@ pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
     Mainnet,
-    Zeronet
+    Zeronet,
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +54,11 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "boot.tzalpha.net".to_string(),
             "bootalpha.tzbeta.net".to_string()
         ],
-        version: "TEZOS_ALPHANET_2018-11-30T15:30:56Z".to_string()
+        version: "TEZOS_ALPHANET_2018-11-30T15:30:56Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
     });
 
     env.insert(TezosEnvironment::Babylonnet, TezosEnvironmentConfiguration {
@@ -69,7 +73,11 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "babylonnet.kaml.fr".to_string(),
             "tezaria.com".to_string()
         ],
-        version: "TEZOS_ALPHANET_BABYLON_2019-09-27T07:43:32Z".to_string()
+        version: "TEZOS_ALPHANET_BABYLON_2019-09-27T07:43:32Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
     });
 
     env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
@@ -81,7 +89,16 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         bootstrap_lookup_addresses: vec![
             "boot.tzbeta.net".to_string()
         ],
-        version: "TEZOS_BETANET_2018-06-30T16:07:32Z".to_string()
+        version: "TEZOS_BETANET_2018-06-30T16:07:32Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![
+                (28082 as i32, "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string()),
+                (204761 as i32, "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string())
+            ],
+            voted_protocol_overrides: vec![
+                ("PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(), "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string())
+            ],
+        },
     });
 
     env.insert(TezosEnvironment::Zeronet, TezosEnvironmentConfiguration {
@@ -94,7 +111,11 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "bootstrap.zeronet.fun".to_string(),
             "bootzero.tzbeta.net".to_string()
         ],
-        version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string()
+        version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
     });
 
     env
@@ -104,4 +125,5 @@ pub struct TezosEnvironmentConfiguration {
     pub genesis: GenesisChain,
     pub bootstrap_lookup_addresses: Vec<String>,
     pub version: String,
+    pub protocol_overrides: ProtocolOverrides,
 }
