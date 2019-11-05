@@ -51,7 +51,6 @@ pub struct CurrentBranch {
     #[get = "pub"]
     current_head: BlockHeader,
     #[get = "pub"]
-    #[new(default)]
     history: Vec<BlockHash>,
     #[new(default)]
     #[serde(skip_serializing)]

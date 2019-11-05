@@ -89,13 +89,23 @@ impl Environment {
                 .long("p2p-port")
                 .takes_value(true)
                 .default_value("9732")
+                .value_name("PORT")
                 .help("Socket listening port for p2p for communication with tezos world")
+                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+            .arg(Arg::with_name("monitor-port")
+                .short("m")
+                .long("monitor-port")
+                .takes_value(true)
+                .default_value("3030")
+                .value_name("PORT")
+                .help("Port on which the Tezedge node monitoring information will be exposed")
                 .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
             .arg(Arg::with_name("rpc-port")
                 .short("r")
                 .long("rpc-port")
                 .takes_value(true)
                 .default_value("18732")
+                .value_name("PORT")
                 .help("Rust server RPC port for communication with rust node")
                 .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
             .arg(Arg::with_name("peers")
@@ -103,11 +113,24 @@ impl Environment {
                 .long("peers")
                 .takes_value(true)
                 .required(false)
-                .help("A peer to bootstrap the network from. Peers are delimited by a colon."))
+                .value_name("IP:PORT")
+                .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
+                .validator(|v| {
+                    let err_count = v.split(',')
+                        .map(|ip_port| ip_port.parse::<SocketAddr>())
+                        .filter(|v| v.is_err())
+                        .count();
+                    if err_count == 0 {
+                        Ok(())
+                    } else {
+                        Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
+                    }
+                }))
             .arg(Arg::with_name("bootstrap-lookup-address")
                 .short("b")
                 .long("bootstrap-lookup-address")
                 .takes_value(true)
+                .conflicts_with("peers")
                 .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
             .arg(Arg::with_name("identity")
                 .short("i")
@@ -135,15 +158,19 @@ impl Environment {
                     }
                 }))
             .arg(Arg::with_name("peer-thresh-low")
+                .short("t")
                 .long("peer-thresh-low")
                 .takes_value(true)
                 .default_value("2")
+                .value_name("NUM")
                 .help("Minimal number of peers to connect to")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
             .arg(Arg::with_name("peer-thresh-high")
+                .short("T")
                 .long("peer-thresh-high")
                 .takes_value(true)
                 .default_value("15")
+                .value_name("NUM")
                 .help("Maximal number of peers to connect to")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
             .arg(Arg::with_name("ocaml-log-enabled")
@@ -174,7 +201,7 @@ impl Environment {
                 .takes_value(true)
                 .default_value("simple")
                 .possible_values(&["json", "simple"])
-                .help("Set output format of the log. Possible values: simple, json"))
+                .help("Set output format of the log."))
             .arg(Arg::with_name("log-file")
                 .short("F")
                 .long("log-file")
@@ -217,10 +244,16 @@ impl Environment {
                         .split(',')
                         .map(|address| address.to_string())
                         .collect()
-                    ).unwrap_or_else(|| match environment::TEZOS_ENV.get(&tezos_network) {
-                    None => panic!("No tezos environment configured for: {:?}", tezos_network),
-                    Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
-                }
+                    ).unwrap_or_else(|| {
+                        if !args.is_present("peers") {
+                            match environment::TEZOS_ENV.get(&tezos_network) {
+                                None => panic!("No tezos environment configured for: {:?}", tezos_network),
+                                Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
+                            }
+                        } else {
+                            Vec::with_capacity(0)
+                        }
+                    }
                 ),
                 initial_peers: args.value_of("peers")
                     .map(|peers_str| peers_str
@@ -289,8 +322,8 @@ impl Environment {
 
 fn verbose_occurrences_to_level(occurrences: u64) -> slog::Level {
     match occurrences {
+        0 => slog::Level::Info,
         1 => slog::Level::Debug,
-        2 => slog::Level::Trace,
-        _ => slog::Level::Info,
+        _ => slog::Level::Trace,
     }
 }

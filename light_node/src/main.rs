@@ -46,8 +46,8 @@ macro_rules! shutdown_and_exit {
 macro_rules! create_terminal_logger {
     ($type:expr) => {{
         match $type {
-            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build(),
-            LogFormat::Json => slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse()).build(),
+            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).chan_size(32768).overflow_strategy(slog_async::OverflowStrategy::Block).build(),
+            LogFormat::Json => slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse()).chan_size(32768).overflow_strategy(slog_async::OverflowStrategy::Block).build(),
         }
     }}
 }
@@ -61,8 +61,8 @@ macro_rules! create_file_logger {
             .build();
 
         match $type {
-            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::PlainDecorator::new(appender)).build().fuse()).build(),
-            LogFormat::Json => slog_async::Async::new(detailed_json::default(appender).fuse()).build(),
+            LogFormat::Simple => slog_async::Async::new(slog_term::FullFormat::new(slog_term::PlainDecorator::new(appender)).build().fuse()).chan_size(32768).overflow_strategy(slog_async::OverflowStrategy::Block).build(),
+            LogFormat::Json => slog_async::Async::new(detailed_json::default(appender).fuse()).chan_size(32768).overflow_strategy(slog_async::OverflowStrategy::Block).build(),
         }
     }}
 }
@@ -113,7 +113,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], 3030).into(), &tokio_runtime, rocks_db.clone(), init_info.chain_id, init_info.supported_protocol_hashes)
+    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], configuration::ENV.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), init_info.chain_id, init_info.supported_protocol_hashes)
         .expect("Failed to create RPC server");
     if configuration::ENV.record {
         info!(log, "Running in record mode");

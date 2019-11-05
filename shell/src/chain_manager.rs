@@ -28,7 +28,7 @@ const OPERATIONS_BATCH_SIZE: usize = 10;
 const PEER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
 const PEER_SILENCE_TIMEOUT: Duration = Duration::from_secs(120);
 const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(30);
-const ASK_CURRENT_BRANCH_INTERVAL: Duration = Duration::from_secs(50);
+const ASK_CURRENT_BRANCH_INTERVAL: Duration = Duration::from_secs(45);
 
 #[derive(Clone, Debug)]
 pub struct CheckChainCompleteness;
@@ -231,10 +231,11 @@ impl ChainManager {
                                     ctx.myself().tell(CheckChainCompleteness, None);
                                 }
                                 PeerMessage::GetCurrentBranch(message) => {
-                                    debug!(log, "Current branch requested");
+                                    debug!(log, "Current branch requested by a peer");
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone()));
+                                            let history = block_state.get_history()?;
+                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
                                             tell_peer(msg.into(), peer);
                                         }
                                     }
@@ -243,7 +244,7 @@ impl ChainManager {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(missing_block) => {
-                                            debug!(log, "Received block header");
+                                            trace!(log, "Received block header");
                                             let is_new_block =
                                                 block_state.process_block_header(&block_header_with_hash)
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
@@ -292,7 +293,7 @@ impl ChainManager {
                                         Some(missing_operations) => {
                                             let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
-                                                debug!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
+                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // trigger CheckChainCompleteness
                                                     ctx.myself().tell(CheckChainCompleteness, None);
