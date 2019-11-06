@@ -198,6 +198,9 @@ impl ChainManager {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!(log, "Received current branch");
+                                    if message.current_branch().current_head().level() > 0 {
+                                        block_state.push_missing_block(message.current_branch().current_head().predecessor().clone().into())?;
+                                    }
                                     message.current_branch().history().iter().cloned().rev()
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;
