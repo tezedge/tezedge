@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,7 +9,7 @@ use std::time::Duration;
 
 use futures::lock::Mutex;
 use riker::actors::*;
-use slog::info;
+use slog::{debug, info};
 use tokio::future::FutureExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::TaskExecutor;
@@ -20,7 +21,7 @@ use super::peer::{Bootstrap, Peer, PeerRef};
 /// Blacklist the IP address.
 #[derive(Clone, Debug)]
 pub struct BlacklistIpAddress {
-    address: IpAddr,
+    pub address: IpAddr,
 }
 
 /// Whitelist the IP address.
@@ -28,6 +29,10 @@ pub struct BlacklistIpAddress {
 pub struct WhitelistIpAddress {
     address: IpAddr,
 }
+
+/// Whitelist all IP address.
+#[derive(Clone, Debug)]
+pub struct WhitelistAllIpAddresses;
 
 /// Accept incoming peer connection.
 #[derive(Clone, Debug)]
@@ -43,10 +48,12 @@ pub struct ConnectToPeer {
 }
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
+/// Whitelist all IP addresses after 30 minutes
+const WHITELIST_INTERVAL: Duration = Duration::from_secs(1_800);
 
 pub type NetworkManagerRef = ActorRef<NetworkManagerMsg>;
 
-#[actor(BlacklistIpAddress, WhitelistIpAddress, AcceptPeer, ConnectToPeer)]
+#[actor(BlacklistIpAddress, WhitelistIpAddress, WhitelistAllIpAddresses, AcceptPeer, ConnectToPeer)]
 pub struct NetworkManager {
     network_channel: NetworkChannelRef,
     tokio_executor: TaskExecutor,
@@ -58,6 +65,8 @@ pub struct NetworkManager {
     /// Message receiver boolean indicating whether
     /// more connections should be accepted from network
     rx_run: Arc<AtomicBool>,
+    /// set of blacklisted IP addresses
+    ip_blacklist: HashSet<IpAddr>,
 }
 
 impl NetworkManager {
@@ -91,6 +100,7 @@ impl NetworkManager {
             proof_of_work_stamp,
             version,
             rx_run: Arc::new(AtomicBool::new(true)),
+            ip_blacklist: HashSet::new(),
         }
     }
 
@@ -118,6 +128,10 @@ impl NetworkManager {
 
         peer
     }
+
+    fn is_blacklisted(&self, ip_address: &IpAddr) -> bool {
+        self.ip_blacklist.contains(ip_address)
+    }
 }
 
 impl Actor for NetworkManager {
@@ -131,6 +145,14 @@ impl Actor for NetworkManager {
         self.tokio_executor.spawn(async move {
             begin_listen_incoming(listener_port, myself, rx_run).await;
         });
+
+
+        ctx.schedule::<Self::Msg, _>(
+            WHITELIST_INTERVAL,
+            WHITELIST_INTERVAL,
+            ctx.myself(),
+            None,
+            WhitelistAllIpAddresses.into());
     }
 
     fn post_stop(&mut self) {
@@ -146,16 +168,27 @@ impl Actor for NetworkManager {
 impl Receive<BlacklistIpAddress> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: BlacklistIpAddress, _sender: Sender) {
-        unimplemented!()
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: BlacklistIpAddress, _sender: Sender) {
+        info!(ctx.system.log(), "Blacklisting peer"; "ip" => format!("{}", msg.address));
+        self.ip_blacklist.insert(msg.address);
     }
 }
 
 impl Receive<WhitelistIpAddress> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: WhitelistIpAddress, _sender: Sender) {
-        unimplemented!()
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: WhitelistIpAddress, _sender: Sender) {
+        info!(ctx.system.log(), "Whitelisting peer"; "ip" => format!("{}", msg.address));
+        self.ip_blacklist.remove(&msg.address);
+    }
+}
+
+impl Receive<WhitelistAllIpAddresses> for NetworkManager {
+    type Msg = NetworkManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: WhitelistAllIpAddresses, _sender: Sender) {
+        info!(ctx.system.log(), "Whitelisting all IP addresses");
+        self.ip_blacklist.clear();
     }
 }
 
@@ -163,26 +196,30 @@ impl Receive<ConnectToPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ConnectToPeer, _sender: Sender) {
-        let peer = self.create_peer(ctx, &msg.address);
-        let system = ctx.system.clone();
+        if self.is_blacklisted(&msg.address.ip()) {
+            debug!(ctx.system.log(), "Peer is blacklisted - will not connect"; "ip" => format!("{}", msg.address.ip()));
+        } else {
+            let peer = self.create_peer(ctx, &msg.address);
+            let system = ctx.system.clone();
 
-        self.tokio_executor.spawn(async move {
-            info!(system.log(), "Connecting to IP"; "ip" => msg.address);
-            match TcpStream::connect(&msg.address).timeout(CONNECT_TIMEOUT).await {
-                Ok(Ok(stream)) => {
-                    info!(system.log(), "Connection successful"; "ip" => msg.address);
-                    peer.tell(Bootstrap::outgoing(stream, msg.address), None);
+            self.tokio_executor.spawn(async move {
+                info!(system.log(), "Connecting to IP"; "ip" => msg.address);
+                match TcpStream::connect(&msg.address).timeout(CONNECT_TIMEOUT).await {
+                    Ok(Ok(stream)) => {
+                        info!(system.log(), "Connection successful"; "ip" => msg.address);
+                        peer.tell(Bootstrap::outgoing(stream, msg.address), None);
+                    }
+                    Ok(Err(_)) => {
+                        info!(system.log(), "Connection failed"; "ip" => msg.address);
+                        system.stop(peer);
+                    }
+                    Err(_) => {
+                        info!(system.log(), "Connection timed out"; "ip" => msg.address);
+                        system.stop(peer);
+                    }
                 }
-                Ok(Err(_)) => {
-                    info!(system.log(), "Connection failed"; "ip" => msg.address);
-                    system.stop(peer);
-                }
-                Err(_) => {
-                    info!(system.log(), "Connection timed out"; "ip" => msg.address);
-                    system.stop(peer);
-                }
-            }
-        });
+            });
+        }
     }
 }
 
@@ -190,9 +227,13 @@ impl Receive<AcceptPeer> for NetworkManager {
     type Msg = NetworkManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
-        info!(ctx.system.log(), "Connection from"; "ip" => msg.address);
-        let peer = self.create_peer(ctx, &msg.address);
-        peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
+        if self.is_blacklisted(&msg.address.ip()) {
+            debug!(ctx.system.log(), "Peer is blacklisted - will not accept connection"; "ip" => format!("{}", msg.address.ip()));
+        } else {
+            info!(ctx.system.log(), "Connection from"; "ip" => msg.address);
+            let peer = self.create_peer(ctx, &msg.address);
+            peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
+        }
     }
 }
 

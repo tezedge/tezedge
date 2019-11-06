@@ -12,8 +12,8 @@ use rand::seq::SliceRandom;
 use riker::actors::*;
 use slog::{info, Logger, warn};
 
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
-use networking::p2p::network_manager::{ConnectToPeer, NetworkManagerRef};
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
+use networking::p2p::network_manager::{BlacklistIpAddress, ConnectToPeer, NetworkManagerRef};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -177,6 +177,9 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                         self.potential_peers.extend(sock_addresses);
                         ctx.myself().tell(CheckPeerCount, None);
                     })
+            }
+            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure { address }) => {
+                self.network.tell(BlacklistIpAddress { address: address.ip() }, ctx.myself().into())
             }
             _ => ()
         }

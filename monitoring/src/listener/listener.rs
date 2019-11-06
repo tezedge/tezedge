@@ -9,7 +9,7 @@ use riker::actor::*;
 use rocksdb::DB;
 use slog::warn;
 
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::listener::events::{Event, EventPayloadStorage, EventStorage, EventType};
@@ -58,7 +58,7 @@ impl Actor for NetworkChannelListener {
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, _sender: Option<BasicActorRef>) {
-        // TryFrom<u128> for u64 fail iff value of converting u128 is bigger than u64::max_value()
+        // TryFrom<u128> for u64 fail if value of converting u128 is bigger than u64::max_value()
         let timestamp = self.start.elapsed().as_micros().try_into().unwrap_or(u64::max_value());
 
         let (record_type, peer_id, record) = match msg {
@@ -66,7 +66,11 @@ impl Actor for NetworkChannelListener {
                 (EventType::PeerCreated, msg.peer.name().to_string(), Vec::new())
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {
-                (EventType::PeerBootstrapped, msg.peer.name().to_string(), msg.peer_id.into_bytes())
+                match msg {
+                    PeerBootstrapped::Success { peer, peer_id } => (EventType::PeerBootstrapped, peer.name().to_string(), peer_id.into_bytes()),
+                    PeerBootstrapped::Failure { .. } => return,   // ignore message
+                }
+
             }
             NetworkChannelMsg::PeerMessageReceived(msg) => {
                 (EventType::PeerReceivedMessage, msg.peer.name().to_string(), msg.message.as_bytes().unwrap_or_default())

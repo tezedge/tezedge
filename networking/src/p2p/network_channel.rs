@@ -23,9 +23,14 @@ pub struct PeerCreated {
 
 /// Peer has been bootstrapped.
 #[derive(Clone, Debug)]
-pub struct PeerBootstrapped {
-    pub peer: PeerRef,
-    pub peer_id: String,
+pub enum PeerBootstrapped {
+    Success {
+        peer: PeerRef,
+        peer_id: String,
+    },
+    Failure {
+        address: SocketAddr,
+    },
 }
 
 /// We have received message from another peer

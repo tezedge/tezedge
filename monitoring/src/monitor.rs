@@ -13,6 +13,7 @@ use slog::{Logger, warn};
 use networking::p2p::{
     network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
 };
+use networking::p2p::network_channel::PeerBootstrapped;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::{BlockMetaStorage, IteratorMode};
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -213,8 +214,11 @@ impl Receive<NetworkChannelMsg> for Monitor {
                 );
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {
-                if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
-                    monitor.public_key = Some(msg.peer_id);
+                match msg {
+                    PeerBootstrapped::Success { peer, peer_id } => if let Some(monitor) = self.peer_monitors.get_mut(peer.uri()) {
+                        monitor.public_key = Some(peer_id);
+                    }
+                    PeerBootstrapped::Failure { .. } => ()
                 }
             }
             NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, ctx.system.log()),
