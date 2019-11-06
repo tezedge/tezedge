@@ -148,7 +148,7 @@ impl Receive<CheckPeerCount> for PeerManager {
                     self.network.tell(ConnectToPeer { address }, ctx.myself().into())
                 });
         } else if self.peers.len() > self.threshold.high {
-            warn!(self.log, "Peer count is too high. Some peers will be stopped"; "actual" => self.peers.len(), "required" => self.threshold.high);
+            warn!(self.log, "Peer count is too high. Some peers will be stopped"; "actual" => self.peers.len(), "limit" => self.threshold.high);
 
             // stop some peers
             self.peers.values()

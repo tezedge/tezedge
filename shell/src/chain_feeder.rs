@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{debug, error, info, Logger, warn};
+use slog::{debug, error, Logger, warn};
 
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
 use tezos_api::client::TezosStorageInitInfo;
@@ -171,14 +171,14 @@ fn feed_chain_to_protocol(
                             // Good, we have block data available, let's' look is we have all operations
                             // available. If yes we will apply them. If not, we will do nothing.
                             if operations_meta_storage.is_complete(&current_head.hash)? {
-                                info!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
+                                debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
                                 let operations = operations_storage.get_operations(&current_head_hash)?
                                     .drain(..)
                                     .map(Some)
                                     .collect();
                                 // apply block and it's operations
                                 let apply_block_result = protocol_wrapper_ipc.apply_block(&chain_id, &current_head.hash, &current_head.header, &operations)?;
-                                info!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => apply_block_result.validation_result_message);
+                                debug!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => apply_block_result.validation_result_message);
                                 // mark current head as applied
                                 current_head_meta.is_applied = true;
                                 block_meta_storage.put(&current_head.hash, &current_head_meta)?;
