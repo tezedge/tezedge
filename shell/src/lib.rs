@@ -8,8 +8,7 @@ use networking::p2p::network_channel::NetworkChannelTopic;
 use crate::shell_channel::ShellChannelTopic;
 
 mod collections;
-mod block_state;
-mod operations_state;
+mod state;
 
 pub mod shell_channel;
 pub mod chain_feeder;

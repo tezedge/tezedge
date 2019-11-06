@@ -27,8 +27,6 @@ addons:
       - libsodium-dev
       - libev4
 
-cache: cargo
-
 branches:
   only:
     - master
