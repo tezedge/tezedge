@@ -4,7 +4,6 @@
 use derive_new::new;
 use serde::{Deserialize, Serialize};
 
-
 pub type RustBytes = Vec<u8>;
 
 #[derive(Debug)]
@@ -12,6 +11,12 @@ pub struct GenesisChain {
     pub time: String,
     pub block: String,
     pub protocol: String,
+}
+
+#[derive(Debug)]
+pub struct ProtocolOverrides {
+    pub forced_protocol_upgrades: Vec<(i32, String)>,
+    pub voted_protocol_overrides: Vec<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -42,5 +47,5 @@ pub struct ApplyBlockResult {
     pub validation_result_message: String,
     pub context_hash: RustBytes,
     pub block_header_proto_json: String,
-    pub block_header_proto_metadata_json: String
+    pub block_header_proto_metadata_json: String,
 }

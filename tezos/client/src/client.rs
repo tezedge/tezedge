@@ -29,7 +29,7 @@ pub fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironmen
         }),
         Some(cfg) => cfg
     };
-    match ffi::init_storage(storage_data_dir, &cfg.genesis) {
+    match ffi::init_storage(storage_data_dir, &cfg.genesis, &cfg.protocol_overrides) {
         Ok(result) => Ok(TezosStorageInitInfo::new(result?)
             .map_err(|err| TezosStorageInitError::InitializeError { message: format!("Decoding from hex failed! Reason: {:?}", err) })?),
         Err(e) => {
