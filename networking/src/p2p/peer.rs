@@ -26,7 +26,7 @@ use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstr
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
 const READ_TIMEOUT_SHORT: Duration = Duration::from_secs(6);
-const READ_TIMEOUT_LONG: Duration = Duration::from_secs(60);
+const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
@@ -395,6 +395,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
             }
             Err(_) => {
                 warn!(log, "Peer message read timed out"; "secs" => READ_TIMEOUT_LONG.as_secs());
+                break;
             }
         }
     }
