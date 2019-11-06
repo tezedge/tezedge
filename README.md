@@ -52,6 +52,11 @@ Install libs required to build RocksDB package:
 sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers
 ```
 
+Install libs required to build light-node package:
+```
+sudo apt install libev-dev
+```
+
 Building
 --------
 
