@@ -10,7 +10,7 @@ use itertools::Itertools;
 use riker::actors::*;
 use slog::{debug, FnValue, info, trace, warn};
 
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use tezos_api::client::TezosStorageInitInfo;
@@ -76,10 +76,12 @@ struct Stats {
     unseen_block_last: Instant,
     /// Last time when last unseen operations was received
     unseen_operations_last: Instant,
-    /// Lest time when was the chain last time considered as incomplete
-    incomplete_chain_last: Instant,
     /// ID of the last applied block
     applied_block_level: Option<i32>,
+    /// Last time a block was applied
+    applied_block_last: Option<Instant>,
+    /// Last time state was hydrated
+    hydrated_state_last: Option<Instant>,
 }
 
 #[actor(DisconnectStalledPeers, CheckChainCompleteness, AskPeersAboutCurrentBranch, LogStats, NetworkChannelMsg, ShellChannelMsg, SystemEvent)]
@@ -135,8 +137,9 @@ impl ChainManager {
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
                 unseen_operations_last: Instant::now(),
-                incomplete_chain_last: Instant::now(),
+                applied_block_last: None,
                 applied_block_level: None,
+                hydrated_state_last: None,
             }
         }
     }
@@ -173,8 +176,6 @@ impl ChainManager {
                         }
                     }
                 });
-
-            stats.incomplete_chain_last = Instant::now();
         }
 
         if operations_state.has_missing_operations() {
@@ -204,13 +205,12 @@ impl ChainManager {
                         }
                     }
                 });
-
-            stats.incomplete_chain_last = Instant::now();
         }
 
-        if stats.incomplete_chain_last.elapsed() > STALLED_CHAIN_COMPLETENESS_TIMEOUT {
-            warn!(ctx.system.log(), "There were no changes to chain completeness state for some time."; "secs" => stats.incomplete_chain_last.elapsed().as_secs());
-            self.hydrate_state(ctx);
+        if let (Some(applied_block_last), Some(hydrated_state_last)) = (stats.applied_block_last, stats.hydrated_state_last) {
+            if (applied_block_last.elapsed() > STALLED_CHAIN_COMPLETENESS_TIMEOUT) && (hydrated_state_last.elapsed() > STALLED_CHAIN_COMPLETENESS_TIMEOUT) {
+                self.hydrate_state(ctx);
+            }
         }
 
         Ok(())
@@ -229,15 +229,15 @@ impl ChainManager {
         } = self;
 
         match msg {
-            NetworkChannelMsg::PeerBootstrapped(msg) => {
-                let log = ctx.system.log().new(slog::o!("peer" => msg.peer.name().to_string()));
+            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Success { peer, .. }) => {
+                let log = ctx.system.log().new(slog::o!("peer" => peer.name().to_string()));
 
                 debug!(log, "Requesting current branch");
-                let peer = PeerState::new(msg.peer);
+                let peer = PeerState::new(peer);
                 // store peer
                 let actor_uri = peer.peer_ref.uri().clone();
                 self.peers.insert(actor_uri.clone(), peer);
-
+                // retrieve mutable reference and use it as `tell_peer()` parameter
                 let peer = self.peers.get_mut(&actor_uri).unwrap();
                 tell_peer(GetCurrentBranchMessage::new(block_state.get_chain_id().clone()).into(), peer);
             }
@@ -416,6 +416,7 @@ impl ChainManager {
             ShellChannelMsg::BlockApplied(message) => {
                 self.current_head.local = message.hash;
                 self.stats.applied_block_level = Some(message.level);
+                self.stats.applied_block_last = Some(Instant::now());
             }
             _ => ()
         }
@@ -429,6 +430,8 @@ impl ChainManager {
         info!(ctx.system.log(), "Hydrating operations state");
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
         info!(ctx.system.log(), "Hydrating completed successfully");
+
+        self.stats.hydrated_state_last = Some(Instant::now());
     }
 }
 
@@ -503,14 +506,14 @@ impl Receive<LogStats> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
-        info!(log, "Peers info"; "count" => self.peers.len());
         let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
         info!(log, "Head info"; "local" => &block_hash_encoding.bytes_to_string(&self.current_head.local), "remote" => &block_hash_encoding.bytes_to_string(&self.current_head.remote), "remote_level" => self.current_head.remote_level);
-        info!(log, "Block and operations";
+        info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,
             "last_block_secs" => self.stats.unseen_block_last.elapsed().as_secs(),
             "last_operations_secs" => self.stats.unseen_operations_last.elapsed().as_secs(),
-            "applied_block_level" => self.stats.applied_block_level);
+            "applied_block_level" => self.stats.applied_block_level,
+            "applied_block_secs" => self.stats.applied_block_last.map(|i| i.elapsed().as_secs()));
         for peer in self.peers.values() {
             debug!(log, "Peer state info";
                 "actor_ref" => format!("{}", peer.peer_ref),
@@ -521,6 +524,7 @@ impl Receive<LogStats> for ChainManager {
                 "current_head_level" => peer.current_head_level,
                 "current_head_update_secs" => peer.current_head_update_last.elapsed().as_secs());
         }
+        info!(log, "Various info"; "peer_count" => self.peers.len(), "hydrated_state_secs" => self.stats.hydrated_state_last.map(|i| i.elapsed().as_secs()));
     }
 }
 

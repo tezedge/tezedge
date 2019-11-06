@@ -227,7 +227,7 @@ impl Receive<Bootstrap> for Peer {
         let myself = ctx.myself();
         let system = ctx.system.clone();
         let net = self.net.clone();
-        let event_channel = self.network_channel.clone();
+        let network_channel = self.network_channel.clone();
 
         self.tokio_executor.spawn(async move {
             async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
@@ -235,24 +235,38 @@ impl Receive<Bootstrap> for Peer {
                 *net.tx.lock().await = Some(tx);
             }
 
+            let peer_address = msg.address;
             match bootstrap(msg, info, system.log()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     setup_net(&net, tx).await;
 
                     let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&public_key);
-                    event_channel.tell(Publish { msg:
-                    PeerBootstrapped {
-                        peer: myself.clone(),
-                        peer_id: peer_id.clone(),
-                    }.into(), topic: NetworkChannelTopic::NetworkEvents.into() }, Some(myself.clone().into()));
+                    // notify that peer was bootstrapped successfully
+                    network_channel.tell(Publish {
+                        msg: PeerBootstrapped::Success {
+                                peer: myself.clone(),
+                                peer_id: peer_id.clone(),
+                        }.into(),
+                        topic: NetworkChannelTopic::NetworkEvents.into()
+                    }, Some(myself.clone().into()));
+
                     // begin to process incoming messages in a loop
                     let log = system.log().new(slog::o!("peer" => peer_id));
-                    begin_process_incoming(rx, net.rx_run, myself.clone(), event_channel, log).await;
+                    begin_process_incoming(rx, net.rx_run, myself.clone(), network_channel, log).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
-                Err(e) => {
-                    warn!(system.log(), "Connection to peer failed"; "reason" => e);
+                Err(err) => {
+                    warn!(system.log(), "Connection to peer failed"; "reason" => err, "ip" => &peer_address);
+
+                    // notify that peer failed at bootstrap process
+                    network_channel.tell(Publish {
+                        msg: PeerBootstrapped::Failure {
+                            address: peer_address,
+                        }.into(),
+                        topic: NetworkChannelTopic::NetworkEvents.into()
+                    }, Some(myself.clone().into()));
+
                     system.stop(myself);
                 }
             }
