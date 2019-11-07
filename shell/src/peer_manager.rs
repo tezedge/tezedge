@@ -7,7 +7,7 @@ use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dns_lookup::LookupError;
 use futures::lock::Mutex;
@@ -29,6 +29,8 @@ use crate::{subscribe_to_actor_terminated, subscribe_to_network_events};
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 /// Whitelist all IP addresses after 30 minutes
 const WHITELIST_INTERVAL: Duration = Duration::from_secs(1_800);
+/// How often to do DNS peer discovery
+const DISCOVERY_INTERVAL: Duration = Duration::from_secs(180);
 
 /// Check peer threshold
 #[derive(Clone, Debug)]
@@ -91,7 +93,8 @@ pub struct PeerManager {
     rx_run: Arc<AtomicBool>,
     /// set of blacklisted IP addresses
     ip_blacklist: HashSet<IpAddr>,
-
+    /// Last time we did DNS peer discovery
+    discovery_last: Option<Instant>,
 }
 
 pub type PeerManagerRef = ActorRef<PeerManagerMsg>;
@@ -143,11 +146,14 @@ impl PeerManager {
             rx_run: Arc::new(AtomicBool::new(true)),
             peers: HashMap::new(),
             ip_blacklist: HashSet::new(),
+            discovery_last: None,
         }
     }
 
     fn discover_peers(&mut self) {
-        if self.peers.is_empty() {
+        if self.peers.is_empty() || self.discovery_last.filter(|discovery_last| discovery_last.elapsed() <= DISCOVERY_INTERVAL).is_none() {
+            self.discovery_last = Some(Instant::now());
+
             info!(self.log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
             dns_lookup_peers(&self.bootstrap_addresses, self.log.clone()).iter()
                 .for_each(|i| {
