@@ -16,7 +16,6 @@ riker-patterns = "0.3.2"
 slog = "2.5"
 tokio = "0.2.0-alpha.6"
 tokio-io = "0.2.0-alpha.6"
-tokio-timer = "0.2.0-alpha.6"
 # local dependencies
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
