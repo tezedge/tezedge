@@ -15,7 +15,6 @@ use monitoring::{listener::{
     EventStorage, NetworkChannelListener,
 }, Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
-use networking::p2p::network_manager::NetworkManager;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
@@ -83,26 +82,19 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system)
         .expect("Failed to create shell channel");
-    let network_manager = NetworkManager::actor(
+    let _ = PeerManager::actor(
         &actor_system,
         network_channel.clone(),
         tokio_runtime.executor(),
+        &configuration::ENV.p2p.bootstrap_lookup_addresses,
+        &configuration::ENV.p2p.initial_peers,
+        configuration::ENV.p2p.peer_threshold,
         configuration::ENV.p2p.listener_port,
-        identity.public_key,
-        identity.secret_key,
-        identity.proof_of_work_stamp,
+        identity,
         environment::TEZOS_ENV
             .get(&configuration::ENV.tezos_network)
             .map(|cfg| cfg.version.clone())
             .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network)),
-    ).expect("Failed to create network manager");
-    let _ = PeerManager::actor(
-        &actor_system,
-        network_channel.clone(),
-        network_manager.clone(),
-        &configuration::ENV.p2p.bootstrap_lookup_addresses,
-        &configuration::ENV.p2p.initial_peers,
-        configuration::ENV.p2p.peer_threshold,
         log.clone())
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
