@@ -94,8 +94,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         environment::TEZOS_ENV
             .get(&configuration::ENV.tezos_network)
             .map(|cfg| cfg.version.clone())
-            .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network)),
-        log.clone())
+            .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network)))
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
         .expect("Failed to create chain manager");

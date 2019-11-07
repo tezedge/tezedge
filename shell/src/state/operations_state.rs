@@ -67,9 +67,15 @@ impl OperationsState {
         self.operations_meta_storage.is_complete(message.operations_for_block().hash())
     }
 
-    pub fn drain_missing_operations(&mut self, n: usize) -> Vec<MissingOperations> {
+    pub fn drain_missing_operations(&mut self, n: usize, level_max: i32) -> Vec<MissingOperations> {
         (0..cmp::min(self.missing_operations_for_blocks.len(), n))
-            .map(|_| self.missing_operations_for_blocks.pop().unwrap())
+            .filter_map(|_| {
+                if self.missing_operations_for_blocks.peek().filter(|operations| operations.level <= level_max).is_some() {
+                    self.missing_operations_for_blocks.pop()
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 
