@@ -149,11 +149,12 @@ impl ChainManager {
 
         if block_state.has_missing_blocks() {
             peers.values_mut()
+                .filter(|peer| peer.current_head_level.is_some())
                 .sorted_by_key(|peer| peer.available_block_queue_capacity()).rev()
                 .for_each(|peer| {
                     let available_capacity = peer.available_block_queue_capacity();
                     if available_capacity > 0 {
-                        let mut missing_blocks = block_state.drain_missing_blocks(available_capacity);
+                        let mut missing_blocks = block_state.drain_missing_blocks(available_capacity, peer.current_head_level.unwrap());
                         if !missing_blocks.is_empty() {
 
                             let queued_blocks = missing_blocks.drain(..)
@@ -180,11 +181,12 @@ impl ChainManager {
 
         if operations_state.has_missing_operations() {
             peers.values_mut()
+                .filter(|peer| peer.current_head_level.is_some())
                 .sorted_by_key(|peer| peer.available_operations_queue_capacity()).rev()
                 .for_each(|peer| {
                     let available_capacity = peer.available_operations_queue_capacity();
                     if available_capacity > 0 {
-                        let missing_operations = operations_state.drain_missing_operations(available_capacity);
+                        let missing_operations = operations_state.drain_missing_operations(available_capacity, peer.current_head_level.unwrap());
                         if !missing_operations.is_empty() {
 
                             let queued_operations = missing_operations.iter()
@@ -268,8 +270,8 @@ impl ChainManager {
                                     }
 
                                     // update peer stats
-                                    if message.current_branch().current_head().level() > peer.current_head_level {
-                                        peer.current_head_level = message.current_branch().current_head().level();
+                                    if peer.current_head_level.is_none() || (message.current_branch().current_head().level() > peer.current_head_level.unwrap()) {
+                                        peer.current_head_level = Some(message.current_branch().current_head().level());
                                         peer.current_head_update_last = Instant::now();
                                     }
 
@@ -597,7 +599,7 @@ struct PeerState {
     /// Last time we have seen response from the peer
     response_last: Instant,
     /// Level of the current head received from peer
-    current_head_level: i32,
+    current_head_level: Option<i32>,
     /// Last time we received updated head from peer
     current_head_update_last: Instant,
 }
@@ -610,7 +612,7 @@ impl PeerState {
             queued_operations: HashMap::new(),
             request_last: Instant::now(),
             response_last: Instant::now(),
-            current_head_level: 0,
+            current_head_level: None,
             current_head_update_last: Instant::now(),
         }
     }

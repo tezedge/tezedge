@@ -45,9 +45,15 @@ impl BlockState {
     }
 
     #[inline]
-    pub fn drain_missing_blocks(&mut self, n: usize) -> Vec<MissingBlock> {
+    pub fn drain_missing_blocks(&mut self, n: usize, level_max: i32) -> Vec<MissingBlock> {
         (0..cmp::min(self.missing_blocks.len(), n))
-            .map(|_| self.missing_blocks.pop().unwrap())
+            .filter_map(|_| {
+                if self.missing_blocks.peek().filter(|block| block.level <= level_max).is_some() {
+                    self.missing_blocks.pop()
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 

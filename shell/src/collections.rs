@@ -34,6 +34,11 @@ impl<T: BlockData + Ord> UniqueBlockData<T> {
         }
         item
     }
+
+    #[inline]
+    pub(crate) fn peek(&self) -> Option<&T> {
+        self.binary_heap.peek()
+    }
 }
 
 impl<T> UniqueBlockData<T> {
