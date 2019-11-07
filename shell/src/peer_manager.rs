@@ -156,9 +156,11 @@ impl PeerManager {
 
             info!(self.log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
             dns_lookup_peers(&self.bootstrap_addresses, self.log.clone()).iter()
-                .for_each(|i| {
-                    info!(self.log, "Found potential peer"; "ip" => i);
-                    self.potential_peers.insert(*i);
+                .for_each(|address| {
+                    if !self.is_blacklisted(&address.ip()) {
+                        info!(self.log, "Found potential peer"; "address" => address);
+                        self.potential_peers.insert(*address);
+                    }
                 });
         } else {
             self.peers.values()
@@ -300,6 +302,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                         info!(self.log, "Received advertise message from peer"; "peer" => received.peer.name());
                         let sock_addresses = message.id().iter()
                             .filter_map(|str_ip_port| str_ip_port.parse().ok())
+                            .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
                             .collect::<Vec<SocketAddr>>();
                         self.potential_peers.extend(sock_addresses);
                         ctx.myself().tell(CheckPeerCount, None);
