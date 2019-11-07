@@ -30,7 +30,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 /// Whitelist all IP addresses after 30 minutes
 const WHITELIST_INTERVAL: Duration = Duration::from_secs(1_800);
 /// How often to do DNS peer discovery
-const DISCOVERY_INTERVAL: Duration = Duration::from_secs(180);
+const DISCOVERY_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Check peer threshold
 #[derive(Clone, Debug)]
@@ -76,6 +76,8 @@ pub struct PeerManager {
     peers: HashMap<ActorUri, PeerRef>,
     /// DNS addresses used for bootstrapping
     bootstrap_addresses: Vec<String>,
+    /// List of initial peers to connect to
+    initial_peers: HashSet<SocketAddr>,
     /// List of potential peers to connect to
     potential_peers: HashSet<SocketAddr>,
     /// Logger
@@ -131,19 +133,20 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn new((network_channel, tokio_executor, bootstrap_addresses, potential_peers, threshold, listener_port, identity, protocol_version, log):
+    fn new((network_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, log):
            (NetworkChannelRef, TaskExecutor, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, Logger)) -> Self {
         PeerManager {
             network_channel,
             tokio_executor,
             bootstrap_addresses,
-            potential_peers,
+            initial_peers,
             threshold,
             listener_port,
             identity,
             protocol_version,
             log,
             rx_run: Arc::new(AtomicBool::new(true)),
+            potential_peers: HashSet::new(),
             peers: HashMap::new(),
             ip_blacklist: HashSet::new(),
             discovery_last: None,
@@ -162,6 +165,11 @@ impl PeerManager {
                         self.potential_peers.insert(*address);
                     }
                 });
+
+            if self.potential_peers.is_empty() {
+                // DNS discovery yield no results, use initial peers
+                self.potential_peers.extend(&self.initial_peers);
+            }
         } else {
             self.peers.values()
                 .for_each(|peer| peer.tell(SendMessage::new(PeerMessage::Bootstrap.into()), None));
