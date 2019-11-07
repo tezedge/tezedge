@@ -35,8 +35,9 @@ const ASK_CURRENT_BRANCH_INTERVAL: Duration = Duration::from_secs(15);
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 /// After this time we will disconnect peer if his current head level stays the same
 const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
-/// After this interval we will rehydrate state if no new blocks are received.
-/// This is meant as a defensive measure in case something went wrong with the state machine.
+/// After this time peer will be disconnected if it fails to respond to our request
+const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
+/// After this interval we will rehydrate state if no new blocks are applied
 const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
 
 /// Message commands [`ChainManager`] to disconnect stalled peers.
@@ -172,6 +173,7 @@ impl ChainManager {
                                 .collect::<Vec<_>>();
 
                             if !queued_blocks.is_empty() {
+                                peer.block_request_last = Instant::now();
                                 tell_peer(GetBlockHeadersMessage::new(queued_blocks).into(), peer);
                             }
                         }
@@ -202,8 +204,11 @@ impl ChainManager {
                                 .filter_map(|missing_operation| missing_operation)
                                 .collect::<Vec<_>>();
 
-                            queued_operations.iter()
-                                .for_each(|&missing_operation| tell_peer(GetOperationsForBlocksMessage::new(missing_operation.into()).into(), peer));
+                            if !queued_operations.is_empty() {
+                                peer.operations_request_last = Instant::now();
+                                queued_operations.iter()
+                                    .for_each(|&missing_operation| tell_peer(GetOperationsForBlocksMessage::new(missing_operation.into()).into(), peer));
+                            }
                         }
                     }
                 });
@@ -248,8 +253,6 @@ impl ChainManager {
 
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
-                        peer.response_last = Instant::now();
-
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
@@ -303,6 +306,8 @@ impl ChainManager {
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(missing_block) => {
                                             trace!(log, "Received block header");
+                                            peer.block_response_last = Instant::now();
+
                                             let is_new_block =
                                                 block_state.process_block_header(&block_header_with_hash)
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
@@ -355,7 +360,9 @@ impl ChainManager {
                                         Some(missing_operations) => {
                                             let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
+                                                peer.operations_response_last = Instant::now();
                                                 trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
+
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // update stats
                                                     stats.unseen_operations_last = Instant::now();
@@ -466,8 +473,8 @@ impl Actor for ChainManager {
             None,
             LogStats.into());
         ctx.schedule::<Self::Msg, _>(
-            CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT / 2,
-            CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT / 2,
+            SILENT_PEER_TIMEOUT / 2,
+            SILENT_PEER_TIMEOUT / 2,
             ctx.myself(),
             None,
             DisconnectStalledPeers.into());
@@ -521,8 +528,10 @@ impl Receive<LogStats> for ChainManager {
                 "actor_ref" => format!("{}", peer.peer_ref),
                 "queued_block_headers" => peer.queued_block_headers.len(),
                 "queued_operations" => peer.queued_operations.len(),
-                "request_last_secs" => peer.request_last.elapsed().as_secs(),
-                "response_last_secs" => peer.response_last.elapsed().as_secs(),
+                "block_request_secs" => peer.block_request_last.elapsed().as_secs(),
+                "block_response_secs" => peer.block_response_last.elapsed().as_secs(),
+                "operations_request_secs" => peer.operations_request_last.elapsed().as_secs(),
+                "operations_response_secs" => peer.operations_response_last.elapsed().as_secs(),
                 "current_head_level" => peer.current_head_level,
                 "current_head_update_secs" => peer.current_head_update_last.elapsed().as_secs());
         }
@@ -535,10 +544,17 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: DisconnectStalledPeers, _sender: Sender) {
         self.peers.iter()
-            .filter(|(_, state)| state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT)
             .for_each(|(uri, state)| {
-                warn!(ctx.system.log(), "Peer failed to update its current head"; "peer" => format!("{}", uri));
-                ctx.system.stop(state.peer_ref.clone());
+                if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
+                    warn!(ctx.system.log(), "Peer failed to update its current head"; "peer" => format!("{}", uri));
+                    ctx.system.stop(state.peer_ref.clone());
+                } else if (state.block_request_last > state.block_response_last) && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer did not respond to our request for block on time"; "peer" => format!("{}", uri), "request_secs" => state.block_request_last.elapsed().as_secs(), "response_secs" => state.block_response_last.elapsed().as_secs());
+                    ctx.system.stop(state.peer_ref.clone());
+                } else if (state.operations_request_last > state.operations_response_last) && (state.operations_request_last - state.operations_response_last > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer did not respond to our request for operations on time"; "peer" => format!("{}", uri), "request_secs" => state.operations_request_last.elapsed().as_secs(), "response_secs" => state.operations_response_last.elapsed().as_secs());
+                    ctx.system.stop(state.peer_ref.clone());
+                }
             });
     }
 }
@@ -594,14 +610,19 @@ struct PeerState {
     queued_block_headers: HashMap<BlockHash, MissingBlock>,
     /// Queued operations
     queued_operations: HashMap<BlockHash, MissingOperations>,
-    /// Last time we sent request to the peer
-    request_last: Instant,
-    /// Last time we have seen response from the peer
-    response_last: Instant,
     /// Level of the current head received from peer
     current_head_level: Option<i32>,
     /// Last time we received updated head from peer
     current_head_update_last: Instant,
+    /// Last time we requested block from the peer
+    block_request_last: Instant,
+    /// Last time we received block from the peer
+    block_response_last: Instant,
+    /// Last time we requested operations from the peer
+    operations_request_last: Instant,
+    /// Last time we received operations from the peer
+    operations_response_last: Instant,
+
 }
 
 impl PeerState {
@@ -610,10 +631,12 @@ impl PeerState {
             peer_ref,
             queued_block_headers: HashMap::new(),
             queued_operations: HashMap::new(),
-            request_last: Instant::now(),
-            response_last: Instant::now(),
             current_head_level: None,
             current_head_update_last: Instant::now(),
+            block_request_last: Instant::now(),
+            block_response_last: Instant::now(),
+            operations_request_last: Instant::now(),
+            operations_response_last: Instant::now(),
         }
     }
 
@@ -638,5 +661,4 @@ impl PeerState {
 
 fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
     peer.peer_ref.tell(SendMessage::new(msg), None);
-    peer.request_last = Instant::now();
 }

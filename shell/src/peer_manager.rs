@@ -167,6 +167,7 @@ impl PeerManager {
                 });
 
             if self.potential_peers.is_empty() {
+                info!(self.log, "Using initial peers as a potential peers"; "initial_peers" => format!("{:?}", &self.initial_peers));
                 // DNS discovery yield no results, use initial peers
                 self.potential_peers.extend(&self.initial_peers);
             }
