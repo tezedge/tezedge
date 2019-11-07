@@ -80,8 +80,6 @@ pub struct PeerManager {
     initial_peers: HashSet<SocketAddr>,
     /// List of potential peers to connect to
     potential_peers: HashSet<SocketAddr>,
-    /// Logger
-    log: Logger,
     /// Tokio runtime
     tokio_executor: TaskExecutor,
     /// We will listen for incoming connection at this port
@@ -111,7 +109,6 @@ impl PeerManager {
                  listener_port: u16,
                  identity: Identity,
                  protocol_version: String,
-                 log: Logger
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(PeerManager::new, (
@@ -122,8 +119,7 @@ impl PeerManager {
                 threshold,
                 listener_port,
                 identity,
-                protocol_version,
-                log)),
+                protocol_version)),
             PeerManager::name())
     }
 
@@ -133,8 +129,8 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn new((network_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, log):
-           (NetworkChannelRef, TaskExecutor, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, Logger)) -> Self {
+    fn new((network_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
+           (NetworkChannelRef, TaskExecutor, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self {
         PeerManager {
             network_channel,
             tokio_executor,
@@ -144,7 +140,6 @@ impl PeerManager {
             listener_port,
             identity,
             protocol_version,
-            log,
             rx_run: Arc::new(AtomicBool::new(true)),
             potential_peers: HashSet::new(),
             peers: HashMap::new(),
@@ -153,21 +148,21 @@ impl PeerManager {
         }
     }
 
-    fn discover_peers(&mut self) {
+    fn discover_peers(&mut self, log: Logger) {
         if self.peers.is_empty() || self.discovery_last.filter(|discovery_last| discovery_last.elapsed() <= DISCOVERY_INTERVAL).is_none() {
             self.discovery_last = Some(Instant::now());
 
-            info!(self.log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
-            dns_lookup_peers(&self.bootstrap_addresses, self.log.clone()).iter()
+            info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
+            dns_lookup_peers(&self.bootstrap_addresses, &log).iter()
                 .for_each(|address| {
                     if !self.is_blacklisted(&address.ip()) {
-                        info!(self.log, "Found potential peer"; "address" => address);
+                        info!(log, "Found potential peer"; "address" => address);
                         self.potential_peers.insert(*address);
                     }
                 });
 
             if self.potential_peers.is_empty() {
-                info!(self.log, "Using initial peers as a potential peers"; "initial_peers" => format!("{:?}", &self.initial_peers));
+                info!(log, "Using initial peers as a potential peers"; "initial_peers" => format!("{:?}", &self.initial_peers));
                 // DNS discovery yield no results, use initial peers
                 self.potential_peers.extend(&self.initial_peers);
             }
@@ -270,9 +265,9 @@ impl Receive<CheckPeerCount> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckPeerCount, _sender: Sender) {
         if self.peers.len() < self.threshold.low {
-            warn!(self.log, "Peer count is too low"; "actual" => self.peers.len(), "required" => self.threshold.low);
+            warn!(ctx.system.log(), "Peer count is too low"; "actual" => self.peers.len(), "required" => self.threshold.low);
             if self.potential_peers.len() < self.threshold.low {
-                self.discover_peers();
+                self.discover_peers(ctx.system.log());
             }
 
             let num_required_peers = self.threshold.low - self.peers.len();
@@ -286,7 +281,7 @@ impl Receive<CheckPeerCount> for PeerManager {
                     ctx.myself().tell(ConnectToPeer { address }, ctx.myself().into())
                 });
         } else if self.peers.len() > self.threshold.high {
-            warn!(self.log, "Peer count is too high. Some peers will be stopped"; "actual" => self.peers.len(), "limit" => self.threshold.high);
+            warn!(ctx.system.log(), "Peer count is too high. Some peers will be stopped"; "actual" => self.peers.len(), "limit" => self.threshold.high);
 
             // stop some peers
             self.peers.values()
@@ -308,7 +303,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 let messages = received.message.messages();
                 messages.iter()
                     .for_each(|message| if let PeerMessage::Advertise(message) = message {
-                        info!(self.log, "Received advertise message from peer"; "peer" => received.peer.name());
+                        info!(ctx.system.log(), "Received advertise message from peer"; "peer" => received.peer.name());
                         let sock_addresses = message.id().iter()
                             .filter_map(|str_ip_port| str_ip_port.parse().ok())
                             .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
@@ -318,6 +313,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                     })
             }
             NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure { address }) => {
+                info!(ctx.system.log(), "Blacklisting peer"; "ip" => format!("{}", address.ip()));
                 self.ip_blacklist.insert(address.ip());
             }
             _ => ()
@@ -395,7 +391,7 @@ async fn begin_listen_incoming(listener_port: u16, peer_manager: PeerManagerRef,
     }
 }
 
-fn dns_lookup_peers(bootstrap_addresses: &[String], log: Logger) -> HashSet<SocketAddr> {
+fn dns_lookup_peers(bootstrap_addresses: &[String], log: &Logger) -> HashSet<SocketAddr> {
     let mut resolved_peers = HashSet::new();
     for address in bootstrap_addresses {
         match resolve_dns_name_to_peer_address(&address) {
