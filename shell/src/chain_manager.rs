@@ -258,8 +258,12 @@ impl ChainManager {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!(log, "Received current branch");
                                     if message.current_branch().current_head().level() > 0 {
-                                        block_state.push_missing_block(message.current_branch().current_head().predecessor().clone().into())?;
+                                        block_state.push_missing_block(MissingBlock {
+                                                block_hash: message.current_branch().current_head().predecessor().clone(),
+                                                level: message.current_branch().current_head().level() - 1
+                                            })?;
                                     }
+                                    //TODO: refactor to support non zero level in MissingBlock 
                                     message.current_branch().history().iter().cloned().rev()
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;
@@ -304,7 +308,7 @@ impl ChainManager {
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
-                                        Some(missing_block) => {
+                                        Some(_missing_block) => {
                                             trace!(log, "Received block header");
                                             peer.block_response_last = Instant::now();
 
@@ -324,8 +328,8 @@ impl ChainManager {
                                                 shell_channel.tell(
                                                     Publish {
                                                         msg: BlockReceived {
-                                                            hash: missing_block.block_hash,
-                                                            level: missing_block.level,
+                                                            hash: block_header_with_hash.hash,
+                                                            level: block_header_with_hash.header.level(),
                                                         }.into(),
                                                         topic: ShellChannelTopic::ShellEvents.into(),
                                                     }, Some(ctx.myself().into()));

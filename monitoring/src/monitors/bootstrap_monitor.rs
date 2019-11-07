@@ -8,10 +8,10 @@ use crate::handlers::handler_messages::IncomingTransferMetrics;
 /// General statistics about incoming transfer
 pub(crate) struct BootstrapMonitor {
     // total number of blocks
-    pub level: usize,
+    level: usize,
     // already downloaded blocks
-    pub downloaded_blocks: usize,
-    pub downloaded_headers: usize,
+    downloaded_blocks: usize,
+    downloaded_headers: usize,
     // number of blocks downloaded per this session
     downloaded_per_session: usize,
     downloaded_per_snapshot: usize,
@@ -37,6 +37,19 @@ impl BootstrapMonitor {
         }
     }
 
+    #[inline]
+    pub fn level(&self) -> usize {
+        self.level
+    }
+    #[inline]
+    pub fn set_level(&mut self, level: usize)  {
+        // only set peer current head level for values higher than the current level
+        self.level = if self.level > level { self.level } else { level }
+    }
+    #[inline]
+    pub fn set_downloaded_blocks(&mut self, downloaded_blocks: usize)  {
+        self.level = downloaded_blocks
+    }
     #[inline]
     pub fn missing_blocks(&self) -> usize {
         if self.level >= self.downloaded_per_session {
@@ -77,7 +90,6 @@ impl BootstrapMonitor {
     pub fn average_header_download_rate(&self) -> f32 {
         self.headers_per_session as f32 / self.session_start.elapsed().as_secs_f32()
     }
-
 
     pub fn snapshot(&mut self) -> IncomingTransferMetrics {
         use std::f32;

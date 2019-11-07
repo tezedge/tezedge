@@ -44,6 +44,7 @@ pub struct Monitor {
     bootstrap_monitor: BootstrapMonitor,
     blocks_monitor: BlocksMonitor,
     block_application_monitor: ApplicationMonitor,
+    chain_monitor: ChainMonitor
 }
 
 impl Monitor {
@@ -61,8 +62,8 @@ impl Monitor {
             res
         } else { 0 };
         let mut bootstrap_monitor = BootstrapMonitor::new();
-        bootstrap_monitor.downloaded_blocks = downloaded;
-        bootstrap_monitor.level = downloaded;
+        bootstrap_monitor.set_downloaded_blocks(downloaded);
+        bootstrap_monitor.set_level(downloaded);
 
         Self {
             event_channel,
@@ -72,6 +73,7 @@ impl Monitor {
             bootstrap_monitor,
             blocks_monitor: BlocksMonitor::new(4096, downloaded),
             block_application_monitor: ApplicationMonitor::new(),
+            chain_monitor: ChainMonitor::new(),
         }
     }
 
@@ -90,7 +92,7 @@ impl Monitor {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
                     if msg.current_branch().current_head().level() > 0 {
-                        self.bootstrap_monitor.level = msg.current_branch().current_head().level() as usize;
+                        self.bootstrap_monitor.set_level(msg.current_branch().current_head().level() as usize);
                     }
                 }
                 _ => (),
@@ -185,8 +187,12 @@ impl Receive<BroadcastSignal> for Monitor {
 
                 let payload = self.blocks_monitor.snapshot();
                 self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
+
                 let payload = self.block_application_monitor.snapshot();
-                self.msg_channel.tell(HandlerMessage::BlockApplicationStatus { payload }, ctx.myself().into())
+                self.msg_channel.tell(HandlerMessage::BlockApplicationStatus { payload }, ctx.myself().into());
+
+                let payload = self.chain_monitor.snapshot();
+                self.msg_channel.tell(HandlerMessage::ChainStatus { payload }, ctx.myself().into());
             }
             BroadcastSignal::PeerUpdate(msg) => {
                 let msg: HandlerMessage = msg.into();
@@ -230,26 +236,34 @@ impl Receive<ShellChannelMsg> for Monitor {
     type Msg = MonitorMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        use std::cmp::max;
 
         match msg {
             ShellChannelMsg::BlockReceived(msg) => {
                 // Update current max block count
-                if msg.level > 0 {
-                    self.bootstrap_monitor.level = max(self.bootstrap_monitor.level, msg.level as usize);
-                }
+                self.bootstrap_monitor.set_level(msg.level as usize);
 
                 // Start tracking it in the blocks monitor
                 self.blocks_monitor.accept_block();
                 self.bootstrap_monitor.increase_headers_count();
+
+                // update stats for block header
+                self.chain_monitor.process_block_header(msg.level as usize);
             }
             ShellChannelMsg::BlockApplied(msg) => {
+                // update stats for block applications
+                self.chain_monitor.process_block_application(msg.level.clone() as usize);
+
                 self.blocks_monitor.block_was_applied_by_protocol();
                 self.block_application_monitor.block_was_applied(msg);
+
             }
-            ShellChannelMsg::AllBlockOperationsReceived(_msg) => {
+            ShellChannelMsg::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();
                 self.blocks_monitor.block_finished_downloading_operations();
+
+                // update stats for block operations
+                self.chain_monitor.process_block_operations(msg.level as usize);
+
             }
         }
     }

@@ -124,6 +124,7 @@ impl From<BlockHash> for MissingBlock {
     fn from(block_hash: BlockHash) -> Self {
         MissingBlock {
             block_hash,
+            //TODO: refactor to support None
             level: 0
         }
     }

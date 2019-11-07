@@ -22,3 +22,4 @@ slog_derive = "0.1.1"
 networking = { path = "../networking" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_encoding = { path = "../tezos/encoding" }
+rand = "0.7.2"

@@ -1,4 +1,4 @@
-# Telemetry, Metrics and Statistics
+# Telemetry, Metrics and Statistics 
 
 This project contains implementation of `Monitors` and `Handlers` 
 for generating and emitting statistical data about running node.
