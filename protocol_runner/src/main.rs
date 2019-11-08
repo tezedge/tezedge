@@ -1,8 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::thread;
+
 use clap::{App, Arg};
 use slog::*;
+
+use tezos_context::channel;
 
 fn create_logger() -> Logger {
     let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
@@ -33,6 +37,13 @@ fn main() {
         // do nothing and wait for parent process to send termination command
     }).expect("Error setting Ctrl-C handler");
 
+    channel::enable_context_channel();
+    thread::spawn(|| {
+        while let Ok(action) = channel::context_receive() {
+
+        }
+    });
+
     let res = tezos_wrapper::service::process_protocol_messages::<crate::tezos::NativeTezosLib, _>(socket_path);
     if res.is_err() {
         error!(log, "Error while processing protocol messages"; "reason" => format!("{:?}", res.unwrap_err()));
@@ -42,10 +53,9 @@ fn main() {
 mod tezos {
     use tezos_api::client::TezosStorageInitInfo;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::{ApplyBlockResult, TezosRuntimeConfiguration};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_client::client::{apply_block, change_runtime_configuration, init_storage};
     use tezos_encoding::hash::{BlockHash, ChainId};
-    use tezos_interop::ffi::{ApplyBlockError, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 

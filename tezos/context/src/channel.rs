@@ -5,7 +5,7 @@ use crossbeam::channel::{bounded, Receiver, RecvError, Sender, SendError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use lazy_static::lazy_static;
 
-use crate::wrapper::{ContextHash, ContextKey, ContextValue};
+use crate::{ContextHash, ContextKey, ContextValue};
 
 static CHANNEL_ENABLED: AtomicBool = AtomicBool::new(false);
 

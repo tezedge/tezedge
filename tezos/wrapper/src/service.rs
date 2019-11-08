@@ -16,12 +16,12 @@ use wait_timeout::ChildExt;
 use ipc::*;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
-use tezos_api::ffi::{ApplyBlockResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::*;
 use tezos_encoding::hash::{BlockHash, ChainId};
-use tezos_interop::ffi::*;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::protocol::*;
+use std::sync::{Mutex, Arc};
 
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum ProtocolMessage {
@@ -178,7 +178,7 @@ impl ProtocolService {
             .spawn()
             .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?;
         let (rx, tx) = self.ipc_server.accept()?;
-        Ok(ProtocolWrapperIpc { process, rx, tx })
+        Ok(ProtocolWrapperIpc { process, io: Arc::new(Mutex::new(ProtocolWrapperIO { rx, tx })) })
     }
 
     pub fn configuration(&self) -> &ProtocolServiceConfiguration {
@@ -186,17 +186,28 @@ impl ProtocolService {
     }
 }
 
-pub struct ProtocolWrapperIpc {
-    process: Child,
+struct ProtocolWrapperIO {
     rx: IpcReceiver<NodeMessage>,
     tx: IpcSender<ProtocolMessage>,
+}
+
+impl Drop for ProtocolWrapperIO {
+    fn drop(&mut self) {
+        let _ = self.tx.shutdown();
+        let _ = self.rx.shutdown();
+    }
+}
+
+pub struct ProtocolWrapperIpc {
+    process: Child,
+    io: Arc<Mutex<ProtocolWrapperIO>>,
 }
 
 impl Drop for ProtocolWrapperIpc {
     fn drop(&mut self) {
         // send shutdown message to gracefully shutdown child process
         let _ = self.shutdown();
-        let wait_timeout = Duration::from_secs(1);
+        let wait_timeout = Duration::from_secs(2);
         match self.process.wait_timeout(wait_timeout).unwrap() {
             Some(_) => (),
             None => {
@@ -204,48 +215,49 @@ impl Drop for ProtocolWrapperIpc {
                 let _ = self.process.kill();
             }
         };
-
-        let _ = self.tx.shutdown();
-        let _ = self.rx.shutdown();
     }
 }
 
 impl ProtocolWrapperIpc {
-    pub fn apply_block(&mut self, chain_id: &Vec<u8>, block_header_hash: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
-        self.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
+    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header_hash: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
+        let mut io = self.io.lock().unwrap();
+        io.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
             chain_id: chain_id.clone(),
             block_header_hash: block_header_hash.clone(),
             block_header: block_header.clone(),
             operations: operations.clone(),
         }))?;
-        match self.rx.receive()? {
+        match io.rx.receive()? {
             NodeMessage::ApplyBlockResult(result) => result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }
 
-    pub fn change_runtime_configuration(&mut self, settings: TezosRuntimeConfiguration) -> Result<(), ProtocolServiceError> {
-        self.tx.send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
-        match self.rx.receive()? {
+    pub fn change_runtime_configuration(&self, settings: TezosRuntimeConfiguration) -> Result<(), ProtocolServiceError> {
+        let mut io = self.io.lock().unwrap();
+        io.tx.send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
+        match io.rx.receive()? {
             NodeMessage::ChangeRuntimeConfigurationResult(result) => result.map_err(|err| ProtocolError::TezosRuntimeConfigurationError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }
 
-    pub fn init_storage(&mut self, storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, ProtocolServiceError> {
-        self.tx.send(&ProtocolMessage::InitStorageCall(InitStorageParams {
+    pub fn init_storage(&self, storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, ProtocolServiceError> {
+        let mut io = self.io.lock().unwrap();
+        io.tx.send(&ProtocolMessage::InitStorageCall(InitStorageParams {
             storage_data_dir,
             tezos_environment
         }))?;
-        match self.rx.receive()? {
+        match io.rx.receive()? {
             NodeMessage::InitStorageResult(result) => result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }
 
-    pub fn shutdown(&mut self) -> Result<(), ProtocolServiceError> {
-        self.tx.send(&ProtocolMessage::ShutdownCall)?;
-        match self.rx.receive()? {
+    pub fn shutdown(&self) -> Result<(), ProtocolServiceError> {
+        let mut io = self.io.lock().unwrap();
+        io.tx.send(&ProtocolMessage::ShutdownCall)?;
+        match io.rx.receive()? {
             NodeMessage::ShutdownResult => Ok(()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() }),
         }

@@ -3,11 +3,8 @@
 
 use ocaml::{Array1, caml, List, Str, Value};
 
-use crate::channel::*;
-
-pub type ContextHash = Vec<u8>;
-pub type ContextKey = Vec<String>;
-pub type ContextValue = Vec<u8>;
+use tezos_context::*;
+use tezos_context::channel::*;
 
 pub type OcamlBytes = Array1<u8>;
 

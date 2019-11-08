@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -240,7 +243,6 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", &out_dir);
     println!("cargo:rustc-link-lib=dylib=tezos");
-    println!("cargo:rustc-link-lib=dylib=tezos_context");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
     println!("cargo:rerun-if-env-changed=UPDATE_GIT_SUBMODULES");
 }

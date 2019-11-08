@@ -15,8 +15,6 @@ wait-timeout = "0.2.0"
 # local dependencies
 ipc = { path = "../../ipc" }
 tezos_api = { path = "../api" }
-tezos_client = { path = "../client" }
-tezos_interop = { path = "../interop" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
 

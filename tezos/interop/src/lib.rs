@@ -29,3 +29,4 @@
 /// ```
 pub mod runtime;
 pub mod ffi;
+pub mod callback;

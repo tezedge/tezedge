@@ -2,4 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod channel;
-pub mod wrapper;
+
+pub type ContextHash = Vec<u8>;
+pub type ContextKey = Vec<String>;
+pub type ContextValue = Vec<u8>;
