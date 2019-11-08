@@ -12,6 +12,7 @@ use std::sync::mpsc::{channel, Receiver, Sender, SendError};
 use std::task::{Context, Poll, Waker};
 use std::thread;
 
+use futures::executor::{ThreadPool, ThreadPoolBuilder};
 use ocaml::core::callback::caml_startup;
 
 use lazy_static::lazy_static;
@@ -165,7 +166,8 @@ impl OcamlTaskSpawner {
 
 /// Holds data related to ocaml environment.
 struct OcamlEnvironment {
-    spawner: OcamlTaskSpawner
+    spawner: OcamlTaskSpawner,
+    workers: Arc<Mutex<ThreadPool>>,
 }
 
 /// Create the environment and initialize ocaml runtime.
@@ -178,7 +180,7 @@ fn initialize_environment() -> OcamlEnvironment {
         executor.run()
     });
 
-    OcamlEnvironment { spawner }
+    OcamlEnvironment { spawner, workers: Arc::new(Mutex::new(ThreadPoolBuilder::new().pool_size(1).create().expect("Failed to create thread pool"))) }
 }
 
 /// Run a function in ocaml runtime and return a result future.
@@ -210,11 +212,6 @@ pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
         F: FnOnce() -> T + 'static + Send,
         T: 'static + Send
 {
-    let (sender, receiver) = channel();
-
-    thread::spawn(move || {
-        sender.send(futures::executor::block_on(spawn(f))).unwrap();
-    });
-
-    receiver.recv().unwrap()
+    let mut workers = OCAML_ENV.workers.lock().unwrap();
+    workers.run(spawn(f))
 }
