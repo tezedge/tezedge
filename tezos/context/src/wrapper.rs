@@ -1,4 +1,9 @@
-use ocaml::{Array1, caml, caml_local, List, Str, ToValue, Value};
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use ocaml::{Array1, caml, List, Str, Value};
+
+use crate::channel::*;
 
 pub type ContextHash = Vec<u8>;
 pub type ContextKey = Vec<String>;
@@ -83,25 +88,25 @@ caml!(ml_context_commit(parent_context_hash, new_context_hash) {
 });
 
 pub fn context_set(context_hash: Option<ContextHash>, key: ContextKey, value: ContextValue) {
-    // TODO: impl
+    context_send(ContextAction::Set { context_hash, key, value }).unwrap();
 }
 
 pub fn context_delete(context_hash: Option<ContextHash>, key: ContextKey) {
-    // TODO: impl
+    context_send(ContextAction::Delete { context_hash, key }).unwrap();
 }
 
 pub fn context_remove_rec(context_hash: Option<ContextHash>, key: ContextKey) {
-    // TODO: impl
+    context_send(ContextAction::RemoveRecord { context_hash, key }).unwrap();
 }
 
 pub fn context_copy(context_hash: Option<ContextHash>, from_key: ContextKey, to_key: ContextKey) {
-    // TODO: impl
+    context_send(ContextAction::Copy { context_hash, from_key, to_key }).unwrap();
 }
 
 pub fn context_checkout(context_hash: ContextHash) {
-    // TODO: impl
+    context_send(ContextAction::Checkout { context_hash }).unwrap();
 }
 
 pub fn context_commit(parent_context_hash: Option<ContextHash>, new_context_hash: ContextHash) {
-    // TODO: impl
+    context_send(ContextAction::Commit { parent_context_hash, new_context_hash }).unwrap();
 }

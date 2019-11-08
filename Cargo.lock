@@ -1560,6 +1560,7 @@ dependencies = [
  "slog-term 2.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_client 0.1.0",
+ "tezos_context 0.0.1-pre16-context-poc",
  "tezos_encoding 0.1.0",
  "tezos_interop 0.0.1-pre16-context-poc",
  "tezos_messages 0.1.0",
@@ -2354,6 +2355,7 @@ name = "tezos_context"
 version = "0.0.1-pre16-context-poc"
 dependencies = [
  "crossbeam 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ocaml 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
