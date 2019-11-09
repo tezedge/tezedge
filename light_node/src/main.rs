@@ -26,7 +26,7 @@ use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
-use tezos_wrapper::service::{ProtocolService, ProtocolServiceConfiguration};
+use tezos_wrapper::service::{ProtocolService, ProtocolServiceConfiguration, ProtocolServiceEndpoint};
 
 use crate::configuration::LogFormat;
 
@@ -150,13 +150,13 @@ fn main() {
     };
 
     // create tezos wrapper + service
-    let mut protocol_service = ProtocolService::bind(ProtocolServiceConfiguration::new(
+    let ProtocolServiceEndpoint { service: mut protocol_service, .. } = ProtocolService::create_endpoint(ProtocolServiceConfiguration::new(
         TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
         configuration::ENV.tezos_network,
         &configuration::ENV.storage.tezos_data_dir,
         &configuration::ENV.protocol_runner,
     ));
-    let mut protocol_wrapper = match protocol_service.spawn_protocol_wrapper() {
+    let protocol_wrapper = match protocol_service.spawn_protocol_wrapper() {
         Ok(protocol_wrapper) => protocol_wrapper,
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol wrapper. Reason: {:?}", e), actor_system),
     };

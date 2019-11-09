@@ -10,9 +10,9 @@ derive_builder = "0.8.0"
 derive-new = "0.5.8"
 failure = "0.1.5"
 getset = { git = "https://github.com/Hoverbear/getset.git" }
-hex = "0.4.0"
-lazy_static = "1.4.0"
-serde = { version = "1.0.101", features = ["derive"] }
+hex = "0.4"
+lazy_static = "1.4"
+serde = { version = "1.0", features = ["derive"] }
 # local dependencies
 tezos_encoding = { path = "../encoding" }
 crypto = { path = "../../crypto" }

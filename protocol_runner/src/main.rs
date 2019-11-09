@@ -21,32 +21,44 @@ fn main() {
         .version("1.0")
         .author("Tomas Sedlak <tomas.sedlak@simplestaking.com>")
         .about("Tezos Protocol Runner")
-        .arg(Arg::with_name("sock")
-            .short("s")
-            .long("sock")
-            .value_name("SOCK")
-            .help("Path to communication socket")
+        .arg(Arg::with_name("sock-cmd")
+            .short("c")
+            .long("sock-cmd")
+            .value_name("path")
+            .help("Path to a command socket")
+            .takes_value(true)
+            .empty_values(false)
+            .required(true))
+        .arg(Arg::with_name("sock-evt")
+            .short("e")
+            .long("sock-evt")
+            .value_name("path")
+            .help("Path to a event socket")
             .takes_value(true)
             .empty_values(false)
             .required(true))
         .get_matches();
 
-    let socket_path = matches.value_of("sock").expect("Missing sock value");
+    let cmd_socket_path = matches.value_of("sock-cmd").expect("Missing sock-cmd value");
+    let evt_socket_path = matches.value_of("sock-evt").expect("Missing sock-evt value").to_string();
 
     ctrlc::set_handler(move || {
         // do nothing and wait for parent process to send termination command
     }).expect("Error setting Ctrl-C handler");
 
     channel::enable_context_channel();
-    thread::spawn(|| {
-        while let Ok(action) = channel::context_receive() {
-
-        }
+    let event_thread = thread::spawn(move || {
+        tezos_wrapper::service::process_protocol_events(&evt_socket_path)
     });
 
-    let res = tezos_wrapper::service::process_protocol_messages::<crate::tezos::NativeTezosLib, _>(socket_path);
+    let res = tezos_wrapper::service::process_protocol_commands::<crate::tezos::NativeTezosLib, _>(cmd_socket_path);
     if res.is_err() {
-        error!(log, "Error while processing protocol messages"; "reason" => format!("{:?}", res.unwrap_err()));
+        error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", res.unwrap_err()));
+    }
+
+    let res = event_thread.join().expect("Couldn't join on the associated thread");
+    if res.is_err() {
+        error!(log, "Error while processing protocol events"; "reason" => format!("{:?}", res.unwrap_err()));
     }
 }
 

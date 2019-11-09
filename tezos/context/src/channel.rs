@@ -1,8 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crossbeam::channel::{bounded, Receiver, RecvError, Sender, SendError};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use crossbeam::channel::{bounded, Receiver, RecvError, Sender, SendError};
+use serde::{Deserialize, Serialize};
+
 use lazy_static::lazy_static;
 
 use crate::{ContextHash, ContextKey, ContextValue};
@@ -30,7 +33,7 @@ pub fn enable_context_channel() {
     CHANNEL_ENABLED.store(true, Ordering::Release)
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ContextAction {
     Set {
         context_hash: Option<ContextHash>,

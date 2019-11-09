@@ -8,9 +8,9 @@ edition = "2018"
 derive-new = "0.5.8"
 enum-iterator = "0.5.0"
 failure = "0.1.5"
-lazy_static = "1.4.0"
+lazy_static = "1.4"
 ocaml = "0.8.0"
-serde = { version = "1.0.101", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 slog = "2.5"
 # local dependencies
 tezos_encoding = { path = "../encoding" }
