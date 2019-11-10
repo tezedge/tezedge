@@ -193,6 +193,11 @@ impl IpcEvtServer {
     pub fn new() -> Self {
         IpcEvtServer(IpcServer::bind_path(&temp_sock()).unwrap())
     }
+
+    pub fn accept(&mut self) -> Result<IpcReceiver<ContextAction>, IpcError> {
+        let (rx, tx) = self.0.accept()?;
+        Ok(rx)
+    }
 }
 
 /// Endpoint consists of a `service` which is used to send commands to protocol runner

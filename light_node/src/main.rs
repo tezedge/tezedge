@@ -18,6 +18,7 @@ use networking::p2p::network_channel::NetworkChannel;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
+use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannel;
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
@@ -26,7 +27,7 @@ use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
-use tezos_wrapper::service::{ProtocolService, ProtocolServiceConfiguration, ProtocolServiceEndpoint};
+use tezos_wrapper::service::{IpcEvtServer, ProtocolService, ProtocolServiceConfiguration, ProtocolServiceEndpoint};
 
 use crate::configuration::LogFormat;
 
@@ -75,7 +76,7 @@ fn create_logger() -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_service: ProtocolService, log: Logger) {
+fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_service: ProtocolService, event_server: IpcEvtServer, log: Logger) {
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -100,6 +101,8 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create chain manager");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, protocol_service, log.clone())
         .expect("Failed to create chain feeder");
+    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), event_server, log.clone())
+        .expect("Failed to create context event listener");
     let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
@@ -150,7 +153,7 @@ fn main() {
     };
 
     // create tezos wrapper + service
-    let ProtocolServiceEndpoint { service: mut protocol_service, .. } = ProtocolService::create_endpoint(ProtocolServiceConfiguration::new(
+    let ProtocolServiceEndpoint { service: mut protocol_service, events: protocol_events } = ProtocolService::create_endpoint(ProtocolServiceConfiguration::new(
         TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
         configuration::ENV.tezos_network,
         &configuration::ENV.storage.tezos_data_dir,
@@ -189,7 +192,7 @@ fn main() {
     debug!(log, "Loaded RocksDB database");
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_service, log),
+        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_service, protocol_events, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
 
