@@ -4,6 +4,7 @@
 mod collections;
 mod state;
 
+pub mod stats;
 pub mod shell_channel;
 pub mod chain_feeder;
 pub mod context_listener;
