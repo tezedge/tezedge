@@ -18,7 +18,7 @@ lazy_static! {
 
 pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction>> {
     if CHANNEL_ENABLED.load(Ordering::Acquire) {
-        CHANNEL.0.send(dbg!(action))
+        CHANNEL.0.send(action)
     } else {
         Ok(())
     }
@@ -60,4 +60,6 @@ pub enum ContextAction {
         parent_context_hash: Option<ContextHash>,
         new_context_hash: ContextHash,
     },
+    /// This is a control event used to shutdown channel
+    Shutdown,
 }

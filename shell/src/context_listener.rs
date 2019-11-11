@@ -8,8 +8,9 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{debug, error, Logger};
+use slog::{debug, Logger, warn};
 
+use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -39,7 +40,7 @@ impl ContextListener {
                         &log,
                     ) {
                         Ok(()) => debug!(log, "Context listener finished"),
-                        Err(err) => error!(log, "Error while listening for protocol events"; "reason" => format!("{:?}", err)),
+                        Err(err) => warn!(log, "Timeout while waiting for context event connection"; "reason" => format!("{:?}", err)),
                     }
                 }
 
@@ -72,14 +73,11 @@ impl Actor for ContextListener {
     type Msg = ContextListenerMsg;
 
     fn post_stop(&mut self) {
-        // Set the flag, and let the thread wake up. There is no race condition here, if `unpark`
-        // happens first, `park` will return immediately. Hence there is no risk of a deadlock.
         self.listener_run.store(false, Ordering::Release);
 
-        let join_handle = self.listener_thread.lock().unwrap()
-            .take().expect("Thread join handle is missing");
-        join_handle.thread().unpark();
-        let _ = join_handle.join().expect("Failed to join context listener thread");
+        let _ = self.listener_thread.lock().unwrap()
+            .take().expect("Thread join handle is missing")
+            .join().expect("Failed to join context listener thread");
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -93,16 +91,23 @@ fn listen_protocol_events(
     log: &Logger,
 ) -> Result<(), Error> {
 
+    debug!(log, "Waiting for connection from protocol runner");
+    let mut rx = event_server.accept()?;
+    debug!(log, "Received connection from protocol runner. Starting to process context events.");
+
+    let mut event_count = 0;
     while apply_block_run.load(Ordering::Acquire) {
-        let mut _rx = event_server.accept()?;
-        debug!(log, "Accepted protocol event client connection");
+        match rx.receive() {
+            Ok(ContextAction::Shutdown) => break,
+            Ok(_msg) => {
+                if event_count % 25 == 0 {
+                    debug!(log, "Received protocol event"; "count" => event_count);
+                }
+                event_count += 1;
+            },
+            Err(err) => warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err)),
+        }
 
-        // TODO: implement
-
-        // This should be hit only in case that the current branch is applied
-        // and no successor was available to continue the apply cycle. In that case
-        // this thread will be stopped and will wait until it's waked again.
-        thread::park();
     }
 
     Ok(())

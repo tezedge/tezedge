@@ -8,7 +8,6 @@ use ipc::*;
 
 mod common;
 
-
 #[test]
 fn fork_and_exchange() -> Result<(), failure::Error> {
     let sock_path = temp_sock();

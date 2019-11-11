@@ -270,7 +270,7 @@ impl Receive<CheckPeerCount> for PeerManager {
                 self.discover_peers(ctx.system.log());
             }
 
-            let num_required_peers = (self.threshold.high + 3 * self.threshold.low) / 4 - self.peers.len();
+            let num_required_peers = cmp::max((self.threshold.high + 3 * self.threshold.low) / 4 - self.peers.len(), self.threshold.low);
             let mut addresses_to_connect = self.potential_peers.iter().cloned().collect::<Vec<SocketAddr>>();
             // randomize peers as a security measurement
             addresses_to_connect.shuffle(&mut rand::thread_rng());

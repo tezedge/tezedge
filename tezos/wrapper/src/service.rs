@@ -18,7 +18,7 @@ use ipc::*;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::*;
-use tezos_context::channel::{ContextAction, context_receive};
+use tezos_context::channel::{context_receive, context_send, ContextAction};
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -61,7 +61,10 @@ pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), Ipc
     let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
     let (_, mut tx) = ipc_client.connect()?;
     while let Ok(action) = context_receive() {
-        tx.send(&action)?
+        tx.send(&action)?;
+        if let ContextAction::Shutdown = action {
+            break;
+        }
     }
 
     Ok(())
@@ -85,6 +88,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                 tx.send(&NodeMessage::InitStorageResult(res))?;
             }
             ProtocolMessage::ShutdownCall => {
+                context_send(ContextAction::Shutdown).expect("Failed to send shutdown command to context channel");
                 tx.send(&NodeMessage::ShutdownResult)?;
                 break;
             }
@@ -195,7 +199,7 @@ impl IpcEvtServer {
     }
 
     pub fn accept(&mut self) -> Result<IpcReceiver<ContextAction>, IpcError> {
-        let (rx, tx) = self.0.accept()?;
+        let (rx, _) = self.0.accept()?;
         Ok(rx)
     }
 }
@@ -208,6 +212,8 @@ pub struct ProtocolServiceEndpoint {
 }
 
 impl ProtocolService {
+
+    const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub fn create_endpoint(configuration: ProtocolServiceConfiguration) -> ProtocolServiceEndpoint {
         let evt_server = IpcEvtServer::new();
@@ -232,6 +238,9 @@ impl ProtocolService {
             .spawn()
             .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?;
         let (rx, tx) = self.cmd_server.0.accept()?;
+        rx.set_read_timeout(Some(Self::IO_TIMEOUT))
+            .and(tx.set_write_timeout(Some(Self::IO_TIMEOUT)))
+            .map_err(|err| ProtocolServiceError::IpcError { reason: IpcError::SocketConfigurationError { reason: err } })?;
         Ok(ProtocolWrapperIpc { process, io: Arc::new(Mutex::new(ProtocolWrapperIO { rx, tx })) })
     }
 

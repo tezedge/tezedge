@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::thread;
+use std::time::Duration;
 
 use clap::{App, Arg};
 use slog::*;
@@ -33,7 +34,7 @@ fn main() {
             .short("e")
             .long("sock-evt")
             .value_name("path")
-            .help("Path to a event socket")
+            .help("Path to an event socket")
             .takes_value(true)
             .empty_values(false)
             .required(true))
@@ -46,20 +47,27 @@ fn main() {
         // do nothing and wait for parent process to send termination command
     }).expect("Error setting Ctrl-C handler");
 
-    channel::enable_context_channel();
-    let event_thread = thread::spawn(move || {
-        tezos_wrapper::service::process_protocol_events(&evt_socket_path)
-    });
+    let event_thread = {
+        let log = log.clone();
+        channel::enable_context_channel();
+        thread::spawn(move || {
+            for _ in 0..5 {
+                match tezos_wrapper::service::process_protocol_events(&evt_socket_path) {
+                    Ok(()) => break,
+                    Err(err) => {
+                        warn!(log, "Error while processing protocol events"; "reason" => format!("{:?}", err));
+                        thread::sleep(Duration::from_secs(1));
+                    },
+                }
+            }
+        })
+    };
 
-    let res = tezos_wrapper::service::process_protocol_commands::<crate::tezos::NativeTezosLib, _>(cmd_socket_path);
-    if res.is_err() {
-        error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", res.unwrap_err()));
+    if let Err(err) = tezos_wrapper::service::process_protocol_commands::<crate::tezos::NativeTezosLib, _>(cmd_socket_path) {
+        error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", err));
     }
 
-    let res = event_thread.join().expect("Couldn't join on the associated thread");
-    if res.is_err() {
-        error!(log, "Error while processing protocol events"; "reason" => format!("{:?}", res.unwrap_err()));
-    }
+    event_thread.join().expect("Failed to join event thread");
 }
 
 mod tezos {
