@@ -8,10 +8,10 @@ use crate::handlers::handler_messages::BlockMetrics;
 #[derive(Debug, Clone)]
 pub struct BlocksMonitor {
     threshold: usize,
-    pub level: usize,
-    pub downloaded_blocks: usize,
+    level: usize,
+    downloaded_blocks: usize,
     applied_blocks: usize,
-    pub downloading_group: usize,
+    downloading_group: usize,
     group_download_start: Instant,
     durations: Vec<Option<f32>>,
 }

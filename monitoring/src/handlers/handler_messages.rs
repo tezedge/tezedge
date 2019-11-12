@@ -7,6 +7,7 @@ use serde::Serialize;
 use slog_derive::SerdeValue;
 
 use crate::monitors::PeerMonitor;
+use crate::monitors::ChainMonitor;
 
 // -------------------------- GENERAL METRICS -------------------------- //
 #[derive(Serialize, Debug, Clone)]
@@ -128,6 +129,9 @@ pub enum HandlerMessage {
     },
     BlockApplicationStatus {
         payload: BlockApplicationMessage,
+    },
+    ChainStatus {
+        payload:  ChainMonitor,
     },
     NotImplemented(String),
 }
