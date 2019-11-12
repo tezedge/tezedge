@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cell::RefCell;
 use std::convert::AsRef;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use failure::Fail;
@@ -193,7 +193,7 @@ impl IpcCmdServer {
             .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
 
         Ok(ProtocolController {
-            io: Arc::new(Mutex::new(IpcIO { rx, tx })),
+            io: RefCell::new(IpcIO { rx, tx }),
             configuration: &self.1
         })
     }
@@ -238,13 +238,13 @@ struct IpcIO {
 }
 
 pub struct ProtocolController<'a> {
-    io: Arc<Mutex<IpcIO>>,
+    io: RefCell<IpcIO>,
     configuration: &'a ProtocolEndpointConfiguration,
 }
 
 impl<'a> ProtocolController<'a> {
     pub fn apply_block(&self, chain_id: &Vec<u8>, block_header_hash: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
-        let mut io = self.io.lock().unwrap();
+        let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
             chain_id: chain_id.clone(),
             block_header_hash: block_header_hash.clone(),
@@ -258,7 +258,7 @@ impl<'a> ProtocolController<'a> {
     }
 
     pub fn change_runtime_configuration(&self, settings: TezosRuntimeConfiguration) -> Result<(), ProtocolServiceError> {
-        let mut io = self.io.lock().unwrap();
+        let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
         match io.rx.receive()? {
             NodeMessage::ChangeRuntimeConfigurationResult(result) => result.map_err(|err| ProtocolError::TezosRuntimeConfigurationError { reason: err }.into()),
@@ -267,7 +267,7 @@ impl<'a> ProtocolController<'a> {
     }
 
     pub fn init_storage(&self, storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, ProtocolServiceError> {
-        let mut io = self.io.lock().unwrap();
+        let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::InitStorageCall(InitStorageParams {
             storage_data_dir,
             tezos_environment
@@ -280,7 +280,7 @@ impl<'a> ProtocolController<'a> {
 
     /// Gracefully shutdown protocol runner
     pub fn shutdown(&self) -> Result<(), ProtocolServiceError> {
-        let mut io = self.io.lock().unwrap();
+        let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ShutdownCall)?;
         match io.rx.receive()? {
             NodeMessage::ShutdownResult => Ok(()),
