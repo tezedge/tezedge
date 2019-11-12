@@ -79,15 +79,15 @@ mod tezos {
     use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_api::identity::Identity;
     use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, init_storage};
-    use tezos_encoding::hash::{BlockHash, ChainId};
+    use tezos_encoding::hash::ChainId;
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
 
     impl ProtocolApi for NativeTezosLib {
-        fn apply_block(chain_id: &ChainId, block_header_hash: &BlockHash, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
-            apply_block(chain_id, block_header_hash, block_header, operations)
+        fn apply_block(chain_id: &ChainId, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
+            apply_block(chain_id, block_header, operations)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {

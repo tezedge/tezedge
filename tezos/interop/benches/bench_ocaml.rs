@@ -1,3 +1,5 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 #![feature(test)]
 
 extern crate test;

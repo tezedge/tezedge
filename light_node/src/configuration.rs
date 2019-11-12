@@ -73,6 +73,7 @@ pub struct Environment {
     pub identity_json_file_path: Option<PathBuf>,
     pub tezos_network: TezosEnvironment,
     pub protocol_runner: PathBuf,
+    pub no_of_ffi_calls_treshold_for_gc: i32,
 }
 
 macro_rules! parse_validator_fn {
@@ -233,6 +234,14 @@ impl Environment {
                 .value_name("PATH")
                 .help("Path to a tezos protocol runner executable")
                 .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
+            .arg(Arg::with_name("ffi-calls-gc-treshold")
+                .short("g")
+                .long("ffi-calls-gc-treshold")
+                .takes_value(true)
+                .default_value("2000")
+                .value_name("NUM")
+                .help("Number of ffi calls, after which will be Ocaml garbage collector called")
+                .validator(parse_validator_fn!(i32, "Value must be a valid number")))
             .get_matches();
 
         let tezos_network: TezosEnvironment = args
@@ -325,6 +334,10 @@ impl Environment {
                 .unwrap_or_default()
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
+            no_of_ffi_calls_treshold_for_gc: args.value_of("ffi-calls-gc-treshold")
+                .unwrap_or_default()
+                .parse::<i32>()
+                .expect("Provided value cannot be converted to number"),
             tezos_network,
         }
     }

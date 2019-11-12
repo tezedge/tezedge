@@ -19,7 +19,7 @@ macro_rules! tezos_test {
 #[test]
 fn run_tests() {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: common::is_ocaml_log_enabled() }).unwrap();
+    client::change_runtime_configuration(TezosRuntimeConfiguration::new(common::is_ocaml_log_enabled(), common::no_of_ffi_calls_treshold_for_gc())).unwrap();
 
     // We cannot run tests in parallel, because tezos does not handle situation when multiple storage
     // directories are initialized
@@ -60,7 +60,6 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     // apply first block - level 0
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
@@ -76,7 +75,6 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     // apply second block - level 2
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
@@ -92,7 +90,6 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() -> Result<(), failure:
     // apply third block - level 3
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
@@ -119,7 +116,6 @@ fn test_bootstrap_empty_storage_with_first_block_twice() -> Result<(), failure::
     // apply first block - level 0
     let apply_block_result_1 = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
@@ -136,7 +132,6 @@ fn test_bootstrap_empty_storage_with_first_block_twice() -> Result<(), failure::
     // apply first block second time - level 0
     let apply_block_result_2 = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
@@ -174,7 +169,6 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
     // apply second block - level 2
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
@@ -205,7 +199,6 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
     // apply second block - level 3 has validation_pass = 4
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
         vec![None].as_ref(),
     );
@@ -233,7 +226,6 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
     // apply second block - level 1 ok
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
@@ -245,7 +237,6 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
     // apply second block - level 2 with operations for level 3
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
@@ -276,7 +267,6 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
     // apply first block - level 0
     let apply_block_result = client::apply_block(
         &chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
@@ -322,7 +312,6 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
     // ALPHANET - apply first block - level 1
     let apply_block_result = client::apply_block(
         &alphanet_init_info.chain_id,
-        &hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?,
         &alphanet_block_header_hash_level1,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
@@ -387,7 +376,7 @@ mod test_data {
     }
 
     // BLwKksYwrxt39exDei7yi47h7aMcVY2kZMZhTwEEoSUwToQUiDV
-    pub const BLOCK_HEADER_HASH_LEVEL_2: &str = "60ab6d8d2a6b1c7a391f00aa6c1fc887eb53797214616fd2ce1b9342ad4965a4";
+    pub const BLOCK_HEADER_HASH_LEVEL_2: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627";
     pub const BLOCK_HEADER_LEVEL_2: &str = "0000000201dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d000000005c017cd804683625c2445a4e9564bf710c5528fd99a7d150d2a2a323bc22ff9e2710da4f6d0000001100000001000000000800000000000000029bd8c75dec93c276d2d8e8febc3aa6c9471cb2cb42236b3ab4ca5f1f2a0892f6000500000003ba671eef00d6a8bea20a4677fae51268ab6be7bd8cfc373cd6ac9e0a00064efcc404e1fb39409c5df255f7651e3d1bb5d91cb2172b687e5d56ebde58cfd92e1855aaafbf05";
 
     pub fn block_header_level2_operations() -> Vec<Vec<String>> {
@@ -400,7 +389,7 @@ mod test_data {
     }
 
     // BLTQ5B4T4Tyzqfm3Yfwi26WmdQScr6UXVSE9du6N71LYjgSwbtc
-    pub const BLOCK_HEADER_HASH_LEVEL_3: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627";
+    pub const BLOCK_HEADER_HASH_LEVEL_3: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f0179caf4b9f673";
     pub const BLOCK_HEADER_LEVEL_3: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
 
     pub fn block_header_level3_operations() -> Vec<Vec<String>> {

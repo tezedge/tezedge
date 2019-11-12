@@ -20,7 +20,7 @@ use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::*;
 use tezos_api::identity::Identity;
 use tezos_context::channel::{context_receive, context_send, ContextAction};
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::ChainId;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::protocol::*;
@@ -37,7 +37,6 @@ enum ProtocolMessage {
 #[derive(Serialize, Deserialize, Debug)]
 struct ApplyBlockParams {
     chain_id: ChainId,
-    block_header_hash: BlockHash,
     block_header: BlockHeader,
     operations: Vec<Option<OperationsForBlocksMessage>>,
 }
@@ -84,7 +83,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
     while let Ok(cmd) = rx.receive() {
         match cmd {
             ProtocolMessage::ApplyBlockCall(params) => {
-                let res = Proto::apply_block(&params.chain_id, &params.block_header_hash, &params.block_header, &params.operations);
+                let res = Proto::apply_block(&params.chain_id, &params.block_header, &params.operations);
                 tx.send(&NodeMessage::ApplyBlockResult(res))?;
             }
             ProtocolMessage::ChangeRuntimeConfigurationCall(params) => {
@@ -259,11 +258,10 @@ pub struct ProtocolController<'a> {
 }
 
 impl<'a> ProtocolController<'a> {
-    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header_hash: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
+    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
             chain_id: chain_id.clone(),
-            block_header_hash: block_header_hash.clone(),
             block_header: block_header.clone(),
             operations: operations.clone(),
         }))?;
