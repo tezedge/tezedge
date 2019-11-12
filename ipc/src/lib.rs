@@ -77,6 +77,12 @@ impl<S: Serialize> IpcSender<S> {
     }
 }
 
+impl<S> Drop for IpcSender<S> {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
 pub struct IpcReceiver<R>(UnixStream, PhantomData<R>);
 
 impl<R> IpcReceiver<R> {
@@ -109,6 +115,12 @@ where
     }
 }
 
+impl<R> Drop for IpcReceiver<R> {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
 pub struct IpcServer<R, S> {
     listener: UnixListener,
     path: PathBuf,
@@ -128,7 +140,7 @@ where
     R: for<'de> Deserialize<'de>,
     S: Serialize
 {
-    const ACCEPT_TIMEOUT: Duration = Duration::from_secs(4);
+    const ACCEPT_TIMEOUT: Duration = Duration::from_secs(8);
 
     pub fn bind() -> Result<Self, IpcError> {
         let path = temp_sock();

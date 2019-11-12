@@ -257,7 +257,7 @@ impl Receive<Bootstrap> for Peer {
                     system.stop(myself);
                 }
                 Err(err) => {
-                    warn!(system.log(), "Connection to peer failed"; "reason" => err, "ip" => &peer_address);
+                    info!(system.log(), "Connection to peer failed"; "reason" => err, "ip" => &peer_address);
 
                     // notify that peer failed at bootstrap process
                     network_channel.tell(Publish {

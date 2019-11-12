@@ -105,7 +105,10 @@ fn listen_protocol_events(
                 }
                 event_count += 1;
             },
-            Err(err) => warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err)),
+            Err(err) => {
+                warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
+                break;
+            },
         }
 
     }
