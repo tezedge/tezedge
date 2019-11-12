@@ -8,14 +8,14 @@ edition = "2018"
 dns-lookup = "1.0.1"
 failure = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
-hex = "0.4.0"
+hex = "0.4"
 itertools = "0.8.0"
 rand = "0.7.2"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
-rocksdb = "0.12.3"
+rocksdb = "0.12"
 slog = "2.5"
 serde = "1.0.102"
-serde_json = "1.0.41"
+serde_json = "1.0"
 tokio = "0.2.0-alpha.6"
 tokio-io = "0.2.0-alpha.6"
 tokio-timer = "0.2.0-alpha.6"
@@ -23,6 +23,7 @@ tokio-timer = "0.2.0-alpha.6"
 networking = { path = "../networking" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
+tezos_context = { path = "../tezos/context" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }

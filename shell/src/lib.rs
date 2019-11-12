@@ -12,6 +12,7 @@ mod state;
 
 pub mod shell_channel;
 pub mod chain_feeder;
+pub mod context_listener;
 pub mod chain_manager;
 pub mod peer_manager;
 
@@ -49,8 +50,14 @@ where
 {
     shell_channel.tell(
         Subscribe {
-            actor: Box::new(myself),
+            actor: Box::new(myself.clone()),
             topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
+
+    shell_channel.tell(
+        Subscribe {
+            actor: Box::new(myself),
+            topic: ShellChannelTopic::ShellCommands.into(),
         }, None);
 }
 

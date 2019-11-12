@@ -5,9 +5,8 @@ use std::stringify;
 
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
-use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::{ApplyBlockError, TezosRuntimeConfiguration};
 use tezos_client::client;
-use tezos_interop::ffi::ApplyBlockError;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::prelude::*;
 

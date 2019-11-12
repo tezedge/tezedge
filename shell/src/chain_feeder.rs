@@ -9,12 +9,12 @@ use std::time::Duration;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{debug, error, Logger, warn};
+use slog::{debug, Logger, warn};
 
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
-use tezos_wrapper::service::{ProtocolService, ProtocolWrapperIpc, ProtocolServiceConfiguration, ProtocolServiceError};
+use tezos_wrapper::service::{IpcCmdServer, ProtocolController};
 
 use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic};
 
@@ -36,7 +36,7 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
-    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo, protocol_service: ProtocolService, log: Logger) -> Result<ChainFeederRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let apply_block_run = apply_block_run.clone();
@@ -48,23 +48,20 @@ impl ChainFeeder {
                 let mut block_meta_storage = BlockMetaStorage::new(rocks_db.clone());
                 let operations_storage = OperationsStorage::new(rocks_db.clone());
                 let operations_meta_storage = OperationsMetaStorage::new(rocks_db);
-                let mut protocol_service = protocol_service;
+                let mut ipc_server = ipc_server;
 
                 while apply_block_run.load(Ordering::Acquire) {
-                    match feed_chain_to_protocol(
-                        &chain_id,
-                        &apply_block_run,
-                        &current_head_hash,
-                        &shell_channel,
-                        &block_storage,
-                        &mut block_meta_storage,
-                        &operations_storage,
-                        &operations_meta_storage,
-                        &mut protocol_service,
-                        &log,
-                    ) {
-                        Ok(()) => debug!(log, "Feed chain to protocol finished"),
-                        Err(err) => error!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err)),
+                    match ipc_server.accept() {
+                        Ok(protocol_controller) =>
+                            match feed_chain_to_protocol(&chain_id, &apply_block_run, &current_head_hash, &shell_channel, &block_storage, &mut block_meta_storage, &operations_storage, &operations_meta_storage, protocol_controller, &log) {
+                                Ok(()) => debug!(log, "Feed chain to protocol finished"),
+                                Err(err) => {
+                                    if apply_block_run.load(Ordering::Acquire) {
+                                        warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
+                                    }
+                                },
+                            }
+                        Err(err) => warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err)),
                     }
                 }
 
@@ -98,8 +95,8 @@ impl Actor for ChainFeeder {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         ctx.schedule::<Self::Msg, _>(
-            Duration::from_secs(15),
-            Duration::from_secs(60),
+            Duration::from_secs(4),
+            Duration::from_secs(8),
             ctx.myself(),
             None,
             FeedChainToProtocol.into());
@@ -141,14 +138,13 @@ fn feed_chain_to_protocol(
     block_meta_storage: &mut BlockMetaStorage,
     operations_storage: &OperationsStorage,
     operations_meta_storage: &OperationsMetaStorage,
-    protocol_service: &mut ProtocolService,
+    protocol_controller: ProtocolController,
     log: &Logger,
 ) -> Result<(), Error> {
     let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
     let mut current_head_hash = current_head_hash.clone();
 
-    let mut protocol_wrapper_ipc = protocol_service.spawn_protocol_wrapper()?;
-    init_protocol_env(&mut protocol_wrapper_ipc, protocol_service.configuration())?;
+    protocol_controller.init_protocol()?;
 
     while apply_block_run.load(Ordering::Acquire) {
         match block_meta_storage.get(&current_head_hash)? {
@@ -177,7 +173,7 @@ fn feed_chain_to_protocol(
                                     .map(Some)
                                     .collect();
                                 // apply block and it's operations
-                                let apply_block_result = protocol_wrapper_ipc.apply_block(&chain_id, &current_head.hash, &current_head.header, &operations)?;
+                                let apply_block_result = protocol_controller.apply_block(&chain_id, &current_head.hash, &current_head.header, &operations)?;
                                 debug!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => apply_block_result.validation_result_message);
                                 // mark current head as applied
                                 current_head_meta.is_applied = true;
@@ -224,8 +220,3 @@ fn feed_chain_to_protocol(
     Ok(())
 }
 
-fn init_protocol_env(protocol_wrapper: &mut ProtocolWrapperIpc, configuration: &ProtocolServiceConfiguration) -> Result<(), ProtocolServiceError> {
-    protocol_wrapper.change_runtime_configuration(configuration.runtime_configuration().clone())?;
-    protocol_wrapper.init_storage(configuration.data_dir().to_str().unwrap().to_string(), configuration.environment())?;
-    Ok(())
-}

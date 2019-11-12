@@ -1,11 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::Fail;
-use ocaml::{Array1, Error, List, Str, Tag, Tuple, Value};
-use serde::{Deserialize, Serialize};
+use ocaml::{Array1, List, Str, Tuple, Value};
 
-use tezos_api::ffi::{ApplyBlockResult, GenesisChain, OcamlStorageInitInfo, ProtocolOverrides, RustBytes, TestChain, TezosRuntimeConfiguration};
+use tezos_api::ffi::*;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -35,27 +33,6 @@ impl Interchange<RustBytes> for OcamlBytes {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum TezosRuntimeConfigurationError {
-    #[fail(display = "Change ocaml settings failed, message: {}!", message)]
-    ChangeConfigurationError {
-        message: String
-    }
-}
-
-impl From<ocaml::Error> for TezosRuntimeConfigurationError {
-    fn from(error: ocaml::Error) -> Self {
-        match error {
-            Error::Exception(ffi_error) => {
-                TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
-                }
-            }
-            _ => panic!("Ocaml settings failed! Reason: {:?}", error)
-        }
-    }
-}
-
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<Result<(), TezosRuntimeConfigurationError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
@@ -70,32 +47,7 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
     })
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum TezosStorageInitError {
-    #[fail(display = "Ocaml storage init failed, message: {}!", message)]
-    InitializeError {
-        message: String
-    }
-}
 
-impl From<ocaml::Error> for TezosStorageInitError {
-    fn from(error: ocaml::Error) -> Self {
-        match error {
-            Error::Exception(ffi_error) => {
-                TezosStorageInitError::InitializeError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
-                }
-            }
-            _ => panic!("Storage initialization failed! Reason: {:?}", error)
-        }
-    }
-}
-
-impl slog::Value for TezosStorageInitError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
-    }
-}
 
 pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides)
                     -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
@@ -169,29 +121,6 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
     })
 }
 
-#[derive(Debug, Fail)]
-pub enum BlockHeaderError {
-    #[fail(display = "BlockHeader cannot be read from storage: {}!", message)]
-    ReadError {
-        message: String
-    },
-    #[fail(display = "BlockHeader was expected, but was not found!")]
-    ExpectedButNotFound,
-}
-
-impl From<ocaml::Error> for BlockHeaderError {
-    fn from(error: ocaml::Error) -> Self {
-        match error {
-            Error::Exception(ffi_error) => {
-                BlockHeaderError::ReadError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
-                }
-            }
-            _ => panic!("Storage initialization failed! Reason: {:?}", error)
-        }
-    }
-}
-
 pub fn get_current_block_header(chain_id: RustBytes) -> Result<Result<RustBytes, BlockHeaderError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("get_current_block_header").expect("function 'get_current_block_header' is not registered");
@@ -228,52 +157,6 @@ pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Re
             }
         }
     })
-}
-
-#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
-pub enum ApplyBlockError {
-    #[fail(display = "Incomplete operations, exptected: {}, has actual: {}!", expected, actual)]
-    IncompleteOperations {
-        expected: usize,
-        actual: usize,
-    },
-    #[fail(display = "Failed to apply block - message: {}!", message)]
-    FailedToApplyBlock {
-        message: String,
-    },
-    #[fail(display = "Unknown predecessor - try to fetch predecessor at first!")]
-    UnknownPredecessor,
-    #[fail(display = "Invalid block header data - message: {}!", message)]
-    InvalidBlockHeaderData {
-        message: String,
-    },
-    #[fail(display = "Invalid operations data - message: {}!", message)]
-    InvalidOperationsData {
-        message: String,
-    },
-}
-
-impl From<ocaml::Error> for ApplyBlockError {
-    fn from(error: ocaml::Error) -> Self {
-        match error {
-            Error::Exception(ffi_error) => {
-                match parse_error_message(ffi_error) {
-                    None => ApplyBlockError::FailedToApplyBlock {
-                        message: "unknown".to_string()
-                    },
-                    Some(message) => {
-                        match message.as_str() {
-                            "UnknownPredecessor" => ApplyBlockError::UnknownPredecessor,
-                            message => ApplyBlockError::FailedToApplyBlock {
-                                message: message.to_string()
-                            }
-                        }
-                    }
-                }
-            }
-            _ => panic!("Unhandled ocaml error occurred for apply block! Error: {:?}", error)
-        }
-    }
 }
 
 pub fn apply_block(
@@ -368,16 +251,4 @@ pub fn protocol_overrides_to_ocaml(protocol_overrides: &ProtocolOverrides) -> Re
     protocol_overrides.set(0, Value::from(forced_protocol_upgrades))?;
     protocol_overrides.set(1, Value::from(voted_protocol_overrides))?;
     Ok(protocol_overrides)
-}
-
-fn parse_error_message(ffi_error: Value) -> Option<String> {
-    if ffi_error.is_block() {
-        // for exceptions, in the field 2, there is a message for Failure or Ffi_error
-        let error_message = ffi_error.field(1);
-        if error_message.tag() == Tag::String {
-            let error_message: Str = error_message.into();
-            return Some(error_message.as_str().to_string());
-        }
-    }
-    None
 }

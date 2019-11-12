@@ -264,7 +264,8 @@ impl Receive<ShellChannelMsg> for Monitor {
                 // update stats for block operations
                 self.chain_monitor.process_block_operations(msg.level as usize);
 
-            }
+            },
+            ShellChannelMsg::ShuttingDown(_) => ()
         }
     }
 }

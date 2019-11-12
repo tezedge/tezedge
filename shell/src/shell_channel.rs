@@ -42,6 +42,10 @@ impl FromStr for BlockHeaderInfo {
     }
 }
 
+/// Notify actors that system is about to shut down
+#[derive(Clone, Debug)]
+pub struct ShuttingDown;
+
 #[derive(Clone, Debug)]
 pub struct BlockReceived {
     pub hash: BlockHash,
@@ -61,6 +65,7 @@ pub enum ShellChannelMsg {
     BlockApplied(BlockApplied),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
+    ShuttingDown(ShuttingDown),
 }
 
 impl From<BlockApplied> for ShellChannelMsg {
@@ -81,16 +86,25 @@ impl From<AllBlockOperationsReceived> for ShellChannelMsg {
     }
 }
 
+impl From<ShuttingDown> for ShellChannelMsg {
+    fn from(msg: ShuttingDown) -> Self {
+        ShellChannelMsg::ShuttingDown(msg)
+    }
+}
+
 /// Represents various topics
 pub enum ShellChannelTopic {
-    /// Events generated from shell layer
-    ShellEvents
+    /// Ordinary cvents generated from shell layer
+    ShellEvents,
+    /// Control event
+    ShellCommands
 }
 
 impl From<ShellChannelTopic> for Topic {
     fn from(evt: ShellChannelTopic) -> Self {
         match evt {
-            ShellChannelTopic::ShellEvents => Topic::from("shell.events")
+            ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
+            ShellChannelTopic::ShellCommands => Topic::from("shell.command")
         }
     }
 }

@@ -1,8 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::thread;
+use std::time::Duration;
+
 use clap::{App, Arg};
 use slog::*;
+
+use tezos_context::channel;
 
 fn create_logger() -> Logger {
     let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
@@ -17,35 +22,60 @@ fn main() {
         .version("1.0")
         .author("Tomas Sedlak <tomas.sedlak@simplestaking.com>")
         .about("Tezos Protocol Runner")
-        .arg(Arg::with_name("sock")
-            .short("s")
-            .long("sock")
-            .value_name("SOCK")
-            .help("Path to communication socket")
+        .arg(Arg::with_name("sock-cmd")
+            .short("c")
+            .long("sock-cmd")
+            .value_name("path")
+            .help("Path to a command socket")
+            .takes_value(true)
+            .empty_values(false)
+            .required(true))
+        .arg(Arg::with_name("sock-evt")
+            .short("e")
+            .long("sock-evt")
+            .value_name("path")
+            .help("Path to an event socket")
             .takes_value(true)
             .empty_values(false)
             .required(true))
         .get_matches();
 
-    let socket_path = matches.value_of("sock").expect("Missing sock value");
+    let cmd_socket_path = matches.value_of("sock-cmd").expect("Missing sock-cmd value");
+    let evt_socket_path = matches.value_of("sock-evt").expect("Missing sock-evt value").to_string();
 
     ctrlc::set_handler(move || {
         // do nothing and wait for parent process to send termination command
     }).expect("Error setting Ctrl-C handler");
 
-    let res = tezos_wrapper::service::process_protocol_messages::<crate::tezos::NativeTezosLib, _>(socket_path);
-    if res.is_err() {
-        error!(log, "Error while processing protocol messages"; "reason" => format!("{:?}", res.unwrap_err()));
+    let event_thread = {
+        let log = log.clone();
+        channel::enable_context_channel();
+        thread::spawn(move || {
+            for _ in 0..5 {
+                match tezos_wrapper::service::process_protocol_events(&evt_socket_path) {
+                    Ok(()) => break,
+                    Err(err) => {
+                        warn!(log, "Error while processing protocol events"; "reason" => format!("{:?}", err));
+                        thread::sleep(Duration::from_secs(1));
+                    },
+                }
+            }
+        })
+    };
+
+    if let Err(err) = tezos_wrapper::service::process_protocol_commands::<crate::tezos::NativeTezosLib, _>(cmd_socket_path) {
+        error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", err));
     }
+
+    event_thread.join().expect("Failed to join event thread");
 }
 
 mod tezos {
     use tezos_api::client::TezosStorageInitInfo;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::{ApplyBlockResult, TezosRuntimeConfiguration};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_client::client::{apply_block, change_runtime_configuration, init_storage};
     use tezos_encoding::hash::{BlockHash, ChainId};
-    use tezos_interop::ffi::{ApplyBlockError, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 

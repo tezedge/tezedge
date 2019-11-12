@@ -18,9 +18,6 @@ use rand::distributions::Alphanumeric;
 use serde::{Deserialize, Serialize};
 use timeout_io::Acceptor;
 
-const READ_TIMEOUT: Duration = Duration::from_secs(8);
-const ACCEPT_TIMEOUT: Duration = Duration::from_secs(4);
-
 #[derive(Debug, Fail)]
 pub enum IpcError {
     #[fail(display = "Receive error: {}", reason)]
@@ -48,10 +45,24 @@ pub enum IpcError {
     #[fail(display = "Split stream error: {}", reason)]
     SplitError {
         reason: io::Error
-    }
+    },
+    #[fail(display = "Socker configuration error: {}", reason)]
+    SocketConfigurationError {
+        reason: io::Error,
+    },
 }
 
 pub struct IpcSender<S>(UnixStream, PhantomData<S>);
+
+impl<S> IpcSender<S> {
+    pub fn shutdown(&self) -> Result<(), io::Error> {
+        self.0.shutdown(Shutdown::Write)
+    }
+
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.0.set_write_timeout(timeout)
+    }
+}
 
 impl<S: Serialize> IpcSender<S> {
     pub fn send(&mut self, value: &S) -> Result<(), IpcError> {
@@ -64,17 +75,29 @@ impl<S: Serialize> IpcSender<S> {
         self.0.flush()
             .map_err(|err| IpcError::SendError { reason: err })
     }
+}
 
-    pub fn shutdown(&self) -> Result<(), io::Error> {
-        self.0.shutdown(Shutdown::Write)
+impl<S> Drop for IpcSender<S> {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
     }
 }
 
 pub struct IpcReceiver<R>(UnixStream, PhantomData<R>);
 
+impl<R> IpcReceiver<R> {
+    pub fn shutdown(&self) -> Result<(), io::Error> {
+        self.0.shutdown(Shutdown::Read)
+    }
+
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.0.set_read_timeout(timeout)
+    }
+}
+
 impl<R> IpcReceiver<R>
-    where
-        R: for<'de> Deserialize<'de>
+where
+    R: for<'de> Deserialize<'de>
 {
     pub fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 8];
@@ -90,9 +113,11 @@ impl<R> IpcReceiver<R>
         bincode::deserialize(&msg_buf)
             .map_err(|err| IpcError::DeserializationError { reason: format!("{:?}", err) })
     }
+}
 
-    pub fn shutdown(&self) -> Result<(), io::Error> {
-        self.0.shutdown(Shutdown::Read)
+impl<R> Drop for IpcReceiver<R> {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
     }
 }
 
@@ -111,10 +136,12 @@ impl<R, S> Drop for IpcServer<R, S> {
 }
 
 impl<R, S> IpcServer<R, S>
-    where
-        R: for<'de> Deserialize<'de>,
-        S: Serialize
+where
+    R: for<'de> Deserialize<'de>,
+    S: Serialize
 {
+    const ACCEPT_TIMEOUT: Duration = Duration::from_secs(8);
+
     pub fn bind() -> Result<Self, IpcError> {
         let path = temp_sock();
         Self::bind_path(&path)
@@ -134,9 +161,9 @@ impl<R, S> IpcServer<R, S>
     }
 
     pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
-        let stream = self.listener.try_accept(ACCEPT_TIMEOUT)
+        let stream = self.listener.try_accept(Self::ACCEPT_TIMEOUT)
             .map_err(|_| IpcError::AcceptTimeout)?;
-        split(stream, Some(READ_TIMEOUT)).map_err(|err| IpcError::SplitError { reason: err })
+        split(stream).map_err(|err| IpcError::SplitError { reason: err })
     }
 
     pub fn client(&self) -> IpcClient<R, S> {
@@ -172,7 +199,7 @@ impl<R, S> IpcClient<R, S>
 
     pub fn connect(&self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = UnixStream::connect(&self.path).map_err(|err| IpcError::ConnectionError { reason: err })?;
-        split(stream, None).map_err(|err| IpcError::SplitError { reason: err })
+        split(stream).map_err(|err| IpcError::SplitError { reason: err })
     }
 }
 
@@ -187,12 +214,11 @@ pub fn temp_sock() -> PathBuf {
     temp_dir.join(chars + ".sock")
 }
 
-fn split<R, S>(stream: UnixStream, read_timeout: Option<Duration>) -> Result<(IpcReceiver<R>, IpcSender<S>), io::Error>
+fn split<R, S>(stream: UnixStream) -> Result<(IpcReceiver<R>, IpcSender<S>), io::Error>
     where
         R: for<'de> Deserialize<'de>,
         S: Serialize
 {
-    stream.set_read_timeout(read_timeout)?;
     Ok((IpcReceiver(stream.try_clone()?, PhantomData), IpcSender(stream, PhantomData)))
 }
 
