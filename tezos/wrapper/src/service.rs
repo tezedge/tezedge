@@ -179,7 +179,7 @@ pub struct IpcCmdServer(IpcServer<NodeMessage, ProtocolMessage>, ProtocolEndpoin
 
 impl IpcCmdServer {
 
-    const IO_TIMEOUT: Duration = Duration::from_secs(4);
+    const IO_TIMEOUT: Duration = Duration::from_secs(10);
 
     pub fn new(configuration: ProtocolEndpointConfiguration,) -> Self {
         IpcCmdServer(IpcServer::bind_path(&temp_sock()).unwrap(), configuration)

@@ -104,7 +104,9 @@ pub struct ChainManager {
     /// Current head information
     current_head: CurrentHead,
     /// Internal stats
-    stats: Stats
+    stats: Stats,
+    /// Indicates that system is shutting down
+    shutting_down: bool,
 }
 
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
@@ -134,6 +136,7 @@ impl ChainManager {
             operations_state: OperationsState::new(rocks_db.clone(), rocks_db, &chain_id),
             peers: HashMap::new(),
             current_head,
+            shutting_down: false,
             stats: Stats {
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
@@ -431,6 +434,7 @@ impl ChainManager {
                 self.stats.applied_block_level = Some(message.level);
                 self.stats.applied_block_last = Some(Instant::now());
             }
+            ShellChannelMsg::ShuttingDown(_) => self.shutting_down = true,
             _ => ()
         }
 
@@ -567,6 +571,10 @@ impl Receive<CheckChainCompleteness> for ChainManager {
     type Msg = ChainManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
+        if self.shutting_down {
+            return
+        }
+
         match self.check_chain_completeness(ctx) {
             Ok(_) => (),
             Err(e) => warn!(ctx.system.log(), "Failed to check chain completeness"; "reason" => format!("{:?}", e)),

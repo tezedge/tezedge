@@ -21,7 +21,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
-use shell::shell_channel::ShellChannel;
+use shell::shell_channel::{ShellChannel, ShuttingDown, ShellChannelTopic};
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
@@ -87,6 +87,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
     let _ = PeerManager::actor(
         &actor_system,
         network_channel.clone(),
+        shell_channel.clone(),
         tokio_runtime.executor(),
         &configuration::ENV.p2p.bootstrap_lookup_addresses,
         &configuration::ENV.p2p.initial_peers,
@@ -123,7 +124,16 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         let ctrl_c = signal::ctrl_c().unwrap();
         let prog = ctrl_c.take(1).for_each(|_| {
             info!(log, "ctrl-c received!");
+
             protocol_runner_run.store(false, Ordering::Release);
+
+            shell_channel.tell(
+                Publish {
+                    msg: ShuttingDown.into(),
+                    topic: ShellChannelTopic::ShellCommands.into(),
+                }, None
+            );
+
             future::ready(())
         });
         prog.await;

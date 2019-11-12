@@ -50,8 +50,14 @@ where
 {
     shell_channel.tell(
         Subscribe {
-            actor: Box::new(myself),
+            actor: Box::new(myself.clone()),
             topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
+
+    shell_channel.tell(
+        Subscribe {
+            actor: Box::new(myself),
+            topic: ShellChannelTopic::ShellCommands.into(),
         }, None);
 }
 
