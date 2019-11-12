@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 help() {
-  echo "Usage:"
-  echo "run.sh [OPTION]"
-  echo "Possible run modes:"
-  echo " -n,  --node  Start tezedge node"
+  echo -e "Usage: \e[97m$0\e[0m \e[32mMODE\e[0m"
+  echo -e "Possible values for \e[32mMODE\e[0m are:"
+  echo -e " \e[32mnode\e[0m  Start tezedge node. You can specify additional arguments here."
+  echo "       Example: $0 node -v"
 }
 
 build_all() {
@@ -13,22 +13,87 @@ build_all() {
 }
 
 run_node() {
-  DATA_DIR=/tmp/tezedge
+
+  # Default light-node commandline arguments:
+  #
+  # -B | --bootstrap-db-path
+  BOOTSTRAP_DIR=/tmp/tezedge
+  # -d | --tezos-data-dir
+  TEZOS_DIR=/tmp/tezedge
+  # -i | --identity
+  IDENTITY_FILE=./light_node/config/identity.json
+  # -n | --network
+  NETWORK=babylonnet
+  # rest of the commandline arguments will end up here
+  args=()
+
+  shift # shift past <MODE>
+
+  # The following loop is used to replace default light-node commandline parameters.
+  # It also allows to specify additional commandline parameters.
+  # Supports '--arg=val' and '--arg val' syntax of the commandline arguments.
+  while [ "$#" -gt 0 ]; do
+    case $1 in
+      -B=*|--bootstrap-db-path=*)
+        BOOTSTRAP_DIR="${1#*=}"
+        shift
+        ;;
+      -B|--bootstrap-db-path)
+        shift
+        BOOTSTRAP_DIR="$1"
+        shift
+        ;;
+      -d=*|--tezos-data-dir=*)
+        TEZOS_DIR="${1#*=}"
+        shift
+        ;;
+      -d|--tezos-data-dir)
+        shift
+        TEZOS_DIR="$1"
+        shift
+        ;;
+      -i=*|--identity=*)
+        IDENTITY_FILE="${1#*=}"
+        shift
+        ;;
+      -i|--identity)
+      shift
+        IDENTITY_FILE="$1"
+        shift
+        ;;
+      -n=*|--network=*)
+        NETWORK="${1#*=}"
+        shift
+        ;;
+      -n|--network)
+        shift
+        NETWORK="$1"
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+
   # cleanup data directory
-  rm -rf "$DATA_DIR"
-  mkdir "$DATA_DIR"
+  rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
+  rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
+
   # protocol_runner needs 'libtezos.o' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts"
   # start node
-  cargo run --bin light-node -- -d "$DATA_DIR" -B "$DATA_DIR" -i ./light_node/config/identity.json -t 2 -T 16 -f simple --network babylonnet --protocol-runner ./target/debug/protocol-runner
+  cargo run --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" -i "$IDENTITY_FILE" --network "$NETWORK" --protocol-runner ./target/debug/protocol-runner "${args[@]}"
 }
 
 case $1 in
 
-  -n|--node)
-    printf "\033[1;37mRun node\e[0m\n";
+  node)
+    printf "\033[1;37mRunning Tezedge node\e[0m\n"
     build_all
-    run_node
+    run_node "$@"
     ;;
 
     -h|--help)
@@ -36,7 +101,6 @@ case $1 in
       ;;
 
     *)
-      echo "Missing option"
       echo "run '$0 --help' to get more info"
       ;;
 
