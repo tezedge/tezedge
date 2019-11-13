@@ -100,7 +100,7 @@ fn listen_protocol_events(
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
             Ok(_msg) => {
-                if event_count % 25 == 0 {
+                if event_count % 100 == 0 {
                     debug!(log, "Received protocol event"; "count" => event_count);
                 }
                 event_count += 1;
