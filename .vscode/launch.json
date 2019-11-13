@@ -4,15 +4,16 @@
   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
   "version": "0.2.0",
   "configurations": [
+
     {
       "name": "(gdb) Launch",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/target/debug/tezos-rs",
-      "args": [],
+      "program": "${workspaceFolder}/target/debug/light-node",
+      "args": ["-d", "/tmp/tezedge", "-B", "/tmp/tezedge", "--network", "babylonnet", "--protocol-runner", "../target/debug/protocol-runner"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}/light_node",
-      "environment": [],
+      "environment": [{"name": "LD_LIBRARY_PATH", "value": "../tezos/interop/lib_tezos/artifacts"}],
       "externalConsole": false,
       "MIMode": "gdb",
       "setupCommands": [
@@ -27,8 +28,8 @@
       "name": "(lldbg) Launch",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/target/debug/tezos-rs",
-      "args": [],
+      "program": "${workspaceFolder}/target/debug/light-node",
+      "args": ["-d", "/tmp/tezedge", "-B", "/tmp/tezedge", "--network", "babylonnet", "--protocol-runner", "../target/debug/protocol-runner"],
       "cwd": "${workspaceFolder}/light_node",
     }
   ]
