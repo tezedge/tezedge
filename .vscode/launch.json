@@ -29,7 +29,7 @@
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/target/debug/light-node",
-      "args": ["-d", "/tmp/tezedge", "-B", "/tmp/tezedge", "--network", "babylonnet", "--protocol-runner", "../target/debug/protocol-runner"],
+      "args": [],
       "cwd": "${workspaceFolder}/light_node",
     }
   ]
