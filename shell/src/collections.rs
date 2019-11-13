@@ -5,13 +5,13 @@ use std::collections::{BinaryHeap, HashSet};
 
 use tezos_encoding::hash::BlockHash;
 
+/// Data structure for holding data about unique block collections
 pub(crate) struct UniqueBlockData<T> {
     binary_heap: BinaryHeap<T>,
     hash_set: HashSet<BlockHash>,
 }
 
 impl<T: BlockData + Ord> UniqueBlockData<T> {
-
     pub(crate) fn new() -> Self {
         UniqueBlockData {
             binary_heap: BinaryHeap::new(),
@@ -42,7 +42,6 @@ impl<T: BlockData + Ord> UniqueBlockData<T> {
 }
 
 impl<T> UniqueBlockData<T> {
-
     #[inline]
     pub(crate) fn len(&self) -> usize {
         self.hash_set.len()

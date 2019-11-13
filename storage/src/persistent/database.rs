@@ -22,7 +22,7 @@ pub enum DBError {
     #[fail(display = "Column family {} is missing", name)]
     MissingColumnFamily {
         name: &'static str
-    }
+    },
 }
 
 impl From<SchemaError> for DBError {
@@ -37,18 +37,45 @@ impl From<Error> for DBError {
     }
 }
 
-
+/// Custom trait extending RocksDB to better handle and enforce database schema
 pub trait DatabaseWithSchema<S: Schema> {
+    /// Insert new key value pair into the database. If key already exists, method will fail
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    /// * `value` - Value to be inserted associated with given key, specified by schema
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
+    /// Insert key value pair into the database, overriding existing value if exists.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    /// * `value` - Value to be inserted associated with given key, specified by schema
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
+    /// Read value associated with given key, if exists.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
 
+    /// Read all entries in database.
+    ///
+    /// # Arguments
+    /// * `mode` - Reading mode, specified by RocksDB, From start to end, from end to start, or from
+    /// arbitrary position to end.
     fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError>;
 
+    /// Starting from given key, read all entries to the end.
+    ///
+    /// # Arguments
+    /// * `key` - Key (specified by schema), from which to start reading entries
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError>;
 
+    /// Check, if database contains given key
+    ///
+    /// # Arguments
+    /// * `key` - Key (specified by schema), to be checked for existence
     fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
 }
 
@@ -132,6 +159,7 @@ fn default_write_options() -> WriteOptions {
     opts
 }
 
+/// Database iterator extended by specific schema
 pub struct IteratorWithSchema<'a, S: Schema>(DBIterator<'a>, PhantomData<S>);
 
 impl<'a, S: Schema> Iterator for IteratorWithSchema<'a, S>
@@ -145,6 +173,7 @@ impl<'a, S: Schema> Iterator for IteratorWithSchema<'a, S>
     }
 }
 
+/// Database iterator direction
 pub enum Direction {
     Forward,
     Reverse,
@@ -159,6 +188,7 @@ impl From<Direction> for rocksdb::Direction {
     }
 }
 
+/// Database iterator with schema mode, from start to end, from end to start or from specific key to end/start
 pub enum IteratorMode<'a, S: Schema> {
     Start,
     End,

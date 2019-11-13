@@ -25,7 +25,7 @@ pub enum BinaryReaderError {
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag {
         tag: u16
-    }
+    },
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -60,12 +60,11 @@ macro_rules! safe {
 
 }
 
-pub struct BinaryReader {}
+pub struct BinaryReader;
 
 impl BinaryReader {
-
     pub fn new() -> Self {
-        BinaryReader {}
+        Self
     }
 
     pub fn read(&self, buf: Vec<u8>, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
@@ -136,7 +135,7 @@ impl BinaryReader {
                 self.decode_value(&mut buf_slice, un_sized_encoding)
             }
             Encoding::Tags(tag_sz, ref tag_map) => {
-                let tag_id = match tag_sz  {
+                let tag_id = match tag_sz {
                     /*u8*/  1 => Ok(u16::from(safe!(buf, get_u8, u8))),
                     /*u16*/ 2 => Ok(safe!(buf, get_u16_be, u16)),
                     _ => Err(de::Error::custom(format!("Unsupported tag size {}", tag_sz)))
@@ -146,7 +145,7 @@ impl BinaryReader {
                     Some(tag) => {
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
-                    },
+                    }
                     None => Err(BinaryReaderError::UnsupportedTag { tag: tag_id })
                 }
             }
@@ -281,7 +280,6 @@ mod tests {
 
     #[test]
     fn can_deserialize_tag_from_binary() {
-
         #[derive(Deserialize, Debug, PartialEq)]
         struct GetHeadRecord {
             chain_id: Vec<u8>,
@@ -302,12 +300,12 @@ mod tests {
         }
 
         let response_schema = vec![
-            Field::new("messages",  Encoding::dynamic(Encoding::list(
+            Field::new("messages", Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))])
+                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
                 )
-           )))
+            )))
         ];
 
         // deserialize to value

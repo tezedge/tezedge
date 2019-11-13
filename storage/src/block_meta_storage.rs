@@ -13,18 +13,18 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
 
-/// Structure for representing in-memory db for - just for demo purposes.
+/// Structure for representing in-memory db.
 #[derive(Clone)]
 pub struct BlockMetaStorage {
     db: Arc<BlockMetaStorageDatabase>
 }
 
 impl BlockMetaStorage {
-
     pub fn new(db: Arc<BlockMetaStorageDatabase>) -> Self {
         BlockMetaStorage { db }
     }
 
+    /// Create new metadata record in storage from given block header
     pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
@@ -122,6 +122,7 @@ pub struct Meta {
 }
 
 impl Meta {
+    /// Create Metadata for specific genesis block
     pub fn genesis_meta(genesis_hash: &BlockHash, genesis_chain_id: &ChainId) -> Self {
         Meta {
             is_applied: true, // we consider genesis as already applied
