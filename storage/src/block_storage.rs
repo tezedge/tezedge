@@ -17,7 +17,7 @@ pub trait BlockStorageReader: Sync + Send {
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
-/// Structure for representing in-memory db for - just for demo purposes.
+/// Block header storage
 #[derive(Clone)]
 pub struct BlockStorage {
     db: Arc<BlockStorageDatabase>

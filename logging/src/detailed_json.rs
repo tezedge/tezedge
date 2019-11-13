@@ -9,15 +9,20 @@ use slog::*;
 use slog::{FnValue, Level, Record};
 use slog_json;
 
+/// Get hostname for current machine
 fn get_hostname() -> String {
-
-    let mut buf = vec!(0u8; 256);
+    // Posix guarantees, that hostname might be up to 255 characters long (+1 for '\0')
+    let mut buf = vec![0u8; 255];
     match nix::unistd::gethostname(&mut buf) {
         Ok(hostname_c) => hostname_c.to_string_lossy().into(),
         Err(_) => "n/a".to_string(),
     }
 }
 
+/// Convert logger level into integral value representing same level
+///
+/// # Arguments
+/// * `level` - enum representation of logging level
 fn level_to_int(level: Level) -> i8 {
     match level {
         Level::Critical => 60,
@@ -29,6 +34,11 @@ fn level_to_int(level: Level) -> i8 {
     }
 }
 
+/// Create new JSON logger with specific timestamp generator
+///
+/// # Arguments
+/// * `io` - output writer to write logs
+/// * `ts_f` - TimeStamp generator
 fn new_with_ts_fn<F, W>(io : W, ts_f: F) -> slog_json::JsonBuilder<W>
     where F: Fn(&Record) -> String + Send + Sync + std::panic::RefUnwindSafe + 'static,
           W : io::Write
@@ -45,6 +55,11 @@ fn new_with_ts_fn<F, W>(io : W, ts_f: F) -> slog_json::JsonBuilder<W>
         ))
 }
 
+
+/// Create new default JSON logger
+///
+/// # Arguments
+/// * `io` - output writer to write logs
 pub fn default<W>(io : W) -> slog_json::Json<W>
     where
         W : io::Write {

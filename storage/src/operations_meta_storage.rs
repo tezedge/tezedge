@@ -16,6 +16,7 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 /// Convenience type for operation meta storage database
 pub type OperationsMetaStorageDatabase = dyn DatabaseWithSchema<OperationsMetaStorage> + Sync + Send;
 
+/// Operation metadata storage
 #[derive(Clone)]
 pub struct OperationsMetaStorage {
     db: Arc<OperationsMetaStorageDatabase>
@@ -29,18 +30,18 @@ impl OperationsMetaStorage {
     #[inline]
     pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
-            &Meta {
-                validation_passes: block_header.header.validation_pass(),
-                is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
-                is_complete: block_header.header.validation_pass() == 0,
-                level: block_header.header.level(),
-                chain_id: chain_id.clone(),
-            }
+                 &Meta {
+                     validation_passes: block_header.header.validation_pass(),
+                     is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
+                     is_complete: block_header.header.validation_pass() == 0,
+                     level: block_header.header.level(),
+                     chain_id: chain_id.clone(),
+                 },
         )
     }
 
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        let block_hash =  message.operations_for_block().hash().clone();
+        let block_hash = message.operations_for_block().hash().clone();
 
         match self.get(&block_hash)? {
             Some(mut meta) => {
@@ -120,7 +121,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
                 // merge `is_complete`
                 let is_complete_idx = validation_passes + 1;
                 val[is_complete_idx] |= op[is_complete_idx];
-            },
+            }
             None => result = Some(op.to_vec())
         }
     }
@@ -128,6 +129,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
     result
 }
 
+/// Block operations metadata
 #[derive(PartialEq, Debug)]
 pub struct Meta {
     validation_passes: u8,
@@ -274,7 +276,7 @@ mod tests {
                         chain_id: vec![44; 4],
                     };
                     assert_eq!(expected, value);
-                },
+                }
                 _ => panic!("value not present"),
             }
         }
@@ -322,7 +324,7 @@ mod tests {
                     assert!(value.is_complete);
                     assert_eq!(785, value.level);
                     assert_eq!(vec![44; 4], value.chain_id);
-                },
+                }
                 _ => panic!("value not present"),
             }
         }
@@ -372,7 +374,7 @@ mod tests {
                     assert!(value.is_complete);
                     assert_eq!(31_337, value.level);
                     assert_eq!(vec![44; 4], value.chain_id);
-                },
+                }
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
             }

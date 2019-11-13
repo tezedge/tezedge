@@ -16,7 +16,6 @@ pub struct BinaryWriter {
 }
 
 impl BinaryWriter {
-
     pub fn new() -> BinaryWriter {
         BinaryWriter { data: Vec::with_capacity(512) }
     }
@@ -59,7 +58,6 @@ impl BinaryWriter {
     }
 
     fn encode_value(&mut self, value: &Value, encoding: &Encoding) -> Result<usize, Error> {
-
         match encoding {
             Encoding::Unit => {
                 Ok(0)
@@ -118,7 +116,7 @@ impl BinaryWriter {
                         } else {
                             Err(Error::custom("Value is outside of Int31 range"))
                         }
-                    },
+                    }
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
@@ -419,7 +417,7 @@ impl BinaryWriter {
 
 #[cfg(test)]
 mod tests {
-    use serde::{Serialize};
+    use serde::Serialize;
 
     use crate::encoding::{Tag, TagMap};
     use crate::types::BigInt;
@@ -519,7 +517,6 @@ mod tests {
 
     #[test]
     fn can_serialize_tag_to_binary() {
-
         #[derive(Serialize, Debug)]
         struct GetHeadRecord {
             chain_id: Vec<u8>,
@@ -540,12 +537,12 @@ mod tests {
         }
 
         let response_schema = vec![
-            Field::new("messages",  Encoding::dynamic(Encoding::list(
+            Field::new("messages", Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))])
+                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
                 )
-           )))
+            )))
         ];
         let response_encoding = Encoding::Obj(response_schema);
 

@@ -1,12 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// Rust implementation of messages required for Rust <-> OCaml FFI communication.
+
 use derive_new::new;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 pub type RustBytes = Vec<u8>;
 
+/// Genesis block information structure
 #[derive(Debug)]
 pub struct GenesisChain {
     pub time: String,
@@ -14,12 +17,14 @@ pub struct GenesisChain {
     pub protocol: String,
 }
 
+/// Voted protocol overrides
 #[derive(Debug)]
 pub struct ProtocolOverrides {
     pub forced_protocol_upgrades: Vec<(i32, String)>,
     pub voted_protocol_overrides: Vec<(String, String)>,
 }
 
+/// Storage initialization information for OCaml storage
 #[derive(Debug)]
 pub struct OcamlStorageInitInfo {
     pub chain_id: RustBytes,
@@ -30,6 +35,7 @@ pub struct OcamlStorageInitInfo {
     pub supported_protocol_hashes: Vec<RustBytes>,
 }
 
+/// Test chain information
 #[derive(Debug, new, Serialize, Deserialize)]
 pub struct TestChain {
     pub chain_id: RustBytes,
@@ -43,6 +49,7 @@ pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool
 }
 
+/// Application block result
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ApplyBlockResult {
     pub validation_result_message: String,

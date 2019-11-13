@@ -65,6 +65,7 @@ impl From<BinaryChunkError> for StreamError {
         StreamError::NetworkError { error: error.into(), message: "Binary chunk error" }
     }
 }
+
 impl From<BinaryReaderError> for StreamError {
     fn from(error: BinaryReaderError) -> Self {
         StreamError::DeserializationError { error }
@@ -89,7 +90,7 @@ impl MessageStream {
         let (rx, tx) = tokio::io::split(stream);
         MessageStream {
             reader: MessageReader { stream: rx },
-            writer: MessageWriter { stream: tx }
+            writer: MessageWriter { stream: tx },
         }
     }
 
@@ -112,7 +113,6 @@ pub struct MessageReader {
 }
 
 impl MessageReader {
-
     /// Read message from network and return message contents in a form of bytes.
     /// Each message is prefixed by a 2 bytes indicating total length of the message.
     pub async fn read_message(&mut self) -> Result<BinaryChunk, StreamError> {
@@ -145,7 +145,6 @@ pub struct MessageWriter {
 }
 
 impl MessageWriter {
-
     /// Construct and write message to network stream.
     ///
     /// # Arguments
@@ -174,7 +173,6 @@ pub struct EncryptedMessageWriter {
 }
 
 impl EncryptedMessageWriter {
-
     pub fn new(tx: MessageWriter, precomputed_key: PrecomputedKey, nonce_local: Nonce, peer_id: PeerId, log: Logger) -> Self {
         let log = log.new(o!("peer" => peer_id));
         EncryptedMessageWriter { tx, precomputed_key, nonce_local, log }
@@ -221,15 +219,16 @@ pub struct EncryptedMessageReader {
 }
 
 impl EncryptedMessageReader {
-
+    /// Create new encrypted message from async reader and peer data
     pub fn new(rx: MessageReader, precomputed_key: PrecomputedKey, nonce_remote: Nonce, peer_id: PeerId, log: Logger) -> Self {
         let log = log.new(o!("peer" => peer_id));
         EncryptedMessageReader { rx, precomputed_key, nonce_remote, log }
     }
 
+    /// Consume content of inner message reader into specific message
     pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
-    where
-        M: BinaryMessage
+        where
+            M: BinaryMessage
     {
         let mut input_remaining = 0;
         let mut input_data = vec![];
@@ -259,7 +258,7 @@ impl EncryptedMessageReader {
                     }
                 }
                 Err(error) => {
-                    break Err(StreamError::FailedToDecryptMessage { error })
+                    break Err(StreamError::FailedToDecryptMessage { error });
                 }
             }
         }
