@@ -4,19 +4,8 @@ Tezedge
 [![Build Status](https://travis-ci.com/simplestaking/tezedge.svg?branch=master)](https://travis-ci.com/simplestaking/tezedge)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust. In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
-
-The project can be considered as a proof of concept. This PoC demonstrates the viability of a node build that uses Rust. 
-
-## Components
-
-* **light_node:** Implementation of a lightweight Tezos node written in Rust.
-  If you want to run node, then enter *light_node* directory and then execute `cargo run`. For more details consult node [README](light_node/README.md) file.
-
-* **tezos/encoding:** All incoming messages are transformed into standard Rust structures for easy manipulation using de component. This component implements serialization and deserialization of all data types used in Tezos messages.
-
-* **tezos/crypto:** Component contains cryptographic algorithms for encryption and decryption of messages.
-
+The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
+In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
 
 Requirements
 ------------
@@ -49,26 +38,19 @@ sudo apt install libsodium-dev
 
 Install libs required to build RocksDB package:
 ```
-sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers
+sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev
 ```
 
-Install libs required to build light-node package:
-```
-sudo apt install libev-dev
-```
-
-Building
+Launching node
 --------
 
-**4. Build node** 
+**4. Start Tezedge node** 
 
 On linux systems:
 
 ```
-SODIUM_USE_PKG_CONFIG=1 cargo build
+./run.sh node
 ```
-
-For more info on how to compile OCaml interop library please see [README](./tezos/interop/README.md).
 
 **5. Listening for updates**
 
