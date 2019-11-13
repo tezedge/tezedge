@@ -49,11 +49,11 @@ pub(crate) mod subscription {
             M: Message,
             E: Message + Into<M>
     {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself.clone()),
-                topic: ShellChannelTopic::ShellEvents.into(),
-            }, None);
+    shell_channel.tell(
+        Subscribe {
+            actor: Box::new(myself.clone()),
+            topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
 
         shell_channel.tell(
             Subscribe {

@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// Separate Tezos protocol runner, as we used OCaml protocol more and more, we noticed increasing
+/// problems, from panics to high memory usage, for better stability, we separated protocol into
+/// self-contained process communicating through Unix Socket.
 use std::thread;
 use std::time::Duration;
-
 use clap::{App, Arg};
 use slog::*;
 
@@ -57,7 +59,7 @@ fn main() {
                     Err(err) => {
                         warn!(log, "Error while processing protocol events"; "reason" => format!("{:?}", err));
                         thread::sleep(Duration::from_secs(1));
-                    },
+                    }
                 }
             }
         })

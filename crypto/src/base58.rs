@@ -19,6 +19,7 @@ pub enum FromBase58CheckError {
     MissingChecksum,
 }
 
+/// Create double hash of given binary data
 fn double_sha256(data: &[u8]) -> sha256::Digest {
     let digest = sha256::hash(data);
     sha256::hash(digest.as_ref())
@@ -41,7 +42,8 @@ pub trait FromBase58Check {
 
 impl ToBase58Check for [u8] {
     fn to_base58check(&self) -> String {
-        let mut payload = vec![];
+        // 4 bytes checksum
+        let mut payload = Vec::with_capacity(self.len() + 4);
         payload.extend(self);
         let checksum = double_sha256(self);
         payload.extend(&checksum[..4]);
@@ -55,7 +57,6 @@ impl FromBase58Check for str {
         match self.from_base58() {
             Ok(payload) => {
                 if payload.len() >= Self::CHECKSUM_BYTE_SIZE {
-
                     let data_len = payload.len() - Self::CHECKSUM_BYTE_SIZE;
                     let data = &payload[..data_len];
                     let checksum_provided = &payload[data_len..];

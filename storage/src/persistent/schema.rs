@@ -15,12 +15,16 @@ pub enum SchemaError {
     DecodeError,
 }
 
+/// This trait specifies arbitrary binary encoding and decoding methods for types requiring storing in database
 pub trait Codec: Sized {
+    /// Try to decode message from its binary format
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError>;
 
+    /// Try to encode instance into its binary format
     fn encode(&self) -> Result<Vec<u8>, SchemaError>;
 }
 
+/// This trait extends basic column family by introducing Codec types safety and enforcement
 pub trait Schema {
     const COLUMN_FAMILY_NAME: &'static str;
 

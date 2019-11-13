@@ -9,6 +9,7 @@ use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
+/// Override runtime configuration for OCaml runtime
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
     match ffi::change_runtime_configuration(settings) {
         Ok(result) => Ok(result?),

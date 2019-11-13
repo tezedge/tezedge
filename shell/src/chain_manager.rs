@@ -112,7 +112,6 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-
     pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(ChainManager::new, (network_channel, shell_channel, rocks_db, init_info.chain_id.clone(),
@@ -144,10 +143,11 @@ impl ChainManager {
                 applied_block_last: None,
                 applied_block_level: None,
                 hydrated_state_last: None,
-            }
+            },
         }
     }
 
+    /// Check for missing blocks in local chain copy, and schedule downloading for those blocks
     fn check_chain_completeness(&mut self, ctx: &Context<ChainManagerMsg>) -> Result<(), Error> {
         let ChainManager { peers, block_state, operations_state, stats, .. } = self;
 
@@ -160,7 +160,6 @@ impl ChainManager {
                     if available_capacity > 0 {
                         let mut missing_blocks = block_state.drain_missing_blocks(available_capacity, peer.current_head_level.unwrap());
                         if !missing_blocks.is_empty() {
-
                             let queued_blocks = missing_blocks.drain(..)
                                 .map(|missing_block| {
                                     let missing_block_hash = missing_block.block_hash.clone();
@@ -193,7 +192,6 @@ impl ChainManager {
                     if available_capacity > 0 {
                         let missing_operations = operations_state.drain_missing_operations(available_capacity, peer.current_head_level.unwrap());
                         if !missing_operations.is_empty() {
-
                             let queued_operations = missing_operations.iter()
                                 .map(|missing_operation| {
                                     if let None = peer.queued_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()) {
@@ -351,7 +349,7 @@ impl ChainManager {
                                             tell_peer(msg.into(), peer);
                                         }
                                     }
-                                },
+                                }
                                 PeerMessage::GetCurrentHead(message) => {
                                     debug!(log, "Current head requested");
                                     if block_state.get_chain_id() == message.chain_id() {
@@ -383,7 +381,7 @@ impl ChainManager {
                                                         Publish {
                                                             msg: AllBlockOperationsReceived {
                                                                 hash: block.hash,
-                                                                level: block.header.level()
+                                                                level: block.header.level(),
                                                             }.into(),
                                                             topic: ShellChannelTopic::ShellEvents.into(),
                                                         }, Some(ctx.myself().into()));
@@ -405,7 +403,7 @@ impl ChainManager {
                                 PeerMessage::GetOperationsForBlocks(message) => {
                                     for get_op in message.get_operations_for_blocks() {
                                         if get_op.validation_pass() < 0 {
-                                            continue
+                                            continue;
                                         }
 
                                         let key = get_op.into();

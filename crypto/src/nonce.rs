@@ -21,28 +21,33 @@ macro_rules! merge_slices {
     }}
 }
 
+/// Arbitrary number that can be used once in communication.
 #[derive(Debug, Clone)]
 pub struct Nonce {
     value: BigUint
 }
 
 impl Nonce {
+    /// Create new nonce from raw bytes
     pub fn new(bytes: &[u8]) -> Self {
         Nonce {
             value: BigUint::from_bytes_be(bytes)
         }
     }
 
+    /// Generate new random nonce
     pub fn random() -> Self {
         let mut rng = rand::thread_rng();
         let value: BigUint = rng.gen_biguint(NONCE_SIZE * 8);
         Nonce { value }
     }
 
+    /// Increment this nonce by one
     pub fn increment(&self) -> Self {
         Nonce { value: &self.value + 1u32 }
     }
 
+    /// Create bytes representation equal to this nonce
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut bytes = self.value.to_bytes_be();
         match bytes.len().cmp(&NONCE_SIZE) {
@@ -51,22 +56,33 @@ impl Nonce {
                 let mut zero_prefixed_bytes = vec![0u8; NONCE_SIZE - bytes.len()];
                 zero_prefixed_bytes.append(&mut bytes);
                 zero_prefixed_bytes
-            },
+            }
             Ordering::Greater => panic!("Nonce value overflow"),
         }
     }
 
+    /// Create hash of this nonce
     #[allow(dead_code)]
     pub fn get_hash(&self) -> Vec<u8> {
         blake2b::digest_256(&self.value.to_bytes_be())
     }
 }
 
+/// Pair of local/remote nonces
 pub struct NoncePair {
     pub local: Nonce,
     pub remote: Nonce,
 }
 
+/// Generate NoncePair for incoming/outgoing requests/response message
+///
+/// # Arguments
+/// * `sent_msg` - raw binary message, sent by client
+/// * `recv_msg` - raw binary message, received by client
+/// * `incoming` - determines, order of messages.
+///
+/// If incoming is set, `recv_msg` is handled as request and `sent_msg` as response
+/// and vice versa if incoming is not set.
 pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> NoncePair {
     let (init_msg, resp_msg) = if incoming { (recv_msg, sent_msg) } else { (sent_msg, recv_msg) };
 

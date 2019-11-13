@@ -12,6 +12,7 @@ pub const BOX_ZERO_BYTES: usize = 32;
 const CRYPTO_KEY_SIZE: usize = 32;
 const NONCE_SIZE: usize = 24;
 
+/// Convenience wrapper around `sodiumoxide::crypto::box_::PublicKey`
 #[derive(Clone, PartialEq)]
 pub struct PublicKey(box_::PublicKey);
 
@@ -42,6 +43,7 @@ impl FromHex for PublicKey {
 }
 
 #[derive(Clone, PartialEq)]
+/// Convenience wrapper around `sodiumoxide::crypto::box_::SecretKey`
 pub struct SecretKey(box_::SecretKey);
 
 impl AsRef<box_::SecretKey> for SecretKey {
@@ -71,6 +73,7 @@ impl FromHex for SecretKey {
 }
 
 #[derive(Clone, PartialEq)]
+/// Convenience wrapper around `sodiumoxide::crypto::box_::PrecomputedKey`
 pub struct PrecomputedKey(box_::PrecomputedKey);
 
 impl FromHex for PrecomputedKey {
@@ -108,10 +111,21 @@ pub enum CryptoError {
     FailedToDecrypt,
 }
 
+/// Create `PrecomputedKey` from public key and secret key
+///
+/// # Arguments
+/// * `pk_as_hex_string` - Hex string representing public key
+/// * `sk_as_hex_string` - Hex string representing secret key
 pub fn precompute(pk_as_hex_string: &str, sk_as_hex_string: &str) -> Result<PrecomputedKey, FromHexError> {
     Ok(PrecomputedKey(box_::precompute(&*PublicKey::from_hex(pk_as_hex_string)?, &*SecretKey::from_hex(sk_as_hex_string)?)))
 }
 
+/// Encrypt binary message
+///
+/// # Arguments
+/// * `msg` - Binary message to be encoded
+/// * `nonce` - Nonce required to encode message
+/// * `pck` - Precomputed key required to encode message
 pub fn encrypt(msg: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8>, CryptoError> {
     let nonce_bytes = nonce.get_bytes();
     if nonce_bytes.len() == NONCE_SIZE {
@@ -125,6 +139,12 @@ pub fn encrypt(msg: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8
     }
 }
 
+/// Decrypt binary message into raw binary data
+///
+/// # Arguments
+/// * `enc` - Encoded message
+/// * `nonce` - Nonce required to decode message
+/// * `pck` - Precomputed key required to decode message
 pub fn decrypt(enc: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8>, CryptoError> {
     let nonce_bytes = nonce.get_bytes();
     if nonce_bytes.len() == NONCE_SIZE {
