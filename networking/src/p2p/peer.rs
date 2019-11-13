@@ -25,7 +25,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
-const READ_TIMEOUT_SHORT: Duration = Duration::from_secs(6);
+const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
@@ -284,9 +284,17 @@ impl Receive<SendMessage> for Peer {
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
-                if let Err(e) = tx.write_message(&*msg.message).await {
-                    warn!(system.log(), "Failed to send message"; "reason" => e);
-                    system.stop(myself);
+                match tx.write_message(&*msg.message).timeout(IO_TIMEOUT).await {
+                    Ok(write_result) => {
+                        if let Err(e) = write_result {
+                            warn!(system.log(), "Failed to send message"; "reason" => e);
+                            system.stop(myself);
+                        }
+                    }
+                    Err(_) => {
+                        warn!(system.log(), "Failed to send message"; "reason" => "timeout");
+                        system.stop(myself);
+                    }
                 }
             }
         });
@@ -312,14 +320,14 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
         vec![Version::new(info.version.clone(), 0, 0)]);
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
-        match msg_tx.write_message(&connection_message_bytes).await {
+        match msg_tx.write_message(&connection_message_bytes).timeout(IO_TIMEOUT).await? {
             Ok(_) => connection_message_bytes,
             Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Failed to transfer connection message" })
         }
     };
 
     // receive connection message
-    let received_connection_msg = match msg_rx.read_message().timeout(READ_TIMEOUT_SHORT).await? {
+    let received_connection_msg = match msg_rx.read_message().timeout(IO_TIMEOUT).await? {
         Ok(msg) => msg,
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
@@ -344,17 +352,17 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
-    msg_tx.write_message(&metadata).await?;
+    msg_tx.write_message(&metadata).timeout(IO_TIMEOUT).await??;
 
     // receive metadata
-    let metadata_received = msg_rx.read_message::<MetadataMessage>().timeout(READ_TIMEOUT_SHORT).await??;
+    let metadata_received = msg_rx.read_message::<MetadataMessage>().timeout(IO_TIMEOUT).await??;
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
-    msg_tx.write_message(&AckMessage::Ack).await?;
+    msg_tx.write_message(&AckMessage::Ack).timeout(IO_TIMEOUT).await??;
 
     // receive ack
-    let ack_received = msg_rx.read_message().timeout(READ_TIMEOUT_SHORT).await??;
+    let ack_received = msg_rx.read_message().timeout(IO_TIMEOUT).await??;
 
     match ack_received {
         AckMessage::Ack => {
