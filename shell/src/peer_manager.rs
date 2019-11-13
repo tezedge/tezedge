@@ -32,6 +32,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 const WHITELIST_INTERVAL: Duration = Duration::from_secs(1_800);
 /// How often to do DNS peer discovery
 const DISCOVERY_INTERVAL: Duration = Duration::from_secs(60);
+/// Limit how often we allow to trigger check of a peer count
+const CHECK_PEER_COUNT_LIMIT: Duration = Duration::from_secs(5);
 
 /// Check peer threshold
 #[derive(Clone, Debug)]
@@ -98,6 +100,8 @@ pub struct PeerManager {
     ip_blacklist: HashSet<IpAddr>,
     /// Last time we did DNS peer discovery
     discovery_last: Option<Instant>,
+    /// Last time we checked peer count
+    check_peer_count_last: Option<Instant>,
     /// Indicates that system is shutting down
     shutting_down: bool,
 }
@@ -153,6 +157,7 @@ impl PeerManager {
             peers: HashMap::new(),
             ip_blacklist: HashSet::new(),
             discovery_last: None,
+            check_peer_count_last: None,
             shutting_down: false,
         }
     }
@@ -181,7 +186,7 @@ impl PeerManager {
         }
     }
 
-    fn create_peer(&self, sys: &impl ActorRefFactory, socket_address: &SocketAddr) -> PeerRef {
+    fn create_peer(&mut self, sys: &impl ActorRefFactory, socket_address: &SocketAddr) -> PeerRef {
         let peer = Peer::actor(
             sys,
             self.network_channel.clone(),
@@ -193,6 +198,8 @@ impl PeerManager {
             self.tokio_executor.clone(),
             socket_address,
         ).unwrap();
+
+        self.peers.insert(peer.uri().clone(), peer.clone());
 
         self.network_channel.tell(
             Publish {
@@ -220,6 +227,17 @@ impl PeerManager {
         }
 
         Ok(())
+    }
+
+    fn trigger_check_peer_count(&mut self, ctx: &Context<PeerManagerMsg>) {
+        let should_trigger = self.check_peer_count_last
+            .map(|check_peer_count_last| check_peer_count_last.elapsed() > CHECK_PEER_COUNT_LIMIT)
+            .unwrap_or(true);
+
+        if should_trigger {
+            self.check_peer_count_last = Some(Instant::now());
+            ctx.myself().tell(CheckPeerCount, None);
+        }
     }
 }
 
@@ -296,7 +314,7 @@ impl Receive<SystemEvent> for PeerManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
         if let SystemEvent::ActorTerminated(evt) = msg {
             if let Some(_) = self.peers.remove(evt.actor.uri()) {
-                ctx.myself().tell(CheckPeerCount, None);
+                self.trigger_check_peer_count(ctx);
             }
         }
     }
@@ -334,6 +352,8 @@ impl Receive<CheckPeerCount> for PeerManager {
                 .take(self.peers.len() - self.threshold.high)
                 .for_each(|peer| ctx.system.stop(peer.clone()))
         }
+
+        self.check_peer_count_last = Some(Instant::now());
     }
 }
 
@@ -342,9 +362,6 @@ impl Receive<NetworkChannelMsg> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         match msg {
-            NetworkChannelMsg::PeerCreated(msg) => {
-                self.peers.insert(msg.peer.uri().clone(), msg.peer);
-            }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 let messages = received.message.messages();
                 messages.iter()
@@ -355,11 +372,11 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                             .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
                             .collect::<Vec<SocketAddr>>();
                         self.potential_peers.extend(sock_addresses);
-                        ctx.myself().tell(CheckPeerCount, None);
-                    })
+                    });
+                self.trigger_check_peer_count(ctx);
             }
             NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure { address }) => {
-                info!(ctx.system.log(), "Blacklisting peer"; "ip" => format!("{}", address.ip()));
+                info!(ctx.system.log(), "Blacklisting IP because peer failed at bootstrap process"; "ip" => format!("{}", address.ip()));
                 self.ip_blacklist.insert(address.ip());
             }
             _ => ()
@@ -387,18 +404,18 @@ impl Receive<ConnectToPeer> for PeerManager {
             let system = ctx.system.clone();
 
             self.tokio_executor.spawn(async move {
-                info!(system.log(), "Connecting to IP"; "ip" => msg.address);
+                info!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name());
                 match TcpStream::connect(&msg.address).timeout(CONNECT_TIMEOUT).await {
                     Ok(Ok(stream)) => {
                         info!(system.log(), "Connection successful"; "ip" => msg.address);
                         peer.tell(Bootstrap::outgoing(stream, msg.address), None);
                     }
                     Ok(Err(_)) => {
-                        info!(system.log(), "Connection failed"; "ip" => msg.address);
+                        info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name());
                         system.stop(peer);
                     }
                     Err(_) => {
-                        info!(system.log(), "Connection timed out"; "ip" => msg.address);
+                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name());
                         system.stop(peer);
                     }
                 }
@@ -430,7 +447,7 @@ async fn begin_listen_incoming(listener_port: u16, peer_manager: PeerManagerRef,
     let listener_address = format!("0.0.0.0:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
     let mut listener = TcpListener::bind(&listener_address).await.expect("Failed to bind to address");
 
-    while rx_run.load(Ordering::Relaxed) {
+    while rx_run.load(Ordering::Acquire) {
         if let Ok((stream, address)) = listener.accept().await {
             peer_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
         }

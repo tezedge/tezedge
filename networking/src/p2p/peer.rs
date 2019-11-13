@@ -210,7 +210,7 @@ impl Actor for Peer {
     type Msg = PeerMsg;
 
     fn post_stop(&mut self) {
-        self.net.rx_run.store(false, Ordering::SeqCst);
+        self.net.rx_run.store(false, Ordering::Release);
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -231,13 +231,15 @@ impl Receive<Bootstrap> for Peer {
 
         self.tokio_executor.spawn(async move {
             async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
-                net.rx_run.store(true, Ordering::Relaxed);
+                net.rx_run.store(true, Ordering::Release);
                 *net.tx.lock().await = Some(tx);
             }
 
             let peer_address = msg.address;
+            debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
             match bootstrap(msg, info, system.log()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
+                    debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
 
                     let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&public_key);
@@ -257,7 +259,7 @@ impl Receive<Bootstrap> for Peer {
                     system.stop(myself);
                 }
                 Err(err) => {
-                    info!(system.log(), "Connection to peer failed"; "reason" => err, "ip" => &peer_address);
+                    info!(system.log(), "Connection to peer failed"; "reason" => err, "ip" => &peer_address, "peer" => myself.name());
 
                     // notify that peer failed at bootstrap process
                     network_channel.tell(Publish {
@@ -389,11 +391,11 @@ fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: boo
 async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger) {
     info!(log, "Starting to accept messages");
 
-    while rx_run.load(Ordering::SeqCst) {
+    while rx_run.load(Ordering::Acquire) {
         match rx.read_message::<PeerMessageResponse>().timeout(READ_TIMEOUT_LONG).await {
             Ok(res) => match res {
                 Ok(msg) => {
-                    let should_broadcast_message = rx_run.load(Ordering::SeqCst);
+                    let should_broadcast_message = rx_run.load(Ordering::Acquire);
                     if should_broadcast_message {
                         trace!(log, "Message parsed successfully");
                         event_channel.tell(
