@@ -3,6 +3,7 @@
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::fs::create_dir_all;
 
 use clap::{App, Arg};
 
@@ -151,10 +152,19 @@ impl Environment {
                 .help("A directory for Tezos OCaml runtime storage (context/store)")
                 .validator(|v| {
                     let dir = Path::new(&v);
-                    if dir.exists() && dir.is_dir() {
-                        Ok(())
+                    if dir.exists() {
+                        if dir.is_dir() {
+                            Ok(())
+                        } else {
+                            Err(format!("Required tezos data dir '{}' exists, but is not a directory!", v))
+                        }
                     } else {
-                        Err(format!("Required tezos data dir '{}' is not a directory or does not exist!", v))
+                        // Tezos data dir does not exists, try to create it
+                        if let Err(e) = create_dir_all(dir) {
+                            Err(format!("Unable to create required tezos data dir '{}': {} ", v, e))
+                        } else {
+                            Ok(())
+                        }
                     }
                 }))
             .arg(Arg::with_name("peer-thresh-low")
@@ -245,15 +255,15 @@ impl Environment {
                         .map(|address| address.to_string())
                         .collect()
                     ).unwrap_or_else(|| {
-                        if !args.is_present("peers") {
-                            match environment::TEZOS_ENV.get(&tezos_network) {
-                                None => panic!("No tezos environment configured for: {:?}", tezos_network),
-                                Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
-                            }
-                        } else {
-                            Vec::with_capacity(0)
+                    if !args.is_present("peers") {
+                        match environment::TEZOS_ENV.get(&tezos_network) {
+                            None => panic!("No tezos environment configured for: {:?}", tezos_network),
+                            Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
                         }
+                    } else {
+                        Vec::with_capacity(0)
                     }
+                }
                 ),
                 initial_peers: args.value_of("peers")
                     .map(|peers_str| peers_str
