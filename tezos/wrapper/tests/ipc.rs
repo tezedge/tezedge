@@ -9,7 +9,7 @@ use ipc::*;
 mod common;
 
 #[test]
-fn fork_and_exchange() -> Result<(), failure::Error> {
+fn ipc_fork_and_exchange() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
 
     let child_pid = common::fork(|| {
@@ -54,7 +54,7 @@ fn fork_and_exchange() -> Result<(), failure::Error> {
 }
 
 #[test]
-fn fork_and_panic() -> Result<(), failure::Error> {
+fn ipc_fork_and_panic() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
 
     let child_pid = common::fork(|| {
@@ -88,7 +88,7 @@ fn fork_and_panic() -> Result<(), failure::Error> {
 
 
 #[test]
-fn connect_panic() -> Result<(), failure::Error> {
+fn ipc_connect_panic() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
 
     let child_pid = common::fork(|| {

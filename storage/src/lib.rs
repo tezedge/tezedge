@@ -23,6 +23,7 @@ pub mod operations_storage;
 pub mod operations_meta_storage;
 pub mod block_storage;
 pub mod block_meta_storage;
+pub mod context_storage;
 
 /// Extension of block header with block hash
 #[derive(PartialEq, Clone, Debug)]

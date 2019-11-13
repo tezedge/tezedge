@@ -93,7 +93,7 @@ pub fn context_delete(context_hash: Option<ContextHash>, key: ContextKey) {
 }
 
 pub fn context_remove_rec(context_hash: Option<ContextHash>, key: ContextKey) {
-    context_send(ContextAction::RemoveRecord { context_hash, key }).unwrap();
+    context_send(ContextAction::Remove { context_hash, key }).unwrap();
 }
 
 pub fn context_copy(context_hash: Option<ContextHash>, from_key: ContextKey, to_key: ContextKey) {

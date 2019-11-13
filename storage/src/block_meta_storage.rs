@@ -13,7 +13,6 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
 
-/// Structure for representing in-memory db.
 #[derive(Clone)]
 pub struct BlockMetaStorage {
     db: Arc<BlockMetaStorageDatabase>
@@ -84,8 +83,8 @@ impl BlockMetaStorage {
     }
 }
 
-const BLOCK_HASH_LEN: usize = 32;
-const CHAIN_ID_LEN: usize = 4;
+const LEN_BLOCK_HASH: usize = 32;
+const LEN_CHAIN_ID: usize = 4;
 
 const MASK_IS_APPLIED: u8    = 0b0000_0001;
 const MASK_HAS_SUCCESSOR: u8   = 0b0000_0010;
@@ -93,13 +92,13 @@ const MASK_HAS_PREDECESSOR: u8 = 0b0000_0100;
 
 const IDX_MASK: usize = 0;
 const IDX_PREDECESSOR: usize = IDX_MASK + 1;
-const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + BLOCK_HASH_LEN;
-const IDX_LEVEL: usize = IDX_SUCCESSOR + BLOCK_HASH_LEN;
+const IDX_SUCCESSOR: usize = IDX_PREDECESSOR + LEN_BLOCK_HASH;
+const IDX_LEVEL: usize = IDX_SUCCESSOR + LEN_BLOCK_HASH;
 const IDX_CHAIN_ID: usize = IDX_LEVEL + std::mem::size_of::<i32>();
-const IDX_END: usize = IDX_CHAIN_ID + CHAIN_ID_LEN;
+const IDX_END: usize = IDX_CHAIN_ID + LEN_CHAIN_ID;
 
-const BLANK_BLOCK_HASH: [u8; BLOCK_HASH_LEN] = [0; BLOCK_HASH_LEN];
-const META_LEN: usize = std::mem::size_of::<u8>() + BLOCK_HASH_LEN + BLOCK_HASH_LEN + std::mem::size_of::<i32>() + CHAIN_ID_LEN;
+const BLANK_BLOCK_HASH: [u8; LEN_BLOCK_HASH] = [0; LEN_BLOCK_HASH];
+const LEN_META: usize = std::mem::size_of::<u8>() + LEN_BLOCK_HASH + LEN_BLOCK_HASH + std::mem::size_of::<i32>() + LEN_CHAIN_ID;
 
 macro_rules! is_applied {
     ($mask:expr) => {{ ($mask & MASK_IS_APPLIED) != 0 }}
@@ -139,14 +138,14 @@ impl Meta {
 /// * bytes layout: `[mask(1)][predecessor(32)][successor(32)][level(4)][chain_id(4)]`
 impl Codec for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        if META_LEN == bytes.len() {
+        if LEN_META == bytes.len() {
             // mask
             let mask = bytes[IDX_MASK];
             let is_processed = is_applied!(mask);
             // predecessor
             let predecessor = if has_predecessor!(mask) {
                 let block_hash = bytes[IDX_PREDECESSOR..IDX_SUCCESSOR].to_vec();
-                assert_eq!(BLOCK_HASH_LEN, block_hash.len(), "Predecessor expected length is {} but found {}", BLOCK_HASH_LEN, block_hash.len());
+                assert_eq!(LEN_BLOCK_HASH, block_hash.len(), "Predecessor expected length is {} but found {}", LEN_BLOCK_HASH, block_hash.len());
                 Some(block_hash)
             } else {
                 None
@@ -154,7 +153,7 @@ impl Codec for Meta {
             // successor
             let successor = if has_successor!(mask) {
                 let block_hash = bytes[IDX_SUCCESSOR..IDX_LEVEL].to_vec();
-                assert_eq!(BLOCK_HASH_LEN, block_hash.len(), "Successor expected length is {} but found {}", BLOCK_HASH_LEN, block_hash.len());
+                assert_eq!(LEN_BLOCK_HASH, block_hash.len(), "Successor expected length is {} but found {}", LEN_BLOCK_HASH, block_hash.len());
                 Some(block_hash)
             } else {
                 None
@@ -165,7 +164,7 @@ impl Codec for Meta {
             let level = i32::from_le_bytes(level_bytes);
             // chain_id
             let chain_id = bytes[IDX_CHAIN_ID..IDX_END].to_vec();
-            assert_eq!(CHAIN_ID_LEN, chain_id.len(), "Chain ID expected length is {} but found {}", CHAIN_ID_LEN, chain_id.len());
+            assert_eq!(LEN_CHAIN_ID, chain_id.len(), "Chain ID expected length is {} but found {}", LEN_CHAIN_ID, chain_id.len());
             Ok(Meta { predecessor, successor, is_applied: is_processed, level, chain_id })
         } else {
             Err(SchemaError::DecodeError)
@@ -184,7 +183,7 @@ impl Codec for Meta {
             mask |= MASK_HAS_SUCCESSOR;
         }
 
-        let mut value = Vec::with_capacity(META_LEN);
+        let mut value = Vec::with_capacity(LEN_META);
         value.push(mask);
         match &self.predecessor {
             Some(predecessor) => value.extend(predecessor),
@@ -196,7 +195,7 @@ impl Codec for Meta {
         }
         value.extend(&self.level.to_le_bytes());
         value.extend(&self.chain_id);
-        assert_eq!(META_LEN, value.len(), "Invalid size. predecessor={:?}, successor={:?}, level={:?}, data={:?}", &self.predecessor, &self.successor, self.level, &value);
+        assert_eq!(LEN_META, value.len(), "Invalid size. predecessor={:?}, successor={:?}, level={:?}, data={:?}", &self.predecessor, &self.successor, self.level, &value);
 
         Ok(value)
     }
@@ -220,7 +219,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
     for op in operands {
         match result {
             Some(ref mut val) => {
-                assert_eq!(META_LEN, val.len(), "Value length is incorrect. Was expecting {} but instead found {}", META_LEN, val.len());
+                assert_eq!(LEN_META, val.len(), "Value length is incorrect. Was expecting {} but instead found {}", LEN_META, val.len());
 
                 let mask_val = val[IDX_MASK];
                 let mask_op = op[IDX_MASK];
@@ -236,7 +235,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
                 if has_successor!(mask_op) && !has_successor!(mask_val) {
                     val.splice(IDX_SUCCESSOR..IDX_LEVEL, op[IDX_SUCCESSOR..IDX_LEVEL].iter().cloned());
                 }
-                assert_eq!(META_LEN, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", META_LEN, val.len());
+                assert_eq!(LEN_META, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", LEN_META, val.len());
             },
             None => result = Some(op.to_vec())
         }
