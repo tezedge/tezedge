@@ -44,7 +44,7 @@ pub enum ContextAction {
         context_hash: Option<ContextHash>,
         key: ContextKey,
     },
-    Remove {
+    RemoveRecord {
         context_hash: Option<ContextHash>,
         key: ContextKey,
     },

@@ -104,7 +104,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create chain manager");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, log.clone())
+    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, &init_info, log.clone())
         .expect("Failed to create context event listener");
     let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");

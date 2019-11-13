@@ -10,8 +10,11 @@ use failure::Error;
 use riker::actors::*;
 use slog::{debug, Logger, warn};
 
+use storage::context_storage::{ContextStorage, RecordKey, RecordValue};
+use tezos_api::client::TezosStorageInitInfo;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
+use tezos_encoding::hash::ChainId;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -26,17 +29,20 @@ pub struct ContextListener {
 pub type ContextListenerRef = ActorRef<ContextListenerMsg>;
 
 impl ContextListener {
-    pub fn actor(sys: &impl ActorRefFactory, _rocks_db: Arc<rocksdb::DB>, mut event_server: IpcEvtServer, log: Logger) -> Result<ContextListenerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, rocks_db: Arc<rocksdb::DB>, mut event_server: IpcEvtServer,  init_info: &TezosStorageInitInfo, log: Logger) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
+        let chain_id = init_info.chain_id.clone();
         let block_applier_thread = {
             let listener_run = listener_run.clone();
 
             thread::spawn(move || {
-
+                let mut context_storage = ContextStorage::new(rocks_db);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
+                        &mut context_storage,
+                        &chain_id,
                         &log,
                     ) {
                         Ok(()) => debug!(log, "Context listener finished"),
@@ -88,6 +94,8 @@ impl Actor for ContextListener {
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
+    context_storage: &mut ContextStorage,
+    chain_id: &ChainId,
     log: &Logger,
 ) -> Result<(), Error> {
 
@@ -99,12 +107,20 @@ fn listen_protocol_events(
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
-            Ok(_msg) => {
+            Ok(msg) => {
                 if event_count % 100 == 0 {
                     debug!(log, "Received protocol event"; "count" => event_count);
                 }
                 event_count += 1;
-            },
+                match msg {
+                    ContextAction::Set { context_hash: Some(context_hash), key, value } => {
+                        let record_key = RecordKey::new(chain_id, 0, &context_hash, &key);
+                        let record_value = RecordValue::new(Some(context_hash), key, value);
+                        context_storage.put(&record_key, &record_value)?;
+                    }
+                    _ => (),
+                }
+            }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
                 break;
