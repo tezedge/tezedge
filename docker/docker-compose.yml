@@ -3,7 +3,6 @@ services:
 
   tezedge:
     image: simplestakingcom/tezedge
-    build: ./tezedge
     hostname: tezedge
     # ports:
     #   - "4927:4927"
