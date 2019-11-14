@@ -1,10 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// This node identity information
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Identity {
     pub peer_id: String,
     pub public_key: String,

@@ -6,6 +6,7 @@
 /// self-contained process communicating through Unix Socket.
 use std::thread;
 use std::time::Duration;
+
 use clap::{App, Arg};
 use slog::*;
 
@@ -75,8 +76,9 @@ fn main() {
 mod tezos {
     use tezos_api::client::TezosStorageInitInfo;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
-    use tezos_client::client::{apply_block, change_runtime_configuration, init_storage};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+    use tezos_api::identity::Identity;
+    use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, init_storage};
     use tezos_encoding::hash::{BlockHash, ChainId};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
@@ -94,6 +96,10 @@ mod tezos {
 
         fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
             init_storage(storage_data_dir, tezos_environment)
+        }
+
+        fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {
+            generate_identity(expected_pow)
         }
     }
 }
