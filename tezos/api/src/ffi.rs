@@ -80,6 +80,31 @@ impl From<ocaml::Error> for TezosRuntimeConfigurationError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum TezosGenerateIdentityError {
+    #[fail(display = "Generate identity failed, message: {}!", message)]
+    GenerationError {
+        message: String
+    },
+    #[fail(display = "Generated identity is invalid json! message: {}!", message)]
+    InvalidJsonError {
+        message: String
+    },
+}
+
+impl From<ocaml::Error> for TezosGenerateIdentityError {
+    fn from(error: ocaml::Error) -> Self {
+        match error {
+            ocaml::Error::Exception(ffi_error) => {
+                TezosGenerateIdentityError::GenerationError {
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                }
+            }
+            _ => panic!("Generate identity failed! Reason: {:?}", error)
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum TezosStorageInitError {
     #[fail(display = "Ocaml storage init failed, message: {}!", message)]
     InitializeError {
