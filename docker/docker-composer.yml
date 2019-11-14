@@ -1,0 +1,22 @@
+version: "3"
+services:
+
+  tezedge:
+    image: simplestakingcom/tezedge
+    build: ./tezedge
+    hostname: tezedge
+    # ports:
+    #   - "4927:4927"
+    #   - "18732:18732"
+    #   - "9732:9732"
+    volumes:
+      - ./tezedge:/var/tezedge
+    entrypoint: /var/tezedge/tezedge.sh
+    network_mode: host 
+
+  tezedge-node-explorer:
+    image: simplestakingcom/tezedge-node-explorer
+    # ports:
+    #   - "8080:8080"
+    hostname: tezedge-node-explorer
+    network_mode: host
