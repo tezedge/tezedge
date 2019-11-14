@@ -1,9 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::error::Error;
+
 use ocaml::{Array1, List, Str, Tuple, Value};
+use serde_json;
 
 use tezos_api::ffi::*;
+use tezos_api::identity::Identity;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -48,7 +52,6 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
 }
 
 
-
 pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides)
                     -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
@@ -65,7 +68,7 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
         match ocaml_function.call3_exn::<Str, Value, Value>(
             storage_data_dir.as_str().into(),
             Value::from(genesis_tuple),
-            Value::from(protocol_overrides_tuple)
+            Value::from(protocol_overrides_tuple),
         ) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
@@ -200,6 +203,24 @@ pub fn apply_block(
     })
 }
 
+pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
+    runtime::execute(move || {
+        let ocaml_function = ocaml::named_value("generate_identity").expect("function 'generate_identity' is not registered");
+        match ocaml_function.call_exn::<Value>(Value::f64(expected_pow)) {
+            Ok(identity) => {
+                let identity = Str::from(identity).as_str().to_string();
+
+                Ok(serde_json::from_str::<Identity>(&identity)
+                    .map_err(|err| TezosGenerateIdentityError::InvalidJsonError { message: err.description().to_string() })?
+                )
+            }
+            Err(e) => {
+                Err(TezosGenerateIdentityError::from(e))
+            }
+        }
+    })
+}
+
 pub fn operations_to_ocaml(operations: &Vec<Option<Vec<RustBytes>>>) -> List {
     let mut operations_for_ocaml = List::new();
 
@@ -228,7 +249,6 @@ pub fn block_header_to_ocaml(block_header_hash: &RustBytes, block_header: &RustB
 }
 
 pub fn protocol_overrides_to_ocaml(protocol_overrides: &ProtocolOverrides) -> Result<Tuple, ocaml::Error> {
-
     let mut forced_protocol_upgrades = List::new();
     protocol_overrides.forced_protocol_upgrades.iter().rev()
         .for_each(|(level, protocol_hash)| {

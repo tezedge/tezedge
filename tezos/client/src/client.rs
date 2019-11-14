@@ -3,7 +3,8 @@
 
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::{self, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use tezos_api::identity::Identity;
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -119,6 +120,18 @@ pub fn apply_block(
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
                 message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Generate tezos identity
+pub fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {
+    match ffi::generate_identity(expected_pow) {
+        Ok(result) => Ok(result?),
+        Err(e) => {
+            Err(TezosGenerateIdentityError::GenerationError {
+                message: format!("FFI 'generate_identity' failed! Reason: {:?}", e)
             })
         }
     }

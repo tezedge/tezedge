@@ -6,7 +6,7 @@ use serde::Deserialize;
 /// This node identity information
 #[derive(Clone, Debug, Deserialize)]
 pub struct Identity {
-    peer_id: String,
+    pub peer_id: String,
     pub public_key: String,
     pub secret_key: String,
     pub proof_of_work_stamp: String,
