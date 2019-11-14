@@ -120,19 +120,7 @@ impl RecordValue {
 }
 
 /// Codec for `RecordValue`
-///
-/// * uses [Bincode](https://github.com/servo/bincode) for serialization and deserialization.
-impl Codec for RecordValue {
-    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        bincode::deserialize(bytes)
-            .map_err(|_| SchemaError::DecodeError)
-    }
-
-    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        bincode::serialize(self)
-            .map_err(|_| SchemaError::EncodeError)
-    }
-}
+impl crate::persistent::BincodeEncoded for RecordValue { }
 
 impl Schema for ContextStorage {
     const COLUMN_FAMILY_NAME: &'static str = "context_storage";

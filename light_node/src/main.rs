@@ -21,7 +21,8 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockMetaStorage, BlockStorage, ContextMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
+use storage::context_storage::ContextStorage;
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
@@ -30,7 +31,6 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use crate::identity::store_identity_to_default_tezos_identity_json_file;
 
 mod configuration;
 mod identity;
@@ -181,7 +181,7 @@ fn main() {
             info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
             match protocol_controller.generate_identity(EXPECTED_POW) {
                 Ok(identity) => {
-                    match store_identity_to_default_tezos_identity_json_file(&identity) {
+                    match identity::store_identity_to_default_tezos_identity_json_file(&identity) {
                         Ok(()) => identity,
                         Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
                     }
@@ -199,6 +199,8 @@ fn main() {
         OperationsMetaStorage::cf_descriptor(),
         EventPayloadStorage::cf_descriptor(),
         EventStorage::cf_descriptor(),
+        ContextStorage::cf_descriptor(),
+        ContextMetaStorage::cf_descriptor(),
     ];
     let rocks_db = match open_db(&configuration::ENV.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),

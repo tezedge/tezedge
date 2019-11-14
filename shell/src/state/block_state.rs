@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use rand::Rng;
 
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageDatabase, BlockStorage, BlockStorageDatabase, BlockStorageReader, IteratorMode, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextMetaStorage, IteratorMode, StorageError};
 use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::collections::{BlockData, UniqueBlockData};
@@ -15,15 +15,17 @@ use crate::collections::{BlockData, UniqueBlockData};
 pub struct BlockState {
     block_storage: BlockStorage,
     block_meta_storage: BlockMetaStorage,
+    context_meta_storage: ContextMetaStorage,
     missing_blocks: UniqueBlockData<MissingBlock>,
     chain_id: ChainId,
 }
 
 impl BlockState {
-    pub fn new(db: Arc<BlockStorageDatabase>, meta_db: Arc<BlockMetaStorageDatabase>, chain_id: &ChainId) -> Self {
+    pub fn new(db: Arc<rocksdb::DB>, chain_id: &ChainId) -> Self {
         BlockState {
-            block_storage: BlockStorage::new(db),
-            block_meta_storage: BlockMetaStorage::new(meta_db),
+            block_storage: BlockStorage::new(db.clone()),
+            block_meta_storage: BlockMetaStorage::new(db.clone()),
+            context_meta_storage: ContextMetaStorage::new(db),
             missing_blocks: UniqueBlockData::new(),
             chain_id: chain_id.clone()
         }
@@ -40,6 +42,8 @@ impl BlockState {
         self.block_storage.put_block_header(block_header)?;
         // update meta
         self.block_meta_storage.put_block_header(block_header, &self.chain_id)?;
+        // store context meta
+        self.context_meta_storage.put_block_header(block_header)?;
 
         Ok(())
     }

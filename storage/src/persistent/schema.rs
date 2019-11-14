@@ -5,6 +5,7 @@ use failure::Fail;
 use rocksdb::{ColumnFamilyDescriptor, Options};
 
 use tezos_encoding::hash::Hash;
+use serde::{Serialize, Deserialize};
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -44,5 +45,27 @@ impl Codec for Hash {
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         Ok(self.clone())
+    }
+}
+
+impl<T: BincodeEncoded> Codec for T {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        T::decode(bytes)
+    }
+
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        T::encode(self)
+    }
+}
+
+pub trait BincodeEncoded: Sized + Serialize + for<'a> Deserialize<'a> {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        bincode::deserialize(bytes)
+            .map_err(|_| SchemaError::DecodeError)
+    }
+
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        bincode::serialize::<Self>(self)
+            .map_err(|_| SchemaError::EncodeError)
     }
 }
