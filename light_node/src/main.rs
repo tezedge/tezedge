@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -21,7 +20,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
-use shell::shell_channel::{ShellChannel, ShuttingDown, ShellChannelTopic};
+use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
@@ -31,10 +30,12 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
+use crate::identity::store_identity_to_default_tezos_identity_json_file;
 
 mod configuration;
 mod identity;
 
+const EXPECTED_POW: f64 = 26.0;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -145,25 +146,6 @@ fn main() {
     let log = create_logger();
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
-    let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
-        .unwrap_or_else(|| {
-            let tezos_default_identity: PathBuf = identity::get_default_tezos_identity_json_file_path().unwrap();
-            if tezos_default_identity.exists() {
-                // if exists tezos default location, then use it
-                tezos_default_identity
-            } else {
-                // or just use our config/identity.json
-                Path::new("./config/identity.json").to_path_buf()
-            }
-        });
-
-
-    // obtain required tezos info
-    let tezos_identity = match identity::load_identity(identity_json_file_path) {
-        Ok(identity) => identity,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity. Reason: {:?}", e), actor_system),
-    };
-
     // tezos protocol runner endpoint
     let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
         TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
@@ -173,22 +155,39 @@ fn main() {
     ));
     let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
         Ok(process) => process,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process. Reason: {:?}", e), actor_system),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "reason" => e), actor_system),
     };
 
     // setup tezos ocaml runtime
-    let tezos_storage_init_info = {
-        let protocol_controller = match protocol_runner_endpoint.commands.accept() {
-            Ok(controller) => controller,
-            Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
-        };
-
-        match protocol_controller.init_protocol() {
-            Ok(res) => res,
-            Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "reason" => err), actor_system)
-        }
+    let protocol_controller = match protocol_runner_endpoint.commands.accept() {
+        Ok(controller) => controller,
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
+    };
+    let tezos_storage_init_info = match protocol_controller.init_protocol() {
+        Ok(res) => res,
+        Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "reason" => err), actor_system)
     };
     debug!(log, "Loaded Tezos constants: {:?}", &tezos_storage_init_info);
+
+    let tezos_identity = match configuration::ENV.identity_json_file_path.clone().or_else(|| identity::get_default_tezos_identity_json_file_path().ok().filter(|path| path.exists())) {
+        Some(identity_json_file_path) => match identity::load_identity(&identity_json_file_path) {
+            Ok(identity) => identity,
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
+        },
+        None => {
+            info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
+            match protocol_controller.generate_identity(EXPECTED_POW) {
+                Ok(identity) => {
+                    match store_identity_to_default_tezos_identity_json_file(&identity) {
+                        Ok(()) => identity,
+                        Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
+                    }
+                },
+                Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
+            }
+        }
+    };
+    drop(protocol_controller);
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
@@ -228,7 +227,7 @@ fn main() {
                             process
                         },
                         Err(e) => {
-                            crit!(log, "Failed to spawn protocol runner process. Reason: {:?}", e);
+                            crit!(log, "Failed to spawn protocol runner process"; "reason" => e);
                             break
                         },
                     };
@@ -245,7 +244,7 @@ fn main() {
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
         Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block"; "reason" => e), actor_system),
     }
 
 

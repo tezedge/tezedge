@@ -52,15 +52,6 @@ run_node() {
         TEZOS_DIR="$1"
         shift
         ;;
-      -i=*|--identity=*)
-        IDENTITY_FILE="${1#*=}"
-        shift
-        ;;
-      -i|--identity)
-      shift
-        IDENTITY_FILE="$1"
-        shift
-        ;;
       -n=*|--network=*)
         NETWORK="${1#*=}"
         shift
@@ -85,7 +76,7 @@ run_node() {
   # protocol_runner needs 'libtezos.o' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts"
   # start node
-  cargo run --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" -i "$IDENTITY_FILE" --network "$NETWORK" --protocol-runner ./target/debug/protocol-runner "${args[@]}"
+  cargo run --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" --network "$NETWORK" --protocol-runner ./target/debug/protocol-runner "${args[@]}"
 }
 
 case $1 in

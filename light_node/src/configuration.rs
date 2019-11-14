@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::fs::create_dir_all;
 
 use clap::{App, Arg};
 
@@ -160,7 +160,7 @@ impl Environment {
                         }
                     } else {
                         // Tezos data dir does not exists, try to create it
-                        if let Err(e) = create_dir_all(dir) {
+                        if let Err(e) = fs::create_dir_all(dir) {
                             Err(format!("Unable to create required tezos data dir '{}': {} ", v, e))
                         } else {
                             Ok(())
