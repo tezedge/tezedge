@@ -15,7 +15,4 @@ services:
 
   tezedge-node-explorer:
     image: simplestakingcom/tezedge-node-explorer
-    # ports:
-    #   - "8080:8080"
     hostname: tezedge-node-explorer
-    network_mode: host
