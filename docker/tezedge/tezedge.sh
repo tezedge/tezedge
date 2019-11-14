@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # delete tezos-data 
-# rm -rf /var/tezedge/tezos-data/*
+rm -rf /var/tezedge/tezos-data/*
 
 # delete tezedge-data 
-# rm -rf /var/tezedge/tezedge-data/*
+rm -rf /var/tezedge/tezedge-data/*
 
 # run tezedge node 
 light-node \
