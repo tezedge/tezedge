@@ -44,9 +44,10 @@ pub struct TestChain {
 }
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, new)]
 pub struct TezosRuntimeConfiguration {
-    pub log_enabled: bool
+    pub log_enabled: bool,
+    pub no_of_ffi_calls_treshold_for_gc: i32
 }
 
 /// Application block result

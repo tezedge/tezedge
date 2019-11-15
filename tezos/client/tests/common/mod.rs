@@ -27,3 +27,9 @@ pub fn is_ocaml_log_enabled() -> bool {
         .unwrap_or("false".to_string())
         .parse::<bool>().unwrap()
 }
+
+pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
+    env::var("OCAML_CALLS_GC")
+        .unwrap_or("2000".to_string())
+        .parse::<i32>().unwrap()
+}

@@ -10,7 +10,7 @@ pub const CHAIN_ID: &str = "8eceda2f";
 
 #[test]
 fn test_fn_generate_identity() {
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration { log_enabled: is_ocaml_log_enabled() }).unwrap().unwrap();
+    ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(is_ocaml_log_enabled(), no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
 
     // generate
     let identity = ffi::generate_identity(16f64).unwrap().unwrap();
@@ -26,4 +26,10 @@ fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
         .unwrap_or("false".to_string())
         .parse::<bool>().unwrap()
+}
+
+fn no_of_ffi_calls_treshold_for_gc() -> i32 {
+    env::var("OCAML_CALLS_GC")
+        .unwrap_or("2000".to_string())
+        .parse::<i32>().unwrap()
 }

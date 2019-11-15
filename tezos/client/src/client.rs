@@ -47,7 +47,7 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
         Ok(result) => {
             match BlockHeader::from_bytes(result?) {
                 Ok(header) => Ok(header),
-                Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
+                Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from bytes failed!".to_string() })
             }
         }
         Err(e) => {
@@ -88,7 +88,6 @@ pub fn get_block_header(chain_id: &ChainId, block_header_hash: &BlockHash) -> Re
 /// - returns validation_result.message
 pub fn apply_block(
     chain_id: &ChainId,
-    block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
 
@@ -112,7 +111,6 @@ pub fn apply_block(
 
     match ffi::apply_block(
         chain_id.clone(),
-        block_header_hash.clone(),
         block_header,
         operations,
     ) {

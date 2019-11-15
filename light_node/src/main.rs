@@ -148,7 +148,10 @@ fn main() {
 
     // tezos protocol runner endpoint
     let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
+        TezosRuntimeConfiguration::new(
+            configuration::ENV.logging.ocaml_log_enabled,
+            configuration::ENV.no_of_ffi_calls_treshold_for_gc,
+        ),
         configuration::ENV.tezos_network,
         &configuration::ENV.storage.tezos_data_dir,
         &configuration::ENV.protocol_runner,
