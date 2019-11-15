@@ -3,8 +3,11 @@
 help() {
   echo -e "Usage: \e[97m$0\e[0m \e[32mMODE\e[0m"
   echo -e "Possible values for \e[32mMODE\e[0m are:"
-  echo -e " \e[32mnode\e[0m  Start tezedge node. You can specify additional arguments here."
-  echo "       Example: $0 node -v"
+  echo -e " \e[32mnode\e[0m    Start tezedge node. You can specify additional arguments here."
+  echo "         Example: $0 node -v"
+  echo -e " \e[32mdocker\e[0m  Run tezedge node as a docker container. It is possible to specify additional commandline arguments."
+  echo "         Example 1: $0 docker -t 4 -T 12"
+  echo "         Example 2: $0 docker --help"
 }
 
 build_all() {
@@ -79,6 +82,16 @@ run_node() {
   cargo run --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" --network "$NETWORK" --protocol-runner ./target/debug/protocol-runner "${args[@]}"
 }
 
+run_docker() {
+  shift # shift past <MODE>
+
+  # build docker
+  cd ./docker/run/ || exit 1
+  docker build -t tezedge-run .
+  # run docker
+  docker run -i -t tezedge-run "$@"
+}
+
 case $1 in
 
   node)
@@ -87,13 +100,18 @@ case $1 in
     run_node "$@"
     ;;
 
-    -h|--help)
-      help
-      ;;
+  docker)
+    printf "\033[1;37mRunning Tezedge node in docker\e[0m\n"
+    run_docker "$@"
+    ;;
 
-    *)
-      echo "run '$0 --help' to get more info"
-      ;;
+  -h|--help)
+    help
+    ;;
+
+  *)
+    echo "run '$0 --help' to get more info"
+    ;;
 
 esac
 

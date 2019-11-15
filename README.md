@@ -52,6 +52,12 @@ On linux systems, we prepared convenience script to run the node:
 ./run.sh node
 ```
 
+if you are running OSX you can use docker version:
+
+```
+./run docker
+```
+
 **5. Listening for updates**
 
 Node emits statistics on the websocket server, which can be changed with `-w` argument, for example:
