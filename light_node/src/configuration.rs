@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::env;
 
 use clap::{App, Arg};
 
@@ -12,7 +14,7 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 
 lazy_static! {
-    pub static ref ENV: Environment = Environment::from_cli_args();
+    pub static ref ENV: Environment = Environment::from_args();
 }
 
 #[derive(Debug, Clone)]
@@ -78,17 +80,31 @@ macro_rules! parse_validator_fn {
     ($t:ident, $err:expr) => {|v| if v.parse::<$t>().is_ok() { Ok(()) } else { Err($err.to_string()) } }
 }
 
-impl Environment {
-    pub fn from_cli_args() -> Self {
-        let args = App::new("Tezos Light Node")
+// Creates tezos app 
+pub fn tezos_app() -> App<'static, 'static> {
+    // Default values for arguments are specidied in default configuration file
+    //
+    // Flag Required=true must be handled separately as we parse args twice, 
+    // once to see only if confi-file arg is present and second time to parse all args
+    //
+    // In case some args are required=true and user provides only config-file, 
+    // first round of parsing would always fail then 
+    let app = App::new("Tezos Light Node")
             .version("0.3.1")
             .author("SimpleStaking and the project contributors")
             .about("Rust implementation of the tezos node")
+            .setting(clap::AppSettings::AllArgsOverrideSelf)
+            .arg(Arg::with_name("config-file")
+                .short("c")
+                .long("config-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Configuration file with start-up arguments (same format as cli arguments)")
+                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
             .arg(Arg::with_name("p2p-port")
                 .short("l")
                 .long("p2p-port")
                 .takes_value(true)
-                .default_value("9732")
                 .value_name("PORT")
                 .help("Socket listening port for p2p for communication with tezos world")
                 .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
@@ -96,7 +112,6 @@ impl Environment {
                 .short("m")
                 .long("monitor-port")
                 .takes_value(true)
-                .default_value("3030")
                 .value_name("PORT")
                 .help("Port on which the Tezedge node monitoring information will be exposed")
                 .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
@@ -104,7 +119,6 @@ impl Environment {
                 .short("r")
                 .long("rpc-port")
                 .takes_value(true)
-                .default_value("18732")
                 .value_name("PORT")
                 .help("Rust server RPC port for communication with rust node")
                 .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
@@ -112,7 +126,6 @@ impl Environment {
                 .short("p")
                 .long("peers")
                 .takes_value(true)
-                .required(false)
                 .value_name("IP:PORT")
                 .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
                 .validator(|v| {
@@ -141,27 +154,33 @@ impl Environment {
                 .short("B")
                 .long("bootstrap-db-path")
                 .takes_value(true)
-                .default_value("bootstrap_db")
                 .help("Path to bootstrap database directory. Default: bootstrap_db"))
             .arg(Arg::with_name("tezos-data-dir")
                 .short("d")
                 .long("tezos-data-dir")
                 .takes_value(true)
-                .default_value("tezos_data_db")
                 .help("A directory for Tezos OCaml runtime storage (context/store)")
                 .validator(|v| {
                     let dir = Path::new(&v);
-                    if dir.exists() && dir.is_dir() {
-                        Ok(())
+                    if dir.exists() {
+                        if dir.is_dir() {
+                            Ok(())
+                        } else {
+                            Err(format!("Required tezos data dir '{}' exists, but is not a directory!", v))
+                        }
                     } else {
-                        Err(format!("Required tezos data dir '{}' is not a directory or does not exist!", v))
+                        // Tezos data dir does not exists, try to create it
+                        if let Err(e) = fs::create_dir_all(dir) {
+                            Err(format!("Unable to create required tezos data dir '{}': {} ", v, e))
+                        } else {
+                            Ok(())
+                        }
                     }
                 }))
             .arg(Arg::with_name("peer-thresh-low")
                 .short("t")
                 .long("peer-thresh-low")
                 .takes_value(true)
-                .default_value("2")
                 .value_name("NUM")
                 .help("Minimal number of peers to connect to")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
@@ -169,7 +188,6 @@ impl Environment {
                 .short("T")
                 .long("peer-thresh-high")
                 .takes_value(true)
-                .default_value("15")
                 .value_name("NUM")
                 .help("Maximal number of peers to connect to")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
@@ -177,13 +195,11 @@ impl Environment {
                 .short("o")
                 .long("ocaml-log-enabled")
                 .takes_value(true)
-                .default_value("false")
                 .help("Flag for turn on/off logging in Tezos OCaml runtime. Default: false"))
             .arg(Arg::with_name("websocket-address")
                 .short("w")
                 .long("websocket-address")
                 .takes_value(true)
-                .default_value("0.0.0.0:4927")
                 .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
             .arg(Arg::with_name("record")
                 .short("R")
@@ -199,7 +215,6 @@ impl Environment {
                 .short("f")
                 .long("log-format")
                 .takes_value(true)
-                .default_value("simple")
                 .possible_values(&["json", "simple"])
                 .help("Set output format of the log."))
             .arg(Arg::with_name("log-file")
@@ -212,18 +227,67 @@ impl Environment {
                 .short("n")
                 .long("network")
                 .takes_value(true)
-                .required(true)
                 .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet"])
                 .help("Choose the Tezos environment"))
             .arg(Arg::with_name("protocol-runner")
                 .short("P")
                 .long("protocol-runner")
                 .takes_value(true)
-                .default_value("./protocol-runner")
                 .value_name("PATH")
                 .help("Path to a tezos protocol runner executable")
-                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-            .get_matches();
+                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }));
+    app
+}
+
+// Explicitely validates all required parameters
+// Flag Required=true must be handled separately as we parse args twice, 
+// once to see only if confi-file arg is present and second time to parse all args
+// In case some args are required=true and user provides only config-file, 
+// first round of parsing would always fail then 
+pub fn validate_required_args(args: &clap::ArgMatches) {
+    // Validates network arg
+    if args.is_present("network") == false {
+        println!("required \"--network\" arg missing");
+    }
+}
+
+impl Environment {
+    pub fn from_args() -> Self {
+        let app = tezos_app();
+        let args: clap::ArgMatches;
+
+        // First, get cli arguments and find out only if config-file arg is provided   
+        // If config-file argument is present, read all parameters from config-file and merge it with cli arguments
+        let temp_args = app.clone().get_matches();
+        if temp_args.is_present("config-file") == true {
+            let config_path = temp_args
+                .value_of("config-file")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided config-file cannot be converted to path");
+
+            let mut merged_args = crate::file_config::args(config_path, false);
+
+            let mut cli_args = env::args_os();
+            if let Some(bin) = cli_args.next() {
+                merged_args.insert(0, bin);
+            }
+            merged_args.extend(cli_args);
+
+            args = app.get_matches_from(merged_args);
+        }
+        // Otherwise use only cli arguments that are already parsed
+        else {
+            args = temp_args;
+        }
+
+        // Validates required flags of args
+        validate_required_args(&args);
+
+        for arg in args.args.iter() {
+            println!("args: {:?}: {:?}", arg.0, arg.1.vals);
+        }
+        
 
         let tezos_network: TezosEnvironment = args
             .value_of("network")

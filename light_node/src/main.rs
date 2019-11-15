@@ -34,7 +34,9 @@ use crate::configuration::LogFormat;
 
 mod configuration;
 mod identity;
+mod file_config;
 
+use std::process;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
