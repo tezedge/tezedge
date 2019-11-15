@@ -113,7 +113,7 @@ impl PeerManager {
                  initial_peers: &[SocketAddr],
                  threshold: Threshold,
                  listener_port: u16,
-                 identity: Identity,
+                 identity: &Identity,
                  protocol_version: String,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of(
@@ -125,7 +125,7 @@ impl PeerManager {
                 HashSet::from_iter(initial_peers.to_vec()),
                 threshold,
                 listener_port,
-                identity,
+                identity.clone(),
                 protocol_version)),
             PeerManager::name())
     }

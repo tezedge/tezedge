@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::{Path, PathBuf};
+// use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -27,16 +27,12 @@ use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
-use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
 
 mod configuration;
-mod identity;
 mod file_config;
-
-use std::process;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -70,16 +66,16 @@ macro_rules! create_file_logger {
     }}
 }
 
-fn create_logger() -> Logger {
-    let drain = match &configuration::ENV.logging.file {
-        Some(log_file) => create_file_logger!(configuration::ENV.logging.format, log_file),
-        None => create_terminal_logger!(configuration::ENV.logging.format),
-    }.filter_level(configuration::ENV.logging.level).fuse();
+fn create_logger(env: &crate::configuration::Environment) -> Logger {
+    let drain = match &env.logging.file {
+        Some(log_file) => create_file_logger!(env.logging.format, log_file),
+        None => create_terminal_logger!(env.logging.format),
+    }.filter_level(env.logging.level).fuse();
 
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
+fn block_on_actors(env: &crate::configuration::Environment, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -91,15 +87,15 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         network_channel.clone(),
         shell_channel.clone(),
         tokio_runtime.executor(),
-        &configuration::ENV.p2p.bootstrap_lookup_addresses,
-        &configuration::ENV.p2p.initial_peers,
-        configuration::ENV.p2p.peer_threshold,
-        configuration::ENV.p2p.listener_port,
-        identity,
+        &env.p2p.bootstrap_lookup_addresses,
+        &env.p2p.initial_peers,
+        env.p2p.peer_threshold,
+        env.p2p.listener_port,
+        &env.identity,
         environment::TEZOS_ENV
-            .get(&configuration::ENV.tezos_network)
+            .get(&env.tezos_network)
             .map(|cfg| cfg.version.clone())
-            .expect(&format!("No tezos environment version configured for: {:?}", configuration::ENV.tezos_network)))
+            .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network)))
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
         .expect("Failed to create chain manager");
@@ -107,13 +103,13 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create chain feeder");
     let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, log.clone())
         .expect("Failed to create context event listener");
-    let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
+    let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], configuration::ENV.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), init_info.chain_id, init_info.supported_protocol_hashes)
+    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], env.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), init_info.chain_id, init_info.supported_protocol_hashes)
         .expect("Failed to create RPC server");
-    if configuration::ENV.record {
+    if env.record {
         info!(log, "Running in record mode");
         let _ = NetworkChannelListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
     }
@@ -144,34 +140,20 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
 }
 
 fn main() {
-    let log = create_logger();
+    // Parses config + cli args
+    let env = crate::configuration::Environment::from_args();
+
+    // Creates default logger
+    let log = create_logger(&env);
+
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
-
-    let identity_json_file_path: PathBuf = configuration::ENV.identity_json_file_path.clone()
-        .unwrap_or_else(|| {
-            let tezos_default_identity: PathBuf = identity::get_default_tezos_identity_json_file_path().unwrap();
-            if tezos_default_identity.exists() {
-                // if exists tezos default location, then use it
-                tezos_default_identity
-            } else {
-                // or just use our config/identity.json
-                Path::new("./config/identity.json").to_path_buf()
-            }
-        });
-
-
-    // obtain required tezos info
-    let tezos_identity = match identity::load_identity(identity_json_file_path) {
-        Ok(identity) => identity,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity. Reason: {:?}", e), actor_system),
-    };
 
     // tezos protocol runner endpoint
     let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration { log_enabled: configuration::ENV.logging.ocaml_log_enabled },
-        configuration::ENV.tezos_network,
-        &configuration::ENV.storage.tezos_data_dir,
-        &configuration::ENV.protocol_runner,
+        TezosRuntimeConfiguration { log_enabled: env.logging.ocaml_log_enabled },
+        env.tezos_network,
+        &env.storage.tezos_data_dir,
+        &env.protocol_runner,
     ));
     let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
         Ok(process) => process,
@@ -200,9 +182,9 @@ fn main() {
         EventPayloadStorage::cf_descriptor(),
         EventStorage::cf_descriptor(),
     ];
-    let rocks_db = match open_db(&configuration::ENV.storage.bootstrap_db_path, schemas) {
+    let rocks_db = match open_db(&env.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
-        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &configuration::ENV.storage.bootstrap_db_path), actor_system)
+        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.bootstrap_db_path), actor_system)
     };
     debug!(log, "Loaded RocksDB database");
 
@@ -246,7 +228,7 @@ fn main() {
 
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
+        Ok(_) => block_on_actors(&env, actor_system, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
 

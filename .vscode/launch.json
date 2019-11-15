@@ -10,10 +10,10 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/target/debug/light-node",
-      "args": ["-d", "/tmp/tezedge", "-B", "/tmp/tezedge", "--network", "babylonnet", "--protocol-runner", "../target/debug/protocol-runner"],
+      "args": ["--config-file", "./etc/tezedge/tezedge.config"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}/light_node",
-      "environment": [{"name": "LD_LIBRARY_PATH", "value": "../tezos/interop/lib_tezos/artifacts"}],
+      "environment": [{"name": "LD_LIBRARY_PATH", "value": "../tezos/interop/lib_tezos/artifacts"}, {"name": "RUST_BACKTRACE", "value": "1"}],
       "externalConsole": false,
       "MIMode": "gdb",
       "setupCommands": [
