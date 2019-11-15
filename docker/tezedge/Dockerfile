@@ -2,7 +2,6 @@
 FROM simplestakingcom/tezos-opam-builder:debian10
 # Checkout and compile tezedge source code
 ARG tezedge_git="https://github.com/simplestaking/tezedge.git"
-ARG tezedge_commit_hash="11b3b5ed26efbecd0a62635c009338461aad3f56"
 ARG rust_toolchain="nightly-2019-10-14"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolchain} -y
 ENV PATH=/home/appuser/.cargo/bin:$PATH
@@ -12,7 +11,7 @@ ENV OCAML_BUILD_CHAIN=remote
 RUN cd /home/appuser && \
 	git clone ${tezedge_git} && \
     cd tezedge && \
-    git checkout ${tezedge_commit_hash} && \
+    git checkout master && \
     cargo build
 
 # Build stage 2
