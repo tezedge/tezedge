@@ -55,7 +55,7 @@ On linux systems, we prepared convenience script to run the node:
 if you are running OSX you can use docker version:
 
 ```
-./run docker
+./run.sh docker
 ```
 
 **5. Listening for updates**
