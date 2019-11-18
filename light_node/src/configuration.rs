@@ -214,22 +214,22 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .long("peer-id")
                 .takes_value(true)
                 .value_name("ID")
-                .help("TODO: add desc"))
+                .help("Generated tezos node identity"))
             .arg(Arg::with_name("public-key")
                 .long("public-key")
                 .takes_value(true)
                 .value_name("KEY (HEX)")
-                .help("TODO: add desc"))
+                .help("Tezos node public key"))
             .arg(Arg::with_name("secret-key")
                 .long("secret-key")
                 .takes_value(true)
                 .value_name("KEY (HEX)")
-                .help("TODO: add desc"))
+                .help("Tezos node secret key"))
             .arg(Arg::with_name("pow-stamp")
                 .long("pow-stamp")
                 .takes_value(true)
                 .value_name("STAMP (HEX)")
-                .help("TODO: add desc"));
+                .help("Tezos node identity proof of work stamp"));
     app
 }
 
