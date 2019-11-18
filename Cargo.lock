@@ -1575,7 +1575,7 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre18",
+ "tezos_interop 0.0.1-pre18-context",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2361,7 +2361,7 @@ dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre18",
+ "tezos_interop 0.0.1-pre18-context",
  "tezos_messages 0.1.0",
 ]
 
@@ -2394,7 +2394,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.0.1-pre18"
+version = "0.0.1-pre18-context"
 dependencies = [
  "colored 1.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",

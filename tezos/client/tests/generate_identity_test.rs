@@ -10,7 +10,12 @@ pub const CHAIN_ID: &str = "8eceda2f";
 
 #[test]
 fn test_fn_generate_identity() {
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(is_ocaml_log_enabled(), no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
+    ffi::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap().unwrap();
 
     // generate
     let identity = ffi::generate_identity(16f64).unwrap().unwrap();
