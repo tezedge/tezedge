@@ -304,7 +304,7 @@ impl Environment {
 
         let tezos_network: TezosEnvironment = args
             .value_of("network")
-            .unwrap()
+            .unwrap_or("")
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
 
@@ -312,7 +312,7 @@ impl Environment {
             p2p: crate::configuration::P2p {
                 listener_port: args
                     .value_of("p2p-port")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of p2p-port"),
                 bootstrap_lookup_addresses: args.
@@ -340,11 +340,11 @@ impl Environment {
                     ).unwrap_or_default(),
                 peer_threshold: Threshold::new(
                     args.value_of("peer-thresh-low")
-                        .unwrap()
+                        .unwrap_or("")
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
                     args.value_of("peer-thresh-high")
-                        .unwrap()
+                        .unwrap_or("")
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
                 ),
@@ -352,23 +352,23 @@ impl Environment {
             rpc: crate::configuration::Rpc {
                 listener_port: args
                     .value_of("rpc-port")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of rpc-port"),
                 websocket_address: args.value_of("websocket-address")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse()
                     .expect("Provided value cannot be converted into valid uri"),
             },
             logging: crate::configuration::Logging {
                 ocaml_log_enabled: args.value_of("ocaml-log-enabled")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 level: verbose_occurrences_to_level(args.occurrences_of("verbose")),
                 format: args
                     .value_of("log-format")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<LogFormat>()
                     .expect("Was expecting 'simple' or 'json'"),
                 file: args.value_of("log-file")
@@ -376,40 +376,40 @@ impl Environment {
             },
             storage: crate::configuration::Storage {
                 tezos_data_dir: args.value_of("tezos-data-dir")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path"),
                 bootstrap_db_path: args.value_of("bootstrap-db-path")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path"),
             },
             identity: Identity {
                 peer_id: args
                     .value_of("peer-id")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<String>()
                     .expect("Expected peer-id in String format"),
                 public_key: args
                     .value_of("public-key")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<String>()
                     .expect("Expected public-key in String format"),
                 secret_key: args
                     .value_of("secret-key")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<String>()
                     .expect("Expected secret-key in String format"),   
                 proof_of_work_stamp: args
                     .value_of("pow-stamp")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<String>()
                     .expect("Expected pow-stamp in String format"),
             },
             record: args.is_present("record"),
             protocol_runner: args
                 .value_of("protocol-runner")
-                .unwrap()
+                .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
             tezos_network,
