@@ -12,6 +12,7 @@ members = [
     "networking",
     "shell",
     "storage",
+    "storage_structure",
     "light_node",
     "monitoring",
     "protocol_runner",
