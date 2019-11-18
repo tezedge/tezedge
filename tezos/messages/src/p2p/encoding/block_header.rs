@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use derive_builder::Builder;
-use derive_new::new;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
@@ -49,14 +48,22 @@ impl From<BlockHeader> for BlockHeaderMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, new)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct GetBlockHeadersMessage {
     #[get = "pub"]
     get_block_headers: Vec<BlockHash>,
 
-    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
+}
+
+impl GetBlockHeadersMessage {
+    pub fn new(get_block_headers: Vec<BlockHash>) -> Self {
+        GetBlockHeadersMessage {
+            get_block_headers,
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for GetBlockHeadersMessage {
