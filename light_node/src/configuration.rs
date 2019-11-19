@@ -210,26 +210,12 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .value_name("PATH")
                 .help("Path to a tezos protocol runner executable")
                 .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-            .arg(Arg::with_name("peer-id")
-                .long("peer-id")
+            .arg(Arg::with_name("identity-file")
+                .long("identity-file")
                 .takes_value(true)
-                .value_name("ID")
-                .help("Generated tezos node identity"))
-            .arg(Arg::with_name("public-key")
-                .long("public-key")
-                .takes_value(true)
-                .value_name("KEY (HEX)")
-                .help("Tezos node public key"))
-            .arg(Arg::with_name("secret-key")
-                .long("secret-key")
-                .takes_value(true)
-                .value_name("KEY (HEX)")
-                .help("Tezos node secret key"))
-            .arg(Arg::with_name("pow-stamp")
-                .long("pow-stamp")
-                .takes_value(true)
-                .value_name("STAMP (HEX)")
-                .help("Tezos node identity proof of work stamp"));
+                .value_name("PATH")
+                .help("Json identity file with peer-id, public-key, secret-key and pow-stamp")
+                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Identity file not found at '{}'", v)) }));
     app
 }
 
