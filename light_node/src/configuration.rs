@@ -144,12 +144,13 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .long("log-format")
                 .takes_value(true)
                 .possible_values(&["json", "simple"])
-                .help("Set output format of the log."))
-            .arg(Arg::with_name("verbose")
-                .long("verbose")
-                .takes_value(false)
-                .multiple(true)
-                .help("Turn verbose output on"))
+                .help("Set output format of the log"))
+            .arg(Arg::with_name("log-level")
+                .long("log-level")
+                .takes_value(true)
+                .value_name("LEVEL")
+                .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
+                .help("Set log level"))
             .arg(Arg::with_name("ocaml-log-enabled")
                 .long("ocaml-log-enabled")
                 .takes_value(true)
@@ -171,7 +172,7 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .takes_value(true)
                 .value_name("PORT")
                 .help("Rust server RPC port for communication with rust node")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))\
+                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
             .arg(Arg::with_name("websocket-address")
                 .long("websocket-address")
                 .takes_value(true)
@@ -223,6 +224,7 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .help("Number of ffi calls, after which will be Ocaml garbage collector called")
                 .validator(parse_validator_fn!(i32, "Value must be a valid number")))
             .arg(Arg::with_name("record")
+                .long("record")
                 .takes_value(true)
                 .value_name("BOOL")
                 .help("Flag for turn on/off record mode"));
@@ -380,7 +382,10 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                level: verbose_occurrences_to_level(args.occurrences_of("verbose")),
+                level: args.value_of("log-level")
+                    .unwrap_or("")
+                    .parse::<slog::Level>()
+                    .expect("Was expecting one value from slog::Level"),
                 format: args
                     .value_of("log-format")
                     .unwrap_or("")
@@ -430,13 +435,5 @@ impl Environment {
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
         }
-    }
-}
-
-fn verbose_occurrences_to_level(occurrences: u64) -> slog::Level {
-    match occurrences {
-        0 => slog::Level::Info,
-        1 => slog::Level::Debug,
-        _ => slog::Level::Trace,
     }
 }

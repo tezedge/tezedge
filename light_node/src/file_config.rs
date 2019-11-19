@@ -40,7 +40,7 @@ pub fn args(config_path: PathBuf, no_messages: bool) -> Vec<OsString> {
             eprintln!("{}:{}", config_path.display(), err);
         }
     }
-    println!("{}: arguments loaded from config file: {:?}", config_path.display(), args);
+    // println!("{}: arguments loaded from config file: {:?}", config_path.display(), args);
     
     args
 }

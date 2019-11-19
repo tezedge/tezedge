@@ -150,9 +150,6 @@ fn main() {
     // Creates default logger
     let log = create_logger(&env);
 
-    // debug!(log, "Identity path: {:?}", env.identity_json_file_path);
-    // std::process::exit(1);
-
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
     // tezos protocol runner endpoint
@@ -206,25 +203,6 @@ fn main() {
             Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
         }
     };
-
-    // let tezos_identity = match env.identity_json_file_path.clone().or_else(|| identity::get_default_tezos_identity_json_file_path().ok().filter(|path| path.exists())) {
-    //   Some(identity_json_file_path) => match identity::load_identity(&identity_json_file_path) {
-    //       Ok(identity) => identity,
-    //       Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
-    //   },
-    //   None => {
-    //       info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
-    //       match protocol_controller.generate_identity(EXPECTED_POW) {
-    //           Ok(identity) => {
-    //               match store_identity_to_default_tezos_identity_json_file(&identity) {
-    //                   Ok(()) => { info!(log, "Identity generated successfully"); identity },
-    //                   Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
-    //               }
-    //           },
-    //           Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
-    //       }
-    //   }
-    // };
     drop(protocol_controller);
 
     let schemas = vec![
