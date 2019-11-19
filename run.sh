@@ -11,8 +11,26 @@ help() {
 }
 
 build_all() {
+  # cargo build profile commandline argument
+  case $1 in
+    debug)
+      # nothing to do here
+      shift
+      ;;
+    release)
+      CARGO_PROFILE_ARG="--release"
+      shift
+      ;;
+    *)
+      echo "Invalid function argument"
+      exit 1
+      ;;
+  esac
+
+  # this is required for the most linux distributions
   export SODIUM_USE_PKG_CONFIG=1
-  cargo build
+
+  cargo build $CARGO_PROFILE_ARG
 }
 
 run_node() {
@@ -23,12 +41,29 @@ run_node() {
   BOOTSTRAP_DIR=/tmp/tezedge
   # -d | --tezos-data-dir
   TEZOS_DIR=/tmp/tezedge
-  # -i | --identity
-  IDENTITY_FILE=./light_node/config/identity.json
   # -n | --network
   NETWORK=babylonnet
   # rest of the commandline arguments will end up here
   args=()
+
+
+  # set compilation profile and cargo commandline argument
+  PROFILE=""
+  case $1 in
+    debug)
+      PROFILE="debug"
+      shift
+      ;;
+    release)
+      CARGO_PROFILE_ARG="--release"
+      PROFILE="release"
+      shift
+      ;;
+    *)
+      echo "Invalid function argument"
+      exit 1
+      ;;
+  esac
 
   shift # shift past <MODE>
 
@@ -76,10 +111,10 @@ run_node() {
   rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
   rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
 
-  # protocol_runner needs 'libtezos.o' to run
-  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts"
+  # protocol_runner needs 'libtezos.so' to run
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
   # start node
-  cargo run --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" --network "$NETWORK" --protocol-runner ./target/debug/protocol-runner "${args[@]}"
+  cargo run $CARGO_PROFILE_ARG --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" --network "$NETWORK" --protocol-runner "./target/$PROFILE/protocol-runner" "${args[@]}"
 }
 
 run_docker() {
@@ -95,9 +130,15 @@ run_docker() {
 case $1 in
 
   node)
-    printf "\033[1;37mRunning Tezedge node\e[0m\n"
-    build_all
-    run_node "$@"
+    printf "\033[1;37mRunning Tezedge node in DEBUG mode\e[0m\n"
+    build_all "debug"
+    run_node "debug" "$@"
+    ;;
+
+  release)
+    printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
+    build_all "release"
+    run_node "release" "$@"
     ;;
 
   docker)

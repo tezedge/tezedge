@@ -18,6 +18,7 @@ tezos_api = { path = "../tezos/api" }
 tezos_client = { path = "../tezos/client" }
 tezos_context = { path = "../tezos/context" }
 tezos_interop = { path = "../tezos/interop" }
+tezos_interop_callback = { path = "../tezos/interop_callback" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
