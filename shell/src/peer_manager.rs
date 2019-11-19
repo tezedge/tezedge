@@ -127,7 +127,7 @@ impl PeerManager {
                  initial_peers: &[SocketAddr],
                  threshold: Threshold,
                  listener_port: u16,
-                 identity: &Identity,
+                 identity: Identity,
                  protocol_version: String,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of(

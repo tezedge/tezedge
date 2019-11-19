@@ -25,14 +25,15 @@ use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_bl
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
+use tezos_api::identity::Identity;
 use tezos_api::ffi::TezosRuntimeConfiguration;
-// use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use crate::identity::store_identity_to_default_tezos_identity_json_file;
+// use crate::identity::store_identity_to_default_tezos_identity_json_file;
 
 mod configuration;
+mod file_config;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
@@ -78,7 +79,7 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(env: &crate::configuration::Environment, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
+fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -94,7 +95,7 @@ fn block_on_actors(env: &crate::configuration::Environment, actor_system: ActorS
         &env.p2p.initial_peers,
         env.p2p.peer_threshold,
         env.p2p.listener_port,
-        &env.identity,
+        identity,
         environment::TEZOS_ENV
             .get(&env.tezos_network)
             .map(|cfg| cfg.version.clone())
@@ -149,6 +150,9 @@ fn main() {
     // Creates default logger
     let log = create_logger(&env);
 
+    // debug!(log, "Identity path: {:?}", env.identity_json_file_path);
+    // std::process::exit(1);
+
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
     // tezos protocol runner endpoint
@@ -177,24 +181,50 @@ fn main() {
     };
     debug!(log, "Loaded Tezos constants: {:?}", &tezos_storage_init_info);
 
-    let tezos_identity = match configuration::ENV.identity_json_file_path.clone().or_else(|| identity::get_default_tezos_identity_json_file_path().ok().filter(|path| path.exists())) {
-        Some(identity_json_file_path) => match identity::load_identity(&identity_json_file_path) {
+    
+    // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
+    let tezos_identity =
+    if env.identity_json_file_path.exists() {
+        match identity::load_identity(&env.identity_json_file_path) {
             Ok(identity) => identity,
-            Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
-        },
-        None => {
-            info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
-            match protocol_controller.generate_identity(EXPECTED_POW) {
-                Ok(identity) => {
-                    match store_identity_to_default_tezos_identity_json_file(&identity) {
-                        Ok(()) => identity,
-                        Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
-                    }
-                },
-                Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
-            }
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
+        }
+    }
+    else {
+        info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
+        match protocol_controller.generate_identity(EXPECTED_POW) {
+            Ok(identity) => {
+                info!(log, "Identity successfully generated");
+                match identity::store_identity(&env.identity_json_file_path, &identity) {
+                    Ok(()) => { 
+                        info!(log, "Generated identity stored at {:?}", &env.identity_json_file_path); 
+                        identity 
+                    },
+                    Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
+                }
+            },
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
         }
     };
+
+    // let tezos_identity = match env.identity_json_file_path.clone().or_else(|| identity::get_default_tezos_identity_json_file_path().ok().filter(|path| path.exists())) {
+    //   Some(identity_json_file_path) => match identity::load_identity(&identity_json_file_path) {
+    //       Ok(identity) => identity,
+    //       Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
+    //   },
+    //   None => {
+    //       info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
+    //       match protocol_controller.generate_identity(EXPECTED_POW) {
+    //           Ok(identity) => {
+    //               match store_identity_to_default_tezos_identity_json_file(&identity) {
+    //                   Ok(()) => { info!(log, "Identity generated successfully"); identity },
+    //                   Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
+    //               }
+    //           },
+    //           Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
+    //       }
+    //   }
+    // };
     drop(protocol_controller);
 
     let schemas = vec![
@@ -251,7 +281,7 @@ fn main() {
 
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(&env, actor_system, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
+        Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
 
