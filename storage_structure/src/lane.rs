@@ -3,6 +3,11 @@ use storage::persistent::{DatabaseWithSchema, Schema};
 use serde::export::PhantomData;
 use rocksdb::DB;
 use crate::content::{NodeHeader, ListValue};
+use storage::persistent::database::{
+    IteratorWithSchema, IteratorMode,
+};
+use storage::Direction;
+use crate::LEVEL_BASE;
 
 type LaneDatabase<T> = dyn DatabaseWithSchema<Lane<T>> + Sync + Send;
 
@@ -37,6 +42,9 @@ impl<C: ListValue> Lane<C> {
         Self::new(self.level - 1, self.db)
     }
 
+    /// Create handler for a lane on higher level
+    pub fn higher_lane(self) -> Self { Self::new(self.level + 1, self.db) }
+
     /// Get level of current handler
     pub fn level(&self) -> usize {
         self.level
@@ -52,6 +60,13 @@ impl<C: ListValue> Lane<C> {
     /// we cannot guarantee correct end handling on lane level.
     pub fn put(&self, index: usize, value: C) {
         self.container().put(&NodeHeader::new(self.level, index), &value).unwrap();
+    }
+
+    /// From starting index, iterate backwards.
+    pub fn base_iterator(&self, starting_index: usize) -> Option<IteratorWithSchema<Lane<C>>> {
+        self.container().iterator(IteratorMode::From(
+            &NodeHeader::new(self.level, starting_index), Direction::Reverse,
+        )).ok()
     }
 
     fn container(&self) -> &Arc<impl DatabaseWithSchema<Lane<C>>> {
