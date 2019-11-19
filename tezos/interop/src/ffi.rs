@@ -81,11 +81,11 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
                 } else {
                     let protocol: OcamlBytes = test_chain.get(1).unwrap().into();
                     let time: Str = test_chain.get(2).unwrap().into();
-                    Some(TestChain::new(
-                        test_chain_id.convert_to(),
-                        protocol.convert_to(),
-                        String::from(time.as_str()),
-                    ))
+                    Some(TestChain {
+                        chain_id: test_chain_id.convert_to(),
+                        protocol_hash: protocol.convert_to(),
+                        expiration_date: String::from(time.as_str())
+                    })
                 };
 
                 // 2. genesis and current head

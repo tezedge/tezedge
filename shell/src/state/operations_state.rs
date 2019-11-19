@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsMetaStorageDatabase, OperationsStorage, OperationsStorageDatabase, StorageError};
+use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsStorage, StorageError};
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -22,10 +22,10 @@ pub struct OperationsState {
 
 impl OperationsState {
 
-    pub fn new(db: Arc<OperationsStorageDatabase>, meta_db: Arc<OperationsMetaStorageDatabase>, chain_id: &ChainId) -> Self {
+    pub fn new(db: Arc<rocksdb::DB>, chain_id: &ChainId) -> Self {
         OperationsState {
-            operations_storage: OperationsStorage::new(db),
-            operations_meta_storage: OperationsMetaStorage::new(meta_db),
+            operations_storage: OperationsStorage::new(db.clone()),
+            operations_meta_storage: OperationsMetaStorage::new(db),
             missing_operations_for_blocks: UniqueBlockData::new(),
             chain_id: chain_id.clone(),
         }

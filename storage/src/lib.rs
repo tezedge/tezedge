@@ -7,22 +7,26 @@ use failure::Fail;
 use slog::info;
 use slog::Logger;
 
-use tezos_encoding::hash::{BlockHash, HashType, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
 pub use crate::block_storage::{BlockStorage, BlockStorageDatabase, BlockStorageReader};
+pub use crate::context_storage::{ContextStorage, ContextStorageDatabase, ContextRecordKey, ContextRecordValue};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
 use crate::persistent::{Codec, DBError, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
+pub use crate::system_storage::SystemStorage;
 
 pub mod persistent;
 pub mod operations_storage;
 pub mod operations_meta_storage;
 pub mod block_storage;
 pub mod block_meta_storage;
+pub mod context_storage;
+pub mod system_storage;
 
 /// Extension of block header with block hash
 #[derive(PartialEq, Clone, Debug)]
