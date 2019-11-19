@@ -18,6 +18,7 @@ pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaSt
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
 use crate::persistent::{Codec, DBError, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
+pub use crate::system_storage::SystemStorage;
 
 pub mod persistent;
 pub mod operations_storage;
@@ -26,6 +27,7 @@ pub mod block_storage;
 pub mod block_meta_storage;
 pub mod context_storage;
 pub mod context_meta_storage;
+pub mod system_storage;
 
 /// Extension of block header with block hash
 #[derive(PartialEq, Clone, Debug)]

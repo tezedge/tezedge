@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use riker::actors::*;
-use slog::*;
+use slog::{crit, debug, Drain, error, info, Logger};
 use tokio::runtime::Runtime;
 
 use logging::detailed_json;
@@ -21,7 +21,7 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{BlockMetaStorage, BlockStorage, ContextMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockMetaStorage, BlockStorage, ContextMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
 use storage::context_storage::ContextStorage;
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
@@ -36,6 +36,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
+const DATABASE_VERSION: i64 = 1;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -142,6 +143,33 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
     });
 }
 
+fn check_database_compatibility(db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo, log: Logger) -> Result<bool, StorageError> {
+    let mut system_info = SystemStorage::new(db.clone());
+    let db_version_ok = match system_info.get_db_version()? {
+        Some(db_version) => db_version == DATABASE_VERSION,
+        None => {
+            system_info.set_db_version(DATABASE_VERSION)?;
+            true
+        }
+    };
+    if !db_version_ok {
+        error!(log, "Incompatible database version found. Please re-sync your node.");
+    }
+
+    let chain_id_ok = match system_info.get_chain_id()? {
+        Some(chain_id) => chain_id == init_info.chain_id,
+        None => {
+            system_info.set_chain_id(&init_info.chain_id)?;
+            true
+        }
+    };
+    if !chain_id_ok {
+        error!(log, "Current database was created for another chain. Please re-sync your node.");
+    }
+
+    Ok(db_version_ok && chain_id_ok)
+}
+
 fn main() {
     let log = create_logger();
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
@@ -201,12 +229,20 @@ fn main() {
         EventStorage::cf_descriptor(),
         ContextStorage::cf_descriptor(),
         ContextMetaStorage::cf_descriptor(),
+        SystemStorage::cf_descriptor(),
     ];
     let rocks_db = match open_db(&configuration::ENV.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
         Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &configuration::ENV.storage.bootstrap_db_path), actor_system)
     };
     debug!(log, "Loaded RocksDB database");
+
+    match check_database_compatibility(rocks_db.clone(), &tezos_storage_init_info, log.clone()) {
+        Ok(false) => shutdown_and_exit!(crit!(log, "Database incompatibility detected"), actor_system),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to verify database compatibility"; "reason" => e), actor_system),
+        _ => ()
+    }
+
 
     let ProtocolRunnerEndpoint {
         runner: protocol_runner,

@@ -94,19 +94,19 @@ caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash) {
 });
 
 pub fn context_set(context_hash: Option<ContextHash>, block_hash: Option<BlockHash>, operation_hash: Option<OperationHash>, key: ContextKey, value: ContextValue) {
-    context_send(ContextAction::Set { context_hash, key, value }).unwrap();
+    context_send(ContextAction::Set { context_hash, block_hash, operation_hash, key, value }).unwrap();
 }
 
 pub fn context_delete(context_hash: Option<ContextHash>, block_hash: Option<BlockHash>, operation_hash: Option<OperationHash>, key: ContextKey) {
-    context_send(ContextAction::Delete { context_hash, key }).unwrap();
+    context_send(ContextAction::Delete { context_hash, block_hash, operation_hash, key }).unwrap();
 }
 
 pub fn context_remove_rec(context_hash: Option<ContextHash>, block_hash: Option<BlockHash>, operation_hash: Option<OperationHash>, key: ContextKey) {
-    context_send(ContextAction::RemoveRecord { context_hash, key }).unwrap();
+    context_send(ContextAction::RemoveRecord { context_hash, block_hash, operation_hash, key }).unwrap();
 }
 
 pub fn context_copy(context_hash: Option<ContextHash>, block_hash: Option<BlockHash>, operation_hash: Option<OperationHash>, from_key: ContextKey, to_key: ContextKey) {
-    context_send(ContextAction::Copy { context_hash, from_key, to_key }).unwrap();
+    context_send(ContextAction::Copy { context_hash, block_hash, operation_hash, from_key, to_key }).unwrap();
 }
 
 pub fn context_checkout(context_hash: ContextHash) {
@@ -114,5 +114,5 @@ pub fn context_checkout(context_hash: ContextHash) {
 }
 
 pub fn context_commit(parent_context_hash: Option<ContextHash>, block_hash: Option<BlockHash>, new_context_hash: ContextHash) {
-    context_send(ContextAction::Commit { parent_context_hash, new_context_hash }).unwrap();
+    context_send(ContextAction::Commit { parent_context_hash, block_hash, new_context_hash }).unwrap();
 }

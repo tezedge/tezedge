@@ -48,6 +48,16 @@ impl Codec for Hash {
     }
 }
 
+impl Codec for String {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        String::from_utf8(bytes.to_vec()).map_err(|_| SchemaError::DecodeError)
+    }
+
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        Ok(self.as_bytes().to_vec())
+    }
+}
+
 impl<T: BincodeEncoded> Codec for T {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         T::decode(bytes)

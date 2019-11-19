@@ -112,14 +112,14 @@ fn listen_protocol_events(
                     debug!(log, "Received protocol event"; "count" => event_count);
                 }
                 event_count += 1;
-                match msg {
-                    ContextAction::Set { context_hash: Some(context_hash), key, value } => {
-                        let record_key = RecordKey::new(chain_id, 0, &context_hash, &key);
-                        let record_value = RecordValue::new(Some(context_hash), key, value);
-                        context_storage.put(&record_key, &record_value)?;
-                    }
-                    _ => (),
-                }
+//                match msg {
+//                    ContextAction::Set { block_hash: Some(block_hash), key, value, .. } => {
+//                        let record_key = RecordKey::new(chain_id, 0, &context_hash, &key);
+//                        let record_value = RecordValue::new(Some(context_hash), key, value);
+//                        context_storage.put(&record_key, &record_value)?;
+//                    }
+//                    _ => (),
+//                }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
