@@ -1,9 +1,5 @@
 use std::sync::Arc;
-use storage::{
-    StorageError,
-    persistent::{Codec, SchemaError, DatabaseWithSchema, Schema},
-};
-use serde::{Serialize, Deserialize};
+use storage::persistent::{DatabaseWithSchema, Schema};
 use serde::export::PhantomData;
 use rocksdb::DB;
 use crate::content::{NodeHeader, ListValue};
@@ -27,6 +23,7 @@ impl<C: ListValue> Schema for Lane<C> {
 }
 
 impl<C: ListValue> Lane<C> {
+    /// Create new lane handler for given database
     pub fn new(level: usize, db: Arc<DB>) -> Self {
         Self {
             level,
@@ -35,20 +32,29 @@ impl<C: ListValue> Lane<C> {
         }
     }
 
+    /// Create handler for a lane on one lower level
     pub fn lower_lane(self) -> Self {
         Self::new(self.level - 1, self.db)
     }
 
+    /// Get level of current handler
     pub fn level(&self) -> usize {
         self.level
     }
 
-    pub fn get(&self, index: usize) -> () {
-        let container = Self::container(self.db.clone());
+    /// Get value from specific index (relative to this lane).
+    pub fn get(&self, index: usize) -> Option<C> {
+        self.container().get(&NodeHeader::new(self.level, index)).unwrap()
     }
 
-    #[inline]
-    fn container(db: Arc<LaneDatabase<C>>) -> Arc<LaneDatabase<C>> {
-        db
+    /// Put new value on specific index of this lane, beware, that lanes should contain continuous
+    /// indexes, thus some meta-structure should control and contain data about end of the lane, as
+    /// we cannot guarantee correct end handling on lane level.
+    pub fn put(&self, index: usize, value: C) {
+        self.container().put(&NodeHeader::new(self.level, index), &value).unwrap();
+    }
+
+    fn container(&self) -> &Arc<impl DatabaseWithSchema<Lane<C>>> {
+        &self.db
     }
 }
