@@ -2034,6 +2034,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "serial_test"
+version = "0.2.0"
+source = "git+https://github.com/palfrey/serial_test.git#ad2ac48898da5935f9cf2b3fec23c77a2ff0a055"
+dependencies = [
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parking_lot 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serial_test_derive 0.2.0 (git+https://github.com/palfrey/serial_test.git)",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "0.2.0"
+source = "git+https://github.com/palfrey/serial_test.git#ad2ac48898da5935f9cf2b3fec23c77a2ff0a055"
+dependencies = [
+ "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "sha-1"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2359,6 +2378,7 @@ dependencies = [
  "enum-iterator 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serial_test 0.2.0 (git+https://github.com/palfrey/serial_test.git)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
  "tezos_interop 0.0.1-pre18-context",
@@ -3104,6 +3124,8 @@ dependencies = [
 "checksum serde_derive 1.0.102 (registry+https://github.com/rust-lang/crates.io-index)" = "ca13fc1a832f793322228923fbb3aba9f3f44444898f835d31ad1b74fa0a2bf8"
 "checksum serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)" = "2f72eb2a68a7dc3f9a691bfda9305a1c017a6215e5a4545c258500d2099a37c2"
 "checksum serde_test 0.8.23 (registry+https://github.com/rust-lang/crates.io-index)" = "110b3dbdf8607ec493c22d5d947753282f3bae73c0f56d322af1e8c78e4c23d5"
+"checksum serial_test 0.2.0 (git+https://github.com/palfrey/serial_test.git)" = "<none>"
+"checksum serial_test_derive 0.2.0 (git+https://github.com/palfrey/serial_test.git)" = "<none>"
 "checksum sha-1 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "23962131a91661d643c98940b20fcaffe62d776a823247be80a48fcb8b6fce68"
 "checksum sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7b4d8bfd0e469f417657573d8451fb33d16cfe0989359b93baf3a1ffc639543d"
 "checksum shlex 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"

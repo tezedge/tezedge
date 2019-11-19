@@ -16,7 +16,8 @@ use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController};
 
-use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic};
+use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic, ShellChannelMsg};
+use crate::subscription::subscribe_to_shell_events;
 
 /// This command triggers feeding of completed blocks to the tezos protocol
 #[derive(Clone, Debug)]
@@ -25,8 +26,10 @@ pub struct FeedChainToProtocol;
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(FeedChainToProtocol)]
+#[actor(FeedChainToProtocol, ShellChannelMsg)]
 pub struct ChainFeeder {
+    /// All events from shell will be published to this channel
+    shell_channel: ShellChannelRef,
     /// Thread where blocks are applied will run until this is set to `false`
     block_applier_run: Arc<AtomicBool>,
     /// Block applier thread
@@ -42,6 +45,7 @@ impl ChainFeeder {
             let apply_block_run = apply_block_run.clone();
             let current_head_hash = tezos_init.current_block_header_hash.clone();
             let chain_id = tezos_init.chain_id.clone();
+            let shell_channel = shell_channel.clone();
 
             thread::spawn(move || {
                 let block_storage = BlockStorage::new(rocks_db.clone());
@@ -70,7 +74,7 @@ impl ChainFeeder {
         };
 
         let myself = sys.actor_of(
-            Props::new_args(ChainFeeder::new, (apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
+            Props::new_args(ChainFeeder::new, (shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
             ChainFeeder::name())?;
 
         Ok(myself)
@@ -82,11 +86,23 @@ impl ChainFeeder {
         "chain-feeder"
     }
 
-    fn new((block_applier_run, block_applier_thread): (Arc<AtomicBool>, SharedJoinHandle)) -> Self {
+    fn new((shell_channel, block_applier_run, block_applier_thread): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)) -> Self {
         ChainFeeder {
+            shell_channel,
             block_applier_run,
             block_applier_thread,
         }
+    }
+
+    fn process_shell_channel_message(&mut self, _ctx: &Context<ChainFeederMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
+        match msg {
+            ShellChannelMsg::ShuttingDown(_) => {
+                self.block_applier_run.store(false, Ordering::Release);
+            },
+            _ => ()
+        }
+
+        Ok(())
     }
 }
 
@@ -94,6 +110,8 @@ impl Actor for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+
         ctx.schedule::<Self::Msg, _>(
             Duration::from_secs(4),
             Duration::from_secs(8),
@@ -115,6 +133,17 @@ impl Actor for ChainFeeder {
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
+    }
+}
+
+impl Receive<ShellChannelMsg> for ChainFeeder {
+    type Msg = ChainFeederMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
+        match self.process_shell_channel_message(ctx, msg) {
+            Ok(_) => (),
+            Err(e) => warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e)),
+        }
     }
 }
 
@@ -178,18 +207,21 @@ fn feed_chain_to_protocol(
                                 // mark current head as applied
                                 current_head_meta.is_applied = true;
                                 block_meta_storage.put(&current_head.hash, &current_head_meta)?;
-                                // notify others that the block successfully applied
-                                shell_channel.tell(
-                                    Publish {
-                                        msg: BlockApplied {
-                                            hash: current_head.hash.clone(),
-                                            level: current_head.header.level(),
-                                            header: current_head.header.clone(),
-                                            block_header_info: apply_block_result.block_header_proto_json.parse().ok(),
-                                            block_header_proto_info: serde_json::from_str(&apply_block_result.block_header_proto_metadata_json).unwrap_or_default(),
-                                        }.into(),
-                                        topic: ShellChannelTopic::ShellEvents.into(),
-                                    }, None);
+
+                                if apply_block_run.load(Ordering::Acquire) {
+                                    // notify others that the block successfully applied
+                                    shell_channel.tell(
+                                        Publish {
+                                            msg: BlockApplied {
+                                                hash: current_head.hash.clone(),
+                                                level: current_head.header.level(),
+                                                header: current_head.header.clone(),
+                                                block_header_info: apply_block_result.block_header_proto_json.parse().ok(),
+                                                block_header_proto_info: serde_json::from_str(&apply_block_result.block_header_proto_metadata_json).unwrap_or_default(),
+                                            }.into(),
+                                            topic: ShellChannelTopic::ShellEvents.into(),
+                                        }, None);
+                                }
 
                                 // Current head is already applied, so we should move to successor
                                 // or in case no successor is available do nothing.

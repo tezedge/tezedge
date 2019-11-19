@@ -11,9 +11,10 @@ use lazy_static::lazy_static;
 use crate::{ContextHash, ContextKey, ContextValue, BlockHash, OperationHash};
 
 static CHANNEL_ENABLED: AtomicBool = AtomicBool::new(false);
+const CHANNEL_BUFFER_LEN: usize = 131_072;
 
 lazy_static! {
-    static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(1024);
+    static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(CHANNEL_BUFFER_LEN);
 }
 
 pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction>> {
@@ -69,6 +70,6 @@ pub enum ContextAction {
         block_hash: Option<BlockHash>,
         new_context_hash: ContextHash,
     },
-    /// This is a control event used to shutdown channel
+    /// This is a control event used to shutdown IPC channel
     Shutdown,
 }

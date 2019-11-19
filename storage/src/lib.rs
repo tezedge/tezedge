@@ -13,7 +13,7 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
 pub use crate::block_storage::{BlockStorage, BlockStorageDatabase, BlockStorageReader};
-pub use crate::context_meta_storage::{ContextMetaStorage, ContextMetaStorageDatabase};
+pub use crate::context_storage::{ContextStorage, ContextStorageDatabase, ContextRecordKey, ContextRecordValue};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
 use crate::persistent::{Codec, DBError, SchemaError};
@@ -26,7 +26,6 @@ pub mod operations_meta_storage;
 pub mod block_storage;
 pub mod block_meta_storage;
 pub mod context_storage;
-pub mod context_meta_storage;
 pub mod system_storage;
 
 /// Extension of block header with block hash

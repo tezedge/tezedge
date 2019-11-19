@@ -10,11 +10,9 @@ use failure::Error;
 use riker::actors::*;
 use slog::{debug, Logger, warn};
 
-use storage::context_storage::{ContextStorage, RecordKey, RecordValue};
-use tezos_api::client::TezosStorageInitInfo;
+use storage::{ContextStorage, ContextRecordKey, ContextRecordValue};
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
-use tezos_encoding::hash::ChainId;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -29,9 +27,8 @@ pub struct ContextListener {
 pub type ContextListenerRef = ActorRef<ContextListenerMsg>;
 
 impl ContextListener {
-    pub fn actor(sys: &impl ActorRefFactory, rocks_db: Arc<rocksdb::DB>, mut event_server: IpcEvtServer,  init_info: &TezosStorageInitInfo, log: Logger) -> Result<ContextListenerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, rocks_db: Arc<rocksdb::DB>, mut event_server: IpcEvtServer, log: Logger) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
-        let chain_id = init_info.chain_id.clone();
         let block_applier_thread = {
             let listener_run = listener_run.clone();
 
@@ -42,11 +39,14 @@ impl ContextListener {
                         &listener_run,
                         &mut event_server,
                         &mut context_storage,
-                        &chain_id,
                         &log,
                     ) {
                         Ok(()) => debug!(log, "Context listener finished"),
-                        Err(err) => warn!(log, "Timeout while waiting for context event connection"; "reason" => format!("{:?}", err)),
+                        Err(err) => {
+                            if listener_run.load(Ordering::Acquire) {
+                                warn!(log, "Timeout while waiting for context event connection"; "reason" => format!("{:?}", err))
+                            }
+                        }
                     }
                 }
 
@@ -95,7 +95,6 @@ fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     context_storage: &mut ContextStorage,
-    chain_id: &ChainId,
     log: &Logger,
 ) -> Result<(), Error> {
 
@@ -112,14 +111,18 @@ fn listen_protocol_events(
                     debug!(log, "Received protocol event"; "count" => event_count);
                 }
                 event_count += 1;
-//                match msg {
-//                    ContextAction::Set { block_hash: Some(block_hash), key, value, .. } => {
-//                        let record_key = RecordKey::new(chain_id, 0, &context_hash, &key);
-//                        let record_value = RecordValue::new(Some(context_hash), key, value);
-//                        context_storage.put(&record_key, &record_value)?;
-//                    }
-//                    _ => (),
-//                }
+
+                match &msg {
+                    ContextAction::Set { block_hash: Some(block_hash), operation_hash, key, .. }
+                    | ContextAction::Copy { block_hash: Some(block_hash), operation_hash, to_key: key, .. }
+                    | ContextAction::Delete { block_hash: Some(block_hash), operation_hash, key, .. }
+                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), operation_hash, key, .. } => {
+                        let record_key = ContextRecordKey::new(block_hash, operation_hash, key);
+                        let record_value = ContextRecordValue::new(msg);
+                        context_storage.put(&record_key, &record_value)?;
+                    }
+                    _ => (),
+                };
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));

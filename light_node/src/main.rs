@@ -21,8 +21,7 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{BlockMetaStorage, BlockStorage, ContextMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
-use storage::context_storage::ContextStorage;
+use storage::{BlockMetaStorage, BlockStorage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
@@ -105,7 +104,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
         .expect("Failed to create chain manager");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, &init_info, log.clone())
+    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, log.clone())
         .expect("Failed to create context event listener");
     let websocket_handler = WebsocketHandler::actor(&actor_system, configuration::ENV.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -119,9 +118,12 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
     }
 
     tokio_runtime.block_on(async move {
-        use tokio::net::signal;
+        use std::thread;
+        use std::time::Duration;
+
         use futures::future;
         use futures::stream::StreamExt;
+        use tokio::net::signal;
 
         let ctrl_c = signal::ctrl_c().unwrap();
         let prog = ctrl_c.take(1).for_each(|_| {
@@ -129,6 +131,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
 
             protocol_runner_run.store(false, Ordering::Release);
 
+            info!(log, "Sending shutdown notification to actors");
             shell_channel.tell(
                 Publish {
                     msg: ShuttingDown.into(),
@@ -136,9 +139,13 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
                 }, None
             );
 
+            // give actors some time to shut down
+            thread::sleep(Duration::from_secs(1));
+            // resolve future
             future::ready(())
         });
         prog.await;
+        info!(log, "Shutting down actor runtime");
         let _ = actor_system.shutdown().await;
     });
 }
@@ -228,7 +235,6 @@ fn main() {
         EventPayloadStorage::cf_descriptor(),
         EventStorage::cf_descriptor(),
         ContextStorage::cf_descriptor(),
-        ContextMetaStorage::cf_descriptor(),
         SystemStorage::cf_descriptor(),
     ];
     let rocks_db = match open_db(&configuration::ENV.storage.bootstrap_db_path, schemas) {
@@ -284,13 +290,13 @@ fn main() {
 
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
+        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log.clone()),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block"; "reason" => e), actor_system),
     }
 
-
-
     rocks_db.flush().expect("Failed to flush database");
+
+    info!(log, "Tezedge node finished");
 }
 
 
