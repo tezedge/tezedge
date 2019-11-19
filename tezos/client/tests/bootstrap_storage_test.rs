@@ -19,7 +19,12 @@ macro_rules! tezos_test {
 #[test]
 fn run_tests() {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration::new(common::is_ocaml_log_enabled(), common::no_of_ffi_calls_treshold_for_gc())).unwrap();
+    client::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap();
 
     // We cannot run tests in parallel, because tezos does not handle situation when multiple storage
     // directories are initialized

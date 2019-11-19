@@ -3,6 +3,9 @@
 
 pub mod channel;
 
-pub type ContextHash = Vec<u8>;
+pub type Hash = Vec<u8>;
+pub type ContextHash = Hash;
+pub type BlockHash = Hash;
+pub type OperationHash = Hash;
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
