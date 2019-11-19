@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// Separate Tezos protocol runner, as we used OCaml protocol more and more, we noticed increasing
+/// problems, from panics to high memory usage, for better stability, we separated protocol into
+/// self-contained process communicating through Unix Socket.
 use std::thread;
 use std::time::Duration;
 
@@ -57,7 +60,7 @@ fn main() {
                     Err(err) => {
                         warn!(log, "Error while processing protocol events"; "reason" => format!("{:?}", err));
                         thread::sleep(Duration::from_secs(1));
-                    },
+                    }
                 }
             }
         })
@@ -73,17 +76,18 @@ fn main() {
 mod tezos {
     use tezos_api::client::TezosStorageInitInfo;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
-    use tezos_client::client::{apply_block, change_runtime_configuration, init_storage};
-    use tezos_encoding::hash::{BlockHash, ChainId};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+    use tezos_api::identity::Identity;
+    use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, init_storage};
+    use tezos_encoding::hash::ChainId;
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
 
     impl ProtocolApi for NativeTezosLib {
-        fn apply_block(chain_id: &ChainId, block_header_hash: &BlockHash, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
-            apply_block(chain_id, block_header_hash, block_header, operations)
+        fn apply_block(chain_id: &ChainId, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
+            apply_block(chain_id, block_header, operations)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
@@ -92,6 +96,10 @@ mod tezos {
 
         fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
             init_storage(storage_data_dir, tezos_environment)
+        }
+
+        fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {
+            generate_identity(expected_pow)
         }
     }
 }

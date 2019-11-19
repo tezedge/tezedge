@@ -1,9 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::error::Error;
+
 use ocaml::{Array1, List, Str, Tuple, Value};
+use serde_json;
 
 use tezos_api::ffi::*;
+use tezos_api::identity::Identity;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
@@ -16,14 +20,8 @@ pub trait Interchange<T> {
 
 impl Interchange<OcamlBytes> for RustBytes {
     fn convert_to(&self) -> OcamlBytes {
-        // convert RustBytes to dedicated struct for ocaml ffi
-        // Array1.as_slice dont work here, so we have to copy manually
-        // create vs as_slice differs in bigarray::Managed
-        let mut array: OcamlBytes = Array1::<u8>::create(self.len());
-        for (idx, byte) in self.iter().enumerate() {
-            array.data_mut()[idx] = *byte;
-        }
-        array
+        // TODO: change Cargo.toml on ocaml-rs 9.0, if merged
+        Array1::from(self.as_slice())
     }
 }
 
@@ -36,7 +34,10 @@ impl Interchange<RustBytes> for OcamlBytes {
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<Result<(), TezosRuntimeConfigurationError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
-        match ocaml_function.call_exn::<Value>(Value::bool(settings.log_enabled)) {
+        match ocaml_function.call2_exn::<Value, Value>(
+            Value::bool(settings.log_enabled),
+            Value::i32(settings.no_of_ffi_calls_treshold_for_gc)
+        ) {
             Ok(_) => {
                 Ok(())
             }
@@ -46,8 +47,6 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
         }
     })
 }
-
-
 
 pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides)
                     -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
@@ -65,7 +64,7 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
         match ocaml_function.call3_exn::<Str, Value, Value>(
             storage_data_dir.as_str().into(),
             Value::from(genesis_tuple),
-            Value::from(protocol_overrides_tuple)
+            Value::from(protocol_overrides_tuple),
         ) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
@@ -161,22 +160,17 @@ pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Re
 
 pub fn apply_block(
     chain_id: RustBytes,
-    block_header_hash: RustBytes,
     block_header: RustBytes,
     operations: Vec<Option<Vec<RustBytes>>>)
     -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
 
-        // convert to ocaml types
-        let block_header_tuple: Tuple = block_header_to_ocaml(&block_header_hash, &block_header)?;
-        let operations = operations_to_ocaml(&operations);
-
         // call ffi
-        match ocaml_function.call3_exn::<OcamlBytes, Value, List>(
+        match ocaml_function.call3_exn::<OcamlBytes, OcamlBytes, List>(
             chain_id.convert_to(),
-            block_header_tuple.into(),
-            operations,
+            block_header.convert_to(),
+            operations_to_ocaml(&operations),
         ) {
             Ok(validation_result) => {
                 let validation_result: Tuple = validation_result.into();
@@ -195,6 +189,24 @@ pub fn apply_block(
             }
             Err(e) => {
                 Err(ApplyBlockError::from(e))
+            }
+        }
+    })
+}
+
+pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
+    runtime::execute(move || {
+        let ocaml_function = ocaml::named_value("generate_identity").expect("function 'generate_identity' is not registered");
+        match ocaml_function.call_exn::<Value>(Value::f64(expected_pow)) {
+            Ok(identity) => {
+                let identity = Str::from(identity).as_str().to_string();
+
+                Ok(serde_json::from_str::<Identity>(&identity)
+                    .map_err(|err| TezosGenerateIdentityError::InvalidJsonError { message: err.description().to_string() })?
+                )
+            }
+            Err(e) => {
+                Err(TezosGenerateIdentityError::from(e))
             }
         }
     })
@@ -220,15 +232,7 @@ pub fn operations_to_ocaml(operations: &Vec<Option<Vec<RustBytes>>>) -> List {
     operations_for_ocaml
 }
 
-pub fn block_header_to_ocaml(block_header_hash: &RustBytes, block_header: &RustBytes) -> Result<Tuple, ocaml::Error> {
-    let mut block_header_tuple: Tuple = Tuple::new(2);
-    block_header_tuple.set(0, Value::from(block_header_hash.convert_to()))?;
-    block_header_tuple.set(1, Value::from(block_header.convert_to()))?;
-    Ok(block_header_tuple)
-}
-
 pub fn protocol_overrides_to_ocaml(protocol_overrides: &ProtocolOverrides) -> Result<Tuple, ocaml::Error> {
-
     let mut forced_protocol_upgrades = List::new();
     protocol_overrides.forced_protocol_upgrades.iter().rev()
         .for_each(|(level, protocol_hash)| {

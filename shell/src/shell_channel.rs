@@ -9,6 +9,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use failure::_core::str::FromStr;
 use std::collections::HashMap;
 
+/// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug)]
 pub struct BlockApplied {
     pub hash: BlockHash,
@@ -18,6 +19,7 @@ pub struct BlockApplied {
     pub block_header_proto_info: HashMap<String, String>,
 }
 
+/// Structure containing basic information from block hedear
 #[derive(Clone, Debug)]
 pub struct BlockHeaderInfo {
     pub priority: i32,
@@ -46,13 +48,14 @@ impl FromStr for BlockHeaderInfo {
 #[derive(Clone, Debug)]
 pub struct ShuttingDown;
 
+/// Message informing actors about receiving block header
 #[derive(Clone, Debug)]
 pub struct BlockReceived {
     pub hash: BlockHash,
     pub level: i32,
 }
 
-/// We have received message from another peer
+/// Message informing actors about receiving all operations for a specific block
 #[derive(Clone, Debug)]
 pub struct AllBlockOperationsReceived {
     pub hash: BlockHash,
@@ -97,7 +100,7 @@ pub enum ShellChannelTopic {
     /// Ordinary cvents generated from shell layer
     ShellEvents,
     /// Control event
-    ShellCommands
+    ShellCommands,
 }
 
 impl From<ShellChannelTopic> for Topic {

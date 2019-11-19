@@ -142,11 +142,16 @@ where
 {
     const ACCEPT_TIMEOUT: Duration = Duration::from_secs(8);
 
+    /// Bind IpcServer to random socket in temp folder
     pub fn bind() -> Result<Self, IpcError> {
         let path = temp_sock();
         Self::bind_path(&path)
     }
 
+    /// Bind IpcServer to specific path
+    ///
+    /// # Arguments
+    /// * `path` - path to the unix socket
     pub fn bind_path<P: AsRef<Path>>(path: P) -> Result<Self, IpcError> {
         let path_buf = path.as_ref().into();
         let listener = UnixListener::bind(path)
@@ -160,12 +165,14 @@ where
         })
     }
 
+    /// Accept new connection a return sender/receiver for it
     pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = self.listener.try_accept(Self::ACCEPT_TIMEOUT)
             .map_err(|_| IpcError::AcceptTimeout)?;
         split(stream).map_err(|err| IpcError::SplitError { reason: err })
     }
 
+    /// Create new IpcClient for this server
     pub fn client(&self) -> IpcClient<R, S> {
         IpcClient::new(&self.path)
     }

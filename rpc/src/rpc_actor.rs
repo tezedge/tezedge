@@ -16,6 +16,8 @@ use crate::helpers::FullBlockInfo;
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
+/// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
+/// system with the server.
 #[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead, GetFullCurrentHead)]
 pub struct RpcServer {
     network_channel: NetworkChannelRef,
@@ -69,6 +71,7 @@ impl RpcServer {
         Ok(ret)
     }
 
+    /// Load local head (block with highest level) from dedicated storage
     fn load_current_head(db: Arc<rocksdb::DB>) -> Option<BlockHeaderWithHash> {
         use storage::{BlockMetaStorage, BlockStorage, IteratorMode};
         use tezos_encoding::hash::BlockHash as RawBlockHash;

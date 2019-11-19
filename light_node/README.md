@@ -18,19 +18,112 @@ The relations between individual components are described in the diagram depicte
 ![Preview1](../docs/images/class_diagram.png)
 
 
-# How to run the node
+# Running the node
+Detailed information, about how to start the node, is in repository [README](../README.md) file.
 
-
-Run
-------------
-**Run node** 
+## Arguments
+### Bootstrap database path
+Path to bootstrap database directory. If directory does not exists, it will be created. If directory already exists, and 
+contains valid database, node will continue in bootstrap process on that database
 
 ```
-cargo run --tezos-data-dir /tmp/tezos-data-dir
+-B, --bootstrap-db-path <PATH>
 ```
+### Bootstrap lookup addresses
+List of peers to bootstrap the network from. Peers are delimited by a colon. 
+For further information, see `--network` parameter of OCaml node.
 
-![Preview1](../docs/images/bash_cargo_run.gif)
+```
+-b, --bootstrap-lookup-address <ADRRESS>(,<ADDRESS>)*
+```
+### Identity 
+Path to your Tezos `identity.json` file.
 
+```
+-i, --identity <PATH>
+```
+### Logging file
+Path to the logger file. By default, all logs are printed on `STDOUT`.
+
+```
+-F, --log-file
+```
+### Logging format
+Set format of logger entries, used usually with `--logger-format` argument.
+Possible values are either `simple` or `json`.
+Simple format is human-readable format, where JSON produce structured, easily machine consumable log entries.
+
+```
+-f, --log-format
+```
+### Network
+Specify the Tezos environment for this node. Accepted values are: 
+`alphanet, babylonnet, babylon, mainnet or zeronet`, where `babylon` and `babylonnet` refer to same environment.
+
+```
+-n, --network [alphanet, babylonnet, babylon, mainnet, zeronet]
+```
+### OCaml loggin
+Enable OCaml runtime logger.
+
+```
+-o, --ocaml-log-enabled [true,false]
+```
+### P2P Port
+Specify port for peer to peer communication. Default: `9732`
+
+```
+-l, --p2p-port <PORT>
+```
+### Lower peer threshold
+Set minimal peer number, if running node does not has enough connected peers, peer discovery is enforced.
+Default: `2`
+
+```
+-T, -peer-thresh-low <NUMBER>
+```
+### Higher peer threshold
+Set maximum number of connected peers, running node will not try to connect to any more peers, if this threshold is met.
+Default: `15`.
+
+```
+-t, --peer-thresh-high <NUMBER>
+```
+### Peers
+Allowed network peers to bootstrap from. This argument is good to use in controlled testing environmnet.
+Each peer is described by its address and port in `IP:PORT` format, delimited by a colon.
+
+```
+-p, --peers <IP:PORT>(,<IP:PORT>)*
+``` 
+### Protocol runner
+Path to the protocol runner binary, which is compiled with `tezedge`. 
+For example: `./target/debug/protocol-runner`.
+
+```
+-P, --protocol-runner <PATH>
+```
+### RPC port
+Node contains subset of Tezos node REST API, described in further sections. This argument specifies port, on which
+those APIs will be available. Default: `18732`.
+
+```
+-r, --rpc-port <PORT>
+```
+### Tezos data dir
+Path to directory which will be used to store Tezos specific data. This is required argument, and if node fails to 
+create or access this directory, it will die gracefully. Default: `tezos_data_db`
+
+```
+-d, --tezos-data-dir <PATH>
+```
+### WebSocket Access Address
+Node expose various metrics and statistics in real-time through websocket. This argument specifies address, on which
+will be this websocket accessible. Default: `0.0.0.0:4972`.
+
+```
+-w, --websocket-address <0.0.0.0:PORT>
+```
 
 # RPC API
 
@@ -52,52 +145,6 @@ curl http://127.0.0.1:18732/chains/main/blocks/head
 ```
 
 ![Preview1](../docs/images/bash_chains_main_blocks_head.gif)
-
-# Run configuration
-
-**Tezos network**
-(Which Tezos network we want to connect: Alphanet, Babylonnet, Mainnet, Zeronet)
-```
---network Zeronet
-```
-
-
-**Tezos storage data directory**
-(Directory should already exists)
-```
---tezos-data-dir /tmp/tezos-data-dir
-```
-
-**RPC port**
-```
---rpc-port 8732
-```
-
-**P2P port**
-```
---p2p-port 9732
-```
-
-**Bootstrap peers**
-```
---peers 127.0.0.1:7777,127.0.0.1:8888
-```
-
-**Bootstrap address**
-(Default values depends on choosen "Tezos network")
-```
---bootstrap-lookup-address boot.tzalpha.net,bootalpha.tzbeta.net
-```
-
-**Location to identity.json file**
-```
---identity /opt/tezos-env/rust-node/identity.json
-```
-
-e.g.:
-```
-cargo run -- --network Zeronet --tezos-data-dir /tmp/tezos-data-dir --rpc-port 9998 --p2p-port 7533 --identity ./config/identity.json --logj true --logh false --protocol-runner ../target/debug/protocol-runner
-```
 
 
 # What node can currently do

@@ -18,8 +18,9 @@ use ipc::*;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::*;
+use tezos_api::identity::Identity;
 use tezos_context::channel::{context_receive, context_send, ContextAction};
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::ChainId;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::protocol::*;
@@ -29,13 +30,13 @@ enum ProtocolMessage {
     ApplyBlockCall(ApplyBlockParams),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitStorageCall(InitStorageParams),
+    GenerateIdentity(GenerateIdentityParams),
     ShutdownCall,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ApplyBlockParams {
     chain_id: ChainId,
-    block_header_hash: BlockHash,
     block_header: BlockHeader,
     operations: Vec<Option<OperationsForBlocksMessage>>,
 }
@@ -46,11 +47,17 @@ struct InitStorageParams {
     tezos_environment: TezosEnvironment
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct GenerateIdentityParams {
+    expected_pow: f64,
+}
+
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResult, ApplyBlockError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitStorageResult(Result<TezosStorageInitInfo, TezosStorageInitError>),
+    GenerateIdentityResult(Result<Identity, TezosGenerateIdentityError>),
     ShutdownResult
 }
 
@@ -76,7 +83,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
     while let Ok(cmd) = rx.receive() {
         match cmd {
             ProtocolMessage::ApplyBlockCall(params) => {
-                let res = Proto::apply_block(&params.chain_id, &params.block_header_hash, &params.block_header, &params.operations);
+                let res = Proto::apply_block(&params.chain_id, &params.block_header, &params.operations);
                 tx.send(&NodeMessage::ApplyBlockResult(res))?;
             }
             ProtocolMessage::ChangeRuntimeConfigurationCall(params) => {
@@ -86,6 +93,10 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
             ProtocolMessage::InitStorageCall(params) => {
                 let res = Proto::init_storage(params.storage_data_dir, params.tezos_environment);
                 tx.send(&NodeMessage::InitStorageResult(res))?;
+            }
+            ProtocolMessage::GenerateIdentity(params) => {
+                let res = Proto::generate_identity(params.expected_pow);
+                tx.send(&NodeMessage::GenerateIdentityResult(res))?;
             }
             ProtocolMessage::ShutdownCall => {
                 context_send(ContextAction::Shutdown).expect("Failed to send shutdown command to context channel");
@@ -111,6 +122,10 @@ pub enum ProtocolError {
     #[fail(display = "OCaml storage init error: {}", reason)]
     OcamlStorageInitError {
         reason: TezosStorageInitError
+    },
+    #[fail(display = "Failed to generate tezos identity: {}", reason)]
+    TezosGenerateIdentityError {
+        reason: TezosGenerateIdentityError
     },
 }
 
@@ -243,11 +258,10 @@ pub struct ProtocolController<'a> {
 }
 
 impl<'a> ProtocolController<'a> {
-    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header_hash: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
+    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
             chain_id: chain_id.clone(),
-            block_header_hash: block_header_hash.clone(),
             block_header: block_header.clone(),
             operations: operations.clone(),
         }))?;
@@ -274,6 +288,22 @@ impl<'a> ProtocolController<'a> {
         }))?;
         match io.rx.receive()? {
             NodeMessage::InitStorageResult(result) => result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into()),
+            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+        }
+    }
+
+    pub fn generate_identity(&self, expected_pow: f64) -> Result<Identity, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::GenerateIdentity(GenerateIdentityParams {
+            expected_pow,
+        }))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx.set_read_timeout(Some(Duration::from_secs(600))).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::GenerateIdentityResult(result) => result.map_err(|err| ProtocolError::TezosGenerateIdentityError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }

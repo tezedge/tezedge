@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -21,18 +20,22 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
-use shell::shell_channel::{ShellChannel, ShuttingDown, ShellChannelTopic};
+use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+// use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
+use crate::identity::store_identity_to_default_tezos_identity_json_file;
 
 mod configuration;
-mod file_config;
+mod identity;
+
+const EXPECTED_POW: f64 = 26.0;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -150,29 +153,49 @@ fn main() {
 
     // tezos protocol runner endpoint
     let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration { log_enabled: env.logging.ocaml_log_enabled },
+        TezosRuntimeConfiguration::new(
+            env.logging.ocaml_log_enabled,
+            env.no_of_ffi_calls_treshold_for_gc,
+        ),
         env.tezos_network,
         &env.storage.tezos_data_dir,
         &env.protocol_runner,
     ));
     let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
         Ok(process) => process,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process. Reason: {:?}", e), actor_system),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "reason" => e), actor_system),
     };
 
     // setup tezos ocaml runtime
-    let tezos_storage_init_info = {
-        let protocol_controller = match protocol_runner_endpoint.commands.accept() {
-            Ok(controller) => controller,
-            Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
-        };
-
-        match protocol_controller.init_protocol() {
-            Ok(res) => res,
-            Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "reason" => err), actor_system)
-        }
+    let protocol_controller = match protocol_runner_endpoint.commands.accept() {
+        Ok(controller) => controller,
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
+    };
+    let tezos_storage_init_info = match protocol_controller.init_protocol() {
+        Ok(res) => res,
+        Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "reason" => err), actor_system)
     };
     debug!(log, "Loaded Tezos constants: {:?}", &tezos_storage_init_info);
+
+    let tezos_identity = match configuration::ENV.identity_json_file_path.clone().or_else(|| identity::get_default_tezos_identity_json_file_path().ok().filter(|path| path.exists())) {
+        Some(identity_json_file_path) => match identity::load_identity(&identity_json_file_path) {
+            Ok(identity) => identity,
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
+        },
+        None => {
+            info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
+            match protocol_controller.generate_identity(EXPECTED_POW) {
+                Ok(identity) => {
+                    match store_identity_to_default_tezos_identity_json_file(&identity) {
+                        Ok(()) => identity,
+                        Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
+                    }
+                },
+                Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
+            }
+        }
+    };
+    drop(protocol_controller);
 
     let schemas = vec![
         BlockStorage::cf_descriptor(),
@@ -212,7 +235,7 @@ fn main() {
                             process
                         },
                         Err(e) => {
-                            crit!(log, "Failed to spawn protocol runner process. Reason: {:?}", e);
+                            crit!(log, "Failed to spawn protocol runner process"; "reason" => e);
                             break
                         },
                     };

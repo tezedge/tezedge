@@ -4,19 +4,8 @@ Tezedge
 [![Build Status](https://travis-ci.com/simplestaking/tezedge.svg?branch=master)](https://travis-ci.com/simplestaking/tezedge)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust. In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
-
-The project can be considered as a proof of concept. This PoC demonstrates the viability of a node build that uses Rust. 
-
-## Components
-
-* **light_node:** Implementation of a lightweight Tezos node written in Rust.
-  If you want to run node, then enter *light_node* directory and then execute `cargo run`. For more details consult node [README](light_node/README.md) file.
-
-* **tezos/encoding:** All incoming messages are transformed into standard Rust structures for easy manipulation using de component. This component implements serialization and deserialization of all data types used in Tezos messages.
-
-* **tezos/crypto:** Component contains cryptographic algorithms for encryption and decryption of messages.
-
+The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
+In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
 
 Requirements
 ------------
@@ -49,27 +38,71 @@ sudo apt install libsodium-dev
 
 Install libs required to build RocksDB package:
 ```
-sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers
+sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev
 ```
 
-Install libs required to build light-node package:
-```
-sudo apt install libev-dev
-```
-
-Building
+Launching node
 --------
 
-**4. Build node** 
+**4. Start Tezedge node** 
 
-On linux systems:
+On linux systems, we prepared convenience script to run the node:
 
 ```
-SODIUM_USE_PKG_CONFIG=1 cargo build
+./run.sh node
 ```
 
-For more info on how to compile OCaml interop library please see [README](./tezos/interop/README.md).
+if you are running OSX you can use docker version:
+
+```
+./run.sh docker
+```
 
 **5. Listening for updates**
 
-Node emits statistics on the websocket server, which can be changed with `-w` argument.
+Node emits statistics on the websocket server, which can be changed with `-w` argument, for example:
+
+```
+./run.sh node -w 0.0.0.0:12345
+```
+
+Running node
+=========
+The node can built and run manually through the `cargo build` or `cargo build --release`, be aware, release build can take 
+much longer to compile. Running node with`cargo run` and correct arguments, described in following sections.
+
+All arguments can be provided to the `run.sh` script.
+
+
+Required arguments
+-----
+
+### Identity 
+Path to your Tezos `identity.json` file.
+```
+-i, --identity <PATH>
+```
+
+### Network
+Specify the Tezos environment for this node. Accepted values are: 
+`alphanet, babylonnet, babylon, mainnet or zeronet`, where `babylon` and `babylonnet` refer to same environment.
+```
+-n, --network [alphanet, babylonnet, babylon, mainnet, zeronet]
+```
+
+### Protocol runner
+Path to the protocol runner binary, which is compiled with `tezedge`. 
+For example: `./target/debug/protocol-runner`.
+```
+-P, --protocol-runner <PATH>
+```
+
+Full description of all arguments is in the light_node [README](light_node/README.md) file.
+
+Manually running the node
+-----
+Last step is to provide path to the Tezos lib, which is set as environment variable `LD_LIBRARY_PATH`, as is required
+by `protocol-runner`. Put together, node can be run, for example, like this:
+```
+# LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run -- -i ligth_node/config/identity.json -n babylon -P ./target/debug/protocol-runner
+```

@@ -3,12 +3,14 @@
 
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::{self, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use tezos_api::identity::Identity;
 use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
+/// Override runtime configuration for OCaml runtime
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
     match ffi::change_runtime_configuration(settings) {
         Ok(result) => Ok(result?),
@@ -45,7 +47,7 @@ pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, Block
         Ok(result) => {
             match BlockHeader::from_bytes(result?) {
                 Ok(header) => Ok(header),
-                Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from hex failed!".to_string() })
+                Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from bytes failed!".to_string() })
             }
         }
         Err(e) => {
@@ -86,7 +88,6 @@ pub fn get_block_header(chain_id: &ChainId, block_header_hash: &BlockHash) -> Re
 /// - returns validation_result.message
 pub fn apply_block(
     chain_id: &ChainId,
-    block_header_hash: &BlockHash,
     block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
 
@@ -110,7 +111,6 @@ pub fn apply_block(
 
     match ffi::apply_block(
         chain_id.clone(),
-        block_header_hash.clone(),
         block_header,
         operations,
     ) {
@@ -118,6 +118,18 @@ pub fn apply_block(
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
                 message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Generate tezos identity
+pub fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {
+    match ffi::generate_identity(expected_pow) {
+        Ok(result) => Ok(result?),
+        Err(e) => {
+            Err(TezosGenerateIdentityError::GenerationError {
+                message: format!("FFI 'generate_identity' failed! Reason: {:?}", e)
             })
         }
     }

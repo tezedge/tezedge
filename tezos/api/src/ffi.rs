@@ -1,12 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// Rust implementation of messages required for Rust <-> OCaml FFI communication.
+
 use derive_new::new;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 pub type RustBytes = Vec<u8>;
 
+/// Genesis block information structure
 #[derive(Debug)]
 pub struct GenesisChain {
     pub time: String,
@@ -14,12 +17,14 @@ pub struct GenesisChain {
     pub protocol: String,
 }
 
+/// Voted protocol overrides
 #[derive(Debug)]
 pub struct ProtocolOverrides {
     pub forced_protocol_upgrades: Vec<(i32, String)>,
     pub voted_protocol_overrides: Vec<(String, String)>,
 }
 
+/// Storage initialization information for OCaml storage
 #[derive(Debug)]
 pub struct OcamlStorageInitInfo {
     pub chain_id: RustBytes,
@@ -30,6 +35,7 @@ pub struct OcamlStorageInitInfo {
     pub supported_protocol_hashes: Vec<RustBytes>,
 }
 
+/// Test chain information
 #[derive(Debug, new, Serialize, Deserialize)]
 pub struct TestChain {
     pub chain_id: RustBytes,
@@ -38,11 +44,13 @@ pub struct TestChain {
 }
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, new)]
 pub struct TezosRuntimeConfiguration {
-    pub log_enabled: bool
+    pub log_enabled: bool,
+    pub no_of_ffi_calls_treshold_for_gc: i32
 }
 
+/// Application block result
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ApplyBlockResult {
     pub validation_result_message: String,
@@ -68,6 +76,31 @@ impl From<ocaml::Error> for TezosRuntimeConfigurationError {
                 }
             }
             _ => panic!("Ocaml settings failed! Reason: {:?}", error)
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum TezosGenerateIdentityError {
+    #[fail(display = "Generate identity failed, message: {}!", message)]
+    GenerationError {
+        message: String
+    },
+    #[fail(display = "Generated identity is invalid json! message: {}!", message)]
+    InvalidJsonError {
+        message: String
+    },
+}
+
+impl From<ocaml::Error> for TezosGenerateIdentityError {
+    fn from(error: ocaml::Error) -> Self {
+        match error {
+            ocaml::Error::Exception(ffi_error) => {
+                TezosGenerateIdentityError::GenerationError {
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                }
+            }
+            _ => panic!("Generate identity failed! Reason: {:?}", error)
         }
     }
 }

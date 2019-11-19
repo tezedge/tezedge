@@ -69,9 +69,9 @@ impl Receive<HandlerMessage> for WebsocketHandler {
     type Msg = WebsocketHandlerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: HandlerMessage, _sender: Sender) {
-        use std::sync::atomic::Ordering::Relaxed;
+        use std::sync::atomic::Ordering;
 
-        if self.connected_clients.load(Relaxed) > 0 {
+        if self.connected_clients.load(Ordering::Acquire) > 0 {
             match serde_json::to_string(&msg) {
                 Ok(serialized) => if let Err(err) = self.broadcaster.send(serialized) {
                     warn!(ctx.system.log(), "Failed to broadcast message"; "message" => msg, "reason" => format!("{:?}", err));

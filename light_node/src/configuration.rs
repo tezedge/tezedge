@@ -69,7 +69,7 @@ pub struct Environment {
     pub record: bool,
     pub tezos_network: TezosEnvironment,
     pub protocol_runner: PathBuf,
-
+    pub no_of_ffi_calls_treshold_for_gc: i32,
     pub identity: Identity,
 }
 
@@ -215,7 +215,13 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .takes_value(true)
                 .value_name("PATH")
                 .help("Json identity file with peer-id, public-key, secret-key and pow-stamp")
-                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Identity file not found at '{}'", v)) }));
+                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Identity file not found at '{}'", v)) }))
+            .arg(Arg::with_name("ffi-calls-gc-treshold")
+                .long("ffi-calls-gc-treshold")
+                .takes_value(true)
+                .value_name("NUM")
+                .help("Number of ffi calls, after which will be Ocaml garbage collector called")
+                .validator(parse_validator_fn!(i32, "Value must be a valid number")));
     app
 }
 
@@ -308,15 +314,15 @@ impl Environment {
                         .map(|address| address.to_string())
                         .collect()
                     ).unwrap_or_else(|| {
-                        if !args.is_present("peers") {
-                            match environment::TEZOS_ENV.get(&tezos_network) {
-                                None => panic!("No tezos environment configured for: {:?}", tezos_network),
-                                Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
-                            }
-                        } else {
-                            Vec::with_capacity(0)
+                    if !args.is_present("peers") {
+                        match environment::TEZOS_ENV.get(&tezos_network) {
+                            None => panic!("No tezos environment configured for: {:?}", tezos_network),
+                            Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
                         }
+                    } else {
+                        Vec::with_capacity(0)
                     }
+                }
                 ),
                 initial_peers: args.value_of("peers")
                     .map(|peers_str| peers_str
@@ -398,6 +404,10 @@ impl Environment {
                 .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
+            no_of_ffi_calls_treshold_for_gc: args.value_of("ffi-calls-gc-treshold")
+                .unwrap_or("")
+                .parse::<i32>()
+                .expect("Provided value cannot be converted to number"),
             tezos_network,
         }
     }

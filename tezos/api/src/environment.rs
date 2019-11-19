@@ -15,6 +15,7 @@ lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
+/// Enum representing different Tezos environment.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, IntoEnumIterator)]
 pub enum TezosEnvironment {
     Alphanet,
@@ -121,6 +122,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     env
 }
 
+/// Structure holding all environment specific crucial information
 pub struct TezosEnvironmentConfiguration {
     pub genesis: GenesisChain,
     pub bootstrap_lookup_addresses: Vec<String>,

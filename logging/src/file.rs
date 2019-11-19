@@ -213,6 +213,7 @@ impl FileAppender {
 
         Ok(())
     }
+
     fn rotated_path(&self, i: usize) -> io::Result<PathBuf> {
         let path = self.path.to_str().ok_or_else(|| {
             io::Error::new(
@@ -226,6 +227,7 @@ impl FileAppender {
             Ok(PathBuf::from(format!("{}.{}", path, i)))
         }
     }
+
     fn rotated_paths_for_compression(&self) -> io::Result<(PathBuf, PathBuf)> {
         let path = self.path.to_str().ok_or_else(|| {
             io::Error::new(
@@ -238,6 +240,7 @@ impl FileAppender {
             PathBuf::from(format!("{}.1.gz.temp", path)),
         ))
     }
+
     fn compress(input_path: PathBuf, temp_path: PathBuf, output_path: PathBuf) -> io::Result<()> {
         let mut input = File::open(&input_path)?;
         let mut temp = GzipEncoder::new(File::create(&temp_path)?)?;
@@ -265,6 +268,7 @@ impl Write for FileAppender {
         self.written_size += size as u64;
         Ok(size)
     }
+
     fn flush(&mut self) -> io::Result<()> {
         if let Some(ref mut f) = self.file {
             f.flush()?;
