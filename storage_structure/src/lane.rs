@@ -7,7 +7,6 @@ use storage::persistent::database::{
     IteratorWithSchema, IteratorMode,
 };
 use storage::Direction;
-use crate::LEVEL_BASE;
 
 type LaneDatabase<T> = dyn DatabaseWithSchema<Lane<T>> + Sync + Send;
 
@@ -38,17 +37,13 @@ impl<C: ListValue> Lane<C> {
     }
 
     /// Create handler for a lane on one lower level
-    pub fn lower_lane(self) -> Self {
-        Self::new(self.level - 1, self.db)
-    }
+    pub fn lower_lane(self) -> Self { Self::new(self.level - 1, self.db) }
 
     /// Create handler for a lane on higher level
     pub fn higher_lane(self) -> Self { Self::new(self.level + 1, self.db) }
 
     /// Get level of current handler
-    pub fn level(&self) -> usize {
-        self.level
-    }
+    pub fn level(&self) -> usize { self.level }
 
     /// Get value from specific index (relative to this lane).
     pub fn get(&self, index: usize) -> Option<C> {
@@ -58,7 +53,7 @@ impl<C: ListValue> Lane<C> {
     /// Put new value on specific index of this lane, beware, that lanes should contain continuous
     /// indexes, thus some meta-structure should control and contain data about end of the lane, as
     /// we cannot guarantee correct end handling on lane level.
-    pub fn put(&self, index: usize, value: C) {
+    pub fn put(&self, index: usize, value: &C) {
         self.container().put(&NodeHeader::new(self.level, index), &value).unwrap();
     }
 
@@ -69,7 +64,46 @@ impl<C: ListValue> Lane<C> {
         )).ok()
     }
 
-    fn container(&self) -> &Arc<impl DatabaseWithSchema<Lane<C>>> {
-        &self.db
+    fn container(&self) -> &Arc<impl DatabaseWithSchema<Lane<C>>> { &self.db }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use storage::persistent::open_db;
+    use std::fs::remove_dir_all;
+    use std::process::Command;
+    use std::collections::HashSet;
+
+    pub struct TmpDb {
+        db: Arc<DB>,
+        tmp_dir: String,
+    }
+
+    impl TmpDb {
+        pub fn new() -> Self {
+            let proc = Command::new("mktemp").args(&["-d"]).output();
+            let dir = String::from_utf8(proc.unwrap().stdout)
+                .expect("failed to create testing database");
+            let db = open_db(dir, vec![Lane::cf_descriptor()]).unwrap();
+            Self {
+                db: Arc::new(db),
+                tmp_dir: dir,
+            }
+        }
+    }
+
+    impl ListValue for HashSet<usize> {
+        /// Merge two sets
+        fn merge(&mut self, other: &Self) {
+            self.extend(other)
+        }
+
+        /// Make in-place difference of two sets
+        fn diff(&mut self, other: &Self) {
+            for x in other {
+                self.remove(x)
+            }
+        }
     }
 }

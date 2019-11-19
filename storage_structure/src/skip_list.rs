@@ -91,13 +91,13 @@ impl<C: ListValue> SkipList<C> {
 
     /// Push new value into the end of the list. Beware, this is operation is
     /// not thread safe and should be handled with care !!!
-    pub fn push(&mut self, mut value: &C) {
+    pub fn push(&mut self, mut value: C) {
         let mut current_level = 0;
         let mut lane = Lane::new(current_level, self.container.clone());
         let mut index = self.len;
 
         // Insert value into lowest level, unchanged.
-        lane.put(index, value);
+        lane.put(index, &value);
 
         // Start building upper lanes
         while index != 0 && (index + 1) % LEVEL_BASE == 0 {
@@ -106,20 +106,22 @@ impl<C: ListValue> SkipList<C> {
                 .map(|(_, val)| {
                     match val {
                         Ok(val) => val,
-                        Err(err) => val.expect(&format!("Skip list database failure: {}", err))
+                        Err(err) => panic!("Skip list database failure: {}", err)
                     }
                 })
-                .fold(None, |mut state, value| {
+                .fold(None, |state: Option<C>, value| {
                     if let Some(mut state) = state {
-                        state.diff(value);
+                        state.diff(&value);
+                        Some(state)
                     } else {
-                        state = Some(value);
+                        Some(value)
                     }
                 }).unwrap();
+            value = lane_value;
             index = (index + 1 / LEVEL_BASE) - 1;
             current_level += 1;
             lane = lane.higher_lane();
-            lane.put(index, lane_value);
+            lane.put(index, &value);
         }
 
         self.len += 1;
