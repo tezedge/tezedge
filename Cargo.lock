@@ -1576,6 +1576,7 @@ dependencies = [
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
  "tezos_interop 0.0.1-pre18-context",
+ "tezos_interop_callback 0.0.1-pre18-context",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2428,6 +2429,14 @@ dependencies = [
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
+ "tezos_interop_callback 0.0.1-pre18-context",
+]
+
+[[package]]
+name = "tezos_interop_callback"
+version = "0.0.1-pre18-context"
+dependencies = [
+ "ocaml 0.8.0 (git+https://github.com/simplestaking/ocaml-rs.git)",
  "tezos_context 0.0.1",
 ]
 

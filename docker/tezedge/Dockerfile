@@ -11,14 +11,14 @@ ENV OCAML_BUILD_CHAIN=remote
 RUN cd /home/appuser && \
 	git clone ${tezedge_git} && \
     cd tezedge && \
-    git checkout master && \
     cargo build
 
 # Build stage 2
 FROM debian:10
 COPY --from=0 /home/appuser/tezedge/target/debug/light-node /bin/light-node
 COPY --from=0 /home/appuser/tezedge/target/debug/protocol-runner /bin/protocol-runner
-COPY --from=0 /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/libtezos.o /lib/libtezos.o
+COPY --from=0 /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/libtezos.so /lib/libtezos.so
+COPY --from=0 /home/appuser/tezedge/target/debug/libtezos_interop_callback.so /lib/libtezos_interop_callback.so
 COPY --from=0 /home/appuser/tezedge/light_node/config /config
 RUN apt-get update && \
     apt-get install -y libgmp-dev libev-dev libsodium23

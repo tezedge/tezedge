@@ -125,11 +125,11 @@ fn run_builder(build_chain: &str) {
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "remote" => {
-            let libtezos_path = Path::new("lib_tezos").join("artifacts").join("libtezos.o");
+            let libtezos_path = Path::new("lib_tezos").join("artifacts").join("libtezos.so");
             let remote_lib = get_remote_lib();
             println!("Resolved platform-dependent remote_lib: {:?}", &remote_lib);
 
-            // get library: $ curl <remote_url> --output lib_tezos/artifacts/libtezos.o
+            // get library: $ curl <remote_url> --output lib_tezos/artifacts/libtezos.so
             Command::new("curl")
                 .args(&[remote_lib.lib_url.as_str(), "--output", libtezos_path.as_os_str().to_str().unwrap()])
                 .status()
@@ -144,19 +144,12 @@ fn run_builder(build_chain: &str) {
 
             // check sha256 hash
             {
-                let mut file = File::open(&libtezos_path).expect("Failed to read contents of libtezos.o");
+                let mut file = File::open(&libtezos_path).expect("Failed to read contents of libtezos.so");
                 let mut sha256 = Sha256::new();
-                std::io::copy(&mut file, &mut sha256).expect("Failed to read contents of libtezos.o");
+                std::io::copy(&mut file, &mut sha256).expect("Failed to read contents of libtezos.so");
                 let hash = sha256.result();
-                assert_eq!(hash[..], *remote_lib_sha256, "libtezos.o SHA256 mismatch");
+                assert_eq!(hash[..], *remote_lib_sha256, "libtezos.so SHA256 mismatch");
             }
-
-            // $ pushd lib_tezos/artifacts && ar qs libtezos.a libtezos.o && popd
-            Command::new("ar")
-                .args(&["qs", "libtezos.a", "libtezos.o"])
-                .current_dir(Path::new("lib_tezos").join("artifacts").as_os_str().to_str().unwrap())
-                .status()
-                .expect("Couldn't run ar.");
         }
         _ => {
             println!("cargo:warning=Invalid OCaml build chain '{}'.", build_chain);
@@ -243,6 +236,7 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", &out_dir);
     println!("cargo:rustc-link-lib=dylib=tezos");
+    println!("cargo:rustc-link-lib=dylib=tezos_interop_callback");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
     println!("cargo:rerun-if-env-changed=UPDATE_GIT_SUBMODULES");
 }
