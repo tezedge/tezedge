@@ -3,11 +3,14 @@
 help() {
   echo -e "Usage: \e[97m$0\e[0m \e[32mMODE\e[0m"
   echo -e "Possible values for \e[32mMODE\e[0m are:"
-  echo -e " \e[32mnode\e[0m    Start tezedge node. You can specify additional arguments here."
-  echo "         Example: $0 node -v"
-  echo -e " \e[32mdocker\e[0m  Run tezedge node as a docker container. It is possible to specify additional commandline arguments."
-  echo "         Example 1: $0 docker -t 4 -T 12"
-  echo "         Example 2: $0 docker --help"
+  echo -e " \e[32mnode\e[0m       Start tezedge node. You can specify additional arguments here."
+  echo    "              # $0 node -v"
+  echo -e " \e[32mrelease\e[0m    Start tezedge node in release mode. You can specify additional arguments here."
+  echo    "            Release mode means that the node binary is compiled with '--release' flag."
+  echo    "              # $0 release -v"
+  echo -e " \e[32mdocker\e[0m     Run tezedge node as a docker container. It is possible to specify additional commandline arguments."
+  echo    "              # $0 docker -t 4 -T 12"
+  echo    "              # $0 docker --help"
 }
 
 build_all() {
