@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use derive_new::new;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
@@ -13,18 +12,27 @@ use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader
 use super::block_header::BlockHeader;
 use super::mempool::Mempool;
 
-#[derive(Serialize, Deserialize, Debug, Getters, new)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,
     #[get = "pub"]
     current_block_header: BlockHeader,
     #[get = "pub"]
-    #[new(default)]
     current_mempool: Mempool,
     #[serde(skip_serializing)]
-    #[new(default)]
     body: BinaryDataCache,
+}
+
+impl CurrentHeadMessage {
+    pub fn new(chain_id: ChainId, current_block_header: BlockHeader) -> Self {
+        CurrentHeadMessage {
+            chain_id,
+            current_block_header,
+            current_mempool: Default::default(),
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for CurrentHeadMessage {
@@ -50,14 +58,22 @@ impl CachedData for CurrentHeadMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, new)]
+#[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,
 
     #[serde(skip_serializing)]
-    #[new(default)]
     body: BinaryDataCache,
+}
+
+impl GetCurrentHeadMessage {
+    pub fn new(chain_id: ChainId) -> Self {
+        GetCurrentHeadMessage {
+            chain_id,
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for GetCurrentHeadMessage {

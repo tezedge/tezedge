@@ -6,7 +6,7 @@ use std::path::Path;
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
 pub use database::{DatabaseWithSchema, DBError};
-pub use schema::{Codec, Schema, SchemaError};
+pub use schema::{BincodeEncoded, Codec, Schema, SchemaError};
 
 pub mod schema;
 pub mod database;

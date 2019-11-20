@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use derive_new::new;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
@@ -13,15 +12,24 @@ use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::block_header::BlockHeader;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Getters, new)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranchMessage {
     #[get = "pub"]
     chain_id: ChainId,
     #[get = "pub"]
     current_branch: CurrentBranch,
-    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
+}
+
+impl CurrentBranchMessage {
+    pub fn new(chain_id: ChainId, current_branch: CurrentBranch) -> Self {
+        CurrentBranchMessage {
+            chain_id,
+            current_branch,
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for CurrentBranchMessage {
@@ -46,15 +54,24 @@ impl CachedData for CurrentBranchMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, Debug, Getters, new)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranch {
     #[get = "pub"]
     current_head: BlockHeader,
     #[get = "pub"]
     history: Vec<BlockHash>,
-    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache,
+}
+
+impl CurrentBranch {
+    pub fn new(current_head: BlockHeader, history: Vec<BlockHash>) -> Self {
+        CurrentBranch {
+            current_head,
+            history,
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for CurrentBranch {

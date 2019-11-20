@@ -3,14 +3,34 @@
 help() {
   echo -e "Usage: \e[97m$0\e[0m \e[32mMODE\e[0m"
   echo -e "Possible values for \e[32mMODE\e[0m are:"
-  echo -e " \e[32mnode\e[0m    Start tezedge node. You can specify additional arguments here."
-  echo "         Example: $0 node -v"
-  echo -e " \e[32mdocker\e[0m  Run tezedge node as a docker container. It is possible to specify additional commandline arguments."
-  echo "         Example 1: $0 docker -t 4 -T 12"
-  echo "         Example 2: $0 docker --help"
+  echo -e " \e[32mnode\e[0m       Start tezedge node. You can specify additional arguments here."
+  echo    "              # $0 node -v"
+  echo -e " \e[32mrelease\e[0m    Start tezedge node in release mode. You can specify additional arguments here."
+  echo    "            Release mode means that the node binary is compiled with '--release' flag."
+  echo    "              # $0 release -v"
+  echo -e " \e[32mdocker\e[0m     Run tezedge node as a docker container. It is possible to specify additional commandline arguments."
+  echo    "              # $0 docker -t 4 -T 12"
+  echo    "              # $0 docker --help"
 }
 
 build_all() {
+  # cargo build profile commandline argument
+  case $1 in
+    debug)
+      # nothing to do here
+      shift
+      ;;
+    release)
+      CARGO_PROFILE_ARG="--release"
+      shift
+      ;;
+    *)
+      echo "Invalid function argument"
+      exit 1
+      ;;
+  esac
+
+  # this is required for the most linux distributions
   export SODIUM_USE_PKG_CONFIG=1
   cargo build || exit 1
 }
@@ -31,6 +51,25 @@ run_node() {
   NETWORK=babylonnet
   # rest of the commandline arguments will end up here
   args=()
+
+
+  # set compilation profile and cargo commandline argument
+  PROFILE=""
+  case $1 in
+    debug)
+      PROFILE="debug"
+      shift
+      ;;
+    release)
+      CARGO_PROFILE_ARG="--release"
+      PROFILE="release"
+      shift
+      ;;
+    *)
+      echo "Invalid function argument"
+      exit 1
+      ;;
+  esac
 
   shift # shift past <MODE>
 
@@ -87,8 +126,8 @@ run_node() {
   rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
   rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
 
-  # protocol_runner needs 'libtezos.o' to run
-  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts"
+  # protocol_runner needs 'libtezos.so' to run
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
   # start node
   cargo run --bin light-node -- --config-file "$CONFIG_FILE" \
                                 --tezos-data-dir "$TEZOS_DIR" \
@@ -111,9 +150,15 @@ run_docker() {
 case $1 in
 
   node)
-    printf "\033[1;37mRunning Tezedge node\e[0m\n"
-    build_all
-    run_node "$@"
+    printf "\033[1;37mRunning Tezedge node in DEBUG mode\e[0m\n"
+    build_all "debug"
+    run_node "debug" "$@"
+    ;;
+
+  release)
+    printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
+    build_all "release"
+    run_node "release" "$@"
     ;;
 
   docker)

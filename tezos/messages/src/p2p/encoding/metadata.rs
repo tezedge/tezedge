@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use derive_new::new;
 use getset::CopyGetters;
 use serde::{Deserialize, Serialize};
 
@@ -9,15 +8,24 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug, CopyGetters, new)]
+#[derive(Serialize, Deserialize, Debug, CopyGetters)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]
     disable_mempool: bool,
     #[get_copy = "pub"]
     private_node: bool,
-    #[new(default)]
     #[serde(skip_serializing)]
     body: BinaryDataCache
+}
+
+impl MetadataMessage {
+    pub fn new(disable_mempool: bool, private_node: bool) -> Self {
+        MetadataMessage {
+            disable_mempool,
+            private_node,
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for MetadataMessage {

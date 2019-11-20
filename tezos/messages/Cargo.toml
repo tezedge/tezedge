@@ -7,7 +7,6 @@ edition = "2018"
 [dependencies]
 bytes = "0.4.12"
 derive_builder = "0.8.0"
-derive-new = "0.5.8"
 failure = "0.1.5"
 getset = { git = "https://github.com/Hoverbear/getset.git" }
 hex = "0.4"
