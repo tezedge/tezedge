@@ -265,20 +265,32 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 }
 
 // Returns final path. In case:
-//      1. path is relative -> data_dir / path
-//      2. path is absolute -> path
-pub fn get_final_path(data_dir: &PathBuf, path: PathBuf) -> PathBuf {
+//      1. path is relative -> final_path = tezos_data_dir / path
+//      2. path is absolute -> final_path = path
+pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
+    let mut final_path : PathBuf;
+
     // identity-file path is relative to the tezos-data-dir
     if path.is_relative() == true {
-        let mut final_path = data_dir.to_path_buf();
+        final_path = tezos_data_dir.to_path_buf();
         final_path.push(path);
-
-        final_path
     } 
     // identity-file path is absolute
     else {
-        path
+        final_path = path
     }
+
+    // Tries to create final_path parent dir, if non-existing
+    if let Some(parent_dir) = final_path.parent() {
+        if parent_dir.exists() == false {
+            if let Err(e) = fs::create_dir_all(parent_dir) {
+                eprintln!("Unable to create required dir '{:?}': {} ", parent_dir, e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    final_path
 }
 
 impl Environment {

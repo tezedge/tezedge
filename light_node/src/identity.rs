@@ -47,13 +47,6 @@ pub fn load_identity<P: AsRef<Path>>(identity_json_file_path: P) -> Result<Ident
 
 // Stores provided identity into the file specified by path
 pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
-    // Tries to create identity parent dir, if non-existing
-    if let Some(identity_parent_dir) = path.parent() {
-        if identity_parent_dir.exists() == false {
-            fs::create_dir_all(identity_parent_dir)?;
-        }
-    }
-
     let identity_json = serde_json::to_string(identity).map_err(|err| IdentityError::SerializationError { reason: err })?;
     fs::write(&path, &identity_json)?;
 

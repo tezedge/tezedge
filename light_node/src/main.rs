@@ -183,7 +183,10 @@ fn main() {
     let tezos_identity =
     if env.identity_json_file_path.exists() {
         match identity::load_identity(&env.identity_json_file_path) {
-            Ok(identity) => identity,
+            Ok(identity) => {
+                info!(log, "Identity loaded from: {:?}", &env.identity_json_file_path);
+                identity
+            },
             Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
         }
     }
