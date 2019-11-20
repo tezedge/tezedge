@@ -30,7 +30,6 @@ use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-// use crate::identity::store_identity_to_default_tezos_identity_json_file;
 
 mod configuration;
 mod file_config;
