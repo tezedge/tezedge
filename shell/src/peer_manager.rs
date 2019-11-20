@@ -139,7 +139,7 @@ impl PeerManager {
                 HashSet::from_iter(initial_peers.to_vec()),
                 threshold,
                 listener_port,
-                identity.clone(),
+                identity,
                 protocol_version)),
             PeerManager::name())
     }
