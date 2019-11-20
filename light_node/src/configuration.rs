@@ -123,12 +123,13 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .takes_value(true)
                 .value_name("PATH")
                 .help("Path to the json identity file with peer-id, public-key, secret-key and pow-stamp. 
-                       In case it starts with /, it is absolute path, otherwise relative to the --tezos-data-dir"))
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
             .arg(Arg::with_name("bootstrap-db-path")
                 .long("bootstrap-db-path")
                 .takes_value(true)
                 .value_name("PATH")
-                .help("Path to bootstrap database directory. In case it does not start with /, it is relative path to the --tezos-data-dir, otherwise absolute"))
+                .help("Path to bootstrap database directory. 
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
             .arg(Arg::with_name("bootstrap-lookup-address")
                 .long("bootstrap-lookup-address")
                 .takes_value(true)
@@ -139,7 +140,7 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .takes_value(true)
                 .value_name("PATH")
                 .help("Path to the log file. If provided, logs are displayed the log file, otherwise in terminal. 
-                       In case it does not start with /, it is relative path to the --tezos-data-dir, otherwise absolute"))
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
             .arg(Arg::with_name("log-format")
                 .long("log-format")
                 .takes_value(true)
@@ -270,14 +271,14 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
     let mut final_path : PathBuf;
 
-    // identity-file path is relative to the tezos-data-dir
-    if path.is_relative() == true {
+    // path is absolute or relative to the current dir -> start with ./ or ../
+    if path.is_absolute() == true || path.starts_with(".") == true {
+        final_path = path
+    } 
+    // otherwise path is relative to the tezos-data-dir
+    else {
         final_path = tezos_data_dir.to_path_buf();
         final_path.push(path);
-    } 
-    // identity-file path is absolute
-    else {
-        final_path = path
     }
 
     // Tries to create final_path parent dir, if non-existing
