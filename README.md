@@ -45,6 +45,7 @@ Running node
 ------------
 
 **4. Running Tezedge node manually** 
+
 The node can built through the `cargo build` or `cargo build --release`, be aware, release build can take 
 much longer to compile. environment variable `SODIUM_USE_PKG_CONFIG=1` mus be set. Put together, node can be build, for example, like this:
 ```
@@ -68,6 +69,7 @@ Full description of all arguments is in the light_node [README](light_node/READM
 
 
 **5. Running Tezedge node using run.sh script** 
+
 On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnet variables, build and run tezedge node. 
 All arguments can be provided to the `run.sh` script in the same manner as descirbed in previoud secion - Running Tezedge node manually.
 
