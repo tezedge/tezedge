@@ -3,7 +3,6 @@
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 
-use derive_new::new;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
@@ -36,7 +35,7 @@ pub struct OcamlStorageInitInfo {
 }
 
 /// Test chain information
-#[derive(Debug, new, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TestChain {
     pub chain_id: RustBytes,
     pub protocol_hash: RustBytes,
@@ -44,7 +43,7 @@ pub struct TestChain {
 }
 
 /// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
-#[derive(Clone, Serialize, Deserialize, Debug, new)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
     pub no_of_ffi_calls_treshold_for_gc: i32

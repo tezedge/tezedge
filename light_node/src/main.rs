@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use riker::actors::*;
-use slog::*;
+use slog::{crit, debug, Drain, error, info, Logger};
 use tokio::runtime::Runtime;
 
 use logging::detailed_json;
@@ -21,7 +21,7 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockMetaStorage, BlockStorage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
 use storage::persistent::{open_db, Schema};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
@@ -30,12 +30,12 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use crate::identity::store_identity_to_default_tezos_identity_json_file;
 
 mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
+const DATABASE_VERSION: i64 = 1;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -118,9 +118,12 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
     }
 
     tokio_runtime.block_on(async move {
-        use tokio::net::signal;
+        use std::thread;
+        use std::time::Duration;
+
         use futures::future;
         use futures::stream::StreamExt;
+        use tokio::net::signal;
 
         let ctrl_c = signal::ctrl_c().unwrap();
         let prog = ctrl_c.take(1).for_each(|_| {
@@ -128,6 +131,7 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
 
             protocol_runner_run.store(false, Ordering::Release);
 
+            info!(log, "Sending shutdown notification to actors");
             shell_channel.tell(
                 Publish {
                     msg: ShuttingDown.into(),
@@ -135,11 +139,42 @@ fn block_on_actors(actor_system: ActorSystem, identity: Identity, init_info: Tez
                 }, None
             );
 
+            // give actors some time to shut down
+            thread::sleep(Duration::from_secs(1));
+            // resolve future
             future::ready(())
         });
         prog.await;
+        info!(log, "Shutting down actor runtime");
         let _ = actor_system.shutdown().await;
     });
+}
+
+fn check_database_compatibility(db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo, log: Logger) -> Result<bool, StorageError> {
+    let mut system_info = SystemStorage::new(db.clone());
+    let db_version_ok = match system_info.get_db_version()? {
+        Some(db_version) => db_version == DATABASE_VERSION,
+        None => {
+            system_info.set_db_version(DATABASE_VERSION)?;
+            true
+        }
+    };
+    if !db_version_ok {
+        error!(log, "Incompatible database version found. Please re-sync your node.");
+    }
+
+    let chain_id_ok = match system_info.get_chain_id()? {
+        Some(chain_id) => chain_id == init_info.chain_id,
+        None => {
+            system_info.set_chain_id(&init_info.chain_id)?;
+            true
+        }
+    };
+    if !chain_id_ok {
+        error!(log, "Current database was created for another chain. Please re-sync your node.");
+    }
+
+    Ok(db_version_ok && chain_id_ok)
 }
 
 fn main() {
@@ -148,10 +183,10 @@ fn main() {
 
     // tezos protocol runner endpoint
     let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration::new(
-            configuration::ENV.logging.ocaml_log_enabled,
-            configuration::ENV.no_of_ffi_calls_treshold_for_gc,
-        ),
+        TezosRuntimeConfiguration {
+            log_enabled: configuration::ENV.logging.ocaml_log_enabled,
+            no_of_ffi_calls_treshold_for_gc: configuration::ENV.no_of_ffi_calls_treshold_for_gc,
+        },
         configuration::ENV.tezos_network,
         &configuration::ENV.storage.tezos_data_dir,
         &configuration::ENV.protocol_runner,
@@ -181,7 +216,7 @@ fn main() {
             info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
             match protocol_controller.generate_identity(EXPECTED_POW) {
                 Ok(identity) => {
-                    match store_identity_to_default_tezos_identity_json_file(&identity) {
+                    match identity::store_identity_to_default_tezos_identity_json_file(&identity) {
                         Ok(()) => identity,
                         Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
                     }
@@ -199,12 +234,21 @@ fn main() {
         OperationsMetaStorage::cf_descriptor(),
         EventPayloadStorage::cf_descriptor(),
         EventStorage::cf_descriptor(),
+        ContextStorage::cf_descriptor(),
+        SystemStorage::cf_descriptor(),
     ];
     let rocks_db = match open_db(&configuration::ENV.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
         Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &configuration::ENV.storage.bootstrap_db_path), actor_system)
     };
     debug!(log, "Loaded RocksDB database");
+
+    match check_database_compatibility(rocks_db.clone(), &tezos_storage_init_info, log.clone()) {
+        Ok(false) => shutdown_and_exit!(crit!(log, "Database incompatibility detected"), actor_system),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to verify database compatibility"; "reason" => e), actor_system),
+        _ => ()
+    }
+
 
     let ProtocolRunnerEndpoint {
         runner: protocol_runner,
@@ -246,13 +290,13 @@ fn main() {
 
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
+        Ok(_) => block_on_actors(actor_system, tezos_identity, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log.clone()),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block"; "reason" => e), actor_system),
     }
 
-
-
     rocks_db.flush().expect("Failed to flush database");
+
+    info!(log, "Tezedge node finished");
 }
 
 

@@ -15,7 +15,12 @@ mod common;
 #[test]
 fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Error> {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(TezosRuntimeConfiguration::new(common::is_ocaml_log_enabled(), common::no_of_ffi_calls_treshold_for_gc())).unwrap();
+    client::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap();
 
     // prepare data
     let storage_data_dir = "init_storage_tests_01";

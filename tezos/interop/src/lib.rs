@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 #![feature(fn_traits)]
 
 /// This modules will allow you to call OCaml code:
@@ -29,4 +32,3 @@
 /// ```
 pub mod runtime;
 pub mod ffi;
-pub mod callback;

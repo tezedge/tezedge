@@ -12,7 +12,12 @@ pub const CHAIN_ID: &str = "8eceda2f";
 #[test]
 fn test_init_storage_and_change_configuration() {
     // change cfg
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(common::is_ocaml_log_enabled(), common::no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
+    ffi::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap().unwrap();
 
     // init empty storage for test
     let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash, .. } = prepare_empty_storage("test_storage_01");
@@ -35,7 +40,12 @@ fn test_init_storage_and_change_configuration() {
 
 #[test]
 fn test_fn_get_block_header_not_found_return_none() {
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(common::is_ocaml_log_enabled(), common::no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
+    ffi::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap().unwrap();
 
     // init empty storage for test
     let OcamlStorageInitInfo { chain_id, .. } = prepare_empty_storage("test_storage_02");

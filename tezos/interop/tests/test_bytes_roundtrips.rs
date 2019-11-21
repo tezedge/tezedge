@@ -25,7 +25,12 @@ macro_rules! tezos_test {
 #[test]
 fn run_tests() {
     // init runtime and turn on/off ocaml logging
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(is_ocaml_log_enabled(), no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
+    ffi::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap().unwrap();
 
     // We cannot run tests in parallel, because tezos does not handle situation when multiple storage
     // directories are initialized
@@ -380,7 +385,12 @@ mod benches {
         ($test_name:ident, $f:expr) => {
             #[bench]
             fn $test_name(b: &mut Bencher) {
-                ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(is_ocaml_log_enabled(), no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
+                ffi::change_runtime_configuration(
+                    TezosRuntimeConfiguration {
+                        log_enabled: is_ocaml_log_enabled(),
+                        no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc()
+                    }
+                ).unwrap().unwrap();
 
                 let mut counter = 0;
                 let mut counter_failed = 0;

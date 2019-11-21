@@ -140,7 +140,7 @@ where
     R: for<'de> Deserialize<'de>,
     S: Serialize
 {
-    const ACCEPT_TIMEOUT: Duration = Duration::from_secs(8);
+    const ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
 
     /// Bind IpcServer to random socket in temp folder
     pub fn bind() -> Result<Self, IpcError> {

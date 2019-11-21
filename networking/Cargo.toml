@@ -10,7 +10,7 @@ dns-lookup = "1.0.1"
 failure = "0.1.5"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4"
-hyper = { git = "https://github.com/hyperium/hyper.git" }
+hyper = "0.13.0-alpha.4"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 riker-patterns = "0.3.2"
 slog = "2.5"

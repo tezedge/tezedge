@@ -19,7 +19,12 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 // cargo bench -- --nocapture
 #[bench]
 fn bench_apply_first_three_block(_: &mut Bencher) {
-    ffi::change_runtime_configuration(TezosRuntimeConfiguration::new(common::is_ocaml_log_enabled(), common::no_of_ffi_calls_treshold_for_gc())).unwrap().unwrap();
+    ffi::change_runtime_configuration(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+        }
+    ).unwrap().unwrap();
 
     let now = Instant::now();
 

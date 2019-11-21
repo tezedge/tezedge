@@ -6,6 +6,7 @@ members = [
     "tezos/api",
     "tezos/messages",
     "tezos/interop",
+    "tezos/interop_callback",
     "tezos/encoding",
     "tezos/client",
     "tezos/wrapper",
