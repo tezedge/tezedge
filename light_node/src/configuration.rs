@@ -4,17 +4,13 @@
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::env;
 
 use clap::{App, Arg};
 
-use lazy_static::lazy_static;
 use shell::peer_manager::Threshold;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
-
-lazy_static! {
-    pub static ref ENV: Environment = Environment::from_cli_args();
-}
 
 #[derive(Debug, Clone)]
 pub struct P2p {
@@ -70,7 +66,7 @@ pub struct Environment {
     pub storage: Storage,
 
     pub record: bool,
-    pub identity_json_file_path: Option<PathBuf>,
+    pub identity_json_file_path: PathBuf,
     pub tezos_network: TezosEnvironment,
     pub protocol_runner: PathBuf,
     pub no_of_ffi_calls_treshold_for_gc: i32,
@@ -80,76 +76,30 @@ macro_rules! parse_validator_fn {
     ($t:ident, $err:expr) => {|v| if v.parse::<$t>().is_ok() { Ok(()) } else { Err($err.to_string()) } }
 }
 
-impl Environment {
-    pub fn from_cli_args() -> Self {
-        let args = App::new("Tezos Light Node")
+// Creates tezos app 
+pub fn tezos_app() -> App<'static, 'static> {
+    // Default values for arguments are specidied in default configuration file
+    //
+    // Flag Required=true must be handled separately as we parse args twice, 
+    // once to see only if confi-file arg is present and second time to parse all args
+    //
+    // In case some args are required=true and user provides only config-file, 
+    // first round of parsing would always fail then 
+    let app = App::new("Tezos Light Node")
             .version("0.3.1")
             .author("SimpleStaking and the project contributors")
             .about("Rust implementation of the tezos node")
-            .arg(Arg::with_name("p2p-port")
-                .short("l")
-                .long("p2p-port")
+            .setting(clap::AppSettings::AllArgsOverrideSelf)
+            .arg(Arg::with_name("config-file")
+                .long("config-file")
                 .takes_value(true)
-                .default_value("9732")
-                .value_name("PORT")
-                .help("Socket listening port for p2p for communication with tezos world")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("monitor-port")
-                .short("m")
-                .long("monitor-port")
-                .takes_value(true)
-                .default_value("3030")
-                .value_name("PORT")
-                .help("Port on which the Tezedge node monitoring information will be exposed")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("rpc-port")
-                .short("r")
-                .long("rpc-port")
-                .takes_value(true)
-                .default_value("18732")
-                .value_name("PORT")
-                .help("Rust server RPC port for communication with rust node")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("peers")
-                .short("p")
-                .long("peers")
-                .takes_value(true)
-                .required(false)
-                .value_name("IP:PORT")
-                .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
-                .validator(|v| {
-                    let err_count = v.split(',')
-                        .map(|ip_port| ip_port.parse::<SocketAddr>())
-                        .filter(|v| v.is_err())
-                        .count();
-                    if err_count == 0 {
-                        Ok(())
-                    } else {
-                        Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
-                    }
-                }))
-            .arg(Arg::with_name("bootstrap-lookup-address")
-                .short("b")
-                .long("bootstrap-lookup-address")
-                .takes_value(true)
-                .conflicts_with("peers")
-                .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
-            .arg(Arg::with_name("identity")
-                .short("i")
-                .long("identity")
-                .takes_value(true)
-                .help("Path to Tezos identity.json file."))
-            .arg(Arg::with_name("bootstrap-db-path")
-                .short("B")
-                .long("bootstrap-db-path")
-                .takes_value(true)
-                .default_value("bootstrap_db")
-                .help("Path to bootstrap database directory. Default: bootstrap_db"))
+                .value_name("PATH")
+                .help("Configuration file with start-up arguments (same format as cli arguments)")
+                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
             .arg(Arg::with_name("tezos-data-dir")
-                .short("d")
                 .long("tezos-data-dir")
                 .takes_value(true)
-                .default_value("tezos_data_db")
+                .value_name("PATH")
                 .help("A directory for Tezos OCaml runtime storage (context/store)")
                 .validator(|v| {
                     let dir = Path::new(&v);
@@ -168,93 +118,231 @@ impl Environment {
                         }
                     }
                 }))
+            .arg(Arg::with_name("identity-file")
+                .long("identity-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to the json identity file with peer-id, public-key, secret-key and pow-stamp. 
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+            .arg(Arg::with_name("bootstrap-db-path")
+                .long("bootstrap-db-path")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to bootstrap database directory. 
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+            .arg(Arg::with_name("bootstrap-lookup-address")
+                .long("bootstrap-lookup-address")
+                .takes_value(true)
+                .conflicts_with("peers")
+                .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
+            .arg(Arg::with_name("log-file")
+                .long("log-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to the log file. If provided, logs are displayed the log file, otherwise in terminal. 
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+            .arg(Arg::with_name("log-format")
+                .long("log-format")
+                .takes_value(true)
+                .possible_values(&["json", "simple"])
+                .help("Set output format of the log"))
+            .arg(Arg::with_name("log-level")
+                .long("log-level")
+                .takes_value(true)
+                .value_name("LEVEL")
+                .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
+                .help("Set log level"))
+            .arg(Arg::with_name("ocaml-log-enabled")
+                .long("ocaml-log-enabled")
+                .takes_value(true)
+                .value_name("BOOL")
+                .help("Flag for turn on/off logging in Tezos OCaml runtime"))
+            .arg(Arg::with_name("network")
+                .long("network")
+                .takes_value(true)
+                .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet"])
+                .help("Choose the Tezos environment"))
+            .arg(Arg::with_name("p2p-port")
+                .long("p2p-port")
+                .takes_value(true)
+                .value_name("PORT")
+                .help("Socket listening port for p2p for communication with tezos world")
+                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+            .arg(Arg::with_name("rpc-port")
+                .long("rpc-port")
+                .takes_value(true)
+                .value_name("PORT")
+                .help("Rust server RPC port for communication with rust node")
+                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+            .arg(Arg::with_name("websocket-address")
+                .long("websocket-address")
+                .takes_value(true)
+                .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
+            .arg(Arg::with_name("monitor-port")
+                .long("monitor-port")
+                .takes_value(true)
+                .value_name("PORT")
+                .help("Port on which the Tezedge node monitoring information will be exposed")
+                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+            .arg(Arg::with_name("peers")
+                .long("peers")
+                .takes_value(true)
+                .value_name("IP:PORT")
+                .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
+                .validator(|v| {
+                    let err_count = v.split(',')
+                        .map(|ip_port| ip_port.parse::<SocketAddr>())
+                        .filter(|v| v.is_err())
+                        .count();
+                    if err_count == 0 {
+                        Ok(())
+                    } else {
+                        Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
+                    }
+                }))
             .arg(Arg::with_name("peer-thresh-low")
-                .short("t")
                 .long("peer-thresh-low")
                 .takes_value(true)
-                .default_value("2")
                 .value_name("NUM")
                 .help("Minimal number of peers to connect to")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
             .arg(Arg::with_name("peer-thresh-high")
-                .short("T")
                 .long("peer-thresh-high")
                 .takes_value(true)
-                .default_value("15")
                 .value_name("NUM")
                 .help("Maximal number of peers to connect to")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-            .arg(Arg::with_name("ocaml-log-enabled")
-                .short("o")
-                .long("ocaml-log-enabled")
-                .takes_value(true)
-                .default_value("false")
-                .help("Flag for turn on/off logging in Tezos OCaml runtime. Default: false"))
-            .arg(Arg::with_name("websocket-address")
-                .short("w")
-                .long("websocket-address")
-                .takes_value(true)
-                .default_value("0.0.0.0:4927")
-                .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
-            .arg(Arg::with_name("record")
-                .short("R")
-                .long("record")
-                .takes_value(false))
-            .arg(Arg::with_name("verbose")
-                .short("v")
-                .long("verbose")
-                .takes_value(false)
-                .multiple(true)
-                .help("Turn verbose output on"))
-            .arg(Arg::with_name("log-format")
-                .short("f")
-                .long("log-format")
-                .takes_value(true)
-                .default_value("simple")
-                .possible_values(&["json", "simple"])
-                .help("Set output format of the log."))
-            .arg(Arg::with_name("log-file")
-                .short("F")
-                .long("log-file")
-                .takes_value(true)
-                .value_name("PATH")
-                .help("Set path of a log file"))
-            .arg(Arg::with_name("network")
-                .short("n")
-                .long("network")
-                .takes_value(true)
-                .required(true)
-                .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet"])
-                .help("Choose the Tezos environment"))
             .arg(Arg::with_name("protocol-runner")
-                .short("P")
                 .long("protocol-runner")
                 .takes_value(true)
-                .default_value("./protocol-runner")
                 .value_name("PATH")
                 .help("Path to a tezos protocol runner executable")
                 .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
             .arg(Arg::with_name("ffi-calls-gc-treshold")
-                .short("g")
                 .long("ffi-calls-gc-treshold")
                 .takes_value(true)
-                .default_value("2000")
                 .value_name("NUM")
                 .help("Number of ffi calls, after which will be Ocaml garbage collector called")
                 .validator(parse_validator_fn!(i32, "Value must be a valid number")))
-            .get_matches();
+            .arg(Arg::with_name("record")
+                .long("record")
+                .takes_value(true)
+                .value_name("BOOL")
+                .help("Flag for turn on/off record mode"));
+    app
+}
+
+// Explicitely validates all required parameters
+// Flag Required=true must be handled separately as we parse args twice, 
+// once to see only if confi-file arg is present and second time to parse all args
+// In case some args are required=true and user provides only config-file, 
+// first round of parsing would always fail then 
+pub fn validate_required_args(args: &clap::ArgMatches)  {
+    validate_required_arg(args, "tezos-data-dir");
+    validate_required_arg(args, "network");
+    validate_required_arg(args, "bootstrap-db-path");
+    validate_required_arg(args, "log-format");
+    validate_required_arg(args, "monitor-port");
+    validate_required_arg(args, "ocaml-log-enabled");
+    validate_required_arg(args, "p2p-port");
+    validate_required_arg(args, "protocol-runner");
+    validate_required_arg(args, "rpc-port");
+    validate_required_arg(args, "websocket-address");
+    validate_required_arg(args, "peer-thresh-low");
+    validate_required_arg(args, "peer-thresh-high");
+    validate_required_arg(args, "ffi-calls-gc-treshold");
+    validate_required_arg(args, "identity-file");
+    validate_required_arg(args, "record");
+    
+    // "log-file" and "peers" are not required
+}
+
+// Validates single required arg. If missing, exit whole process
+pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
+    if args.is_present(arg_name) == false {
+        eprintln!("required \"{}\" arg is missing !!!", arg_name);
+        std::process::exit(1);
+    }
+}
+
+// Returns final path. In case:
+//      1. path is relative -> final_path = tezos_data_dir / path
+//      2. path is absolute -> final_path = path
+pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
+    let mut final_path : PathBuf;
+
+    // path is absolute or relative to the current dir -> start with ./ or ../
+    if path.is_absolute() == true || path.starts_with(".") == true {
+        final_path = path
+    } 
+    // otherwise path is relative to the tezos-data-dir
+    else {
+        final_path = tezos_data_dir.to_path_buf();
+        final_path.push(path);
+    }
+
+    // Tries to create final_path parent dir, if non-existing
+    if let Some(parent_dir) = final_path.parent() {
+        if parent_dir.exists() == false {
+            if let Err(e) = fs::create_dir_all(parent_dir) {
+                eprintln!("Unable to create required dir '{:?}': {} ", parent_dir, e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    final_path
+}
+
+impl Environment {
+    pub fn from_args() -> Self {
+        let app = tezos_app();
+        let args: clap::ArgMatches;
+
+        // First, get cli arguments and find out only if config-file arg is provided   
+        // If config-file argument is present, read all parameters from config-file and merge it with cli arguments
+        let temp_args = app.clone().get_matches();
+        if temp_args.is_present("config-file") == true {
+            let config_path = temp_args
+                .value_of("config-file")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided config-file cannot be converted to path");
+
+            let mut merged_args = crate::file_config::args(config_path, false);
+
+            let mut cli_args = env::args_os();
+            if let Some(bin) = cli_args.next() {
+                merged_args.insert(0, bin);
+            }
+            merged_args.extend(cli_args);
+
+            args = app.get_matches_from(merged_args);
+        }
+        // Otherwise use only cli arguments that are already parsed
+        else {
+            args = temp_args;
+        }
+
+        // Validates required flags of args
+        validate_required_args(&args);
 
         let tezos_network: TezosEnvironment = args
             .value_of("network")
-            .unwrap()
+            .unwrap_or("")
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
+
+        let data_dir: PathBuf = args.value_of("tezos-data-dir")
+            .unwrap_or("")
+            .parse::<PathBuf>()
+            .expect("Provided value cannot be converted to path");
 
         Environment {
             p2p: crate::configuration::P2p {
                 listener_port: args
                     .value_of("p2p-port")
-                    .unwrap_or_default()
+                    .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of p2p-port"),
                 bootstrap_lookup_addresses: args.
@@ -282,11 +370,11 @@ impl Environment {
                     ).unwrap_or_default(),
                 peer_threshold: Threshold::new(
                     args.value_of("peer-thresh-low")
-                        .unwrap_or_default()
+                        .unwrap_or("")
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
                     args.value_of("peer-thresh-high")
-                        .unwrap_or_default()
+                        .unwrap_or("")
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
                 ),
@@ -294,59 +382,71 @@ impl Environment {
             rpc: crate::configuration::Rpc {
                 listener_port: args
                     .value_of("rpc-port")
-                    .unwrap_or_default()
+                    .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of rpc-port"),
                 websocket_address: args.value_of("websocket-address")
-                    .unwrap_or_default()
+                    .unwrap_or("")
                     .parse()
                     .expect("Provided value cannot be converted into valid uri"),
             },
             logging: crate::configuration::Logging {
                 ocaml_log_enabled: args.value_of("ocaml-log-enabled")
-                    .unwrap()
+                    .unwrap_or("")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                level: verbose_occurrences_to_level(args.occurrences_of("verbose")),
+                level: args.value_of("log-level")
+                    .unwrap_or("")
+                    .parse::<slog::Level>()
+                    .expect("Was expecting one value from slog::Level"),
                 format: args
                     .value_of("log-format")
-                    .unwrap_or_default()
+                    .unwrap_or("")
                     .parse::<LogFormat>()
                     .expect("Was expecting 'simple' or 'json'"),
-                file: args.value_of("log-file")
-                    .map(|v| v.parse::<PathBuf>().expect("Provided value cannot be converted to path")),
+                file: {
+                    let log_file_path = args.value_of("log-file")
+                        .map(|v| v.parse::<PathBuf>().expect("Provided value cannot be converted to path"));
+                    
+                    if let Some(path) = log_file_path {
+                        Some(get_final_path(&data_dir, path))
+                    }
+                    else {
+                        log_file_path
+                    }
+                },
             },
             storage: crate::configuration::Storage {
-                tezos_data_dir: args.value_of("tezos-data-dir")
-                    .unwrap_or_default()
-                    .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path"),
-                bootstrap_db_path: args.value_of("bootstrap-db-path")
-                    .unwrap_or_default()
-                    .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path"),
+                tezos_data_dir: data_dir.clone(),
+                bootstrap_db_path: {
+                    let db_path = args.value_of("bootstrap-db-path")
+                        .unwrap_or("")
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path");
+                    get_final_path(&data_dir, db_path)
+                },
             },
-            identity_json_file_path: args.value_of("identity")
-                .map(PathBuf::from),
-            record: args.is_present("record"),
+            identity_json_file_path: {
+                let identity_path = args.value_of("identity-file")
+                    .unwrap_or("")
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path");
+                get_final_path(&data_dir, identity_path)
+            },
+            record: args.value_of("record")
+                .unwrap_or("")
+                .parse::<bool>()
+                .expect("Provided value cannot be converted to bool"),
             protocol_runner: args
                 .value_of("protocol-runner")
-                .unwrap_or_default()
+                .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
             no_of_ffi_calls_treshold_for_gc: args.value_of("ffi-calls-gc-treshold")
-                .unwrap_or_default()
+                .unwrap_or("")
                 .parse::<i32>()
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
         }
-    }
-}
-
-fn verbose_occurrences_to_level(occurrences: u64) -> slog::Level {
-    match occurrences {
-        0 => slog::Level::Info,
-        1 => slog::Level::Debug,
-        _ => slog::Level::Trace,
     }
 }
