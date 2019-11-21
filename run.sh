@@ -32,18 +32,21 @@ build_all() {
 
   # this is required for the most linux distributions
   export SODIUM_USE_PKG_CONFIG=1
-
-  cargo build $CARGO_PROFILE_ARG
+  cargo build || exit 1
 }
 
 run_node() {
 
   # Default light-node commandline arguments:
   #
-  # -B | --bootstrap-db-path
-  BOOTSTRAP_DIR=/tmp/tezedge
   # -d | --tezos-data-dir
   TEZOS_DIR=/tmp/tezedge
+  # -c | --config-file-path
+  CONFIG_FILE=./light_node/etc/tezedge/tezedge.config
+  # -B | --bootstrap-db-path
+  BOOTSTRAP_DIR=bootstrap_db  
+  # -i | --identity
+  IDENTITY_FILE=./light_node/etc/tezedge/identity.json
   # -n | --network
   NETWORK=babylonnet
   # rest of the commandline arguments will end up here
@@ -75,15 +78,6 @@ run_node() {
   # Supports '--arg=val' and '--arg val' syntax of the commandline arguments.
   while [ "$#" -gt 0 ]; do
     case $1 in
-      -B=*|--bootstrap-db-path=*)
-        BOOTSTRAP_DIR="${1#*=}"
-        shift
-        ;;
-      -B|--bootstrap-db-path)
-        shift
-        BOOTSTRAP_DIR="$1"
-        shift
-        ;;
       -d=*|--tezos-data-dir=*)
         TEZOS_DIR="${1#*=}"
         shift
@@ -91,6 +85,24 @@ run_node() {
       -d|--tezos-data-dir)
         shift
         TEZOS_DIR="$1"
+        shift
+        ;;
+      -c=*|--config-file=*)
+        CONFIG_FILE="${1#*=}"
+        shift
+        ;;
+      -c|--config-file)
+        shift
+        CONFIG_FILE="$1"
+        shift
+        ;;
+      -B=*|--bootstrap-db-path=*)
+        BOOTSTRAP_DIR="${1#*=}"
+        shift
+        ;;
+      -B|--bootstrap-db-path)
+        shift
+        BOOTSTRAP_DIR="$1"
         shift
         ;;
       -n=*|--network=*)
@@ -117,7 +129,12 @@ run_node() {
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
   # start node
-  cargo run $CARGO_PROFILE_ARG --bin light-node -- -d "$TEZOS_DIR" -B "$BOOTSTRAP_DIR" --network "$NETWORK" --protocol-runner "./target/$PROFILE/protocol-runner" "${args[@]}"
+  cargo run --bin light-node -- --config-file "$CONFIG_FILE" \
+                                --tezos-data-dir "$TEZOS_DIR" \
+                                --identity-file "$IDENTITY_FILE" \
+                                --bootstrap-db-path "$BOOTSTRAP_DIR" \
+                                --network "$NETWORK" \
+                                --protocol-runner ./target/debug/protocol-runner "${args[@]}"
 }
 
 run_docker() {
