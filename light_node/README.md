@@ -19,111 +19,155 @@ The relations between individual components are described in the diagram depicte
 
 
 # Running the node
-Detailed information, about how to start the node, is in repository [README](../README.md) file.
+Detailed information, about how to start the node, is in repository [README](../README.md) file 
 
 ## Arguments
+All arguments and their default values are in [tezedge.config](./etc/tezedge/tezedge.config) file.
+They can be provided also as command line arguments in the same format, in which case they have higher priority than the ones in conifg file
+
+
+### Tezos data dir
+Path to directory which will be used to store Tezos specific data. This is required argument, and if node fails to 
+create or access this directory, it will die gracefully.
+
+```
+--tezos-data-dir <PATH>
+```
+
+### Identity file
+Path to the json identity file with peer-id, public-key, secret-key and pow-stamp. 
+New identity is automatically generated if it does not exist on specified path. 
+In case it starts with "./" or "../", it is relative path to the current dir, otherwise to the --tezos-data-dir
+
+```
+--identity-file <PATH>
+```
+
 ### Bootstrap database path
-Path to bootstrap database directory. If directory does not exists, it will be created. If directory already exists, and 
+Path to bootstrap database directory. 
+In case it starts with "./" or "../", it is relative path to the current dir, otherwise to the --tezos-data-dir. 
+If directory does not exists, it will be created. If directory already exists, and 
 contains valid database, node will continue in bootstrap process on that database
 
 ```
--B, --bootstrap-db-path <PATH>
+--bootstrap-db-path <PATH>
 ```
+
 ### Bootstrap lookup addresses
 List of peers to bootstrap the network from. Peers are delimited by a colon. 
 For further information, see `--network` parameter of OCaml node.
 
 ```
--b, --bootstrap-lookup-address <ADRRESS>(,<ADDRESS>)*
+--bootstrap-lookup-address <ADRRESS>(,<ADDRESS>)*
 ```
-### Identity 
-Path to your Tezos `identity.json` file.
 
-```
--i, --identity <PATH>
-```
 ### Logging file
-Path to the logger file. By default, all logs are printed on `STDOUT`.
+Path to the logger file. If provided, logs are written to the log file, otherwise displayed in terminal. 
+In case it starts with "./" or "../", it is relative path to the current dir, otherwise to the --tezos-data-dir
+```
+--log-file <PATH>
+```
 
-```
--F, --log-file
-```
 ### Logging format
 Set format of logger entries, used usually with `--logger-format` argument.
 Possible values are either `simple` or `json`.
 Simple format is human-readable format, where JSON produce structured, easily machine consumable log entries.
 
 ```
--f, --log-format
+--log-format <LOG-FORMAT>
 ```
+
+### Logging format
+Set log level. Possible values are: `critical`, `error`, `warn`, `info`, `debug`, `trace`
+```
+--log-level <LEVEL>
+```
+
+### OCaml logging
+Enable OCaml runtime logger.
+
+```
+--ocaml-log-enabled <BOOL>
+```
+
 ### Network
 Specify the Tezos environment for this node. Accepted values are: 
 `alphanet, babylonnet, babylon, mainnet or zeronet`, where `babylon` and `babylonnet` refer to same environment.
 
 ```
--n, --network [alphanet, babylonnet, babylon, mainnet, zeronet]
-```
-### OCaml loggin
-Enable OCaml runtime logger.
-
-```
--o, --ocaml-log-enabled [true,false]
+--network <NETWORK>
 ```
 ### P2P Port
-Specify port for peer to peer communication. Default: `9732`
+Specify port for peer to peer communication.
 
 ```
--l, --p2p-port <PORT>
+--p2p-port <PORT>
 ```
-### Lower peer threshold
-Set minimal peer number, if running node does not has enough connected peers, peer discovery is enforced.
-Default: `2`
+
+### RPC port
+Node contains subset of Tezos node REST API, described in further sections. This argument specifies port, on which
+those APIs will be available.
 
 ```
--T, -peer-thresh-low <NUMBER>
+--rpc-port <PORT>
 ```
-### Higher peer threshold
-Set maximum number of connected peers, running node will not try to connect to any more peers, if this threshold is met.
-Default: `15`.
+
+### WebSocket Access Address
+Node expose various metrics and statistics in real-time through websocket. This argument specifies address, on which
+will be this websocket accessible.
 
 ```
--t, --peer-thresh-high <NUMBER>
+--websocket-address <IP:PORT>
 ```
-### Peers
+
+### Monitor port
+Port on which the Tezedge node monitoring information will be exposed
+```
+--monitor-port <PORT>
+```
+
+### Peers <optional>
 Allowed network peers to bootstrap from. This argument is good to use in controlled testing environmnet.
 Each peer is described by its address and port in `IP:PORT` format, delimited by a colon.
 
 ```
--p, --peers <IP:PORT>(,<IP:PORT>)*
+--peers <IP:PORT>(,<IP:PORT>)*
 ``` 
+
+### Lower peer threshold
+Set minimal peer number, if running node does not has enough connected peers, peer discovery is enforced.
+
+```
+-peer-thresh-low <NUMBER>
+```
+
+### Higher peer threshold
+Set maximum number of connected peers, running node will not try to connect to any more peers, if this threshold is met.
+
+```
+--peer-thresh-high <NUMBER>
+```
+
 ### Protocol runner
 Path to the protocol runner binary, which is compiled with `tezedge`. 
 For example: `./target/debug/protocol-runner`.
 
 ```
--P, --protocol-runner <PATH>
+--protocol-runner <PATH>
 ```
-### RPC port
-Node contains subset of Tezos node REST API, described in further sections. This argument specifies port, on which
-those APIs will be available. Default: `18732`.
 
+### Number of ffi calls 
+Number of ffi calls, after which will be Ocaml garbage collector called
 ```
--r, --rpc-port <PORT>
+--ffi-calls-gc-treshold <NUM>
 ```
-### Tezos data dir
-Path to directory which will be used to store Tezos specific data. This is required argument, and if node fails to 
-create or access this directory, it will die gracefully. Default: `tezos_data_db`
 
+### Record flag
+Flag for turn on/off record mode
 ```
--d, --tezos-data-dir <PATH>
+--record <BOOL>
 ```
-### WebSocket Access Address
-Node expose various metrics and statistics in real-time through websocket. This argument specifies address, on which
-will be this websocket accessible. Default: `0.0.0.0:4972`.
 
-```
--w, --websocket-address <0.0.0.0:PORT>
-```
 
 # RPC API
 
