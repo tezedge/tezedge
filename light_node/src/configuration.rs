@@ -177,6 +177,8 @@ pub fn tezos_app() -> App<'static, 'static> {
             .arg(Arg::with_name("websocket-address")
                 .long("websocket-address")
                 .takes_value(true)
+                .value_name("IP:PORT")
+                .help("Websocket address where various node metrics and statistics are available")
                 .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
             .arg(Arg::with_name("monitor-port")
                 .long("monitor-port")
@@ -254,7 +256,7 @@ pub fn validate_required_args(args: &clap::ArgMatches)  {
     validate_required_arg(args, "identity-file");
     validate_required_arg(args, "record");
     
-    // "log-file" and "peers" are not required
+    // "bootstrap-lookup-address", "log-file" and "peers" are not required
 }
 
 // Validates single required arg. If missing, exit whole process
