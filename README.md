@@ -41,12 +41,37 @@ Install libs required to build RocksDB package:
 sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev
 ```
 
-Launching node
---------
+Running the node
+------------
 
-**4. Start Tezedge node** 
+**4. Running Tezedge node manually** 
 
-On linux systems, we prepared convenience script to run the node:
+The node can built through the `cargo build` or `cargo build --release`, be aware, release build can take 
+much longer to compile. environment variable `SODIUM_USE_PKG_CONFIG=1` mus be set. Put together, node can be build, for example, like this:
+```
+SODIUM_USE_PKG_CONFIG=1 cargo build
+```
+
+To run node manully, path to the Tezos lib must be provided as environment variable `LD_LIBRARY_PATH`. It is required
+by `protocol-runner`. Put together, node can be run, for example, like this:
+```
+LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config
+```
+
+All parameters can be provided also as command line arguments in the same format as in config file, in which case 
+they have higher priority than the ones in conifg file. For example we can use the default config and change the log file path:
+```
+LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log
+```
+
+Full description of all arguments is in the light_node [README](light_node/README.md) file.
+
+
+
+**5. Running Tezedge node using run.sh script** 
+
+On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnet variables, build and run tezedge node. 
+All arguments can be provided to the `run.sh` script in the same manner as descirbed in previoud secion - Running Tezedge node manually.
 
 ```
 ./run.sh node
@@ -58,51 +83,8 @@ if you are running OSX you can use docker version:
 ./run.sh docker
 ```
 
-**5. Listening for updates**
-
-Node emits statistics on the websocket server, which can be changed with `-w` argument, for example:
+Listening for updates. Node emits statistics on the websocket server, which can be changed with `-w` argument, for example:
 
 ```
-./run.sh node -w 0.0.0.0:12345
-```
-
-Running node
-=========
-The node can built and run manually through the `cargo build` or `cargo build --release`, be aware, release build can take 
-much longer to compile. Running node with`cargo run` and correct arguments, described in following sections.
-
-All arguments can be provided to the `run.sh` script.
-
-
-Required arguments
------
-
-### Identity 
-Path to your Tezos `identity.json` file.
-```
--i, --identity <PATH>
-```
-
-### Network
-Specify the Tezos environment for this node. Accepted values are: 
-`alphanet, babylonnet, babylon, mainnet or zeronet`, where `babylon` and `babylonnet` refer to same environment.
-```
--n, --network [alphanet, babylonnet, babylon, mainnet, zeronet]
-```
-
-### Protocol runner
-Path to the protocol runner binary, which is compiled with `tezedge`. 
-For example: `./target/debug/protocol-runner`.
-```
--P, --protocol-runner <PATH>
-```
-
-Full description of all arguments is in the light_node [README](light_node/README.md) file.
-
-Manually running the node
------
-Last step is to provide path to the Tezos lib, which is set as environment variable `LD_LIBRARY_PATH`, as is required
-by `protocol-runner`. Put together, node can be run, for example, like this:
-```
-# LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run -- -i ligth_node/config/identity.json -n babylon -P ./target/debug/protocol-runner
+./run.sh node --websocket-address 0.0.0.0:12345
 ```
