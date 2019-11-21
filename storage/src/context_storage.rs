@@ -65,33 +65,37 @@ const LEN_BLOCK_HASH: usize = 32;
 const LEN_OPERATION_HASH: usize = 32;
 const LEN_ORDINAL_ID: usize = mem::size_of::<u32>();
 
-const IDX_KEY_HASH: usize = 0;
-const IDX_BLOCK_HASH: usize = IDX_KEY_HASH + LEN_KEY_HASH;
-const IDX_OPERATION_HASH: usize = IDX_BLOCK_HASH + LEN_BLOCK_HASH;
-const IDX_ORDINAL_ID: usize = IDX_OPERATION_HASH + LEN_OPERATION_HASH;
+const IDX_BLOCK_HASH: usize = 0;
+const IDX_ORDINAL_ID: usize = IDX_BLOCK_HASH + LEN_BLOCK_HASH;
+const IDX_KEY_HASH: usize = IDX_ORDINAL_ID + LEN_ORDINAL_ID;
+const IDX_OPERATION_HASH: usize = IDX_KEY_HASH + LEN_KEY_HASH;
+
 
 const LEN_RECORD_KEY: usize = LEN_BLOCK_HASH + LEN_KEY_HASH + LEN_OPERATION_HASH + LEN_ORDINAL_ID;
 const BLANK_OPERATION_HASH: [u8; LEN_OPERATION_HASH] = [0; LEN_OPERATION_HASH];
 
 /// Codec for `RecordKey`
 ///
-/// * bytes layout `[key(32)][block_hash(32)][ordinal_id(4)]`
+/// * bytes layout `[block_hash(32)][ordinal_id(4)][key_hash(32)][operation_hash(32)]`
 impl Codec for ContextRecordKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if LEN_RECORD_KEY == bytes.len() {
-            let key_hash = bytes[IDX_KEY_HASH..IDX_KEY_HASH + LEN_KEY_HASH].to_vec();
+            // block header hash
             let block_hash = bytes[IDX_BLOCK_HASH..IDX_BLOCK_HASH + LEN_BLOCK_HASH].to_vec();
+            // ordinal_id
+            let mut ordinal_id_bytes: [u8; 4] = Default::default();
+            ordinal_id_bytes.copy_from_slice(&bytes[IDX_ORDINAL_ID..IDX_ORDINAL_ID + LEN_ORDINAL_ID]);
+            let ordinal_id = u32::from_le_bytes(ordinal_id_bytes);
+            // key hash
+            let key_hash = bytes[IDX_KEY_HASH..IDX_KEY_HASH + LEN_KEY_HASH].to_vec();
+            // operation hash
             let operation_hash = bytes[IDX_OPERATION_HASH..IDX_OPERATION_HASH + LEN_OPERATION_HASH].to_vec();
             let operation_hash = if operation_hash == BLANK_OPERATION_HASH {
                 None
             } else {
                 Some(operation_hash)
             };
-            // ordinal_id
-            let mut ordinal_id_bytes: [u8; 4] = Default::default();
-            ordinal_id_bytes.copy_from_slice(&bytes[IDX_ORDINAL_ID..IDX_ORDINAL_ID + LEN_ORDINAL_ID]);
-            let ordinal_id = u32::from_le_bytes(ordinal_id_bytes);
-            
+
             Ok(ContextRecordKey { block_hash, operation_hash, key_hash, ordinal_id })
         } else {
             Err(SchemaError::DecodeError)
@@ -100,13 +104,17 @@ impl Codec for ContextRecordKey {
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = Vec::with_capacity(LEN_RECORD_KEY);
-        result.extend(&self.key_hash);
+        // block header hash
         result.extend(&self.block_hash);
+        // ordinal
+        result.extend(&self.ordinal_id.to_le_bytes());
+        // key hash
+        result.extend(&self.key_hash);
+        // operation hash
         match &self.operation_hash {
             Some(operation_hash) => result.extend(operation_hash),
             None => result.extend(&BLANK_OPERATION_HASH),
         }
-        result.extend(&self.ordinal_id.to_le_bytes());
         assert_eq!(result.len(), LEN_RECORD_KEY, "Result length mismatch");
         Ok(result)
     }

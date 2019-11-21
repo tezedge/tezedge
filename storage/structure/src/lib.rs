@@ -29,7 +29,7 @@ pub const LEVEL_BASE: usize = 8;
 
 #[cfg(test)]
 pub mod common_testing {
-    use storage::persistent::{open_db, Schema, Codec, BincodeEncoded, SchemaError};
+    use storage::persistent::{open_db, Schema, BincodeEncoded};
     use std::{
         sync::Arc,
         process::Command,
