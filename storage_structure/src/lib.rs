@@ -26,3 +26,119 @@ mod skip_list;
 pub use skip_list::SkipList;
 
 pub const LEVEL_BASE: usize = 8;
+
+#[cfg(test)]
+pub mod common_testing {
+    use storage::persistent::{open_db, Schema, Codec, SchemaError};
+    use std::{
+        sync::Arc,
+        process::Command,
+    };
+    use rocksdb::DB;
+    use crate::lane::Lane;
+    use crate::content::ListValue;
+    use std::collections::{HashSet, HashMap};
+    use std::iter::FromIterator;
+    use std::fs::remove_dir_all;
+
+    pub struct TmpDb {
+        db: Arc<DB>,
+        tmp_dir: String,
+    }
+
+    impl TmpDb {
+        pub fn new() -> Self {
+            let proc = Command::new("mktemp").args(&["-d"]).output();
+            let dir = String::from_utf8(proc.unwrap().stdout)
+                .expect("failed to create testing database").trim().to_string();
+            let db = open_db(&dir, vec![Lane::<Value>::cf_descriptor()]).unwrap();
+            Self {
+                db: Arc::new(db),
+                tmp_dir: dir,
+            }
+        }
+
+        pub fn db(&self) -> Arc<DB> {
+            self.db.clone()
+        }
+    }
+
+    impl Drop for TmpDb {
+        fn drop(&mut self) {
+            remove_dir_all(&self.tmp_dir)
+                .expect("Failed to remove temp database directory");
+        }
+    }
+
+    #[derive(Default, PartialEq, Eq, Debug)]
+    pub struct Value(pub HashSet<usize>);
+
+    impl Value {
+        pub fn new(value: Vec<usize>) -> Self {
+            Self(HashSet::from_iter(value))
+        }
+    }
+
+    impl ListValue for Value {
+        /// Merge two sets
+        fn merge(&mut self, other: &Self) {
+            self.0.extend(&other.0)
+        }
+
+        /// Create the
+        fn diff(&mut self, other: &Self) {
+            for x in &other.0 {
+                if !self.0.contains(x) {
+                    self.0.insert(*x);
+                }
+            }
+        }
+    }
+
+    impl Codec for Value {
+        fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+            let set: HashSet<usize> = bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError)?;
+            Ok(Self(set))
+        }
+
+        fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+            bincode::serialize(&self.0).map_err(|_| SchemaError::EncodeError)
+        }
+    }
+
+    #[derive(Default, PartialEq, Eq, Debug)]
+    pub struct OrderedValue(pub HashMap<usize, usize>);
+
+    impl OrderedValue {
+        pub fn new(value: HashMap<usize, usize>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl ListValue for OrderedValue {
+        /// Merge two sets
+        fn merge(&mut self, other: &Self) {
+            self.0.extend(&other.0)
+        }
+
+        /// Create the
+        fn diff(&mut self, other: &Self) {
+            for (k, v) in &other.0 {
+                if !self.0.contains_key(k) {
+                    self.0.insert(*k, *v);
+                }
+            }
+        }
+    }
+
+    impl Codec for OrderedValue {
+        fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+            let val: HashMap<usize, usize> = bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError)?;
+            Ok(Self(val))
+        }
+
+        fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+            bincode::serialize(&self.0).map_err(|_| SchemaError::EncodeError)
+        }
+    }
+}

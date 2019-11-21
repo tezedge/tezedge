@@ -37,7 +37,13 @@ impl<C: ListValue> Lane<C> {
     }
 
     /// Create handler for a lane on one lower level
-    pub fn lower_lane(self) -> Self { Self::new(self.level - 1, self.db) }
+    pub fn lower_lane(self) -> Self {
+        Self::new(if self.level == 0 {
+            self.level
+        } else {
+            self.level - 1
+        }, self.db)
+    }
 
     /// Create handler for a lane on higher level
     pub fn higher_lane(self) -> Self { Self::new(self.level + 1, self.db) }
@@ -70,40 +76,65 @@ impl<C: ListValue> Lane<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use storage::persistent::open_db;
-    use std::fs::remove_dir_all;
-    use std::process::Command;
-    use std::collections::HashSet;
+    use crate::common_testing::*;
+    use crate::LEVEL_BASE;
 
-    pub struct TmpDb {
-        db: Arc<DB>,
-        tmp_dir: String,
+    #[test]
+    fn lane_new() {
+        let tmp = TmpDb::new();
+        let lane: Lane<Value> = Lane::new(0, tmp.db());
+        assert_eq!(lane.level(), 0);
     }
 
-    impl TmpDb {
-        pub fn new() -> Self {
-            let proc = Command::new("mktemp").args(&["-d"]).output();
-            let dir = String::from_utf8(proc.unwrap().stdout)
-                .expect("failed to create testing database");
-            let db = open_db(dir, vec![Lane::cf_descriptor()]).unwrap();
-            Self {
-                db: Arc::new(db),
-                tmp_dir: dir,
-            }
-        }
+    #[test]
+    fn lane_higher() {
+        let tmp = TmpDb::new();
+        let lane: Lane<Value> = Lane::new(0, tmp.db());
+        let higher_lane = lane.higher_lane();
+        assert_eq!(higher_lane.level(), 1);
     }
 
-    impl ListValue for HashSet<usize> {
-        /// Merge two sets
-        fn merge(&mut self, other: &Self) {
-            self.extend(other)
+    #[test]
+    fn lane_lower() {
+        let tmp = TmpDb::new();
+        let lane: Lane<Value> = Lane::new(1, tmp.db());
+        let lower_lane = lane.lower_lane();
+        assert_eq!(lower_lane.level(), 0);
+    }
+
+    #[test]
+    fn lane_lower_underflow() {
+        let tmp = TmpDb::new();
+        let lane: Lane<Value> = Lane::new(0, tmp.db());
+        let lower_lane = lane.lower_lane();
+        assert_eq!(lower_lane.level(), 0);
+    }
+
+    #[test]
+    fn lane_put_get_values() {
+        let tmp = TmpDb::new();
+        let lane = Lane::new(0, tmp.db());
+        lane.put(0, &Value::new(vec![0]));
+        assert_eq!(lane.get(0), Some(Value::new(vec![0])));
+        assert_eq!(lane.get(1), None);
+    }
+
+    #[test]
+    fn lane_base_iterator() {
+        let tmp = TmpDb::new();
+        let lane = Lane::new(0, tmp.db());
+        for x in 0..=10 {
+            lane.put(x, &Value::new(vec![x]));
         }
 
-        /// Make in-place difference of two sets
-        fn diff(&mut self, other: &Self) {
-            for x in other {
-                self.remove(x)
-            }
+        let mut index = LEVEL_BASE as i64;
+        for (k, v) in lane.base_iterator(LEVEL_BASE).expect("Expected valid iterator") {
+            let k = k.expect("expected valid header");
+            let v = v.expect("expected valid value");
+            assert_eq!(k.index(), index as usize);
+            assert_eq!(k.level(), 0);
+            assert_eq!(v, Value::new(vec![index as usize]));
+            index -= 1;
         }
     }
 }
