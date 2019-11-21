@@ -6,6 +6,9 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::env;
 
+use std::io::{self, BufRead};
+use std::ffi::OsString;
+
 use clap::{App, Arg};
 
 use shell::peer_manager::Threshold;
@@ -262,8 +265,7 @@ pub fn validate_required_args(args: &clap::ArgMatches)  {
 // Validates single required arg. If missing, exit whole process
 pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
     if args.is_present(arg_name) == false {
-        eprintln!("required \"{}\" arg is missing !!!", arg_name);
-        std::process::exit(1);
+        panic!("required \"{}\" arg is missing !!!", arg_name);
     }
 }
 
@@ -287,13 +289,36 @@ pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
     if let Some(parent_dir) = final_path.parent() {
         if parent_dir.exists() == false {
             if let Err(e) = fs::create_dir_all(parent_dir) {
-                eprintln!("Unable to create required dir '{:?}': {} ", parent_dir, e);
-                std::process::exit(1);
+                panic!("Unable to create required dir '{:?}': {} ", parent_dir, e);
             }
         }
     }
 
     final_path
+}
+
+// Parses config file and returns vector of OsString representing all argument strings from file
+// All lines that are empty or begin with "#" or "//" are ignored
+pub fn parse_config(config_path: PathBuf) -> Vec<OsString> {
+    let file = fs::File::open(&config_path).expect(format!("Unable to open config file at: {:?}", config_path).as_str());
+    let reader = io::BufReader::new(file);
+
+    let mut args : Vec<OsString> = vec![];
+
+    let mut line_num = 0;
+    for line_result in reader.lines() {
+        let mut line = line_result.expect(format!("Unable to read line: {:?} from config file at: {:?}", line_num, config_path).as_str());
+        line = line.trim().to_string();
+
+        if line.is_empty() || line.starts_with("#") || line.starts_with("//") {
+            continue;
+        }
+
+        args.push(OsString::from(line));
+        line_num += 1;
+    }
+
+    args
 }
 
 impl Environment {
@@ -311,7 +336,7 @@ impl Environment {
                 .parse::<PathBuf>()
                 .expect("Provided config-file cannot be converted to path");
 
-            let mut merged_args = crate::file_config::args(config_path, false);
+            let mut merged_args = parse_config(config_path);
 
             let mut cli_args = env::args_os();
             if let Some(bin) = cli_args.next() {

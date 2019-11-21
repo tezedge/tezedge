@@ -32,7 +32,6 @@ use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfigu
 use crate::configuration::LogFormat;
 
 mod configuration;
-mod file_config;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
