@@ -29,11 +29,12 @@ pub const LEVEL_BASE: usize = 8;
 
 #[cfg(test)]
 pub mod common_testing {
-    use storage::persistent::{open_db, Schema, Codec, SchemaError};
+    use storage::persistent::{open_db, Schema, Codec, BincodeEncoded, SchemaError};
     use std::{
         sync::Arc,
         process::Command,
     };
+    use serde::{Serialize, Deserialize};
     use rocksdb::DB;
     use crate::lane::Lane;
     use crate::content::ListValue;
@@ -70,7 +71,7 @@ pub mod common_testing {
         }
     }
 
-    #[derive(Default, PartialEq, Eq, Debug)]
+    #[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
     pub struct Value(pub HashSet<usize>);
 
     impl Value {
@@ -95,18 +96,9 @@ pub mod common_testing {
         }
     }
 
-    impl Codec for Value {
-        fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-            let set: HashSet<usize> = bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError)?;
-            Ok(Self(set))
-        }
+    impl BincodeEncoded for Value {}
 
-        fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-            bincode::serialize(&self.0).map_err(|_| SchemaError::EncodeError)
-        }
-    }
-
-    #[derive(Default, PartialEq, Eq, Debug)]
+    #[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
     pub struct OrderedValue(pub HashMap<usize, usize>);
 
     impl OrderedValue {
@@ -131,14 +123,5 @@ pub mod common_testing {
         }
     }
 
-    impl Codec for OrderedValue {
-        fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-            let val: HashMap<usize, usize> = bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError)?;
-            Ok(Self(val))
-        }
-
-        fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-            bincode::serialize(&self.0).map_err(|_| SchemaError::EncodeError)
-        }
-    }
+    impl BincodeEncoded for OrderedValue {}
 }
