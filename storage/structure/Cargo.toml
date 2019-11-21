@@ -9,6 +9,6 @@ edition = "2018"
 [dependencies]
 rocksdb = "0.12"
 serde = { version = "1.0", features = ["derive"] }
-bincode = "1.2.0"
+bincode = "1.2"
 typename = "0.1.1"
 storage = { path = "../" }

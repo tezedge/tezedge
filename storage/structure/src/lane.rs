@@ -70,6 +70,7 @@ impl<C: ListValue> Lane<C> {
         )).ok()
     }
 
+    #[inline]
     fn container(&self) -> &Arc<impl DatabaseWithSchema<Lane<C>>> { &self.db }
 }
 
