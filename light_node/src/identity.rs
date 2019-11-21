@@ -9,13 +9,8 @@ use failure::Fail;
 
 use tezos_api::identity::Identity;
 
-const TEZOS_DIR: &str = ".tezos-node";
-const IDENTITY_FILE: &str = "identity.json";
-
 #[derive(Fail, Debug)]
 pub enum IdentityError {
-    #[fail(display = "Cannot determine path of the user home directory")]
-    CannotFindHome,
     #[fail(display = "I/O error: {}", reason)]
     IoError {
         reason: io::Error
@@ -50,28 +45,10 @@ pub fn load_identity<P: AsRef<Path>>(identity_json_file_path: P) -> Result<Ident
     Ok(identity)
 }
 
-pub fn store_identity_to_default_tezos_identity_json_file(identity: &Identity) -> Result<(), IdentityError> {
-    let tezos_home = dirs::home_dir()
-        .map(|mut home_dir| {
-            home_dir.push(TEZOS_DIR);
-            home_dir
-        })
-        .ok_or(IdentityError::CannotFindHome)?;
-
-    fs::create_dir_all(tezos_home)?;
-
+// Stores provided identity into the file specified by path
+pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
     let identity_json = serde_json::to_string(identity).map_err(|err| IdentityError::SerializationError { reason: err })?;
-    fs::write(&get_default_tezos_identity_json_file_path()?, &identity_json)?;
+    fs::write(&path, &identity_json)?;
 
     Ok(())
-}
-
-pub fn get_default_tezos_identity_json_file_path() -> Result<PathBuf, IdentityError> {
-    dirs::home_dir()
-        .map(|mut home_dir| {
-            home_dir.push(TEZOS_DIR);
-            home_dir.push(IDENTITY_FILE);
-            home_dir
-        })
-        .ok_or(IdentityError::CannotFindHome)
 }
