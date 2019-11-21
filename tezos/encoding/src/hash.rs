@@ -31,6 +31,7 @@ pub enum HashType {
 
 impl HashType {
 
+    // TODO: make const after `#![feature(const_if_match)]` lands
     #[inline]
     pub fn prefix(self) -> &'static [u8] {
         use prefix_bytes::*;

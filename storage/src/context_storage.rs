@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::mem;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -37,19 +38,24 @@ impl ContextStorage {
     }
 }
 
+/// Key for a specific action stored in a database.
 #[derive(PartialEq, Debug)]
 pub struct ContextRecordKey {
     block_hash: BlockHash,
     key_hash: ContextKeyHash,
-    operation_hash: Option<OperationHash>
+    operation_hash: Option<OperationHash>,
+    /// This ID is used to order actions in a operation.
+    /// It's uniqueness is not guaranteed outside of the context bound.
+    ordinal_id: u32
 }
 
 impl ContextRecordKey {
-    pub fn new(block_hash: &BlockHash, operation_hash: &Option<OperationHash>, key: &[String]) -> Self {
+    pub fn new(block_hash: &BlockHash, operation_hash: &Option<OperationHash>, key: &[String], ordinal_id: u32) -> Self {
         ContextRecordKey {
             block_hash: block_hash.clone(),
             operation_hash: operation_hash.clone(),
-            key_hash: crypto::blake2b::digest_256(key.join(".").as_bytes())
+            key_hash: crypto::blake2b::digest_256(key.join(".").as_bytes()),
+            ordinal_id
         }
     }
 }
@@ -57,17 +63,19 @@ impl ContextRecordKey {
 const LEN_KEY_HASH: usize = 32;
 const LEN_BLOCK_HASH: usize = 32;
 const LEN_OPERATION_HASH: usize = 32;
+const LEN_ORDINAL_ID: usize = mem::size_of::<u32>();
 
 const IDX_KEY_HASH: usize = 0;
 const IDX_BLOCK_HASH: usize = IDX_KEY_HASH + LEN_KEY_HASH;
 const IDX_OPERATION_HASH: usize = IDX_BLOCK_HASH + LEN_BLOCK_HASH;
+const IDX_ORDINAL_ID: usize = IDX_OPERATION_HASH + LEN_OPERATION_HASH;
 
-const LEN_RECORD_KEY: usize = LEN_BLOCK_HASH + LEN_KEY_HASH + LEN_OPERATION_HASH;
+const LEN_RECORD_KEY: usize = LEN_BLOCK_HASH + LEN_KEY_HASH + LEN_OPERATION_HASH + LEN_ORDINAL_ID;
 const BLANK_OPERATION_HASH: [u8; LEN_OPERATION_HASH] = [0; LEN_OPERATION_HASH];
 
 /// Codec for `RecordKey`
 ///
-/// * bytes layout `[key(32)][block_hash(32)]`
+/// * bytes layout `[key(32)][block_hash(32)][ordinal_id(4)]`
 impl Codec for ContextRecordKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if LEN_RECORD_KEY == bytes.len() {
@@ -79,8 +87,12 @@ impl Codec for ContextRecordKey {
             } else {
                 Some(operation_hash)
             };
-
-            Ok(ContextRecordKey { block_hash, operation_hash, key_hash })
+            // ordinal_id
+            let mut ordinal_id_bytes: [u8; 4] = Default::default();
+            ordinal_id_bytes.copy_from_slice(&bytes[IDX_ORDINAL_ID..IDX_ORDINAL_ID + LEN_ORDINAL_ID]);
+            let ordinal_id = u32::from_le_bytes(ordinal_id_bytes);
+            
+            Ok(ContextRecordKey { block_hash, operation_hash, key_hash, ordinal_id })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -94,6 +106,7 @@ impl Codec for ContextRecordKey {
             Some(operation_hash) => result.extend(operation_hash),
             None => result.extend(&BLANK_OPERATION_HASH),
         }
+        result.extend(&self.ordinal_id.to_le_bytes());
         assert_eq!(result.len(), LEN_RECORD_KEY, "Result length mismatch");
         Ok(result)
     }
@@ -132,7 +145,8 @@ mod tests {
         let expected = ContextRecordKey {
             block_hash: vec![43; HashType::BlockHash.size()],
             key_hash: vec![60; LEN_KEY_HASH],
-            operation_hash: Some(vec![27; LEN_OPERATION_HASH])
+            operation_hash: Some(vec![27; LEN_OPERATION_HASH]),
+            ordinal_id: 6548654
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextRecordKey::decode(&encoded_bytes)?;
@@ -144,7 +158,8 @@ mod tests {
         let expected = ContextRecordKey {
             block_hash: vec![43; HashType::BlockHash.size()],
             key_hash: vec![60; LEN_KEY_HASH],
-            operation_hash: None
+            operation_hash: None,
+            ordinal_id: 176105218
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextRecordKey::decode(&encoded_bytes)?;
