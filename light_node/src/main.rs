@@ -218,7 +218,7 @@ fn main() {
         if env.identity_json_file_path.exists() {
             match identity::load_identity(&env.identity_json_file_path) {
                 Ok(identity) => {
-                    info!(log, "Identity loaded from: {:?}", &env.identity_json_file_path);
+                    info!(log, "Identity loaded from file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
                     identity
                 },
                 Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
@@ -230,7 +230,7 @@ fn main() {
                     info!(log, "Identity successfully generated");
                     match identity::store_identity(&env.identity_json_file_path, &identity) {
                         Ok(()) => {
-                            info!(log, "Generated identity stored at {:?}", &env.identity_json_file_path);
+                            info!(log, "Generated identity stored to file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
                             identity
                         },
                         Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),

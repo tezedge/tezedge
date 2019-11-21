@@ -129,12 +129,13 @@ run_node() {
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
   # start node
-  cargo run --bin light-node -- --config-file "$CONFIG_FILE" \
+  cargo run $CARGO_PROFILE_ARG --bin light-node -- \
+                                --config-file "$CONFIG_FILE" \
                                 --tezos-data-dir "$TEZOS_DIR" \
                                 --identity-file "$IDENTITY_FILE" \
                                 --bootstrap-db-path "$BOOTSTRAP_DIR" \
                                 --network "$NETWORK" \
-                                --protocol-runner ./target/debug/protocol-runner "${args[@]}"
+                                --protocol-runner "./target/$PROFILE/protocol-runner" "${args[@]}"
 }
 
 run_docker() {
