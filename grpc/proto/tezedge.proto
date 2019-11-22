@@ -1,0 +1,10 @@
+syntax = "proto3";
+package tezedge;
+
+// Imports
+import "messages/hello.proto";
+
+service Tezedge {
+    // Our SayHello rpc accepts HelloRequests and returns HelloReplies
+    rpc SayHello (HelloRequest) returns (HelloReply);
+}

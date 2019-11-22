@@ -32,3 +32,4 @@ storage = { path = "../storage" }
 shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
+grpc = { path = "../grpc" }
