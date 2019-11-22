@@ -123,8 +123,12 @@ run_node() {
 
 
   # cleanup data directory
-  rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
-  rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
+  if [ -z "$KEEP_DATA" ]; then
+    rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
+    rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
+  else
+    echo "KEEP_DATA is set"
+  fi
 
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"

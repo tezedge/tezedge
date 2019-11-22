@@ -12,7 +12,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::ts_to_rfc3339;
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 /// Object containing information to recreate the full block information
 pub struct FullBlockInfo {
     pub hash: String,

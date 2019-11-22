@@ -17,10 +17,11 @@ use tezos_encoding::hash::{HashEncoding, HashType};
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
-    server::{ask::ask, control_msg::{GetCurrentHead, GetFullCurrentHead}},
+    server::{ask::ask, control_msg::*},
     ServiceResult,
     ts_to_rfc3339,
 };
+use crate::server::control_msg::GetBlocks;
 
 enum Route {
     Bootstrapped,
@@ -29,7 +30,10 @@ enum Route {
     Protocols,
     ValidBlocks,
     HeadChain,
-    ChainsBlockId
+    ChainsBlockId,
+    // -------------------------- //
+    DevGetBlocks,
+    DevGetBlockActions,
 }
 
 /// Spawn new HTTP server on given address interacting with specific actor system
@@ -138,6 +142,15 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
     empty()
 }
 
+async fn dev_get_blocks(sys: ActorSystem, actor: RpcServerRef, from_block_id: Option<String>, limit: usize) -> ServiceResult {
+    match ask(&sys, &actor, GetBlocks::Request { block_hash: from_block_id, limit }).await {
+        GetBlocks::Response(blocks) => {
+            make_json_response(&blocks)
+        }
+        _ => empty()
+    }
+}
+
 async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
     if chain_id == "main" {
         let current_head = ask(&sys, &actor, GetFullCurrentHead::Request).await;
@@ -179,6 +192,8 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/valid_blocks", Route::ValidBlocks);
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
+    routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
+    routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes
 }
 
@@ -223,6 +238,23 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
             chains_block_id(sys, actor, chain_id, block_id).await
+        }
+        (&Method::GET, Some((Route::DevGetBlocks, _))) => {
+            let (from_block_id, limit) = req.uri().query()
+                .map(parse_query_string)
+                .map(|query_parts| {
+                    let from_block_id = query_parts.get("from_block_id")
+                        .and_then(|values| values.first())
+                        .map(|value| value.to_string());
+                    let limit = query_parts.get("limit")
+                        .and_then(|values| values.first())
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .filter(|value| *value < 1_000)
+                        .unwrap_or(50);
+                    (from_block_id, limit)
+                }).unwrap_or((None, 50));
+
+            dev_get_blocks(sys, actor, from_block_id, limit).await
         }
         _ => not_found()
     }
