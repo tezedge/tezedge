@@ -1,9 +1,16 @@
-use tezos_messages::p2p::encoding::prelude::*;
-use tezos_encoding::hash::{HashEncoding, HashType};
-use crate::ts_to_rfc3339;
-use shell::shell_channel::BlockApplied;
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+
+use serde::{Deserialize, Serialize};
+
+use shell::shell_channel::BlockApplied;
+use storage::BlockHeaderWithHash;
+use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_messages::p2p::encoding::prelude::*;
+
+use crate::ts_to_rfc3339;
 
 #[derive(Debug, Clone)]
 /// Object containing information to recreate the full block information
@@ -49,7 +56,7 @@ impl From<BlockApplied> for FullBlockInfo {
         };
 
         Self {
-            hash: hash,
+            hash,
             chain_id: "".into(),
             header: InnerBlockHeader {
                 level: val.header.level(),
@@ -67,5 +74,12 @@ impl From<BlockApplied> for FullBlockInfo {
             metadata: val.block_header_proto_info,
             operations: Vec::new(),
         }
+    }
+}
+
+impl From<BlockHeaderWithHash> for FullBlockInfo {
+    fn from(block: BlockHeaderWithHash) -> Self {
+        let block: BlockApplied = block.into();
+        block.into()
     }
 }

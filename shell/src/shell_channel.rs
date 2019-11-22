@@ -1,13 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use failure::_core::str::FromStr;
 use riker::actors::*;
 
+use storage::BlockHeaderWithHash;
 use tezos_encoding::hash::BlockHash;
-use std::sync::Arc;
 use tezos_messages::p2p::encoding::prelude::*;
-use failure::_core::str::FromStr;
-use std::collections::HashMap;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug)]
@@ -17,6 +19,18 @@ pub struct BlockApplied {
     pub header: Arc<BlockHeader>,
     pub block_header_info: Option<BlockHeaderInfo>,
     pub block_header_proto_info: HashMap<String, String>,
+}
+
+impl From<BlockHeaderWithHash> for BlockApplied {
+    fn from(block: BlockHeaderWithHash) -> Self {
+        Self {
+            hash: block.hash,
+            level: block.header.level(),
+            header: block.header,
+            block_header_proto_info: Default::default(),
+            block_header_info: None,
+        }
+    }
 }
 
 /// Structure containing basic information from block hedear

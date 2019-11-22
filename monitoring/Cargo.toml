@@ -8,7 +8,7 @@ edition = "2018"
 storage = { path = "../storage" }
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 shell = { path = "../shell" }
-failure = "0.1.5"
+failure = "0.1"
 rocksdb = "0.12"
 chrono = "0.4"
 ws = "*"
