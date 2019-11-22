@@ -1,21 +1,26 @@
-use hyper::{Body, Response, Error, Server, Request, StatusCode, Method};
-use hyper::service::{service_fn, make_service_fn};
-use futures::Future;
-use riker::actors::ActorSystem;
-use chrono::prelude::*;
-use lazy_static::lazy_static;
-use regex::Regex;
-use tezos_encoding::hash::{HashEncoding, HashType};
-use shell::shell_channel::BlockApplied;
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use crate::{
-    ts_to_rfc3339, ServiceResult, make_json_response,
-    server::{control_msg::{GetCurrentHead, GetFullCurrentHead}, ask::ask},
-    encoding::{monitor::BootstrapInfo, base_types::*},
-    rpc_actor::RpcServerRef,
-};
+
+use chrono::prelude::*;
+use futures::Future;
+use hyper::{Body, Error, Method, Request, Response, Server, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
 use path_tree::PathTree;
+use riker::actors::ActorSystem;
+
+use lazy_static::lazy_static;
+use shell::shell_channel::BlockApplied;
+use tezos_encoding::hash::{HashEncoding, HashType};
+
+use crate::{
+    encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
+    server::{ask::ask, control_msg::{GetCurrentHead, GetFullCurrentHead}},
+    ServiceResult,
+    ts_to_rfc3339,
+};
 
 enum Route {
     Bootstrapped,
@@ -68,8 +73,8 @@ fn empty() -> ServiceResult {
 }
 
 /// Helper for parsing URI queries.
-/// Functions takes URI query in format key1=val1&key1=val2&key2=val3
-/// and produces map { key1: [val1, val2], key2: [val3] }
+/// Functions takes URI query in format `key1=val1&key1=val2&key2=val3`
+/// and produces map `{ key1: [val1, val2], key2: [val3] }`
 fn parse_query_string(query: &str) -> HashMap<&str, Vec<&str>> {
     let mut ret: HashMap<&str, Vec<&str>> = HashMap::new();
     for (key, value) in query.split('&').map(|x| {
@@ -162,8 +167,6 @@ async fn chains_block_id(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, 
 }
 
 lazy_static! {
-    static ref HEADS_CHAIN: Regex = Regex::new(r"/monitor/heads/(?P<chain_id>\w+)").expect("Invalid regex");
-    static ref CHAIN_BLOCK_ID: Regex = Regex::new(r"/chains/(?P<chain_id>\w+)/blocks/(?P<block_id>\w+)").expect("Invalid regex");
     static ref ROUTES: PathTree<Route> = create_routes();
 }
 
