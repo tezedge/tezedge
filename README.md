@@ -24,10 +24,10 @@ curl https://sh.rustup.rs -sSf | sh
 
 Rust nightly is required to build this project.
 ```
-rustup toolchain install nightly-2019-11-14
-rustup default nightly-2019-11-14
+rustup toolchain install nightly-2019-11-20
+rustup default nightly-2019-11-20
 ```
-Application has been tested to compile with `rustc 1.40.0-nightly (e413dc36a 2019-10-14)`.
+Application has been tested to compile with `rustc 1.40.0-nightly (e413dc36a 2019-11-20)`.
 
 **3. Install required libs**
 
@@ -70,20 +70,28 @@ Full description of all arguments is in the light_node [README](light_node/READM
 
 **5. Running Tezedge node using run.sh script** 
 
-On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnet variables, build and run tezedge node. 
-All arguments can be provided to the `run.sh` script in the same manner as descirbed in previoud secion - Running Tezedge node manually.
+On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnent variables, build and run tezedge node. 
+All arguments can be provided to the `run.sh` script in the same manner as described in the previous section - Running Tezedge node manually.
+
+The following command will execute node in debug node:
 
 ```
 ./run.sh node
 ```
 
-if you are running OSX you can use docker version:
+To run node in release mode execute the following:
+
+```
+./run.sh release
+```
+
+If you are running OSX you can use docker version:
 
 ```
 ./run.sh docker
 ```
 
-Listening for updates. Node emits statistics on the websocket server, which can be changed with `-w` argument, for example:
+Listening for updates. Node emits statistics on the websocket server, which can be changed by `--websocket-address` argument, for example:
 
 ```
 ./run.sh node --websocket-address 0.0.0.0:12345

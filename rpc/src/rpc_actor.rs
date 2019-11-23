@@ -1,30 +1,38 @@
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelTopic, NetworkChannelRef};
-use shell::shell_channel::{ShellChannelRef, ShellChannelMsg, ShellChannelTopic, BlockApplied};
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+
 use riker::{
     actors::*,
 };
+use slog::warn;
+use tokio::runtime::Runtime;
+
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
+use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use storage::{BlockHeaderWithHash, BlockStorageReader};
+use tezos_api::client::TezosStorageInitInfo;
+use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType, ProtocolHash};
+
 use crate::{
     server::{spawn_server, control_msg::*},
 };
-use slog::warn;
-use std::net::SocketAddr;
-use tokio::runtime::Runtime;
-use std::sync::Arc;
-use storage::{BlockStorageReader, BlockHeaderWithHash};
-use tezos_encoding::hash::{ChainId, ProtocolHash, HashEncoding, HashType};
 use crate::helpers::FullBlockInfo;
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
 /// system with the server.
-#[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead, GetFullCurrentHead)]
+#[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead, GetFullCurrentHead, GetBlocks, GetBlockActions)]
 pub struct RpcServer {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     // Stats
     chain_id: ChainId,
     _supported_protocols: Vec<ProtocolHash>,
+    genesis_hash: BlockHash,
     current_head: Option<BlockApplied>,
     db: Arc<rocksdb::DB>,
 }
@@ -32,32 +40,27 @@ pub struct RpcServer {
 impl RpcServer {
     pub fn name() -> &'static str { "rpc-server" }
 
-    fn new((network_channel, shell_channel, db, chain_id, supported_protocols): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId, Vec<ProtocolHash>)) -> Self {
-        let current_head = if let Some(h) = Self::load_current_head(db.clone()) {
-            Some(BlockApplied {
-                hash: h.hash,
-                level: h.header.level(),
-                header: h.header,
-                block_header_proto_info: Default::default(),
-                block_header_info: None,
-            })
-        } else {
-            None
-        };
+    fn new((network_channel, shell_channel, db, chain_id, genesis_hash, supported_protocols): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId, BlockHash, Vec<ProtocolHash>)) -> Self {
+        let current_head = Self::load_current_head(db.clone()).map(|block| block.into());
 
         Self {
             network_channel,
             shell_channel,
             chain_id,
+            genesis_hash,
             _supported_protocols: supported_protocols,
             current_head,
             db,
         }
     }
 
-    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, chain_id: ChainId, protocols: Vec<ProtocolHash>) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, addr: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
+        let chain_id = tezos_info.chain_id.clone();
+        let genesis_hash = tezos_info.genesis_block_header_hash.clone();
+        let protocols = tezos_info.supported_protocol_hashes.clone();
+
         let ret = sys.actor_of(
-            Props::new_args(Self::new, (network_channel, shell_channel, db, chain_id, protocols)),
+            Props::new_args(Self::new, (network_channel, shell_channel, db, chain_id, genesis_hash, protocols)),
             Self::name(),
         )?;
 
@@ -182,6 +185,81 @@ impl Receive<GetFullCurrentHead> for RpcServer {
 
                 if sender.try_tell(resp, me).is_err() {
                     warn!(ctx.system.log(), "Failed to send response for GetFullCurrentHead");
+                }
+            }
+        }
+    }
+}
+
+impl Receive<GetBlocks> for RpcServer {
+    type Msg = RpcServerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetBlocks, sender: Sender) {
+        use storage::{BlockMetaStorage, BlockStorage};
+
+        if let GetBlocks::Request { block_hash, limit } = msg {
+            if let Some(sender) = sender {
+                let block_storage = BlockStorage::new(self.db.clone());
+                let block_meta_storage = BlockMetaStorage::new(self.db.clone());
+
+                let mut resp_data = Vec::with_capacity(limit);
+                // get starting block hash or use genesis hash
+                let mut block_hash = block_hash.and_then(|hash| HashEncoding::new(HashType::BlockHash).string_to_bytes(&hash).ok()).unwrap_or(self.genesis_hash.clone());
+
+                for _ in 0..limit {
+                    match block_meta_storage.get(&block_hash) {
+                        Ok(Some(meta)) => match block_storage.get(&block_hash) {
+                                Ok(Some(block)) => {
+                                    resp_data.push(block.into());
+                                    match meta.successor {
+                                        Some(successor) => block_hash = successor,
+                                        None => break
+                                    }
+                                },
+                                Err(err) => {
+                                    warn!(ctx.system.log(), "Failed to retrieve block from storage"; "reason" => err);
+                                    break
+                                },
+                                _ => break
+                        }
+                        Err(err) => {
+                            warn!(ctx.system.log(), "Failed to retrieve block metadata from storage"; "reason" => err);
+                            break
+                        },
+                        _ => break
+                    }
+                }
+
+                if sender.try_tell(GetBlocks::Response(resp_data), Some(ctx.myself().into())).is_err() {
+                    warn!(ctx.system.log(), "Failed to send response for GetBlocks");
+                }
+            }
+        }
+    }
+}
+
+impl Receive<GetBlockActions> for RpcServer {
+    type Msg = RpcServerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetBlockActions, sender: Sender) {
+        use storage::ContextStorage;
+
+        if let GetBlockActions::Request { block_hash } = msg {
+            if let Some(sender) = sender {
+                let context_storage = ContextStorage::new(self.db.clone());
+
+                let mut resp_data = Default::default();
+                match HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_hash) {
+                    Ok(block_hash) => match context_storage.get_by_block_hash(&block_hash) {
+                        Ok(mut data) => resp_data = data.drain(..).map(|v| v.action).collect(),
+                        Err(err) => warn!(ctx.system.log(), "Failed to retrieve block_actions from storage"; "reason" => err),
+                    }
+                    Err(_) => warn!(ctx.system.log(), "Failed to decode block hash")
+                }
+
+
+                if sender.try_tell(GetBlockActions::Response(resp_data), Some(ctx.myself().into())).is_err() {
+                    warn!(ctx.system.log(), "Failed to send response for GetBlocks");
                 }
             }
         }

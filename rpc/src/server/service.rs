@@ -1,20 +1,40 @@
-use hyper::{Body, Response, Error, Server, Request, StatusCode, Method};
-use hyper::service::{service_fn, make_service_fn};
-use futures::Future;
-use riker::actors::ActorSystem;
-use chrono::prelude::*;
-use lazy_static::lazy_static;
-use regex::Regex;
-use tezos_encoding::hash::{HashEncoding, HashType};
-use shell::shell_channel::BlockApplied;
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
+
+use chrono::prelude::*;
+use futures::Future;
+use hyper::{Body, Error, Method, Request, Response, Server, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
+use path_tree::PathTree;
+use riker::actors::ActorSystem;
+
+use lazy_static::lazy_static;
+use shell::shell_channel::BlockApplied;
+use tezos_encoding::hash::{HashEncoding, HashType};
+
 use crate::{
-    ts_to_rfc3339, ServiceResult, make_json_response,
-    server::{control_msg::{GetCurrentHead, GetFullCurrentHead}, ask::ask},
-    encoding::{monitor::BootstrapInfo, base_types::*},
-    rpc_actor::RpcServerRef,
+    encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
+    server::{ask::ask, control_msg::*},
+    ServiceResult,
+    ts_to_rfc3339,
 };
+use crate::server::control_msg::GetBlocks;
+
+enum Route {
+    Bootstrapped,
+    CommitHash,
+    ActiveChains,
+    Protocols,
+    ValidBlocks,
+    HeadChain,
+    ChainsBlockId,
+    // -------------------------- //
+    DevGetBlocks,
+    DevGetBlockActions,
+}
 
 /// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) -> impl Future<Output=Result<(), Error>> {
@@ -57,9 +77,9 @@ fn empty() -> ServiceResult {
 }
 
 /// Helper for parsing URI queries.
-/// Functions takes URI query in format key1=val1&key1=val2&key2=val3
-/// and produces map { key1: [val1, val2], key2: [val3] }
-fn parse_queries(query: &str) -> HashMap<&str, Vec<&str>> {
+/// Functions takes URI query in format `key1=val1&key1=val2&key2=val3`
+/// and produces map `{ key1: [val1, val2], key2: [val3] }`
+fn parse_query_string(query: &str) -> HashMap<&str, Vec<&str>> {
     let mut ret: HashMap<&str, Vec<&str>> = HashMap::new();
     for (key, value) in query.split('&').map(|x| {
         let mut parts = x.split('=');
@@ -72,6 +92,16 @@ fn parse_queries(query: &str) -> HashMap<&str, Vec<&str>> {
         }
     }
     ret
+}
+
+fn find_param_value<'a, 'b>(params: &[(&'a str, &'a str)], key_to_find: &'b str) -> Option<&'a str> {
+    params.iter().find_map(|&(key, value)| {
+        if key == key_to_find {
+            Some(value)
+        } else {
+            None
+        }
+    })
 }
 
 /// GET /monitor/bootstrapped endpoint handler
@@ -112,6 +142,24 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
     empty()
 }
 
+async fn dev_get_blocks(sys: ActorSystem, actor: RpcServerRef, from_block_id: Option<String>, limit: usize) -> ServiceResult {
+    match ask(&sys, &actor, GetBlocks::Request { block_hash: from_block_id, limit }).await {
+        GetBlocks::Response(blocks) => {
+            make_json_response(&blocks)
+        }
+        _ => empty()
+    }
+}
+
+async fn dev_get_block_actions(sys: ActorSystem, actor: RpcServerRef, block_id: String) -> ServiceResult {
+    match ask(&sys, &actor, GetBlockActions::Request { block_hash: block_id }).await {
+        GetBlockActions::Response(actions) => {
+            make_json_response(&actions)
+        }
+        _ => empty()
+    }
+}
+
 async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
     if chain_id == "main" {
         let current_head = ask(&sys, &actor, GetFullCurrentHead::Request).await;
@@ -141,66 +189,86 @@ async fn chains_block_id(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, 
 }
 
 lazy_static! {
-    static ref HEADS_CHAIN: Regex = Regex::new(r"/monitor/heads/(?P<chain_id>\w+)").expect("Invalid regex");
-    static ref CHAIN_BLOCK_ID: Regex = Regex::new(r"/chains/(?P<chain_id>\w+)/blocks/(?P<block_id>\w+)").expect("Invalid regex");
+    static ref ROUTES: PathTree<Route> = create_routes();
+}
+
+fn create_routes() -> PathTree<Route> {
+    let mut routes = PathTree::new();
+    routes.insert("/monitor/bootstrapped", Route::Bootstrapped);
+    routes.insert("/monitor/commit_hash", Route::CommitHash);
+    routes.insert("/monitor/active_chains", Route::ActiveChains);
+    routes.insert("/monitor/protocols", Route::Protocols);
+    routes.insert("/monitor/valid_blocks", Route::ValidBlocks);
+    routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
+    routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
+    routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
+    routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
+    routes
 }
 
 /// Simple endpoint routing handler
 async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/monitor/bootstrapped") => bootstrapped(sys, actor).await,
-        (&Method::GET, "/monitor/commit_hash") => commit_hash(sys, actor).await,
-        (&Method::GET, "/monitor/active_chains") => active_chains(sys, actor).await,
-        (&Method::GET, "/monitor/protocols") => protocols(sys, actor).await,
-        (&Method::GET, "/monitor/valid_blocks") => {
-            let mut protocol: Vec<String> = Vec::new();
-            let mut next_protocol: Vec<String> = Vec::new();
-            let mut chain: Vec<UniString> = Vec::new();
-            if let Some(query) = req.uri().query() {
-                let parts = parse_queries(query);
-                if let Some(protocols) = parts.get("protocol") {
-                    for proto in protocols {
-                        protocol.push(proto.to_string());
+    match (req.method(), ROUTES.find(req.uri().path())) {
+        (&Method::GET, Some((Route::Bootstrapped, _))) => bootstrapped(sys, actor).await,
+        (&Method::GET, Some((Route::CommitHash, _))) => commit_hash(sys, actor).await,
+        (&Method::GET, Some((Route::ActiveChains, _))) => active_chains(sys, actor).await,
+        (&Method::GET, Some((Route::Protocols, _))) => protocols(sys, actor).await,
+        (&Method::GET, Some((Route::ValidBlocks, _))) => {
+            let mut protocol = Vec::new();
+            let mut next_protocol = Vec::new();
+            let mut chain = Vec::new();
+
+            req.uri().query()
+                .map(parse_query_string)
+                .map(|query_parts| query_parts.iter().for_each(|(&key, values)| {
+                    match key {
+                        "protocol" => protocol.extend(values.iter().map(|value| value.to_string())),
+                        "next_protocol" => next_protocol.extend(values.iter().map(|value| value.to_string())),
+                        "chain" => chain.extend(values.iter().map(|value| value.to_string().into())),
+                        _ => ()
                     }
-                }
-                if let Some(next_protocols) = parts.get("next_protocol") {
-                    for next in next_protocols {
-                        next_protocol.push(next.to_string());
-                    }
-                }
-                if let Some(chains) = parts.get("chain") {
-                    for c in chains {
-                        chain.push(c.to_string().into());
-                    }
-                }
-            }
+                }));
             valid_blocks(sys, actor, protocol, next_protocol, chain).await
         }
-        _ => {
-            // We still need to go through pattern, for URIs with wildcart parts
-            if req.method() == Method::GET {
-                if let Some(captures) = HEADS_CHAIN.captures(req.uri().path()) {
-                    let chain_id = &captures["chain_id"];
-                    let mut next_protocol: Vec<String> = Vec::new();
-                    if let Some(query) = req.uri().query() {
-                        let parts = parse_queries(query);
-                        if let Some(protos) = parts.get("next_protocol") {
-                            for proto in protos {
-                                next_protocol.push(proto.to_string());
-                            }
-                        }
+        (&Method::GET, Some((Route::HeadChain, params))) => {
+            let chain_id = find_param_value(&params, "chain_id").unwrap();
+            let mut next_protocol = Vec::new();
+            req.uri().query()
+                .map(parse_query_string)
+                .map(|query_parts| query_parts.iter().for_each(|(&key, values)| {
+                    match key {
+                        "next_protocol" => next_protocol.extend(values.iter().map(|value| value.to_string())),
+                        _ => ()
                     }
-                    head_chain(sys, actor, chain_id, next_protocol).await
-                } else if let Some(captures) = CHAIN_BLOCK_ID.captures(req.uri().path()) {
-                    let chain_id = &captures["chain_id"];
-                    let block_id = &captures["block_id"];
-                    chains_block_id(sys, actor, chain_id, block_id).await
-                } else {
-                    not_found()
-                }
-            } else {
-                not_found()
-            }
+                }));
+            head_chain(sys, actor, chain_id, next_protocol).await
         }
+        (&Method::GET, Some((Route::ChainsBlockId, params))) => {
+            let chain_id = find_param_value(&params, "chain_id").unwrap();
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            chains_block_id(sys, actor, chain_id, block_id).await
+        }
+        (&Method::GET, Some((Route::DevGetBlocks, _))) => {
+            let (from_block_id, limit) = req.uri().query()
+                .map(parse_query_string)
+                .map(|query_parts| {
+                    let from_block_id = query_parts.get("from_block_id")
+                        .and_then(|values| values.first())
+                        .map(|value| value.to_string());
+                    let limit = query_parts.get("limit")
+                        .and_then(|values| values.first())
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .filter(|value| *value < 1_000)
+                        .unwrap_or(50);
+                    (from_block_id, limit)
+                }).unwrap_or((None, 50));
+
+            dev_get_blocks(sys, actor, from_block_id, limit).await
+        }
+        (&Method::GET, Some((Route::DevGetBlockActions, params))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            dev_get_block_actions(sys, actor, block_id.to_string()).await
+        }
+        _ => not_found()
     }
 }

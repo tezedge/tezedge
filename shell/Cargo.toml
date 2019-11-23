@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 dns-lookup = "1.0.1"
-failure = "0.1.5"
+failure = "0.1"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4"
 itertools = "0.8.0"
