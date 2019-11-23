@@ -126,8 +126,6 @@ run_node() {
   if [ -z "$KEEP_DATA" ]; then
     rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
     rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
-  else
-    echo "KEEP_DATA is set"
   fi
 
   # protocol_runner needs 'libtezos.so' to run

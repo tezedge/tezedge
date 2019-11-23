@@ -4,6 +4,7 @@
 use shell::shell_channel::BlockApplied;
 
 use crate::helpers::FullBlockInfo;
+use tezos_context::channel::ContextAction;
 
 /// Request/Response to access the Current Head data from RpcActor
 #[derive(Debug, Clone)]
@@ -30,4 +31,14 @@ pub enum GetBlocks {
         limit: usize
     },
     Response(Vec<FullBlockInfo>)
+}
+
+/// Request actions for a specific block
+#[derive(Debug, Clone)]
+pub enum GetBlockActions {
+    Request {
+        /// Block hash formatted as a string
+        block_hash: String,
+    },
+    Response(Vec<ContextAction>),
 }

@@ -151,6 +151,15 @@ async fn dev_get_blocks(sys: ActorSystem, actor: RpcServerRef, from_block_id: Op
     }
 }
 
+async fn dev_get_block_actions(sys: ActorSystem, actor: RpcServerRef, block_id: String) -> ServiceResult {
+    match ask(&sys, &actor, GetBlockActions::Request { block_hash: block_id }).await {
+        GetBlockActions::Response(actions) => {
+            make_json_response(&actions)
+        }
+        _ => empty()
+    }
+}
+
 async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
     if chain_id == "main" {
         let current_head = ask(&sys, &actor, GetFullCurrentHead::Request).await;
@@ -255,6 +264,10 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
                 }).unwrap_or((None, 50));
 
             dev_get_blocks(sys, actor, from_block_id, limit).await
+        }
+        (&Method::GET, Some((Route::DevGetBlockActions, params))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            dev_get_block_actions(sys, actor, block_id.to_string()).await
         }
         _ => not_found()
     }

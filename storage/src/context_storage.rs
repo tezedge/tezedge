@@ -140,7 +140,7 @@ impl Codec for ContextRecordKey {
 
 #[derive(Serialize, Deserialize)]
 pub struct ContextRecordValue {
-    action: ContextAction,
+    pub action: ContextAction,
 }
 
 impl ContextRecordValue {

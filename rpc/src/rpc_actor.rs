@@ -25,7 +25,7 @@ pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
 /// system with the server.
-#[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead, GetFullCurrentHead, GetBlocks)]
+#[actor(NetworkChannelMsg, ShellChannelMsg, GetCurrentHead, GetFullCurrentHead, GetBlocks, GetBlockActions)]
 pub struct RpcServer {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
@@ -231,6 +231,34 @@ impl Receive<GetBlocks> for RpcServer {
                 }
 
                 if sender.try_tell(GetBlocks::Response(resp_data), Some(ctx.myself().into())).is_err() {
+                    warn!(ctx.system.log(), "Failed to send response for GetBlocks");
+                }
+            }
+        }
+    }
+}
+
+impl Receive<GetBlockActions> for RpcServer {
+    type Msg = RpcServerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: GetBlockActions, sender: Sender) {
+        use storage::ContextStorage;
+
+        if let GetBlockActions::Request { block_hash } = msg {
+            if let Some(sender) = sender {
+                let context_storage = ContextStorage::new(self.db.clone());
+
+                let mut resp_data = Default::default();
+                match HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_hash) {
+                    Ok(block_hash) => match context_storage.get_by_block_hash(&block_hash) {
+                        Ok(mut data) => resp_data = data.drain(..).map(|v| v.action).collect(),
+                        Err(err) => warn!(ctx.system.log(), "Failed to retrieve block_actions from storage"; "reason" => err),
+                    }
+                    Err(_) => warn!(ctx.system.log(), "Failed to decode block hash")
+                }
+
+
+                if sender.try_tell(GetBlockActions::Response(resp_data), Some(ctx.myself().into())).is_err() {
                     warn!(ctx.system.log(), "Failed to send response for GetBlocks");
                 }
             }

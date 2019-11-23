@@ -1844,6 +1844,7 @@ dependencies = [
  "slog_derive 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "storage 0.1.0",
  "tezos_api 0.1.0",
+ "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
  "tokio 0.2.0-alpha.6 (registry+https://github.com/rust-lang/crates.io-index)",
