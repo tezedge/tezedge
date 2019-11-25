@@ -6,10 +6,6 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[[bin]] # Bin to run the gRPC server
-name = "grpc-server"
-path = "src/server.rs"
-
 [[bin]] # Bin to run the gRPC client
 name = "grpc-client"
 path = "src/client.rs"
@@ -21,6 +17,12 @@ prost = "0.5"
 prost-derive = "0.5"
 tokio = "=0.2.0-alpha.6"
 futures = "0.3"
+rocksdb = "0.12"
+slog = { version = "2.5", features = ["max_level_trace"] }
+slog-async = "2.3"
+slog-json = "2.3"
+slog-term = "2.4"
+failure = "0.1.5"
 
 [build-dependencies]
 tonic-build = "0.1.0-alpha.5"

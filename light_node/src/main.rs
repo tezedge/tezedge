@@ -31,8 +31,10 @@ use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfigu
 
 use crate::configuration::LogFormat;
 
+use grpc;
 mod configuration;
 mod identity;
+
 
 const EXPECTED_POW: f64 = 26.0;
 const DATABASE_VERSION: i64 = 2;
@@ -78,8 +80,8 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
-    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+fn block_on_actors(tokio_runtime : &Runtime, env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
+    // let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
@@ -116,6 +118,8 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         info!(log, "Running in record mode");
         let _ = NetworkChannelListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
     }
+
+    
 
     tokio_runtime.block_on(async move {
         use std::thread;
@@ -263,7 +267,6 @@ fn main() {
         _ => ()
     }
 
-
     let ProtocolRunnerEndpoint {
         runner: protocol_runner,
         commands: protocol_commands,
@@ -302,9 +305,42 @@ fn main() {
         });
     }
 
+    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+
+    // Creates grpc server
+    {
+        use std::thread;
+        use std::time::Duration;
+
+        let run = protocol_runner_run.clone();
+        let log = log.clone();
+        let rocks_db = rocks_db.clone();
+
+        let _ = tokio_runtime.spawn(async move {
+            while run.load(Ordering::Acquire) {
+                info!(log, "Starting GRPC server");
+                match grpc::create_grpc_server(rocks_db.clone(), log.clone()).await {
+                    Ok(()) => {
+                        info!(log, "GRPC server ended without error");
+                    },
+                    Err(e) => {
+                        //crit!(log, "GRPC server ended with error"; "error" => e);
+                        eprintln!("GRPC server ended with error {:?}", e);
+                        break
+                    },
+                }    
+
+                info!(log, "Try to recreate GRPC server");
+                thread::sleep(Duration::from_secs(1));
+            }
+
+            // There is no graceful shutdown implemeneted yet
+            // TODO: shut down server
+        });
+    }
 
     match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
+        Ok(_) => block_on_actors(&tokio_runtime, &env, tezos_identity, actor_system, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
 

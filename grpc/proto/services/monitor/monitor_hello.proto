@@ -1,5 +1,5 @@
 syntax = "proto3";
-package tezedge;
+package tezedge.monitor;
 
 message HelloRequest {
    string name = 1;

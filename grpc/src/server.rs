@@ -1,41 +1,51 @@
-use tonic::{transport::Server, Request, Response, Status};
+use slog::{Logger, debug};
+use tonic::{Request, Response, Status};
+use std::sync::Arc;
 
 pub mod tezedge {
-    tonic::include_proto!("tezedge"); // The string specified here must match the proto package name
+    // The string specified here must match the proto package name
+    tonic::include_proto!("tezedge"); 
 }
 
 use tezedge::{
-    server::{Tezedge, TezedgeServer},
-    HelloReply, HelloRequest,
+    server::{Tezedge},
+    HelloReply, HelloRequest, ChainsBlocksRequest, ChainsBlocksReply, MonitorCommitHashRequest, MonitorCommitHashReply
 };
 
-pub struct MyTezedge {}
+pub struct TezedgeService {
+    pub db: Arc<rocksdb::DB>,
+    pub logger: Logger
+}
 
 #[tonic::async_trait]
-impl Tezedge for MyTezedge {
-    async fn say_hello(
-        &self,
-        request: Request<HelloRequest>, // Accept request of type HelloRequest
-    ) -> Result<Response<HelloReply>, Status> { // Return an instance of type HelloReply
-        println!("Got a request: {:?}", request);
+impl Tezedge for TezedgeService {
+    async fn say_hello(&self, request: Request<HelloRequest>,) -> Result<Response<HelloReply>, Status> {
+        debug!(self.logger, "Got a Hello request: {:?}", request);
 
-        let reply = tezedge::HelloReply {
+        let reply = HelloReply {
             message: format!("Hello {}!", request.into_inner().name).into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
         };
 
-        Ok(Response::new(reply)) // Send back our formatted greeting
+        Ok(Response::new(reply))
     }
-}
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
-    let tezedge = MyTezedge {};    
+    async fn chains_blocks(&self, request: Request<ChainsBlocksRequest>,) -> Result<Response<ChainsBlocksReply>, Status> {
+        debug!(self.logger, "Got a ChainsBlocks request: {:?}", request);
 
-    Server::builder()
-        .add_service(TezedgeServer::new(tezedge))
-        .serve(addr)
-        .await?;
+        let reply = ChainsBlocksReply {
+            block_hash: format!("block_hash: unknown").into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
+        };
 
-    Ok(())
+        Ok(Response::new(reply))
+    }
+
+    async fn monitor_commit_hash(&self, request: Request<MonitorCommitHashRequest>,) -> Result<Response<MonitorCommitHashReply>, Status> {
+        debug!(self.logger, "Got a MonitorCommitHash request: {:?}", request);
+
+        let reply = MonitorCommitHashReply {
+            commit_hash: env!("GIT_HASH").into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
+        };
+
+        Ok(Response::new(reply))
+    }
 }
