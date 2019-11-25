@@ -8,7 +8,7 @@ default-run = "light-node"
 [dependencies]
 clap = "2.33.0"
 dirs = "2.0.2"
-failure = "0.1.5"
+failure = "0.1"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4"
 lazy_static = "1.4"

@@ -34,7 +34,7 @@ pub fn enable_context_channel() {
     CHANNEL_ENABLED.store(true, Ordering::Release)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ContextAction {
     Set {
         context_hash: Option<ContextHash>,

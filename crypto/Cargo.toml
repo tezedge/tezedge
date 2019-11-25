@@ -6,8 +6,8 @@ edition = "2018"
 
 [dependencies]
 base58 = "0.1.0"
-failure = "0.1.5"
-failure_derive = "0.1.5"
+failure = "0.1"
+failure_derive = "0.1"
 hex = "0.4"
 num-bigint = { version = "0.2.2", features = ["serde", "rand"] }
 num-traits = "0.2.8"
