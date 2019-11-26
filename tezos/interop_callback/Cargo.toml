@@ -11,7 +11,6 @@ crate-type = ["dylib"]
 
 [dependencies]
 hex = "0.4"
-# TODO: change when ocaml = "0.9.0" because of Array1::from
-ocaml = { git = "https://github.com/simplestaking/ocaml-rs.git", branch = "master" }
+ocaml = "0.8.1"
 # local dependencies
 tezos_context = { path = "../context" }
