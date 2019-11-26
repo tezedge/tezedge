@@ -13,21 +13,50 @@ use crate::runtime;
 use crate::runtime::OcamlError;
 
 pub type OcamlBytes = Array1<u8>;
+pub type OcamlHash = Str;
 
 pub trait Interchange<T> {
     fn convert_to(&self) -> T;
+    fn is_empty(&self) -> bool;
 }
 
 impl Interchange<OcamlBytes> for RustBytes {
     fn convert_to(&self) -> OcamlBytes {
-        // TODO: change Cargo.toml on ocaml-rs 9.0, if merged
         Array1::from(self.as_slice())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
     }
 }
 
 impl Interchange<RustBytes> for OcamlBytes {
     fn convert_to(&self) -> RustBytes {
         self.data().to_vec()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl Interchange<OcamlHash> for RustBytes {
+    fn convert_to(&self) -> OcamlHash {
+        Str::from(hex::encode(self).as_str())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl Interchange<RustBytes> for OcamlHash {
+    fn convert_to(&self) -> RustBytes {
+        hex::decode(self.as_str()).unwrap()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
     }
 }
 
@@ -36,7 +65,7 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
         let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
         match ocaml_function.call2_exn::<Value, Value>(
             Value::bool(settings.log_enabled),
-            Value::i32(settings.no_of_ffi_calls_treshold_for_gc)
+            Value::i32(settings.no_of_ffi_calls_treshold_for_gc),
         ) {
             Ok(_) => {
                 Ok(())
@@ -72,27 +101,27 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
                 // expecting 3 tuples
                 // 1. main and test chain
                 let chains: Tuple = ocaml_result.get(0).unwrap().into();
-                let main_chain_id: OcamlBytes = chains.get(0).unwrap().into();
+                let main_chain_id: OcamlHash = chains.get(0).unwrap().into();
 
                 let test_chain: Tuple = chains.get(1).unwrap().into();
-                let test_chain_id: OcamlBytes = test_chain.get(0).unwrap().into();
+                let test_chain_id: OcamlHash = test_chain.get(0).unwrap().into();
                 let test_chain: Option<TestChain> = if test_chain_id.is_empty() {
                     None
                 } else {
-                    let protocol: OcamlBytes = test_chain.get(1).unwrap().into();
+                    let protocol: OcamlHash = test_chain.get(1).unwrap().into();
                     let time: Str = test_chain.get(2).unwrap().into();
                     Some(TestChain {
                         chain_id: test_chain_id.convert_to(),
                         protocol_hash: protocol.convert_to(),
-                        expiration_date: String::from(time.as_str())
+                        expiration_date: String::from(time.as_str()),
                     })
                 };
 
                 // 2. genesis and current head
                 let headers: Tuple = ocaml_result.get(1).unwrap().into();
-                let genesis_block_header_hash: OcamlBytes = headers.get(0).unwrap().into();
+                let genesis_block_header_hash: OcamlHash = headers.get(0).unwrap().into();
                 let genesis_block_header: OcamlBytes = headers.get(1).unwrap().into();
-                let current_block_header_hash: OcamlBytes = headers.get(2).unwrap().into();
+                let current_block_header_hash: OcamlHash = headers.get(2).unwrap().into();
 
                 // 3. list known protocols
                 let supported_protocol_hashes: List = ocaml_result.get(2).unwrap().into();
@@ -123,7 +152,7 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
 pub fn get_current_block_header(chain_id: RustBytes) -> Result<Result<RustBytes, BlockHeaderError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("get_current_block_header").expect("function 'get_current_block_header' is not registered");
-        match ocaml_function.call_exn::<OcamlBytes>(chain_id.convert_to()) {
+        match ocaml_function.call_exn::<OcamlHash>(chain_id.convert_to()) {
             Ok(block_header) => {
                 let block_header: OcamlBytes = block_header.into();
                 if block_header.is_empty() {
@@ -142,7 +171,7 @@ pub fn get_current_block_header(chain_id: RustBytes) -> Result<Result<RustBytes,
 pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Result<Result<Option<RustBytes>, BlockHeaderError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("get_block_header").expect("function 'get_block_header' is not registered");
-        match ocaml_function.call2_exn::<OcamlBytes, OcamlBytes>(chain_id.convert_to(), block_header_hash.convert_to()) {
+        match ocaml_function.call2_exn::<OcamlHash, OcamlHash>(chain_id.convert_to(), block_header_hash.convert_to()) {
             Ok(block_header) => {
                 let block_header: OcamlBytes = block_header.into();
                 if block_header.is_empty() {
@@ -167,7 +196,7 @@ pub fn apply_block(
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
 
         // call ffi
-        match ocaml_function.call3_exn::<OcamlBytes, OcamlBytes, List>(
+        match ocaml_function.call3_exn::<OcamlHash, OcamlBytes, List>(
             chain_id.convert_to(),
             block_header.convert_to(),
             operations_to_ocaml(&operations),
@@ -176,7 +205,7 @@ pub fn apply_block(
                 let validation_result: Tuple = validation_result.into();
 
                 let validation_result_message: Str = validation_result.get(0).unwrap().into();
-                let context_hash: OcamlBytes = validation_result.get(1).unwrap().into();
+                let context_hash: OcamlHash = validation_result.get(1).unwrap().into();
                 let block_header_proto_json: Str = validation_result.get(2).unwrap().into();
                 let block_header_proto_metadata_json: Str = validation_result.get(3).unwrap().into();
 
@@ -220,7 +249,8 @@ pub fn operations_to_ocaml(operations: &Vec<Option<Vec<RustBytes>>>) -> List {
             let ops_array = if let Some(ops) = ops_option {
                 let mut ops_array = List::new();
                 ops.into_iter().rev().for_each(|op| {
-                    ops_array.push_hd(Value::from(op.convert_to()));
+                    let op: OcamlBytes = op.convert_to();
+                    ops_array.push_hd(Value::from(op));
                 });
                 ops_array
             } else {
