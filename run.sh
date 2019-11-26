@@ -32,7 +32,7 @@ build_all() {
 
   # this is required for the most linux distributions
   export SODIUM_USE_PKG_CONFIG=1
-  cargo build || exit 1
+  cargo build $CARGO_PROFILE_ARG || exit 1
 }
 
 run_node() {
