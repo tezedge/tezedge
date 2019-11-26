@@ -5,13 +5,12 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["dylib", "rlib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 hex = "0.4"
-# TODO: change when ocaml = "0.9.0" because of Array1::from
-ocaml = { git = "https://github.com/simplestaking/ocaml-rs.git", branch = "master" }
+ocaml = "0.8.1"
 # local dependencies
 tezos_context = { path = "../context" }

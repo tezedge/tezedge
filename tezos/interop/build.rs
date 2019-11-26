@@ -238,5 +238,5 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rustc-link-lib=dylib=tezos_interop_callback");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
-    println!("cargo:rerun-if-env-changed=UPDATE_GIT_SUBMODULES");
+    println!("cargo:rerun-if-env-changed=UPDATE_GIT");
 }

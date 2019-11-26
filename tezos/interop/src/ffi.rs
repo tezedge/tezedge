@@ -22,7 +22,6 @@ pub trait Interchange<T> {
 
 impl Interchange<OcamlBytes> for RustBytes {
     fn convert_to(&self) -> OcamlBytes {
-        // TODO: change Cargo.toml on ocaml-rs 9.0, if merged
         Array1::from(self.as_slice())
     }
 
