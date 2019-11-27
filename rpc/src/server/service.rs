@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 
 use chrono::prelude::*;
 use futures::Future;
-use hyper::{Body, Error, Method, Request, Response, Server, StatusCode};
+use hyper::{Body, Error, Method, Request, Response, Server, StatusCode, Uri};
 use hyper::service::{make_service_fn, service_fn};
 use path_tree::PathTree;
 use riker::actors::ActorSystem;
@@ -94,6 +94,39 @@ fn parse_query_string(query: &str) -> HashMap<&str, Vec<&str>> {
     ret
 }
 
+/// Gets a single value from parsed query.
+#[inline]
+fn find_query_value<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, key: &'b str) -> Option<&'a str> {
+    query.get(key).and_then(|values| values.first().map(|v| *v))
+}
+
+/// Gets a single `String` value from parsed query.
+#[inline]
+fn find_query_value_as_string<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, key: &'b str) -> Option<String> {
+    find_query_value(query, key).map(|value| value.to_string())
+}
+
+/// Gets a multiple `String` values from parsed query.
+#[inline]
+fn get_query_values_as_string<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, key: &'b str) -> Vec<String> {
+    query.get(key).map(|values| values.iter().map(|value| value.to_string()).collect()).unwrap_or_else(|| Vec::new())
+}
+
+/// Gets a multiple `UniString` values from parsed query.
+#[inline]
+fn get_query_values_as_unistring<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, key: &'b str) -> Vec<UniString> {
+    query.get(key).map(|values| values.iter().map(|&value| value.into()).collect()).unwrap_or_else(|| Vec::new())
+}
+
+/// Gets a single `usize` value from parsed query.
+#[inline]
+fn find_query_value_as_usize<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, key: &'b str) -> Option<usize> {
+    find_query_value(query, key).and_then(|value| value.parse::<usize>().ok())
+}
+
+/// Finds a parameter in a parameter array. This has complexity of O(n) but number of parameters
+/// is fairly low (less than 4) so I'm fine with it.
+#[inline]
 fn find_param_value<'a, 'b>(params: &[(&'a str, &'a str)], key_to_find: &'b str) -> Option<&'a str> {
     params.iter().find_map(|&(key, value)| {
         if key == key_to_find {
@@ -208,67 +241,45 @@ fn create_routes() -> PathTree<Route> {
 
 /// Simple endpoint routing handler
 async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
-    match (req.method(), ROUTES.find(req.uri().path())) {
-        (&Method::GET, Some((Route::Bootstrapped, _))) => bootstrapped(sys, actor).await,
-        (&Method::GET, Some((Route::CommitHash, _))) => commit_hash(sys, actor).await,
-        (&Method::GET, Some((Route::ActiveChains, _))) => active_chains(sys, actor).await,
-        (&Method::GET, Some((Route::Protocols, _))) => protocols(sys, actor).await,
-        (&Method::GET, Some((Route::ValidBlocks, _))) => {
-            let mut protocol = Vec::new();
-            let mut next_protocol = Vec::new();
-            let mut chain = Vec::new();
-
-            req.uri().query()
-                .map(parse_query_string)
-                .map(|query_parts| query_parts.iter().for_each(|(&key, values)| {
-                    match key {
-                        "protocol" => protocol.extend(values.iter().map(|value| value.to_string())),
-                        "next_protocol" => next_protocol.extend(values.iter().map(|value| value.to_string())),
-                        "chain" => chain.extend(values.iter().map(|value| value.to_string().into())),
-                        _ => ()
-                    }
-                }));
+    match (req.method(), find_route(req.uri())) {
+        (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(sys, actor).await,
+        (&Method::GET, Some((Route::CommitHash, _, _))) => commit_hash(sys, actor).await,
+        (&Method::GET, Some((Route::ActiveChains, _, _))) => active_chains(sys, actor).await,
+        (&Method::GET, Some((Route::Protocols, _, _))) => protocols(sys, actor).await,
+        (&Method::GET, Some((Route::ValidBlocks, _, query))) => {
+            let protocol = get_query_values_as_string(&query, "protocol");
+            let next_protocol = get_query_values_as_string(&query, "next_protocol");
+            let chain = get_query_values_as_unistring(&query, "chain");
             valid_blocks(sys, actor, protocol, next_protocol, chain).await
         }
-        (&Method::GET, Some((Route::HeadChain, params))) => {
+        (&Method::GET, Some((Route::HeadChain, params, query))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
-            let mut next_protocol = Vec::new();
-            req.uri().query()
-                .map(parse_query_string)
-                .map(|query_parts| query_parts.iter().for_each(|(&key, values)| {
-                    match key {
-                        "next_protocol" => next_protocol.extend(values.iter().map(|value| value.to_string())),
-                        _ => ()
-                    }
-                }));
+            let next_protocol = get_query_values_as_string(&query, "next_protocol");
             head_chain(sys, actor, chain_id, next_protocol).await
         }
-        (&Method::GET, Some((Route::ChainsBlockId, params))) => {
+        (&Method::GET, Some((Route::ChainsBlockId, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
             chains_block_id(sys, actor, chain_id, block_id).await
         }
-        (&Method::GET, Some((Route::DevGetBlocks, _))) => {
-            let (from_block_id, limit) = req.uri().query()
-                .map(parse_query_string)
-                .map(|query_parts| {
-                    let from_block_id = query_parts.get("from_block_id")
-                        .and_then(|values| values.first())
-                        .map(|value| value.to_string());
-                    let limit = query_parts.get("limit")
-                        .and_then(|values| values.first())
-                        .and_then(|value| value.parse::<usize>().ok())
-                        .filter(|value| *value < 1_000)
-                        .unwrap_or(50);
-                    (from_block_id, limit)
-                }).unwrap_or((None, 50));
-
+        (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
+            let from_block_id = find_query_value_as_string(&query, "from_block_id");
+            let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
             dev_get_blocks(sys, actor, from_block_id, limit).await
         }
-        (&Method::GET, Some((Route::DevGetBlockActions, params))) => {
+        (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
             dev_get_block_actions(sys, actor, block_id.to_string()).await
         }
         _ => not_found()
     }
+}
+
+/// Find route and return a tuple with the following items:
+/// * route type
+/// * path parameters
+/// * query parameters
+#[inline]
+fn find_route(uri: &Uri) -> Option<(&Route, Vec<(&str, &str)>, HashMap<&str, Vec<&str>>)> {
+    ROUTES.find(uri.path()).map(|route| (route.0, route.1, uri.query().map(parse_query_string).unwrap_or_else(|| HashMap::new())))
 }
