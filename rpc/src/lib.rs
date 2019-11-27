@@ -1,10 +1,10 @@
 pub mod encoding;
-pub mod server;
-pub mod rpc_actor;
 mod helpers;
+pub mod rpc_actor;
+pub mod server;
 
 use chrono::prelude::*;
-use hyper::{Response, Body};
+use hyper::{Body, Response};
 
 /// Crate level custom result
 pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
@@ -19,5 +19,7 @@ pub(crate) fn ts_to_rfc3339(ts: i64) -> String {
 pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
     Ok(Response::builder()
         .header(hyper::header::CONTENT_TYPE, "application/json")
+        // TODO: add to config
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Body::from(serde_json::to_string(content)?))?)
 }
