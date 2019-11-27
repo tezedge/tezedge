@@ -33,7 +33,7 @@ impl From<BlockHeaderWithHash> for BlockApplied {
     }
 }
 
-/// Structure containing basic information from block hedear
+/// Structure containing basic information from block header
 #[derive(Clone, Debug)]
 pub struct BlockHeaderInfo {
     pub priority: i32,
