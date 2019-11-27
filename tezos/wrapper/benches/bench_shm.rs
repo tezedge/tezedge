@@ -9,9 +9,10 @@ use std::thread;
 use std::time::Duration;
 use test::Bencher;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use rand::Rng;
+use ipc::{IpcClient, IpcServer, temp_sock};
 
 #[derive(Serialize, Deserialize)]
 struct BenchData {
@@ -33,7 +34,7 @@ fn fork<F: FnOnce()>(child_func: F) -> libc::pid_t {
 }
 
 fn rand_file_name() -> String {
-    let path = tezos_wrapper::ipc::temp_sock();
+    let path = temp_sock();
     path.as_os_str().to_str().unwrap().to_string()
 }
 
@@ -78,7 +79,6 @@ fn bench_shm(b: &mut Bencher) {
 
 #[bench]
 fn bench_uds(b: &mut Bencher) {
-    use tezos_wrapper::ipc::*;
 
     let sock_path = temp_sock();
 
