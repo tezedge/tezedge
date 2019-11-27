@@ -7,7 +7,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use tezos_context::channel::ContextAction;
-use tezos_encoding::hash::{BlockHash, OperationHash};
+use tezos_encoding::hash::{BlockHash, OperationHash, HashType};
 
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
 use crate::StorageError;
@@ -79,8 +79,8 @@ impl ContextRecordKey {
 }
 
 const LEN_KEY_HASH: usize = 32;
-const LEN_BLOCK_HASH: usize = 32;
-const LEN_OPERATION_HASH: usize = 32;
+const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
+const LEN_OPERATION_HASH: usize = HashType::OperationHash.size();
 const LEN_ORDINAL_ID: usize = mem::size_of::<u32>();
 
 const IDX_BLOCK_HASH: usize = 0;

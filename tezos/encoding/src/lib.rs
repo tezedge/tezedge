@@ -1,4 +1,4 @@
-#![feature(concat_idents)]
+#![feature(concat_idents, const_fn, const_if_match)]
 mod types;
 mod bit_utils;
 
