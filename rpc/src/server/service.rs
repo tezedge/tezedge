@@ -24,6 +24,7 @@ use crate::{
     ts_to_rfc3339,
 };
 
+#[derive(Debug)]
 enum Route {
     Bootstrapped,
     CommitHash,
@@ -319,7 +320,12 @@ mod fns {
                     Some(block) => {
                         resp_data.push(block.into());
                         match meta.predecessor {
-                            Some(predecessor) => block_hash = predecessor,
+                            Some(predecessor) => if block_hash != predecessor {
+                                block_hash = predecessor
+                            } else {
+                                // found genesis
+                                break
+                            },
                             None => break
                         }
                     }
