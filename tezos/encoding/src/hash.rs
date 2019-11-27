@@ -31,9 +31,8 @@ pub enum HashType {
 
 impl HashType {
 
-    // TODO: make const after `#![feature(const_if_match)]` lands
     #[inline]
-    pub fn prefix(self) -> &'static [u8] {
+    pub fn prefix(&self) -> &'static [u8] {
         use prefix_bytes::*;
         match self {
             HashType::ChainId => &CHAIN_ID,
@@ -47,8 +46,7 @@ impl HashType {
     }
 
     /// Size of hash in bytes
-    #[inline]
-    pub fn size(self) -> usize {
+    pub const fn size(&self) -> usize {
         match self {
             HashType::ChainId => 4,
             HashType::BlockHash
@@ -60,8 +58,7 @@ impl HashType {
         }
     }
 
-    #[inline]
-    pub fn hash_fn<'a>(self) -> &'a dyn Fn(&'a [u8]) -> Vec<u8> {
+    pub const fn hash_fn<'a>(&self) -> &'a dyn Fn(&'a [u8]) -> Vec<u8> {
         match self {
             HashType::ChainId
             | HashType::BlockHash

@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use chrono::prelude::*;
 use futures::Future;
@@ -10,10 +11,11 @@ use hyper::{Body, Error, Method, Request, Response, Server, StatusCode, Uri};
 use hyper::service::{make_service_fn, service_fn};
 use path_tree::PathTree;
 use riker::actors::ActorSystem;
+use slog::{Logger, warn};
 
 use lazy_static::lazy_static;
 use shell::shell_channel::BlockApplied;
-use tezos_encoding::hash::{HashEncoding, HashType};
+use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
@@ -21,8 +23,8 @@ use crate::{
     ServiceResult,
     ts_to_rfc3339,
 };
-use crate::server::control_msg::GetBlocks;
 
+#[derive(Debug)]
 enum Route {
     Bootstrapped,
     CommitHash,
@@ -36,20 +38,33 @@ enum Route {
     DevGetBlockActions,
 }
 
+/// Server environment parameters
+#[derive(Clone)]
+pub struct RpcServiceEnvironment {
+    sys: ActorSystem,
+    actor: RpcServerRef,
+    db: Arc<rocksdb::DB>,
+    genesis_hash: String,
+    log: Logger,
+}
+
+impl RpcServiceEnvironment {
+    pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, genesis_hash: &BlockHash, log: Logger) -> Self {
+        Self { sys, actor, db, genesis_hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(genesis_hash), log }
+    }
+}
+
 /// Spawn new HTTP server on given address interacting with specific actor system
-pub fn spawn_server(addr: &SocketAddr, sys: ActorSystem, actor: RpcServerRef) -> impl Future<Output=Result<(), Error>> {
+pub fn spawn_server(addr: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), Error>> {
     Server::bind(addr)
         .serve(make_service_fn(move |_| {
-            let sys = sys.clone();
-            let actor = actor.clone();
+            let env = env.clone();
             async move {
-                let sys = sys.clone();
-                let actor = actor.clone();
+                let env = env.clone();
                 Ok::<_, Error>(service_fn(move |req| {
-                    let sys = sys.clone();
-                    let actor = actor.clone();
+                    let env = env.clone();
                     async move {
-                        router(req, sys, actor).await
+                        router(req, env).await
                     }
                 }))
             }
@@ -175,24 +190,6 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
     empty()
 }
 
-async fn dev_get_blocks(sys: ActorSystem, actor: RpcServerRef, from_block_id: Option<String>, limit: usize) -> ServiceResult {
-    match ask(&sys, &actor, GetBlocks::Request { block_hash: from_block_id, limit }).await {
-        GetBlocks::Response(blocks) => {
-            make_json_response(&blocks)
-        }
-        _ => empty()
-    }
-}
-
-async fn dev_get_block_actions(sys: ActorSystem, actor: RpcServerRef, block_id: String) -> ServiceResult {
-    match ask(&sys, &actor, GetBlockActions::Request { block_hash: block_id }).await {
-        GetBlockActions::Response(actions) => {
-            make_json_response(&actions)
-        }
-        _ => empty()
-    }
-}
-
 async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
     if chain_id == "main" {
         let current_head = ask(&sys, &actor, GetFullCurrentHead::Request).await;
@@ -240,7 +237,9 @@ fn create_routes() -> PathTree<Route> {
 }
 
 /// Simple endpoint routing handler
-async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
+async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult {
+    let RpcServiceEnvironment { sys, actor, db, log, genesis_hash } = env;
+
     match (req.method(), find_route(req.uri())) {
         (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(sys, actor).await,
         (&Method::GET, Some((Route::CommitHash, _, _))) => commit_hash(sys, actor).await,
@@ -263,13 +262,13 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
             chains_block_id(sys, actor, chain_id, block_id).await
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
-            let from_block_id = find_query_value_as_string(&query, "from_block_id");
+            let from_block_id = find_query_value_as_string(&query, "from_block_id").unwrap_or(genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
-            dev_get_blocks(sys, actor, from_block_id, limit).await
+            result_to_json_response(fns::get_blocks(from_block_id, limit, db), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
-            dev_get_block_actions(sys, actor, block_id.to_string()).await
+            result_to_json_response(fns::get_block_actions(block_id, db), &log)
         }
         _ => not_found()
     }
@@ -283,3 +282,70 @@ async fn router(req: Request<Body>, sys: ActorSystem, actor: RpcServerRef) -> Se
 fn find_route(uri: &Uri) -> Option<(&Route, Vec<(&str, &str)>, HashMap<&str, Vec<&str>>)> {
     ROUTES.find(uri.path()).map(|route| (route.0, route.1, uri.query().map(parse_query_string).unwrap_or_else(|| HashMap::new())))
 }
+
+/// Returns result as a JSON response.
+fn result_to_json_response<T: serde::Serialize>(res: Result<T, failure::Error>, log: &Logger) -> ServiceResult {
+    match res {
+        Ok(t) => make_json_response(&t),
+        Err(err) => {
+            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", err));
+            empty()
+        }
+    }
+}
+
+
+/// This submodule contains service functions implementation.
+mod fns {
+    use std::sync::Arc;
+
+    use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ContextStorage};
+    use tezos_context::channel::ContextAction;
+    use tezos_encoding::hash::{HashEncoding, HashType};
+
+    use crate::helpers::FullBlockInfo;
+
+    /// Retrieve blocks from database.
+    pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>) -> Result<Vec<FullBlockInfo>, failure::Error> {
+        let block_storage = BlockStorage::new(db.clone());
+        let block_meta_storage = BlockMetaStorage::new(db);
+
+        let mut resp_data = Vec::with_capacity(limit);
+        // get starting block hash or use genesis hash
+        let mut block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_id)?;
+
+        for _ in 0..limit {
+            match block_meta_storage.get(&block_hash)? {
+                Some(meta) => match block_storage.get(&block_hash)? {
+                    Some(block) => {
+                        resp_data.push(block.into());
+                        match meta.predecessor {
+                            Some(predecessor) => if block_hash != predecessor {
+                                block_hash = predecessor
+                            } else {
+                                // found genesis
+                                break
+                            },
+                            None => break
+                        }
+                    }
+                    None => break
+                }
+                None => break
+            }
+        }
+
+        Ok(resp_data)
+    }
+
+    /// Get actions for a specific block in ascending order.
+    pub(crate) fn get_block_actions(block_id: &str, db: Arc<rocksdb::DB>) -> Result<Vec<ContextAction>, failure::Error> {
+        let context_storage = ContextStorage::new(db);
+
+        let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(block_id)?;
+        context_storage.get_by_block_hash(&block_hash)
+            .map(|values| values.into_iter().map(|v| v.action).collect())
+            .map_err(|e| e.into())
+    }
+}
+

@@ -191,7 +191,7 @@ impl Codec for Meta {
             assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
             // chain_id
             let chain_id_pos = level_pos + level_bytes.len();
-            let chain_id = bytes[chain_id_pos..chain_id_pos + 4].to_vec();
+            let chain_id = bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()].to_vec();
             Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level, chain_id })
         } else {
             Err(SchemaError::DecodeError)

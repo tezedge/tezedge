@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
-use tezos_encoding::hash::{BlockHash, ChainId};
+use tezos_encoding::hash::{BlockHash, ChainId, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
@@ -83,8 +83,8 @@ impl BlockMetaStorage {
     }
 }
 
-const LEN_BLOCK_HASH: usize = 32;
-const LEN_CHAIN_ID: usize = 4;
+const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
+const LEN_CHAIN_ID: usize = HashType::ChainId.size();
 
 const MASK_IS_APPLIED: u8    = 0b0000_0001;
 const MASK_HAS_SUCCESSOR: u8   = 0b0000_0010;
