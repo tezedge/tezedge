@@ -260,7 +260,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             chains_block_id(chain_id, block_id, state)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
-            let from_block_id = find_query_value_as_string(&query, "from_block_id").unwrap_or(genesis_hash);
+            let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state, genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
             result_to_json_response(fns::get_blocks(from_block_id, limit, db), &log)
         }
@@ -290,6 +290,17 @@ fn result_to_json_response<T: serde::Serialize>(res: Result<T, failure::Error>, 
             empty()
         }
     }
+}
+
+/// Unwraps a block hash or provides alternative block hash.
+/// Alternatives are: genesis block or current head
+fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, genesis_hash: String) -> String {
+    block_id.unwrap_or_else(|| {
+        let state = state.read().unwrap();
+        state.current_head().as_ref()
+            .map(|current_head| HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash))
+            .unwrap_or(genesis_hash)
+    })
 }
 
 
