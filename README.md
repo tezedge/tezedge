@@ -51,7 +51,7 @@ much longer to compile. environment variable `SODIUM_USE_PKG_CONFIG=1` mus be se
 SODIUM_USE_PKG_CONFIG=1 cargo build
 ```
 
-To run node manully, path to the Tezos lib must be provided as environment variable `LD_LIBRARY_PATH`. It is required
+To run node manually, path to the Tezos lib must be provided as environment variable `LD_LIBRARY_PATH`. It is required
 by `protocol-runner`. Put together, node can be run, for example, like this:
 ```
 LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config

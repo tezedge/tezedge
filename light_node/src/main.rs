@@ -110,7 +110,7 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, network_channel.clone(), shell_channel.clone(), ([127, 0, 0, 1], env.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), &init_info)
+    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([127, 0, 0, 1], env.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), &init_info)
         .expect("Failed to create RPC server");
     if env.record {
         info!(log, "Running in record mode");
