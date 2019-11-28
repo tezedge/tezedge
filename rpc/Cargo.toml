@@ -7,6 +7,7 @@ build = "build.rs"
 
 [dependencies]
 chrono = { version = "0.4.9", features = ["serde"] }
+getset = "0.0.9"
 failure = "0.1"
 futures-preview = "0.3.0-alpha.19"
 hex = "0.4"

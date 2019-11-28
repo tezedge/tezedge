@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 mod service;
-mod ask;
-pub mod control_msg;
 
-pub use service::spawn_server;
-pub use service::RpcServiceEnvironment;
+pub(crate) use service::spawn_server;
+pub(crate) use service::RpcServiceEnvironment;

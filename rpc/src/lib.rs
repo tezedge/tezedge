@@ -1,10 +1,13 @@
-pub mod encoding;
-mod helpers;
-pub mod rpc_actor;
-pub mod server;
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 
 use chrono::prelude::*;
 use hyper::{Body, Response};
+
+pub mod encoding;
+mod helpers;
+pub mod rpc_actor;
+mod server;
 
 /// Crate level custom result
 pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;

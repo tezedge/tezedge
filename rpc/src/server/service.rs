@@ -19,10 +19,10 @@ use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
-    server::{ask::ask, control_msg::*},
     ServiceResult,
     ts_to_rfc3339,
 };
+use crate::rpc_actor::RpcCollectedStateRef;
 
 #[derive(Debug)]
 enum Route {
@@ -40,22 +40,23 @@ enum Route {
 
 /// Server environment parameters
 #[derive(Clone)]
-pub struct RpcServiceEnvironment {
+pub(crate) struct RpcServiceEnvironment {
     sys: ActorSystem,
     actor: RpcServerRef,
     db: Arc<rocksdb::DB>,
     genesis_hash: String,
+    state: RpcCollectedStateRef,
     log: Logger,
 }
 
 impl RpcServiceEnvironment {
-    pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, genesis_hash: &BlockHash, log: Logger) -> Self {
-        Self { sys, actor, db, genesis_hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(genesis_hash), log }
+    pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, genesis_hash: &BlockHash, state: RpcCollectedStateRef, log: Logger) -> Self {
+        Self { sys, actor, db, genesis_hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(genesis_hash), state, log }
     }
 }
 
 /// Spawn new HTTP server on given address interacting with specific actor system
-pub fn spawn_server(addr: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), Error>> {
+pub(crate) fn spawn_server(addr: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), Error>> {
     Server::bind(addr)
         .serve(make_service_fn(move |_| {
             let env = env.clone();
@@ -153,23 +154,20 @@ fn find_param_value<'a, 'b>(params: &[(&'a str, &'a str)], key_to_find: &'b str)
 }
 
 /// GET /monitor/bootstrapped endpoint handler
-async fn bootstrapped(sys: ActorSystem, actor: RpcServerRef) -> ServiceResult {
-    let current_head = ask(&sys, &actor, GetCurrentHead::Request).await;
-    loop {
-        if let GetCurrentHead::Response(current_head) = current_head {
-            let resp = if current_head.is_some() {
-                let current_head: BlockApplied = current_head.unwrap();
-                let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
-                let timestamp = ts_to_rfc3339(current_head.header.timestamp());
-                BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
-            } else {
-                BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
-            };
-            return make_json_response(&resp);
-        } else {
-            tokio::timer::delay_for(std::time::Duration::from_secs(1)).await
+fn bootstrapped(state: RpcCollectedStateRef) -> ServiceResult {
+    let state_read = state.read().unwrap();
+
+    let bootstrap_info = match state_read.current_head().as_ref() {
+        Some(current_head) => {
+            let current_head: BlockApplied = current_head.clone();
+            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
+            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
+            BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         }
-    }
+        None => BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
+    };
+
+    make_json_response(&bootstrap_info)
 }
 
 /// GET /monitor/commit_hash endpoint handler
@@ -190,10 +188,11 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
     empty()
 }
 
-async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next_protocol: Vec<String>) -> ServiceResult {
+fn head_chain(chain_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
     if chain_id == "main" {
-        let current_head = ask(&sys, &actor, GetFullCurrentHead::Request).await;
-        if let GetFullCurrentHead::Response(Some(_current_head)) = current_head {
+        let current_head = fns::get_full_current_head(state);
+        if let Ok(Some(_current_head)) = current_head {
+            // TODO: implement
             empty()
         } else {
             empty()
@@ -203,13 +202,13 @@ async fn head_chain(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, _next
     }
 }
 /// GET /chains/<chain_id>/blocks/<block_id> endpoint handler
-async fn chains_block_id(sys: ActorSystem, actor: RpcServerRef, chain_id: &str, block_id: &str) -> ServiceResult {
+fn chains_block_id(chain_id: &str, block_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
     use crate::encoding::chain::BlockInfo;
     if chain_id != "main" || block_id != "head" {
         empty()
     } else {
-        let current_head: GetFullCurrentHead = ask(&sys, &actor, GetFullCurrentHead::Request).await;
-        if let GetFullCurrentHead::Response(Some(current_head)) = current_head {
+        let current_head = fns::get_full_current_head(state);
+        if let Ok(Some(current_head)) = current_head {
             let resp: BlockInfo = current_head.into();
             make_json_response(&resp)
         } else {
@@ -238,10 +237,10 @@ fn create_routes() -> PathTree<Route> {
 
 /// Simple endpoint routing handler
 async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult {
-    let RpcServiceEnvironment { sys, actor, db, log, genesis_hash } = env;
+    let RpcServiceEnvironment { sys, actor, db, log, genesis_hash, state } = env;
 
     match (req.method(), find_route(req.uri())) {
-        (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(sys, actor).await,
+        (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(state),
         (&Method::GET, Some((Route::CommitHash, _, _))) => commit_hash(sys, actor).await,
         (&Method::GET, Some((Route::ActiveChains, _, _))) => active_chains(sys, actor).await,
         (&Method::GET, Some((Route::Protocols, _, _))) => protocols(sys, actor).await,
@@ -251,18 +250,17 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let chain = get_query_values_as_unistring(&query, "chain");
             valid_blocks(sys, actor, protocol, next_protocol, chain).await
         }
-        (&Method::GET, Some((Route::HeadChain, params, query))) => {
+        (&Method::GET, Some((Route::HeadChain, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
-            let next_protocol = get_query_values_as_string(&query, "next_protocol");
-            head_chain(sys, actor, chain_id, next_protocol).await
+            head_chain(chain_id, state)
         }
         (&Method::GET, Some((Route::ChainsBlockId, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            chains_block_id(sys, actor, chain_id, block_id).await
+            chains_block_id(chain_id, block_id, state)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
-            let from_block_id = find_query_value_as_string(&query, "from_block_id").unwrap_or(genesis_hash);
+            let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state, genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
             result_to_json_response(fns::get_blocks(from_block_id, limit, db), &log)
         }
@@ -294,6 +292,17 @@ fn result_to_json_response<T: serde::Serialize>(res: Result<T, failure::Error>, 
     }
 }
 
+/// Unwraps a block hash or provides alternative block hash.
+/// Alternatives are: genesis block or current head
+fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, genesis_hash: String) -> String {
+    block_id.unwrap_or_else(|| {
+        let state = state.read().unwrap();
+        state.current_head().as_ref()
+            .map(|current_head| HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash))
+            .unwrap_or(genesis_hash)
+    })
+}
+
 
 /// This submodule contains service functions implementation.
 mod fns {
@@ -304,6 +313,7 @@ mod fns {
     use tezos_encoding::hash::{HashEncoding, HashType};
 
     use crate::helpers::FullBlockInfo;
+    use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -347,5 +357,18 @@ mod fns {
             .map(|values| values.into_iter().map(|v| v.action).collect())
             .map_err(|e| e.into())
     }
+
+    /// Get information about current head
+    pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
+        let state = state.read().unwrap();
+        let current_head = state.current_head().as_ref().map(|current_head| {
+            let mut head: FullBlockInfo = current_head.clone().into();
+            head.chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(state.chain_id());
+            head
+        });
+
+        Ok(current_head)
+    }
+
 }
 
