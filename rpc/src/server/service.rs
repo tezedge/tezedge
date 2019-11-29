@@ -36,6 +36,7 @@ enum Route {
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
+    StatsMemory,
 }
 
 /// Server environment parameters
@@ -217,6 +218,17 @@ fn chains_block_id(chain_id: &str, block_id: &str, state: RpcCollectedStateRef) 
     }
 }
 
+/// GET /stats/memory endpoint handler
+async fn stats_memory(log: &Logger) -> ServiceResult {
+    match fns::get_stats_memory() {
+        Ok(resp) => make_json_response(&resp),
+        Err(e) => {
+            warn!(log, "GetStatsMemory: {}", e);
+            empty()
+        }
+    }
+}
+
 lazy_static! {
     static ref ROUTES: PathTree<Route> = create_routes();
 }
@@ -232,6 +244,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
+    routes.insert("/stats/memory", Route::StatsMemory);
     routes
 }
 
@@ -244,6 +257,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::CommitHash, _, _))) => commit_hash(sys, actor).await,
         (&Method::GET, Some((Route::ActiveChains, _, _))) => active_chains(sys, actor).await,
         (&Method::GET, Some((Route::Protocols, _, _))) => protocols(sys, actor).await,
+        (&Method::GET, Some((Route::StatsMemory, _, _))) => stats_memory(&log).await,
         (&Method::GET, Some((Route::ValidBlocks, _, query))) => {
             let protocol = get_query_values_as_string(&query, "protocol");
             let next_protocol = get_query_values_as_string(&query, "next_protocol");
@@ -311,6 +325,7 @@ mod fns {
     use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ContextStorage};
     use tezos_context::channel::ContextAction;
     use tezos_encoding::hash::{HashEncoding, HashType};
+    use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
@@ -368,6 +383,11 @@ mod fns {
         });
 
         Ok(current_head)
+    }
+
+    pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
+        let memory = Memory::new();
+        memory.get_memory_stats()
     }
 
 }
