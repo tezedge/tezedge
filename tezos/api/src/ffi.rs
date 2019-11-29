@@ -56,6 +56,7 @@ pub struct ApplyBlockResult {
     pub context_hash: RustBytes,
     pub block_header_proto_json: String,
     pub block_header_proto_metadata_json: String,
+    pub operations_proto_metadata_json: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]

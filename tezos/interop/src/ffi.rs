@@ -208,12 +208,14 @@ pub fn apply_block(
                 let context_hash: OcamlHash = validation_result.get(1).unwrap().into();
                 let block_header_proto_json: Str = validation_result.get(2).unwrap().into();
                 let block_header_proto_metadata_json: Str = validation_result.get(3).unwrap().into();
+                let operations_proto_metadata_json: Str = validation_result.get(4).unwrap().into();
 
                 Ok(ApplyBlockResult {
                     validation_result_message: validation_result_message.as_str().to_string(),
                     context_hash: context_hash.convert_to(),
                     block_header_proto_json: block_header_proto_json.as_str().to_string(),
                     block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string(),
+                    operations_proto_metadata_json: operations_proto_metadata_json.as_str().to_string(),
                 })
             }
             Err(e) => {

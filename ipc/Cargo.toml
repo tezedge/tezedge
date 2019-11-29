@@ -11,4 +11,3 @@ failure_derive = "0.1"
 rand = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 timeout_io = "0.6.0"
-ocaml = "0.8.1"
