@@ -32,7 +32,7 @@ rustup default nightly-2019-11-25
 
 Install libs required to build sodiumoxide package:
 ```
-sudo apt install libsodium-dev
+sudo apt install pkg-config libsodium-dev
 ```
 
 Install libs required to build RocksDB package:
