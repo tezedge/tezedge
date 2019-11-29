@@ -8,6 +8,7 @@ use std::sync::Arc;
 use rand::Rng;
 
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
+use storage::persistent::CommitLogs;
 use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::collections::{BlockData, UniqueBlockData};
@@ -20,12 +21,12 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn new(db: Arc<rocksdb::DB>, chain_id: &ChainId) -> Self {
+    pub fn new(db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, chain_id: &ChainId) -> Self {
         BlockState {
-            block_storage: BlockStorage::new(db.clone()),
+            block_storage: BlockStorage::new(db.clone(), commit_logs),
             block_meta_storage: BlockMetaStorage::new(db.clone()),
             missing_blocks: UniqueBlockData::new(),
-            chain_id: chain_id.clone()
+            chain_id: chain_id.clone(),
         }
     }
 

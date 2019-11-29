@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use storage::persistent::{DatabaseWithSchema, Schema};
+use storage::persistent::{DatabaseWithSchema, KeyValueSchema};
 use serde::export::PhantomData;
 use rocksdb::DB;
 use crate::content::{NodeHeader, ListValue};
@@ -20,10 +20,13 @@ pub struct Lane<C: ListValue> {
     _pd: PhantomData<C>,
 }
 
-impl<C: ListValue> Schema for Lane<C> {
-    const COLUMN_FAMILY_NAME: &'static str = "skip_list_lanes";
+impl<C: ListValue> KeyValueSchema for Lane<C> {
     type Key = NodeHeader;
     type Value = C;
+
+    fn name() -> &'static str {
+        "skip_list_lanes"
+    }
 }
 
 impl<C: ListValue> Lane<C> {

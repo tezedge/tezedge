@@ -1,13 +1,16 @@
+use std::cmp::max;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use rocksdb::DB;
+
+use storage::persistent::KeyValueSchema;
+
 use crate::{
-    lane::Lane,
     content::{ListValue, NodeHeader},
+    lane::Lane,
     LEVEL_BASE,
 };
-use std::sync::Arc;
-use rocksdb::DB;
-use std::marker::PhantomData;
-use storage::persistent::Schema;
-use std::cmp::max;
 
 /// Data structure implementation, managing structure data, shape and metadata
 /// It is expected, that structure will hold a few GiBs of data, and because of that,
@@ -19,10 +22,13 @@ pub struct SkipList<C: ListValue> {
     _pd: PhantomData<C>,
 }
 
-impl<C: ListValue> Schema for SkipList<C> {
-    const COLUMN_FAMILY_NAME: &'static str = "skip_list";
+impl<C: ListValue> KeyValueSchema for SkipList<C> {
     type Key = NodeHeader;
     type Value = C;
+
+    fn name() -> &'static str {
+        "skip_list"
+    }
 }
 
 impl<C: ListValue> SkipList<C> {
@@ -146,9 +152,11 @@ impl<C: ListValue> SkipList<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::common_testing::*;
     use std::collections::HashMap;
+
+    use crate::common_testing::*;
+
+    use super::*;
 
     #[test]
     pub fn list_new() {

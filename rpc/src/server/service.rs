@@ -15,6 +15,7 @@ use slog::{Logger, warn};
 
 use lazy_static::lazy_static;
 use shell::shell_channel::BlockApplied;
+use storage::persistent::CommitLogs;
 use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 
 use crate::{
@@ -45,14 +46,15 @@ pub(crate) struct RpcServiceEnvironment {
     sys: ActorSystem,
     actor: RpcServerRef,
     db: Arc<rocksdb::DB>,
+    commit_logs: Arc<CommitLogs>,
     genesis_hash: String,
     state: RpcCollectedStateRef,
     log: Logger,
 }
 
 impl RpcServiceEnvironment {
-    pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, genesis_hash: &BlockHash, state: RpcCollectedStateRef, log: Logger) -> Self {
-        Self { sys, actor, db, genesis_hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(genesis_hash), state, log }
+    pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, genesis_hash: &BlockHash, state: RpcCollectedStateRef, log: Logger) -> Self {
+        Self { sys, actor, db, commit_logs, genesis_hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(genesis_hash), state, log }
     }
 }
 
@@ -250,7 +252,7 @@ fn create_routes() -> PathTree<Route> {
 
 /// Simple endpoint routing handler
 async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult {
-    let RpcServiceEnvironment { sys, actor, db, log, genesis_hash, state } = env;
+    let RpcServiceEnvironment { sys, actor, db, commit_logs, log, genesis_hash, state } = env;
 
     match (req.method(), find_route(req.uri())) {
         (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(state),
@@ -276,7 +278,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
             let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state, genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
-            result_to_json_response(fns::get_blocks(from_block_id, limit, db), &log)
+            result_to_json_response(fns::get_blocks(from_block_id, limit, db, commit_logs), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -322,45 +324,23 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 mod fns {
     use std::sync::Arc;
 
-    use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ContextStorage};
+    use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
+    use storage::{BlockStorage, BlockStorageReader, ContextStorage};
+    use storage::persistent::CommitLogs;
     use tezos_context::channel::ContextAction;
     use tezos_encoding::hash::{HashEncoding, HashType};
-    use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
-    pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>) -> Result<Vec<FullBlockInfo>, failure::Error> {
-        let block_storage = BlockStorage::new(db.clone());
-        let block_meta_storage = BlockMetaStorage::new(db);
+    pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Result<Vec<FullBlockInfo>, failure::Error> {
+        let block_storage = BlockStorage::new(db.clone(), commit_logs);
+        let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_id)?;
+        let blocks = block_storage.get_blocks(&block_hash, limit)?
+            .into_iter().map(|block| block.into()).collect();
 
-        let mut resp_data = Vec::with_capacity(limit);
-        // get starting block hash or use genesis hash
-        let mut block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_id)?;
-
-        for _ in 0..limit {
-            match block_meta_storage.get(&block_hash)? {
-                Some(meta) => match block_storage.get(&block_hash)? {
-                    Some(block) => {
-                        resp_data.push(block.into());
-                        match meta.predecessor {
-                            Some(predecessor) => if block_hash != predecessor {
-                                block_hash = predecessor
-                            } else {
-                                // found genesis
-                                break
-                            },
-                            None => break
-                        }
-                    }
-                    None => break
-                }
-                None => break
-            }
-        }
-
-        Ok(resp_data)
+        Ok(blocks)
     }
 
     /// Get actions for a specific block in ascending order.

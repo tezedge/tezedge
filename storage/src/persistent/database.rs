@@ -4,9 +4,10 @@
 use std::marker::PhantomData;
 
 use failure::Fail;
-use rocksdb::{DB, DBIterator, Error, WriteOptions, DBRawIterator};
+use rocksdb::{DB, DBIterator, DBRawIterator, Error, WriteOptions};
 
-use crate::persistent::schema::{Codec, Schema, SchemaError};
+use crate::persistent::codec::{Decoder, Encoder, SchemaError};
+use crate::persistent::schema::KeyValueSchema;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -38,7 +39,7 @@ impl From<Error> for DBError {
 }
 
 /// Custom trait extending RocksDB to better handle and enforce database schema
-pub trait DatabaseWithSchema<S: Schema> {
+pub trait DatabaseWithSchema<S: KeyValueSchema> {
     /// Insert new key value pair into the database. If key already exists, method will fail
     ///
     /// # Arguments
@@ -79,12 +80,12 @@ pub trait DatabaseWithSchema<S: Schema> {
     fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
 }
 
-impl<S: Schema> DatabaseWithSchema<S> for DB {
+impl<S: KeyValueSchema> DatabaseWithSchema<S> for DB {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
-            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.put_cf_opt(cf, &key, &value, &default_write_options())
             .map_err(DBError::from)
@@ -93,8 +94,8 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
-            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.merge_cf_opt(cf, &key, &value, &default_write_options())
             .map_err(DBError::from)
@@ -102,8 +103,8 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
 
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
         let key = key.encode()?;
-        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
-            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.get_cf(cf, &key)
             .map_err(DBError::from)?
@@ -113,8 +114,8 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
     }
 
     fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
-        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
-            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         let iter = match mode {
             IteratorMode::Start => self.iterator_cf(cf, rocksdb::IteratorMode::Start),
@@ -127,15 +128,15 @@ impl<S: Schema> DatabaseWithSchema<S> for DB {
 
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError> {
         let key = key.encode()?;
-        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
-            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         Ok(IteratorWithSchema(self.prefix_iterator_cf(cf, key)?, PhantomData))
     }
 
     fn contains(&self, key: &S::Key) -> Result<bool, DBError> {
-        let cf = self.cf_handle(S::COLUMN_FAMILY_NAME)
-            .ok_or(DBError::MissingColumnFamily { name: S::COLUMN_FAMILY_NAME })?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         let key = key.encode()?;
         let iter = self.iterator_cf(cf, rocksdb::IteratorMode::From(&key, rocksdb::Direction::Forward))?;
@@ -160,9 +161,9 @@ fn default_write_options() -> WriteOptions {
 }
 
 /// Database iterator extended by specific schema
-pub struct IteratorWithSchema<'a, S: Schema>(DBIterator<'a>, PhantomData<S>);
+pub struct IteratorWithSchema<'a, S: KeyValueSchema>(DBIterator<'a>, PhantomData<S>);
 
-impl<'a, S: Schema> Iterator for IteratorWithSchema<'a, S>
+impl<'a, S: KeyValueSchema> Iterator for IteratorWithSchema<'a, S>
 {
     type Item = (Result<S::Key, SchemaError>, Result<S::Value, SchemaError>);
 
@@ -189,7 +190,7 @@ impl From<Direction> for rocksdb::Direction {
 }
 
 /// Database iterator with schema mode, from start to end, from end to start or from specific key to end/start
-pub enum IteratorMode<'a, S: Schema> {
+pub enum IteratorMode<'a, S: KeyValueSchema> {
     Start,
     End,
     From(&'a S::Key, Direction),

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::hash::ChainId;
 
-use crate::persistent::{BincodeEncoded, DatabaseWithSchema, Schema};
+use crate::persistent::{BincodeEncoded, DatabaseWithSchema, KeyValueSchema};
 use crate::StorageError;
 
 pub type SystemStorageDatabase = dyn DatabaseWithSchema<SystemStorage> + Sync + Send;
@@ -65,10 +65,14 @@ impl SystemStorage {
 }
 
 
-impl Schema for SystemStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "system_storage";
+impl KeyValueSchema for SystemStorage {
     type Key = String;
     type Value = SystemValue;
+
+    #[inline]
+    fn name() -> &'static str {
+        "system_storage"
+    }
 }
 
 #[derive(Serialize, Deserialize)]

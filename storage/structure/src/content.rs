@@ -1,5 +1,7 @@
-use storage::persistent::{Codec, SchemaError};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+use storage::persistent::{Codec, Decoder, Encoder, SchemaError};
+
 use crate::LEVEL_BASE;
 
 /// Structure for orientation in the list.
@@ -59,12 +61,14 @@ impl NodeHeader {
     }
 }
 
-impl Codec for NodeHeader {
+impl Decoder for NodeHeader {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         bincode::deserialize(bytes)
             .map_err(|_| SchemaError::DecodeError)
     }
+}
 
+impl Encoder for NodeHeader {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         bincode::serialize(self)
             .map_err(|_| SchemaError::EncodeError)
