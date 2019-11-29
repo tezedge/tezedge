@@ -17,7 +17,7 @@ fn init_test_runtime() {
     client::change_runtime_configuration(
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         }
     ).unwrap();
 }
@@ -43,7 +43,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
     assert!(genesis_header.is_some());
     assert_eq!(genesis_header.unwrap(), current_header);
 
-    // apply first block - level 0
+    // apply first block - level 1
     let apply_block_result = client::apply_block(
         &chain_id,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
@@ -136,6 +136,161 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
     // check current head changed to level 1
     let current_header = client::get_current_block_header(&chain_id).unwrap();
     assert_eq!(1, current_header.level());
+}
+
+#[test]
+#[serial]
+fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_metadata() {
+    init_test_runtime();
+
+    // init empty storage for test
+    let TezosStorageInitInfo { chain_id, .. } = client::init_storage(
+        common::prepare_empty_dir("bootstrap_test_storage_10"),
+        test_data::TEZOS_ENV,
+    ).unwrap();
+
+    // apply first block - level 0
+    let apply_block_result = client::apply_block(
+        &chain_id,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        ),
+    ).unwrap();
+
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_json,
+        vec![
+            "content",
+            "signature"
+        ],
+    );
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_metadata_json,
+        vec![
+            "protocol",
+            "next_protocol",
+            "test_chain_status",
+            "max_operations_ttl",
+            "max_operation_data_length",
+            "max_block_header_length",
+            "max_operation_list_length",
+        ],
+    );
+
+    // apply second block - level 2
+    let apply_block_result = client::apply_block(
+        &chain_id,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_2,
+            test_data::block_header_level2_operations(),
+        ),
+    ).unwrap();
+
+    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_json,
+        vec![
+            "signature",
+            "proof_of_work_nonce",
+            "priority"
+        ],
+    );
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_metadata_json,
+        vec![
+            "protocol",
+            "next_protocol",
+            "test_chain_status",
+            "max_operations_ttl",
+            "max_operation_data_length",
+            "max_block_header_length",
+            "max_operation_list_length",
+            "baker",
+            "level",
+            "balance_updates"
+        ],
+    );
+
+    // apply the second block twice, should return the same data
+    let apply_block_result = client::apply_block(
+        &chain_id,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_2,
+            test_data::block_header_level2_operations(),
+        ),
+    ).unwrap();
+
+    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_json,
+        vec![
+            "signature",
+            "proof_of_work_nonce",
+            "priority"
+        ],
+    );
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_metadata_json,
+        vec![
+            "protocol",
+            "next_protocol",
+            "test_chain_status",
+            "max_operations_ttl",
+            "max_operation_data_length",
+            "max_block_header_length",
+            "max_operation_list_length",
+            "baker",
+            "level",
+            "balance_updates"
+        ],
+    );
+
+    // apply third block - level 3
+    let apply_block_result = client::apply_block(
+        &chain_id,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
+        &test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_3,
+            test_data::block_header_level3_operations(),
+        ),
+    ).unwrap();
+    assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.validation_result_message);
+
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_json,
+        vec![
+            "signature",
+            "proof_of_work_nonce",
+            "priority"
+        ],
+    );
+    assert_contains_metadata(
+        &apply_block_result.block_header_proto_metadata_json,
+        vec![
+            "protocol",
+            "next_protocol",
+            "test_chain_status",
+            "max_operations_ttl",
+            "max_operation_data_length",
+            "max_block_header_length",
+            "max_operation_list_length",
+            "baker",
+            "level",
+            "balance_updates"
+        ],
+    );
+    assert_contains_metadata(
+        &apply_block_result.operations_proto_metadata_json,
+        vec![
+            "protocol",
+            "contents",
+            "balance_updates"
+        ],
+    );
 }
 
 #[test]
@@ -356,6 +511,18 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
     // MAINNET current hash must be equal to level0
     let mainnet_current_header = client::get_current_block_header(&mainnet_init_info.chain_id).unwrap();
     assert_eq!(0, mainnet_current_header.level());
+}
+
+fn assert_contains_metadata(metadata: &String, expected_attributes: Vec<&str>) {
+    expected_attributes
+        .iter()
+        .for_each(|expected_attribute| assert_contains(&metadata, expected_attribute));
+}
+
+fn assert_contains(value: &String, attribute: &str) {
+    if !value.contains(attribute) {
+        panic!("assert_contains failed: value: `{:?}` does not contains: `{:?}`", &value, attribute);
+    }
 }
 
 mod test_data {

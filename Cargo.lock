@@ -964,7 +964,6 @@ dependencies = [
  "bincode 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "timeout_io 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1485,7 +1484,6 @@ dependencies = [
  "ctrlc 3.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog-async 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog-json 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1494,8 +1492,8 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre19",
- "tezos_interop_callback 0.0.1-pre19",
+ "tezos_interop 0.0.1-pre20",
+ "tezos_interop_callback 0.0.1-pre20",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2321,7 +2319,7 @@ dependencies = [
  "serial_test 0.2.0 (git+https://github.com/palfrey/serial_test.git)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre19",
+ "tezos_interop 0.0.1-pre20",
  "tezos_messages 0.1.0",
 ]
 
@@ -2354,7 +2352,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.0.1-pre19"
+version = "0.0.1-pre20"
 dependencies = [
  "colored 1.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2370,12 +2368,12 @@ dependencies = [
  "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_context 0.0.1",
- "tezos_interop_callback 0.0.1-pre19",
+ "tezos_interop_callback 0.0.1-pre20",
 ]
 
 [[package]]
 name = "tezos_interop_callback"
-version = "0.0.1-pre19"
+version = "0.0.1-pre20"
 dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2407,7 +2405,6 @@ dependencies = [
  "ipc 0.1.0",
  "ipmpsc 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.103 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "strum_macros 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
