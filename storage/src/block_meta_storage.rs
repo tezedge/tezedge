@@ -8,7 +8,7 @@ use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 use tezos_encoding::hash::{BlockHash, ChainId, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
+use crate::persistent::{DatabaseWithSchema, KeyValueSchema, Decoder, Encoder, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
@@ -136,7 +136,7 @@ impl Meta {
 /// Codec for `Meta`
 ///
 /// * bytes layout: `[mask(1)][predecessor(32)][successor(32)][level(4)][chain_id(4)]`
-impl Codec for Meta {
+impl Decoder for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if LEN_META == bytes.len() {
             // mask
@@ -170,7 +170,9 @@ impl Codec for Meta {
             Err(SchemaError::DecodeError)
         }
     }
+}
 
+impl Encoder for Meta {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut mask = 0u8;
         if self.is_applied {
@@ -201,15 +203,19 @@ impl Codec for Meta {
     }
 }
 
-impl Schema for BlockMetaStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "block_meta_storage";
+impl KeyValueSchema for BlockMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
 
-    fn cf_descriptor() -> ColumnFamilyDescriptor {
+    fn descriptor() -> ColumnFamilyDescriptor {
         let mut cf_opts = Options::default();
         cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
-        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, cf_opts)
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    #[inline]
+    fn name() -> &'static str {
+        "block_meta_storage"
     }
 }
 
@@ -280,7 +286,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
@@ -317,7 +323,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,
@@ -368,7 +374,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,

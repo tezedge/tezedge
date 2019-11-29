@@ -10,7 +10,7 @@ use tezos_encoding::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
+use crate::persistent::{DatabaseWithSchema, KeyValueSchema, Decoder, Encoder, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 /// Convenience type for operation meta storage database
@@ -91,15 +91,19 @@ impl OperationsMetaStorage {
     }
 }
 
-impl Schema for OperationsMetaStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "operations_meta_storage";
+impl KeyValueSchema for OperationsMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
 
-    fn cf_descriptor() -> ColumnFamilyDescriptor {
+    fn descriptor() -> ColumnFamilyDescriptor {
         let mut cf_opts = Options::default();
         cf_opts.set_merge_operator("operations_meta_storage_merge_operator", merge_meta_value, None);
-        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, cf_opts)
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    #[inline]
+    fn name() -> &'static str {
+        "operations_meta_storage"
     }
 }
 
@@ -174,7 +178,7 @@ impl Meta {
 /// Codec for `Meta`
 ///
 /// * bytes layout: `[validation_passes(1)][is_validation_pass_present(validation_passes * 1)][is_complete(1)][level(4)][chain_id(4)]`
-impl Codec for Meta {
+impl Decoder for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if !bytes.is_empty() {
             let validation_passes = bytes[0];
@@ -197,7 +201,9 @@ impl Codec for Meta {
             Err(SchemaError::DecodeError)
         }
     }
+}
 
+impl Encoder for Meta {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         if (self.validation_passes as usize) == self.is_validation_pass_present.len() {
             let mut value = vec![];
@@ -259,7 +265,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::descriptor()]).unwrap();
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
@@ -298,7 +304,7 @@ mod tests {
             let t = true as u8;
             let f = false as u8;
 
-            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::descriptor()]).unwrap();
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,
@@ -347,7 +353,7 @@ mod tests {
             let t = true as u8;
             let f = false as u8;
 
-            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::descriptor()]).unwrap();
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,
@@ -394,7 +400,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsMetaStorage::descriptor()]).unwrap();
             let k = vec![3, 1, 3, 3, 7];
             let v = Meta {
                 is_complete: false,

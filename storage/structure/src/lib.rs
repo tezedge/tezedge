@@ -29,7 +29,7 @@ pub const LEVEL_BASE: usize = 8;
 
 #[cfg(test)]
 pub mod common_testing {
-    use storage::persistent::{open_db, Schema, BincodeEncoded};
+    use storage::persistent::{open_db, KeyValueSchema, BincodeEncoded};
     use std::{
         sync::Arc,
         process::Command,
@@ -52,7 +52,7 @@ pub mod common_testing {
             let proc = Command::new("mktemp").args(&["-d"]).output();
             let dir = String::from_utf8(proc.unwrap().stdout)
                 .expect("failed to create testing database").trim().to_string();
-            let db = open_db(&dir, vec![Lane::<Value>::cf_descriptor()]).unwrap();
+            let db = open_db(&dir, vec![Lane::<Value>::descriptor()]).unwrap();
             Self {
                 db: Arc::new(db),
                 tmp_dir: dir,

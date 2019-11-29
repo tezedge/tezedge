@@ -13,6 +13,7 @@ use slog::{debug, FnValue, info, trace, warn};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_messages::p2p::binary_message::MessageHash;
@@ -112,9 +113,9 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (network_channel, shell_channel, rocks_db, init_info.chain_id.clone(),
+            Props::new_args(ChainManager::new, (network_channel, shell_channel, rocks_db, commit_logs, init_info.chain_id.clone(),
                                                 CurrentHead { local: init_info.current_block_header_hash.clone(), remote: init_info.genesis_block_header_hash.clone(), remote_level: 0 })),
             ChainManager::name())
     }
@@ -125,13 +126,13 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((network_channel, shell_channel, rocks_db, chain_id, current_head): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, ChainId, CurrentHead)) -> Self {
+    fn new((network_channel, shell_channel, rocks_db, commit_logs, chain_id, current_head): (NetworkChannelRef, ShellChannelRef, Arc<rocksdb::DB>, Arc<CommitLogs>, ChainId, CurrentHead)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
-            block_storage: Box::new(BlockStorage::new(rocks_db.clone())),
+            block_storage: Box::new(BlockStorage::new(rocks_db.clone(), commit_logs.clone())),
             operations_storage: Box::new(OperationsStorage::new(rocks_db.clone())),
-            block_state: BlockState::new(rocks_db.clone(), &chain_id),
+            block_state: BlockState::new(rocks_db.clone(), commit_logs, &chain_id),
             operations_state: OperationsState::new(rocks_db, &chain_id),
             peers: HashMap::new(),
             current_head,

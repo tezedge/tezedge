@@ -5,11 +5,15 @@ use std::path::Path;
 
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
+pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
+pub use commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
 pub use database::{DatabaseWithSchema, DBError};
-pub use schema::{BincodeEncoded, Codec, Schema, SchemaError};
+pub use schema::{CommitLogSchema, KeyValueSchema};
 
+pub mod codec;
 pub mod schema;
 pub mod database;
+pub mod commit_log;
 
 /// Open RocksDB database at given path with specified Column Family configurations
 ///

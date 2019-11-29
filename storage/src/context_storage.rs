@@ -4,14 +4,14 @@
 use std::mem;
 use std::sync::Arc;
 
+use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use tezos_context::channel::ContextAction;
-use tezos_encoding::hash::{BlockHash, OperationHash, HashType};
+use tezos_encoding::hash::{BlockHash, HashType, OperationHash};
 
-use crate::persistent::{Codec, DatabaseWithSchema, Schema, SchemaError};
+use crate::persistent::{DatabaseWithSchema, KeyValueSchema, Decoder, Encoder, SchemaError};
 use crate::StorageError;
-use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 
 pub type ContextKeyHash = Vec<u8>;
 pub type ContextStorageDatabase = dyn DatabaseWithSchema<ContextStorage> + Sync + Send;
@@ -95,7 +95,7 @@ const BLANK_KEY_HASH: [u8; LEN_KEY_HASH] = [0; LEN_KEY_HASH];
 /// Codec for `RecordKey`
 ///
 /// * bytes layout `[block_hash(32)][ordinal_id(4)][key_hash(32)][operation_hash(32)]`
-impl Codec for ContextRecordKey {
+impl Decoder for ContextRecordKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if LEN_RECORD_KEY == bytes.len() {
             // block header hash
@@ -119,7 +119,9 @@ impl Codec for ContextRecordKey {
             Err(SchemaError::DecodeError)
         }
     }
+}
 
+impl Encoder for ContextRecordKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = Vec::with_capacity(LEN_RECORD_KEY);
         // block header hash
@@ -152,16 +154,19 @@ impl ContextRecordValue {
 /// Codec for `RecordValue`
 impl crate::persistent::BincodeEncoded for ContextRecordValue { }
 
-impl Schema for ContextStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "context_storage";
+impl KeyValueSchema for ContextStorage {
     type Key = ContextRecordKey;
     type Value = ContextRecordValue;
 
-    fn cf_descriptor() -> ColumnFamilyDescriptor {
+    fn descriptor() -> ColumnFamilyDescriptor {
         let mut cf_opts = Options::default();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(LEN_BLOCK_HASH));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
-        ColumnFamilyDescriptor::new(Self::COLUMN_FAMILY_NAME, cf_opts)
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    fn name() -> &'static str {
+        "context_storage"
     }
 }
 
@@ -169,7 +174,7 @@ impl Schema for ContextStorage {
 mod tests {
     use failure::Error;
 
-    use tezos_encoding::hash::{HashType, HashEncoding};
+    use tezos_encoding::hash::{HashEncoding, HashType};
 
     use super::*;
 
@@ -211,7 +216,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![ContextStorage::cf_descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![ContextStorage::descriptor()]).unwrap();
 
             let block_hash_1 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
             let block_hash_2 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
