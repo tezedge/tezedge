@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use derive_builder::Builder;
+use getset::Getters;
 use tezos_encoding::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
@@ -15,12 +17,22 @@ use crate::persistent::{BincodeEncoded, CommitLogs, CommitLogSchema, CommitLogWi
 /// That location is then stored as a value in the key-value store.
 #[derive(Clone)]
 pub struct BlockStorage {
-    block_index: BlockPrimaryIndex,
+    block_primary_index: BlockPrimaryIndex,
     block_by_level_index: BlockByLevelIndex,
     clog: Arc<BlockStorageCommitLog>,
 }
 
 pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + Send;
+
+#[derive(Builder, Getters, Serialize, Deserialize)]
+pub struct BlockJsonData {
+    #[get = "pub"]
+    block_header_proto_json: String,
+    #[get = "pub"]
+    block_header_proto_metadata_json: String,
+    #[get = "pub"]
+    operations_proto_metadata_json: String,
+}
 
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
@@ -33,25 +45,35 @@ pub trait BlockStorageReader: Sync + Send {
 impl BlockStorage {
     pub fn new(db: Arc<rocksdb::DB>, clog: Arc<CommitLogs>) -> Self {
         Self {
-            block_index: BlockPrimaryIndex::new(db.clone()),
+            block_primary_index: BlockPrimaryIndex::new(db.clone()),
             block_by_level_index: BlockByLevelIndex::new(db),
             clog,
         }
     }
 
-    #[inline]
-    pub fn put_block_header(&mut self, block: &BlockHeaderWithHash) -> Result<(), StorageError> {
-        self.clog.append(&BlockStorageColumn::BlockHeader(block.clone()))
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+        self.clog.append(&BlockStorageColumn::BlockHeader(block_header.clone()))
             .map_err(StorageError::from)
             .and_then(|block_header_location| {
                 let location = BlockStorageColumnsLocation {
                     block_header: block_header_location,
-                    block_header_proto_json: None,
-                    block_header_proto_metadata_json: None,
-                    operations_proto_metadata_json: None,
+                    block_json_data: None,
                 };
-                self.block_index.put(&block.hash, &location).and(self.block_by_level_index.put(block.header.level(), &location))
+                self.block_primary_index.put(&block_header.hash, &location).and(self.block_by_level_index.put(block_header.header.level(), &location))
             })
+    }
+
+    pub fn put_block_json_data(&mut self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
+        let updated_column_location = {
+            let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
+            let mut column_location = self.block_primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
+            column_location.block_json_data = Some(block_json_data_location);
+            column_location
+        };
+        let block_header = self.get_block_header_by_location(&updated_column_location)?;
+        // update indexes
+        self.block_primary_index.put(&block_header.hash, &updated_column_location)
+            .and(self.block_by_level_index.put(block_header.header.level(), &updated_column_location))
     }
 
     #[inline]
@@ -66,7 +88,7 @@ impl BlockStorage {
 impl BlockStorageReader for BlockStorage {
     #[inline]
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
-        self.block_index.get(block_hash)?
+        self.block_primary_index.get(block_hash)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
             .map_err(StorageError::from)
@@ -82,7 +104,7 @@ impl BlockStorageReader for BlockStorage {
 
     #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.block_index.contains(block_hash)
+        self.block_primary_index.contains(block_hash)
     }
 }
 
@@ -99,9 +121,7 @@ impl CommitLogSchema for BlockStorage {
 #[derive(Serialize, Deserialize)]
 pub enum BlockStorageColumn {
     BlockHeader(BlockHeaderWithHash),
-    BlockHeaderProtoJson(String),
-    BlockHeaderProtoMetadataJson(String),
-    OperationsProtoMetadataJson(String),
+    BlockJsonData(BlockJsonData),
 }
 
 impl BincodeEncoded for BlockStorageColumn {}
@@ -110,9 +130,7 @@ impl BincodeEncoded for BlockStorageColumn {}
 #[derive(Serialize, Deserialize)]
 pub struct BlockStorageColumnsLocation {
     block_header: Location,
-    block_header_proto_json: Option<Location>,
-    block_header_proto_metadata_json: Option<Location>,
-    operations_proto_metadata_json: Option<Location>,
+    block_json_data: Option<Location>,
 }
 
 impl BincodeEncoded for BlockStorageColumnsLocation {}
