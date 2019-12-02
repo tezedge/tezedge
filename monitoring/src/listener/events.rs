@@ -7,7 +7,7 @@ use failure::_core::cmp::max;
 use serde::{Deserialize, Serialize};
 
 use storage::{IteratorMode, persistent::DatabaseWithSchema, StorageError};
-use storage::persistent::{Codec, Schema, SchemaError};
+use storage::persistent::{KeyValueSchema, Decoder, Encoder, SchemaError};
 
 // --- Storing result in Rocks DB --- //
 pub type EventStorageDatabase = dyn DatabaseWithSchema<EventStorage> + Sync + Send;
@@ -41,10 +41,13 @@ impl EventStorage {
     }
 }
 
-impl Schema for EventStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "event_storage";
+impl KeyValueSchema for EventStorage {
     type Key = RocksStamp;
     type Value = Event;
+
+    fn name() -> &'static str {
+        "event_storage"
+    }
 }
 
 #[derive(Clone)]
@@ -63,10 +66,13 @@ impl EventPayloadStorage {
     }
 }
 
-impl Schema for EventPayloadStorage {
-    const COLUMN_FAMILY_NAME: &'static str = "event_payload_storage";
+impl KeyValueSchema for EventPayloadStorage {
     type Key = RocksStamp;
     type Value = Vec<u8>;
+
+    fn name() -> &'static str {
+        "event_payload_storage"
+    }
 }
 
 // --- Record implementation --- //
@@ -82,7 +88,7 @@ impl From<u64> for RocksStamp {
     }
 }
 
-impl Codec for RocksStamp {
+impl Decoder for RocksStamp {
     #[inline]
     fn decode(data: &[u8]) -> Result<Self, SchemaError> {
         if data.len() < 8 {
@@ -93,7 +99,9 @@ impl Codec for RocksStamp {
             Ok(Self(u64::from_le_bytes(buffer)))
         }
     }
+}
 
+impl Encoder for RocksStamp {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         Ok(self.0.to_le_bytes().to_vec())
@@ -142,7 +150,7 @@ pub struct Event {
     pub peer_id: String,
 }
 
-impl Codec for Event {
+impl Decoder for Event {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if bytes.len() < 1 {
@@ -156,7 +164,9 @@ impl Codec for Event {
         let peer_id = String::from_utf8(bytes[9..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
         Ok(Self { record_type, timestamp, peer_id })
     }
+}
 
+impl Encoder for Event {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         // 1 byte event_type, 8 bytes (little endian) timestamp, rest is peer name (UTF-8)

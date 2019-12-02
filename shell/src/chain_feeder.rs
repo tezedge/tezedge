@@ -12,11 +12,12 @@ use riker::actors::*;
 use slog::{debug, Logger, warn};
 
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
+use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController};
 
-use crate::shell_channel::{BlockApplied, ShellChannelRef, ShellChannelTopic, ShellChannelMsg};
+use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
 
 /// This command triggers feeding of completed blocks to the tezos protocol
@@ -39,7 +40,7 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
-    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let apply_block_run = apply_block_run.clone();
@@ -48,7 +49,7 @@ impl ChainFeeder {
             let shell_channel = shell_channel.clone();
 
             thread::spawn(move || {
-                let block_storage = BlockStorage::new(rocks_db.clone());
+                let block_storage = BlockStorage::new(rocks_db.clone(), commit_logs);
                 let mut block_meta_storage = BlockMetaStorage::new(rocks_db.clone());
                 let operations_storage = OperationsStorage::new(rocks_db.clone());
                 let operations_meta_storage = OperationsMetaStorage::new(rocks_db);

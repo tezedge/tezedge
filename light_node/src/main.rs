@@ -21,12 +21,12 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{BlockMetaStorage, BlockStorage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
-use storage::persistent::{open_db, Schema};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
+use storage::persistent::{CommitLogs, CommitLogSchema, KeyValueSchema, open_db};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
-use tezos_api::identity::Identity;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
@@ -35,7 +35,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 2;
+const DATABASE_VERSION: i64 = 3;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -78,7 +78,7 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
+fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -100,9 +100,9 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
             .map(|cfg| cfg.version.clone())
             .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network)))
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), &init_info)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), commit_logs.clone(), &init_info)
         .expect("Failed to create chain manager");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), &init_info, protocol_commands, log.clone())
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), commit_logs.clone(), &init_info, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
     let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, log.clone())
         .expect("Failed to create context event listener");
@@ -110,7 +110,7 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([127, 0, 0, 1], env.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), &init_info)
+    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([127, 0, 0, 1], env.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), commit_logs.clone(), &init_info)
         .expect("Failed to create RPC server");
     if env.record {
         info!(log, "Running in record mode");
@@ -242,14 +242,15 @@ fn main() {
     drop(protocol_controller);
 
     let schemas = vec![
-        BlockStorage::cf_descriptor(),
-        BlockMetaStorage::cf_descriptor(),
-        OperationsStorage::cf_descriptor(),
-        OperationsMetaStorage::cf_descriptor(),
-        EventPayloadStorage::cf_descriptor(),
-        EventStorage::cf_descriptor(),
-        ContextStorage::cf_descriptor(),
-        SystemStorage::cf_descriptor(),
+        block_storage::BlockIndex::descriptor(),
+        block_storage::BlockByLevelIndex::descriptor(),
+        BlockMetaStorage::descriptor(),
+        OperationsStorage::descriptor(),
+        OperationsMetaStorage::descriptor(),
+        EventPayloadStorage::descriptor(),
+        EventStorage::descriptor(),
+        ContextStorage::descriptor(),
+        SystemStorage::descriptor(),
     ];
     let rocks_db = match open_db(&env.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
@@ -302,12 +303,20 @@ fn main() {
         });
     }
 
+    let schemas = vec![
+        BlockStorage::descriptor(),
+    ];
+    let commit_logs = match CommitLogs::new(&env.storage.bootstrap_db_path, &schemas) {
+        Ok(commit_logs) => Arc::new(commit_logs),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
+    };
 
-    match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), log.clone()) {
-        Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, rocks_db.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
+    match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), commit_logs.clone(), log.clone()) {
+        Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, rocks_db.clone(), commit_logs.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
     }
 
+    commit_logs.flush().expect("Failed to flush commit logs");
     rocks_db.flush().expect("Failed to flush database");
 }
 

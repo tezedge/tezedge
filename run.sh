@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+warn_if_not_using_recommended_rust() {
+  SUPPORTED_VERSION="2019-11-25"
+  RUST_VERSION=$(rustc --version | gawk 'match($0, /.*\(.* ([0-9-]+)\)/, a) {print a[1]}')
+
+  if [ "$RUST_VERSION" != "$SUPPORTED_VERSION" ]; then
+    echo -e "\e[33mWarning:\e[0m please use supported rust toolchain version \e[97m$SUPPORTED_VERSION\e[0m. See README on how to install a supported rust toolchain."
+  fi
+}
+
 help() {
   echo -e "Usage: \e[97m$0\e[0m \e[32mMODE\e[0m"
   echo -e "Possible values for \e[32mMODE\e[0m are:"
@@ -153,12 +162,14 @@ run_docker() {
 case $1 in
 
   node)
+    warn_if_not_using_recommended_rust
     printf "\033[1;37mRunning Tezedge node in DEBUG mode\e[0m\n"
     build_all "debug"
     run_node "debug" "$@"
     ;;
 
   release)
+    warn_if_not_using_recommended_rust
     printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
     build_all "release"
     run_node "release" "$@"

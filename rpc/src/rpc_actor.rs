@@ -11,6 +11,7 @@ use tokio::runtime::Runtime;
 
 use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::{BlockHeaderWithHash, BlockStorageReader};
+use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::ChainId;
 
@@ -46,9 +47,9 @@ impl RpcServer {
         Self { shell_channel, state }
     }
 
-    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(db.clone()).map(|block| block.into()),
+            current_head: load_current_head(db.clone(), commit_logs.clone()).map(|block| block.into()),
             chain_id: tezos_info.chain_id.clone(),
         }));
         let actor_ref = sys.actor_of(
@@ -58,7 +59,7 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let server = spawn_server(&rpc_listen_address, RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), db, &tezos_info.genesis_block_header_hash, shared_state, sys.log()));
+            let server = spawn_server(&rpc_listen_address, RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), db, commit_logs, &tezos_info.genesis_block_header_hash, shared_state, sys.log()));
             let inner_log = sys.log();
             runtime.spawn(async move {
                 if let Err(e) = server.await {
@@ -108,7 +109,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(db: Arc<rocksdb::DB>) -> Option<BlockHeaderWithHash> {
+fn load_current_head(db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Option<BlockHeaderWithHash> {
     use storage::{BlockMetaStorage, BlockStorage, IteratorMode};
     use tezos_encoding::hash::BlockHash as RawBlockHash;
 
@@ -124,7 +125,7 @@ fn load_current_head(db: Arc<rocksdb::DB>) -> Option<BlockHeaderWithHash> {
             }
         }
         if let Some(head) = head {
-            let block_storage = BlockStorage::new(db.clone());
+            let block_storage = BlockStorage::new(db.clone(), commit_logs);
             if let Ok(Some(head)) = block_storage.get(&head) {
                 return Some(head);
             }

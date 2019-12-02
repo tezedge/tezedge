@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 bincode = "1.2"
 bytes = "0.4"
+commitlog = "0.1"
 failure = "0.1"
 rocksdb = "0.12"
 serde = { version = "1.0", features = ["derive"] }
@@ -17,3 +18,6 @@ networking = { path = "../networking" }
 tezos_context = { path = "../tezos/context" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
+
+[dev-dependencies]
+hex = "0.4"
