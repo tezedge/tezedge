@@ -13,7 +13,7 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHas
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
-pub use crate::block_storage::{BlockStorage, BlockStorageReader};
+pub use crate::block_storage::{BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
 pub use crate::context_storage::{ContextRecordKey, ContextRecordValue, ContextStorage};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};

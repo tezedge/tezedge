@@ -37,6 +37,8 @@ pub struct BlockJsonData {
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
+    fn get_json_data(&self, block_hash: &BlockHash) -> Result<Option<BlockJsonData>, StorageError>;
+
     fn get_blocks(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
@@ -83,6 +85,17 @@ impl BlockStorage {
             _ => Err(StorageError::InvalidColumn)
         }
     }
+
+    #[inline]
+    fn get_block_json_data_by_location(&self, location: &BlockStorageColumnsLocation) -> Result<Option<BlockJsonData>, StorageError> {
+        match &location.block_json_data {
+            Some(block_json_data_location) => match self.clog.get(block_json_data_location).map_err(StorageError::from)? {
+                BlockStorageColumn::BlockJsonData(json_data) => Ok(Some(json_data)),
+                _ => Err(StorageError::InvalidColumn)
+            }
+            None => Ok(None)
+        }
+    }
 }
 
 impl BlockStorageReader for BlockStorage {
@@ -94,6 +107,14 @@ impl BlockStorageReader for BlockStorage {
             .map_err(StorageError::from)
     }
 
+    #[inline]
+    fn get_json_data(&self, block_hash: &BlockHash) -> Result<Option<BlockJsonData>, StorageError> {
+        self.block_primary_index.get(block_hash)?
+            .map(|location| self.get_block_json_data_by_location(&location))
+            .unwrap_or(Ok(None))
+    }
+
+    #[inline]
     fn get_blocks(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
         self.get(block_hash)?
             .map_or_else(|| Ok(Vec::new()), |block| self.block_by_level_index.get_blocks(block.header.level(), limit))?

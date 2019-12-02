@@ -11,7 +11,7 @@ use failure::Error;
 use riker::actors::*;
 use slog::{debug, Logger, warn};
 
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, BlockJsonDataBuilder};
 use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
@@ -49,7 +49,7 @@ impl ChainFeeder {
             let shell_channel = shell_channel.clone();
 
             thread::spawn(move || {
-                let block_storage = BlockStorage::new(rocks_db.clone(), commit_logs);
+                let mut block_storage = BlockStorage::new(rocks_db.clone(), commit_logs);
                 let mut block_meta_storage = BlockMetaStorage::new(rocks_db.clone());
                 let operations_storage = OperationsStorage::new(rocks_db.clone());
                 let operations_meta_storage = OperationsMetaStorage::new(rocks_db);
@@ -58,7 +58,7 @@ impl ChainFeeder {
                 while apply_block_run.load(Ordering::Acquire) {
                     match ipc_server.accept() {
                         Ok(protocol_controller) =>
-                            match feed_chain_to_protocol(&chain_id, &apply_block_run, &current_head_hash, &shell_channel, &block_storage, &mut block_meta_storage, &operations_storage, &operations_meta_storage, protocol_controller, &log) {
+                            match feed_chain_to_protocol(&chain_id, &apply_block_run, &current_head_hash, &shell_channel, &mut block_storage, &mut block_meta_storage, &operations_storage, &operations_meta_storage, protocol_controller, &log) {
                                 Ok(()) => debug!(log, "Feed chain to protocol finished"),
                                 Err(err) => {
                                     if apply_block_run.load(Ordering::Acquire) {
@@ -164,7 +164,7 @@ fn feed_chain_to_protocol(
     apply_block_run: &AtomicBool,
     current_head_hash: &BlockHash,
     shell_channel: &ShellChannelRef,
-    block_storage: &BlockStorage,
+    block_storage: &mut BlockStorage,
     block_meta_storage: &mut BlockMetaStorage,
     operations_storage: &OperationsStorage,
     operations_meta_storage: &OperationsMetaStorage,
@@ -223,6 +223,15 @@ fn feed_chain_to_protocol(
                                             topic: ShellChannelTopic::ShellEvents.into(),
                                         }, None);
                                 }
+
+                                // store json data
+                                block_storage.put_block_json_data(
+                                    &current_head.hash,
+                                    BlockJsonDataBuilder::default()
+                                        .block_header_proto_json(apply_block_result.block_header_proto_json)
+                                        .block_header_proto_metadata_json(apply_block_result.block_header_proto_metadata_json)
+                                        .operations_proto_metadata_json(apply_block_result.operations_proto_metadata_json)
+                                        .build().unwrap())?;
 
                                 // Current head is already applied, so we should move to successor
                                 // or in case no successor is available do nothing.
