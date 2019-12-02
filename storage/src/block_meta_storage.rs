@@ -86,8 +86,8 @@ impl BlockMetaStorage {
 const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
 const LEN_CHAIN_ID: usize = HashType::ChainId.size();
 
-const MASK_IS_APPLIED: u8    = 0b0000_0001;
-const MASK_HAS_SUCCESSOR: u8   = 0b0000_0010;
+const MASK_IS_APPLIED: u8 = 0b0000_0001;
+const MASK_HAS_SUCCESSOR: u8 = 0b0000_0010;
 const MASK_HAS_PREDECESSOR: u8 = 0b0000_0100;
 
 const IDX_MASK: usize = 0;

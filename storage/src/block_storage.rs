@@ -3,11 +3,22 @@
 
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use tezos_encoding::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
-use crate::persistent::{CommitLogs, CommitLogSchema, CommitLogWithSchema, DatabaseWithSchema, KeyValueSchema, Location};
-use crate::persistent::database::IteratorWithSchema;
+use crate::persistent::{BincodeEncoded, CommitLogs, CommitLogSchema, CommitLogWithSchema, DatabaseWithSchema, KeyValueSchema, Location};
+
+/// Store block header data in a key-value store and into commit log.
+/// The value is fist inserted into commit log, which returns a location of the newly inserted value.
+/// That location is then stored as a value in the key-value store.
+#[derive(Clone)]
+pub struct BlockStorage {
+    block_index: BlockPrimaryIndex,
+    block_by_level_index: BlockByLevelIndex,
+    clog: Arc<BlockStorageCommitLog>,
+}
 
 pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + Send;
 
@@ -19,31 +30,36 @@ pub trait BlockStorageReader: Sync + Send {
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
-#[derive(Clone)]
-pub struct BlockStorage {
-    block_index: BlockIndex,
-    block_by_level_index: BlockByLevelIndex,
-    clog: Arc<BlockStorageCommitLog>,
-}
-
 impl BlockStorage {
     pub fn new(db: Arc<rocksdb::DB>, clog: Arc<CommitLogs>) -> Self {
         Self {
-            block_index: BlockIndex::new(db.clone()),
+            block_index: BlockPrimaryIndex::new(db.clone()),
             block_by_level_index: BlockByLevelIndex::new(db),
-            clog
+            clog,
         }
     }
 
     #[inline]
     pub fn put_block_header(&mut self, block: &BlockHeaderWithHash) -> Result<(), StorageError> {
-            self.clog.append(block).map_err(StorageError::from)
-                .and_then(|location| self.block_index.put(&block.hash, &location).and(self.block_by_level_index.put(block.header.level(), &location)))
+        self.clog.append(&BlockStorageColumn::BlockHeader(block.clone()))
+            .map_err(StorageError::from)
+            .and_then(|block_header_location| {
+                let location = BlockStorageColumnsLocation {
+                    block_header: block_header_location,
+                    block_header_proto_json: None,
+                    block_header_proto_metadata_json: None,
+                    operations_proto_metadata_json: None,
+                };
+                self.block_index.put(&block.hash, &location).and(self.block_by_level_index.put(block.header.level(), &location))
+            })
     }
 
     #[inline]
-    fn get_by_location(&self, location: &Location) -> Result<BlockHeaderWithHash, StorageError> {
-        self.clog.get(location).map_err(StorageError::from)
+    fn get_block_header_by_location(&self, location: &BlockStorageColumnsLocation) -> Result<BlockHeaderWithHash, StorageError> {
+        match self.clog.get(&location.block_header).map_err(StorageError::from)? {
+            BlockStorageColumn::BlockHeader(block_header) => Ok(block_header),
+            _ => Err(StorageError::InvalidColumn)
+        }
     }
 }
 
@@ -51,7 +67,7 @@ impl BlockStorageReader for BlockStorage {
     #[inline]
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.block_index.get(block_hash)?
-            .map(|location| self.clog.get(&location))
+            .map(|location| self.get_block_header_by_location(&location))
             .transpose()
             .map_err(StorageError::from)
     }
@@ -60,7 +76,7 @@ impl BlockStorageReader for BlockStorage {
         self.get(block_hash)?
             .map_or_else(|| Ok(Vec::new()), |block| self.block_by_level_index.get_blocks(block.header.level(), limit))?
             .iter()
-            .map(|location| self.get_by_location(location))
+            .map(|location| self.get_block_header_by_location(location))
             .collect()
     }
 
@@ -71,7 +87,7 @@ impl BlockStorageReader for BlockStorage {
 }
 
 impl CommitLogSchema for BlockStorage {
-    type Value = BlockHeaderWithHash;
+    type Value = BlockStorageColumn;
 
     #[inline]
     fn name() -> &'static str {
@@ -79,30 +95,50 @@ impl CommitLogSchema for BlockStorage {
     }
 }
 
-
-pub type BlockIndexDatabase = dyn DatabaseWithSchema<BlockIndex> + Sync + Send;
-
-#[derive(Clone)]
-pub struct BlockIndex {
-    db: Arc<BlockIndexDatabase>,
+/// This mimics columns in a classic relational database.
+#[derive(Serialize, Deserialize)]
+pub enum BlockStorageColumn {
+    BlockHeader(BlockHeaderWithHash),
+    BlockHeaderProtoJson(String),
+    BlockHeaderProtoMetadataJson(String),
+    OperationsProtoMetadataJson(String),
 }
 
-/// Store block header data in a key-value store and into commit log.
-/// The value is fist inserted into commit log, which returns a location of the newly inserted value.
-/// That location is then stored as a value in the key-value store.
-impl BlockIndex {
-    fn new(db: Arc<BlockIndexDatabase>) -> Self {
+impl BincodeEncoded for BlockStorageColumn {}
+
+/// Holds reference to all stored columns.
+#[derive(Serialize, Deserialize)]
+pub struct BlockStorageColumnsLocation {
+    block_header: Location,
+    block_header_proto_json: Option<Location>,
+    block_header_proto_metadata_json: Option<Location>,
+    operations_proto_metadata_json: Option<Location>,
+}
+
+impl BincodeEncoded for BlockStorageColumnsLocation {}
+
+
+/// Index block data as `block_header_hash -> location`.
+#[derive(Clone)]
+pub struct BlockPrimaryIndex {
+    db: Arc<BlockPrimaryIndexDatabase>,
+}
+
+pub type BlockPrimaryIndexDatabase = dyn DatabaseWithSchema<BlockPrimaryIndex> + Sync + Send;
+
+impl BlockPrimaryIndex {
+    fn new(db: Arc<BlockPrimaryIndexDatabase>) -> Self {
         Self { db }
     }
 
     #[inline]
-    fn put(&mut self, block_hash: &BlockHash, location: &Location) -> Result<(), StorageError> {
+    fn put(&mut self, block_hash: &BlockHash, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
         self.db.put(block_hash, &location)
             .map_err(StorageError::from)
     }
 
     #[inline]
-    fn get(&self, block_hash: &BlockHash) -> Result<Option<Location>, StorageError> {
+    fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
         self.db.get(block_hash)
             .map_err(StorageError::from)
     }
@@ -114,9 +150,9 @@ impl BlockIndex {
     }
 }
 
-impl KeyValueSchema for BlockIndex {
+impl KeyValueSchema for BlockPrimaryIndex {
     type Key = BlockHash;
-    type Value = Location;
+    type Value = BlockStorageColumnsLocation;
 
     #[inline]
     fn name() -> &'static str {
@@ -124,39 +160,36 @@ impl KeyValueSchema for BlockIndex {
     }
 }
 
-
-
-pub type BlockByLevelIndexDatabase = dyn DatabaseWithSchema<BlockByLevelIndex> + Sync + Send;
-pub type BlockLevel = i32;
-
+/// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByLevelIndex {
     db: Arc<BlockByLevelIndexDatabase>,
 }
+
+pub type BlockByLevelIndexDatabase = dyn DatabaseWithSchema<BlockByLevelIndex> + Sync + Send;
+pub type BlockLevel = i32;
 
 impl BlockByLevelIndex {
     fn new(db: Arc<BlockByLevelIndexDatabase>) -> Self {
         Self { db }
     }
 
-    fn put(&self, level: BlockLevel, location: &Location) -> Result<(), StorageError> {
-        self.db.put(&level, location).map_err(StorageError::from)
-    }
-
-    #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.db.iterator(mode)
+    fn put(&self, level: BlockLevel, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
+        self.db.put(&level, location)
             .map_err(StorageError::from)
     }
 
-    fn get_blocks(&self, from_level: BlockLevel, limit: usize) -> Result<Vec<Location>, StorageError> {
-        self.db.iterator(IteratorMode::From(&from_level, Direction::Forward))?.take(limit).map(|(_, location)| location.map_err(StorageError::from)).collect()
+    fn get_blocks(&self, from_level: BlockLevel, limit: usize) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
+        self.db.iterator(IteratorMode::From(&from_level, Direction::Forward))?
+            .take(limit)
+            .map(|(_, location)| location.map_err(StorageError::from))
+            .collect()
     }
 }
 
 impl KeyValueSchema for BlockByLevelIndex {
     type Key = BlockLevel;
-    type Value = Location;
+    type Value = BlockStorageColumnsLocation;
 
     #[inline]
     fn name() -> &'static str {
@@ -169,8 +202,6 @@ mod tests {
     use std::path::Path;
 
     use failure::Error;
-    use rocksdb::DB;
-    use rocksdb::Options;
 
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
@@ -181,6 +212,8 @@ mod tests {
 
     #[test]
     fn block_storage_read_write() -> Result<(), Error> {
+        use rocksdb::{Options, DB};
+
         let path = "__block_basictest";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
@@ -189,7 +222,7 @@ mod tests {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockIndex::descriptor(), BlockByLevelIndex::descriptor()]).unwrap();
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockPrimaryIndex::descriptor(), BlockByLevelIndex::descriptor()]).unwrap();
             let clog = CommitLogs::new(path, &vec![BlockStorage::descriptor()])?;
             let mut storage = BlockStorage::new(Arc::new(db), Arc::new(clog));
 
@@ -200,6 +233,7 @@ mod tests {
             let block_header_res = storage.get(&block_header.hash)?.unwrap();
             assert_eq!(block_header_res, block_header);
         }
-        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+        assert!(DB::destroy(&opts, path).is_ok());
+        Ok(assert!(std::fs::remove_dir_all(path).is_ok()))
     }
 }

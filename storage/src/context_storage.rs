@@ -23,7 +23,7 @@ pub struct ContextStorage {
 impl ContextStorage {
 
     pub fn new(db: Arc<ContextStorageDatabase>) -> Self {
-        ContextStorage { db }
+        Self { db }
     }
 
     #[inline]
@@ -69,11 +69,11 @@ pub struct ContextRecordKey {
 
 impl ContextRecordKey {
     pub fn new(block_hash: &BlockHash, operation_hash: &Option<OperationHash>, key: &[String], ordinal_id: u32) -> Self {
-        ContextRecordKey {
+        Self {
             block_hash: block_hash.clone(),
             operation_hash: operation_hash.clone(),
             key_hash: crypto::blake2b::digest_256(key.join(".").as_bytes()),
-            ordinal_id
+            ordinal_id,
         }
     }
 }

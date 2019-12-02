@@ -24,7 +24,7 @@ pub struct OperationsMetaStorage {
 
 impl OperationsMetaStorage {
     pub fn new(db: Arc<OperationsMetaStorageDatabase>) -> Self {
-        OperationsMetaStorage { db }
+        Self { db }
     }
 
     #[inline]

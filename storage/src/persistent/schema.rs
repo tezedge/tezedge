@@ -28,6 +28,9 @@ impl CommitLogDescriptor {
 }
 
 pub trait CommitLogSchema {
+    // TODO: split value to `ValueIn` and `ValueOut` - we will start to use references in `ValueIn` but that will introduce
+    //       lifetime bound which is not currently supported for associated types. Unless we want to all lifetime
+    //       to the `CommitLogSchema`.
     type Value: Codec;
 
     fn descriptor() -> CommitLogDescriptor {
