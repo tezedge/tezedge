@@ -5,7 +5,7 @@ package tezedge;
 // ...
 
 service Tezedge {
-    rpc ChainsBlocks (ChainsBlocksRequest) returns (ChainsBlocksReply);
+    rpc GetBlock (GetBlockRequest) returns (GetBlockReply);
 
     rpc MonitorCommitHash (MonitorCommitHashRequest) returns (MonitorCommitHashReply);
 
@@ -13,27 +13,29 @@ service Tezedge {
     rpc SayHello (HelloRequest) returns (HelloReply);
 }
 
+
 message MonitorCommitHashRequest {}
  
- message MonitorCommitHashReply {
-     string commit_hash = 1;
- }
+message MonitorCommitHashReply {
+    string commit_hash = 1;
+}
 
-message ChainsBlocksRequest {
+message GetBlockRequest {
     string chain_id = 1;
     string block_id = 2;
  }
- 
- message ChainsBlocksReply {
-     // A block identifier (Base58Check-encoded)
-     string block_hash = 1;
+
+message GetBlockReply {
+    // A block identifier (Base58Check-encoded)
+    string block_hash = 1;
+    string chain_id = 2;
  }
 
 
 message HelloRequest {
     string name = 1;
- }
+}
  
- message HelloReply {
-     string message = 1;
- }
+message HelloReply {
+    string message = 1;
+}

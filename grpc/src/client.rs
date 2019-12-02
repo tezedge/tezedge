@@ -5,7 +5,7 @@ pub mod tezedge {
 
 use tezedge::{
     client::{TezedgeClient},
-    HelloRequest, ChainsBlocksRequest, MonitorCommitHashRequest
+    HelloRequest, GetBlockRequest, MonitorCommitHashRequest
 };
 
 use tonic::transport::Endpoint;
@@ -27,13 +27,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("say_hello Response={:?}", response);
 
 
-    let request = tonic::Request::new(ChainsBlocksRequest {
+    let request = tonic::Request::new(GetBlockRequest {
         chain_id: "some_chain_id".into(),
         block_id: "some_block_id".into(),
     });
-    println!("Sending chains_blocks Request={:?}", request);
-    let response = tezedge_client.chains_blocks(request).await?;
-    println!("chains_blocks Response={:?}", response);
+    println!("Sending get_block Request={:?}", request);
+    let response = tezedge_client.get_block(request).await?;
+    println!("get_block Response={:?}", response);
+    
+    let serialized_msg = serde_json::to_string(&response.into_inner()).unwrap();
+    println!("get_block serialized Response data= {}", serialized_msg);
+
 
 
     let request = tonic::Request::new(MonitorCommitHashRequest {});

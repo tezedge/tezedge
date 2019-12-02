@@ -1,20 +1,12 @@
-// fn main() -> Result<(), Box<dyn std::error::Error>> {
-//     tonic_build::configure()
-//         .out_dir("proto_gen")
-//         .format(true)
-//         .compile(&["proto/services/monitor/monitor.proto", "proto/services/chain/chain.proto"], 
-//                  &["proto/services/monitor", "proto/services/chain"])
-//         .expect("failed to compile protos");
-
-//         Ok(())
-// }
-
 use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
-        // .out_dir("proto_gen")
+        .out_dir("proto_gen")
         .format(true)
+        .type_attribute(".", "#[derive(Serialize, Deserialize)]")
+        .type_attribute(".", "#[serde(rename_all = \"camelCase\")]")
+        .field_attribute("in", "#[serde(rename = \"in\")]")
         .compile(&["proto/tezedge.proto"], 
                  &["proto"])
         .expect("failed to compile protos");

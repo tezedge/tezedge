@@ -1,4 +1,5 @@
-use slog::{Logger, debug};
+
+use slog::{Logger, debug, info};
 use tonic::{Request, Response, Status};
 use std::sync::Arc;
 
@@ -9,7 +10,7 @@ pub mod tezedge {
 
 use tezedge::{
     server::{Tezedge},
-    HelloReply, HelloRequest, ChainsBlocksRequest, ChainsBlocksReply, MonitorCommitHashRequest, MonitorCommitHashReply
+    HelloReply, HelloRequest, GetBlockRequest, GetBlockReply, MonitorCommitHashRequest, MonitorCommitHashReply
 };
 
 pub struct TezedgeService {
@@ -29,18 +30,24 @@ impl Tezedge for TezedgeService {
         Ok(Response::new(reply))
     }
 
-    async fn chains_blocks(&self, request: Request<ChainsBlocksRequest>,) -> Result<Response<ChainsBlocksReply>, Status> {
-        debug!(self.logger, "Got a ChainsBlocks request: {:?}", request);
+    async fn get_block(&self, request: Request<GetBlockRequest>,) -> Result<Response<GetBlockReply>, Status> {
+        info!(self.logger, "Got a GetBlock request: {:?}", request);
 
-        let reply = ChainsBlocksReply {
+        let reply = GetBlockReply {
             block_hash: format!("block_hash: unknown").into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
+            chain_id: format!("chain_id: unknown").into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
         };
+
+        // Example how to transform protobuf to json
+        let json_reply = serde_json::to_string(&reply).unwrap();
+        info!(self.logger, "GetBlock json response: {:?}", json_reply);
+
 
         Ok(Response::new(reply))
     }
 
     async fn monitor_commit_hash(&self, request: Request<MonitorCommitHashRequest>,) -> Result<Response<MonitorCommitHashReply>, Status> {
-        debug!(self.logger, "Got a MonitorCommitHash request: {:?}", request);
+        info!(self.logger, "Got a MonitorCommitHash request: {:?}", request);
 
         let reply = MonitorCommitHashReply {
             commit_hash: env!("GIT_HASH").into(), // We must use .into_inner() as the fields of gRPC requests and responses are private
