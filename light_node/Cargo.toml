@@ -32,3 +32,6 @@ storage = { path = "../storage" }
 shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
+
+[dev-dependencies]
+reqwest = "0.9.22"
