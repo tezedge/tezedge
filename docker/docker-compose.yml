@@ -9,8 +9,8 @@ services:
       - "9732:9732"
       # - "18732:18732"
     volumes:
-      - ./tezedge:/var/tezedge
-    entrypoint: /var/tezedge/tezedge.sh
+      - ./tezedge:/tmp/tezedge
+    entrypoint: /tmp/tezedge/tezedge.sh
 
   tezedge-node-explorer:
     image: simplestakingcom/tezedge-node-explorer
