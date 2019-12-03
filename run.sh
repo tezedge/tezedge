@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
+# Copyright (c) SimpleStaking and Tezedge Contributors
+# SPDX-License-Identifier: MIT
 
 warn_if_not_using_recommended_rust() {
   SUPPORTED_VERSION="2019-11-25"
   RUST_VERSION=$(rustc --version | gawk 'match($0, /.*\(.* ([0-9-]+)\)/, a) {print a[1]}')
 
   if [ "$RUST_VERSION" != "$SUPPORTED_VERSION" ]; then
-    echo -e "\e[33mWarning:\e[0m please use supported rust toolchain version \e[97m$SUPPORTED_VERSION\e[0m. See README on how to install a supported rust toolchain."
+    echo -e "\e[33mWarning:\e[0m please use supported rust toolchain version \e[97m$SUPPORTED_VERSION\e[0m."
+    echo    "See project README on how to install a supported rust toolchain."
   fi
 }
 

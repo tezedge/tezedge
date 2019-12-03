@@ -23,7 +23,7 @@ pub struct ContextStorage {
 impl ContextStorage {
 
     pub fn new(db: Arc<ContextStorageDatabase>) -> Self {
-        ContextStorage { db }
+        Self { db }
     }
 
     #[inline]
@@ -69,11 +69,11 @@ pub struct ContextRecordKey {
 
 impl ContextRecordKey {
     pub fn new(block_hash: &BlockHash, operation_hash: &Option<OperationHash>, key: &[String], ordinal_id: u32) -> Self {
-        ContextRecordKey {
+        Self {
             block_hash: block_hash.clone(),
             operation_hash: operation_hash.clone(),
             key_hash: crypto::blake2b::digest_256(key.join(".").as_bytes()),
-            ordinal_id
+            ordinal_id,
         }
     }
 }
@@ -103,7 +103,7 @@ impl Decoder for ContextRecordKey {
             // ordinal_id
             let mut ordinal_id_bytes: [u8; 4] = Default::default();
             ordinal_id_bytes.copy_from_slice(&bytes[IDX_ORDINAL_ID..IDX_ORDINAL_ID + LEN_ORDINAL_ID]);
-            let ordinal_id = u32::from_le_bytes(ordinal_id_bytes);
+            let ordinal_id = u32::from_be_bytes(ordinal_id_bytes);
             // key hash
             let key_hash = bytes[IDX_KEY_HASH..IDX_KEY_HASH + LEN_KEY_HASH].to_vec();
             // operation hash
@@ -127,7 +127,7 @@ impl Encoder for ContextRecordKey {
         // block header hash
         result.extend(&self.block_hash);
         // ordinal
-        result.extend(&self.ordinal_id.to_le_bytes());
+        result.extend(&self.ordinal_id.to_be_bytes());
         // key hash
         result.extend(&self.key_hash);
         // operation hash

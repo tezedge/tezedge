@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use failure::Fail;
+use serde::{Deserialize, Serialize};
 use slog::info;
 use slog::Logger;
 
@@ -12,7 +13,7 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHas
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
-pub use crate::block_storage::{BlockStorage, BlockStorageReader};
+pub use crate::block_storage::{BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
 pub use crate::context_storage::{ContextRecordKey, ContextRecordValue, ContextStorage};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
@@ -29,7 +30,7 @@ pub mod context_storage;
 pub mod system_storage;
 
 /// Extension of block header with block hash
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct BlockHeaderWithHash {
     pub hash: BlockHash,
     pub header: Arc<BlockHeader>,
@@ -77,6 +78,8 @@ pub enum StorageError {
     },
     #[fail(display = "Key is missing in storage")]
     MissingKey,
+    #[fail(display = "Column is not valid")]
+    InvalidColumn,
     #[fail(display = "Block hash error")]
     BlockHashError,
 }

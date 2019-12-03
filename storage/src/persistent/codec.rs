@@ -61,7 +61,7 @@ impl Decoder for i32 {
         if bytes.len() == std::mem::size_of::<i32>() {
             let mut i32_bytes: [u8; std::mem::size_of::<i32>()] = Default::default();
             i32_bytes.copy_from_slice(&bytes[..]);
-            Ok(i32::from_le_bytes(i32_bytes))
+            Ok(i32::from_be_bytes(i32_bytes))
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -71,7 +71,7 @@ impl Decoder for i32 {
 impl Encoder for i32 {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut value = Vec::with_capacity(std::mem::size_of::<i32>());
-        value.extend(&self.to_le_bytes());
+        value.extend(&self.to_be_bytes());
         Ok(value)
     }
 }

@@ -242,7 +242,7 @@ fn main() {
     drop(protocol_controller);
 
     let schemas = vec![
-        block_storage::BlockIndex::descriptor(),
+        block_storage::BlockPrimaryIndex::descriptor(),
         block_storage::BlockByLevelIndex::descriptor(),
         BlockMetaStorage::descriptor(),
         OperationsStorage::descriptor(),

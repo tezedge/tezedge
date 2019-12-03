@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bytes = "0.4.12"
-derive_builder = "0.8.0"
+derive_builder = "0.9"
 failure = "0.1"
 getset = "0.0.9"
 hex = "0.4"

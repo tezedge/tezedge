@@ -27,7 +27,7 @@ pub struct OperationsStorage {
 
 impl OperationsStorage {
     pub fn new(db: Arc<OperationsStorageDatabase>) -> Self {
-        OperationsStorage { db }
+        Self { db }
     }
 
     #[inline]

@@ -40,8 +40,8 @@ impl ApplicationMonitor {
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
         let last_block = if let Some(ref block) = self.last_applied_block {
             Some(BlockInfo {
-                hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(&block.hash),
-                level: block.level,
+                hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(&block.header().hash),
+                level: block.header().header.level(),
             })
         } else {
             None

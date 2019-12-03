@@ -1,7 +1,16 @@
-use super::base_types::*;
-use serde::{Serialize, Deserialize};
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use std::collections::HashMap;
+
+use serde::Serialize;
+use serde_json::Value;
+
 use tezos_messages::p2p::encoding::prelude::*;
+
 use crate::helpers::{FullBlockInfo, InnerBlockHeader};
+
+use super::base_types::*;
 
 // { protocol: ProtocolHash,
 //   chain_id: ChainHash,
@@ -9,13 +18,13 @@ use crate::helpers::{FullBlockInfo, InnerBlockHeader};
 //   header: BlockHeader,
 //   metadata: BlockMetadata,
 //   operations: Vec<BlockOperations> }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct BlockInfo {
     protocol: Option<UniString>,
     chain_id: Option<UniString>,
     hash: Option<UniString>,
     header: InnerBlockHeader,
-    metadata: (),
+    metadata: HashMap<String, Value>,
     operations: Vec<OperationsForBlocksMessage>,
 }
 
@@ -27,7 +36,7 @@ impl From<FullBlockInfo> for BlockInfo {
             hash: Some(val.hash.into()),
             header: val.header,
             operations: val.operations,
-            metadata: (),
+            metadata: val.metadata,
         }
     }
 }
