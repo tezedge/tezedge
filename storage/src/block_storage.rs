@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
 use derive_builder::Builder;
 use getset::Getters;
+use serde::{Deserialize, Serialize};
+
 use tezos_encoding::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
@@ -24,7 +24,7 @@ pub struct BlockStorage {
 
 pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + Send;
 
-#[derive(Builder, Getters, Serialize, Deserialize)]
+#[derive(Clone, Builder, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockJsonData {
     #[get = "pub"]
     block_header_proto_json: String,
@@ -37,9 +37,9 @@ pub struct BlockJsonData {
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
-    fn get_json_data(&self, block_hash: &BlockHash) -> Result<Option<BlockJsonData>, StorageError>;
+    fn get_with_json_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
-    fn get_blocks(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
+    fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
@@ -108,18 +108,22 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn get_json_data(&self, block_hash: &BlockHash) -> Result<Option<BlockJsonData>, StorageError> {
-        self.block_primary_index.get(block_hash)?
-            .map(|location| self.get_block_json_data_by_location(&location))
-            .unwrap_or(Ok(None))
+    fn get_with_json_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
+        match self.block_primary_index.get(block_hash)? {
+            Some(location) => self.get_block_json_data_by_location(&location)?
+                .map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data)))
+                .transpose(),
+            None => Ok(None)
+        }
     }
 
     #[inline]
-    fn get_blocks(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
+    fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
         self.get(block_hash)?
             .map_or_else(|| Ok(Vec::new()), |block| self.block_by_level_index.get_blocks(block.header.level(), limit))?
             .iter()
-            .map(|location| self.get_block_header_by_location(location))
+            .filter_map(|location| self.get_block_json_data_by_location(&location)
+                .and_then(|json_data_opt| json_data_opt.map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data))).transpose()).transpose())
             .collect()
     }
 
@@ -148,7 +152,7 @@ pub enum BlockStorageColumn {
 impl BincodeEncoded for BlockStorageColumn {}
 
 /// Holds reference to all stored columns.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BlockStorageColumnsLocation {
     block_header: Location,
     block_json_data: Option<Location>,
@@ -219,7 +223,7 @@ impl BlockByLevelIndex {
     }
 
     fn get_blocks(&self, from_level: BlockLevel, limit: usize) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.db.iterator(IteratorMode::From(&from_level, Direction::Forward))?
+        self.db.iterator(IteratorMode::From(&from_level, Direction::Reverse))?
             .take(limit)
             .map(|(_, location)| location.map_err(StorageError::from))
             .collect()
@@ -274,5 +278,32 @@ mod tests {
         }
         assert!(DB::destroy(&opts, path).is_ok());
         Ok(assert!(std::fs::remove_dir_all(path).is_ok()))
+    }
+
+    #[test]
+    fn block_storage_level_index_order() -> Result<(), Error> {
+        use rocksdb::{Options, DB};
+
+        let path = "__block_level_index_test";
+        if Path::new(path).exists() {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
+        {
+            let db = DB::open_cf_descriptors(&opts, path, vec![BlockByLevelIndex::descriptor()]).unwrap();
+            let index = BlockByLevelIndex::new(Arc::new(db));
+
+            for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {
+                index.put(i, &BlockStorageColumnsLocation { block_header: Location::new(i as u64), block_json_data: None })?;
+            }
+
+            let res = index.get_blocks(649, 2)?.iter().map(|location| location.block_header.offset()).collect::<Vec<_>>();
+            assert_eq!(vec![649, 393], res);
+            let res = index.get_blocks(65673, 100)?.iter().map(|location| location.block_header.offset()).collect::<Vec<_>>();
+            assert_eq!(vec![65673, 1161, 905, 649, 393], res);
+        }
+        Ok(assert!(DB::destroy(&opts, path).is_ok()))
     }
 }

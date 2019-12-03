@@ -163,8 +163,8 @@ fn bootstrapped(state: RpcCollectedStateRef) -> ServiceResult {
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
             let current_head: BlockApplied = current_head.clone();
-            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash);
-            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
+            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.header().hash);
+            let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
             BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         }
         None => BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
@@ -276,9 +276,9 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             chains_block_id(chain_id, block_id, state)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
-            let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state, genesis_hash);
+            let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state.clone(), genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
-            result_to_json_response(fns::get_blocks(from_block_id, limit, db, commit_logs), &log)
+            result_to_json_response(fns::get_blocks(from_block_id, limit, db, commit_logs, state), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -314,7 +314,7 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
     block_id.unwrap_or_else(|| {
         let state = state.read().unwrap();
         state.current_head().as_ref()
-            .map(|current_head| HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.hash))
+            .map(|current_head| HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.header().hash))
             .unwrap_or(genesis_hash)
     })
 }
@@ -324,6 +324,7 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 mod fns {
     use std::sync::Arc;
 
+    use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
     use storage::{BlockStorage, BlockStorageReader, ContextStorage};
     use storage::persistent::CommitLogs;
@@ -334,11 +335,15 @@ mod fns {
     use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
-    pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Result<Vec<FullBlockInfo>, failure::Error> {
+    pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(db.clone(), commit_logs);
         let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_id)?;
-        let blocks = block_storage.get_blocks(&block_hash, limit)?
-            .into_iter().map(|block| block.into()).collect();
+        let blocks = block_storage.get_multiple_with_json_data(&block_hash, limit)?
+            .into_iter().map(|(header, json_data)| {
+            let state = state.read().unwrap();
+            let chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(state.chain_id());
+            FullBlockInfo::new(&BlockApplied::new(header, json_data), &chain_id)
+        }).collect();
 
         Ok(blocks)
     }
@@ -357,9 +362,8 @@ mod fns {
     pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let state = state.read().unwrap();
         let current_head = state.current_head().as_ref().map(|current_head| {
-            let mut head: FullBlockInfo = current_head.clone().into();
-            head.chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(state.chain_id());
-            head
+            let chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(state.chain_id());
+            FullBlockInfo::new(current_head, &chain_id)
         });
 
         Ok(current_head)

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use serde_json::Value;
 
 use shell::shell_channel::BlockApplied;
-use storage::BlockHeaderWithHash;
 use tezos_encoding::hash::{HashEncoding, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -18,11 +19,11 @@ pub struct FullBlockInfo {
     pub hash: String,
     pub chain_id: String,
     pub header: InnerBlockHeader,
-    pub metadata: HashMap<String, String>,
+    pub metadata: HashMap<String, Value>,
     pub operations: Vec<OperationsForBlocksMessage>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 /// Object containing all block header information
 pub struct InnerBlockHeader {
     pub level: i32,
@@ -41,15 +42,19 @@ pub struct InnerBlockHeader {
     pub signature: Option<String>,
 }
 
-impl From<BlockApplied> for FullBlockInfo {
-    fn from(val: BlockApplied) -> Self {
-        let predecessor = HashEncoding::new(HashType::BlockHash).bytes_to_string(val.header.predecessor());
-        let timestamp = ts_to_rfc3339(val.header.timestamp());
-        let operations_hash = HashEncoding::new(HashType::OperationListListHash).bytes_to_string(val.header.predecessor());
-        let fitness = val.header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = HashEncoding::new(HashType::ContextHash).bytes_to_string(val.header.context());
-        let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&val.hash);
-        let (priority, proof_of_work_nonce, signature) = if let Some(x) = val.block_header_info {
+impl FullBlockInfo {
+    pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
+        let header: &BlockHeader = &val.header().header;
+        let json_data = val.json_data();
+        let block_header_info: Option<BlockHeaderInfo> = json_data.block_header_proto_json().parse().ok();
+
+        let predecessor = HashEncoding::new(HashType::BlockHash).bytes_to_string(header.predecessor());
+        let timestamp = ts_to_rfc3339(header.timestamp());
+        let operations_hash = HashEncoding::new(HashType::OperationListListHash).bytes_to_string(header.operations_hash());
+        let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
+        let context = HashEncoding::new(HashType::ContextHash).bytes_to_string(header.context());
+        let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&val.header().hash);
+        let (priority, proof_of_work_nonce, signature) = if let Some(x) = block_header_info {
             (Some(x.priority), Some(x.proof_of_work_nonce), Some(x.signature))
         } else {
             (None, None, None)
@@ -57,13 +62,13 @@ impl From<BlockApplied> for FullBlockInfo {
 
         Self {
             hash,
-            chain_id: "".into(),
+            chain_id: chain_id.into(),
             header: InnerBlockHeader {
-                level: val.header.level(),
-                proto: val.header.proto(),
+                level: header.level(),
+                proto: header.proto(),
                 predecessor,
                 timestamp,
-                validation_pass: val.header.validation_pass(),
+                validation_pass: header.validation_pass(),
                 operations_hash,
                 fitness,
                 context,
@@ -71,15 +76,33 @@ impl From<BlockApplied> for FullBlockInfo {
                 proof_of_work_nonce,
                 signature,
             },
-            metadata: val.block_header_proto_info,
+            metadata: serde_json::from_str(json_data.block_header_proto_metadata_json()).unwrap_or_default(),
             operations: Vec::new(),
         }
     }
 }
 
-impl From<BlockHeaderWithHash> for FullBlockInfo {
-    fn from(block: BlockHeaderWithHash) -> Self {
-        let block: BlockApplied = block.into();
-        block.into()
+/// Structure containing basic information from block header
+#[derive(Clone, Debug)]
+pub struct BlockHeaderInfo {
+    pub priority: i32,
+    pub proof_of_work_nonce: String,
+    pub signature: String,
+}
+
+impl FromStr for BlockHeaderInfo {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let des: HashMap<&str, &str> = serde_json::from_str(s)?;
+        Ok(Self {
+            priority: if let Some(val) = des.get("priority") {
+                val.parse().unwrap_or(0)
+            } else {
+                0
+            },
+            proof_of_work_nonce: (*des.get("proof_of_work_nonce").unwrap_or(&"")).into(),
+            signature: (*des.get("signature").unwrap_or(&"")).into(),
+        })
     }
 }

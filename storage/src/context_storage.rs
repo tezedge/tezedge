@@ -103,7 +103,7 @@ impl Decoder for ContextRecordKey {
             // ordinal_id
             let mut ordinal_id_bytes: [u8; 4] = Default::default();
             ordinal_id_bytes.copy_from_slice(&bytes[IDX_ORDINAL_ID..IDX_ORDINAL_ID + LEN_ORDINAL_ID]);
-            let ordinal_id = u32::from_le_bytes(ordinal_id_bytes);
+            let ordinal_id = u32::from_be_bytes(ordinal_id_bytes);
             // key hash
             let key_hash = bytes[IDX_KEY_HASH..IDX_KEY_HASH + LEN_KEY_HASH].to_vec();
             // operation hash
@@ -127,7 +127,7 @@ impl Encoder for ContextRecordKey {
         // block header hash
         result.extend(&self.block_hash);
         // ordinal
-        result.extend(&self.ordinal_id.to_le_bytes());
+        result.extend(&self.ordinal_id.to_be_bytes());
         // key hash
         result.extend(&self.key_hash);
         // operation hash

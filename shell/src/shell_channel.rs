@@ -1,60 +1,25 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use failure::_core::str::FromStr;
+use getset::Getters;
 use riker::actors::*;
 
+use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use tezos_encoding::hash::BlockHash;
-use tezos_messages::p2p::encoding::prelude::*;
 
 /// Message informing actors about successful block application by protocol
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters)]
 pub struct BlockApplied {
-    pub hash: BlockHash,
-    pub level: i32,
-    pub header: Arc<BlockHeader>,
-    pub block_header_info: Option<BlockHeaderInfo>,
-    pub block_header_proto_info: HashMap<String, String>,
+    #[get = "pub"]
+    header: BlockHeaderWithHash,
+    #[get = "pub"]
+    json_data: BlockJsonData,
 }
 
-impl From<BlockHeaderWithHash> for BlockApplied {
-    fn from(block: BlockHeaderWithHash) -> Self {
-        Self {
-            hash: block.hash,
-            level: block.header.level(),
-            header: block.header,
-            block_header_proto_info: Default::default(),
-            block_header_info: None,
-        }
-    }
-}
-
-/// Structure containing basic information from block header
-#[derive(Clone, Debug)]
-pub struct BlockHeaderInfo {
-    pub priority: i32,
-    pub proof_of_work_nonce: String,
-    pub signature: String,
-}
-
-impl FromStr for BlockHeaderInfo {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let des: HashMap<&str, &str> = serde_json::from_str(s)?;
-        Ok(Self {
-            priority: if let Some(val) = des.get("priority") {
-                val.parse().unwrap_or(0)
-            } else {
-                0
-            },
-            proof_of_work_nonce: (*des.get("proof_of_work_nonce").unwrap_or(&"")).into(),
-            signature: (*des.get("signature").unwrap_or(&"")).into(),
-        })
+impl BlockApplied {
+    pub fn new(header: BlockHeaderWithHash, json_data: BlockJsonData) -> Self {
+        Self { header, json_data }
     }
 }
 

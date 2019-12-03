@@ -161,7 +161,7 @@ impl Decoder for Meta {
             // level
             let mut level_bytes: [u8; 4] = Default::default();
             level_bytes.copy_from_slice(&bytes[IDX_LEVEL..IDX_LEVEL + 4]);
-            let level = i32::from_le_bytes(level_bytes);
+            let level = i32::from_be_bytes(level_bytes);
             // chain_id
             let chain_id = bytes[IDX_CHAIN_ID..IDX_END].to_vec();
             assert_eq!(LEN_CHAIN_ID, chain_id.len(), "Chain ID expected length is {} but found {}", LEN_CHAIN_ID, chain_id.len());
@@ -195,7 +195,7 @@ impl Encoder for Meta {
             Some(successor) => value.extend(successor),
             None => value.extend(&BLANK_BLOCK_HASH)
         }
-        value.extend(&self.level.to_le_bytes());
+        value.extend(&self.level.to_be_bytes());
         value.extend(&self.chain_id);
         assert_eq!(LEN_META, value.len(), "Invalid size. predecessor={:?}, successor={:?}, level={:?}, data={:?}", &self.predecessor, &self.successor, self.level, &value);
 

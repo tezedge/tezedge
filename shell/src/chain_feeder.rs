@@ -208,30 +208,22 @@ fn feed_chain_to_protocol(
                                 // mark current head as applied
                                 current_head_meta.is_applied = true;
                                 block_meta_storage.put(&current_head.hash, &current_head_meta)?;
-
+                                // store json data
+                                let block_json_data = BlockJsonDataBuilder::default()
+                                    .block_header_proto_json(apply_block_result.block_header_proto_json)
+                                    .block_header_proto_metadata_json(apply_block_result.block_header_proto_metadata_json)
+                                    .operations_proto_metadata_json(apply_block_result.operations_proto_metadata_json)
+                                    .build().unwrap();
+                                block_storage.put_block_json_data(&current_head.hash, block_json_data.clone())?;
+                                // notify listeners
                                 if apply_block_run.load(Ordering::Acquire) {
                                     // notify others that the block successfully applied
                                     shell_channel.tell(
                                         Publish {
-                                            msg: BlockApplied {
-                                                hash: current_head.hash.clone(),
-                                                level: current_head.header.level(),
-                                                header: current_head.header.clone(),
-                                                block_header_info: apply_block_result.block_header_proto_json.parse().ok(),
-                                                block_header_proto_info: serde_json::from_str(&apply_block_result.block_header_proto_metadata_json).unwrap_or_default(),
-                                            }.into(),
+                                            msg: BlockApplied::new(current_head, block_json_data).into(),
                                             topic: ShellChannelTopic::ShellEvents.into(),
                                         }, None);
                                 }
-
-                                // store json data
-                                block_storage.put_block_json_data(
-                                    &current_head.hash,
-                                    BlockJsonDataBuilder::default()
-                                        .block_header_proto_json(apply_block_result.block_header_proto_json)
-                                        .block_header_proto_metadata_json(apply_block_result.block_header_proto_metadata_json)
-                                        .operations_proto_metadata_json(apply_block_result.operations_proto_metadata_json)
-                                        .build().unwrap())?;
 
                                 // Current head is already applied, so we should move to successor
                                 // or in case no successor is available do nothing.

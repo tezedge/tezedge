@@ -251,7 +251,7 @@ impl Receive<ShellChannelMsg> for Monitor {
             }
             ShellChannelMsg::BlockApplied(msg) => {
                 // update stats for block applications
-                self.chain_monitor.process_block_application(msg.level.clone() as usize);
+                self.chain_monitor.process_block_application(msg.header().header.level() as usize);
 
                 self.blocks_monitor.block_was_applied_by_protocol();
                 self.block_application_monitor.block_was_applied(msg);

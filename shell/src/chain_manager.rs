@@ -429,8 +429,8 @@ impl ChainManager {
     fn process_shell_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
             ShellChannelMsg::BlockApplied(message) => {
-                self.current_head.local = message.hash;
-                self.stats.applied_block_level = Some(message.level);
+                self.current_head.local = message.header().hash.clone();
+                self.stats.applied_block_level = Some(message.header().header.level());
                 self.stats.applied_block_last = Some(Instant::now());
             }
             ShellChannelMsg::ShuttingDown(_) => {

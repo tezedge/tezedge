@@ -10,7 +10,6 @@ use slog::warn;
 use tokio::runtime::Runtime;
 
 use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockHeaderWithHash, BlockStorageReader};
 use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_encoding::hash::ChainId;
@@ -49,7 +48,7 @@ impl RpcServer {
 
     pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(db.clone(), commit_logs.clone()).map(|block| block.into()),
+            current_head: load_current_head(db.clone(), commit_logs.clone()),
             chain_id: tezos_info.chain_id.clone(),
         }));
         let actor_ref = sys.actor_of(
@@ -96,7 +95,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
                 let current_head_ref = &mut *self.state.write().unwrap();
                 match &mut current_head_ref.current_head {
                     Some(current_head) => {
-                        if current_head.level < block.level {
+                        if current_head.header().header.level() < block.header().header.level() {
                             *current_head = block;
                         }
                     }
@@ -109,27 +108,26 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Option<BlockHeaderWithHash> {
-    use storage::{BlockMetaStorage, BlockStorage, IteratorMode};
-    use tezos_encoding::hash::BlockHash as RawBlockHash;
+fn load_current_head(db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Option<BlockApplied> {
+    use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
 
-    let meta_storage = BlockMetaStorage::new(db.clone());
-    let mut head: Option<RawBlockHash> = None;
-    if let Ok(iter) = meta_storage.iter(IteratorMode::End) {
-        let cur_level = -1;
-        for (key, value) in iter {
-            if let Ok(value) = value {
-                if cur_level < value.level {
-                    head = Some(key.unwrap())
-                }
-            }
-        }
-        if let Some(head) = head {
-            let block_storage = BlockStorage::new(db.clone(), commit_logs);
-            if let Ok(Some(head)) = block_storage.get(&head) {
-                return Some(head);
-            }
-        }
-    }
-    None
+    BlockMetaStorage::new(db.clone())
+        .iter(IteratorMode::End)
+        .and_then(|meta_iterator|
+            meta_iterator
+                // unwrap a tuple of Result
+                .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
+                // we are interested in applied blocks only
+                .filter(|(_, meta)| meta.is_applied)
+                // get block with the highest level
+                .max_by_key(|(_, meta)| meta.level)
+                // get data for the block
+                .map(|(block_hash, _)|
+                    BlockStorage::new(db.clone(), commit_logs)
+                        .get_with_json_data(&block_hash)
+                        .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey))
+                )
+                .transpose()
+        )
+        .unwrap_or(None)
 }

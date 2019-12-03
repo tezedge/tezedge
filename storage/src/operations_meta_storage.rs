@@ -191,7 +191,7 @@ impl Decoder for Meta {
             let level_pos = is_complete_pos + 1;
             let mut level_bytes: [u8; 4] = Default::default();
             level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
-            let level = i32::from_le_bytes(level_bytes);
+            let level = i32::from_be_bytes(level_bytes);
             assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
             // chain_id
             let chain_id_pos = level_pos + level_bytes.len();
@@ -210,7 +210,7 @@ impl Encoder for Meta {
             value.push(self.validation_passes);
             value.extend(&self.is_validation_pass_present);
             value.push(self.is_complete as u8);
-            value.extend(&self.level.to_le_bytes());
+            value.extend(&self.level.to_be_bytes());
             value.extend(&self.chain_id);
             assert_eq!(expected_data_length(self.validation_passes), value.len(), "Was expecting value to have length {} but instead found {}", expected_data_length(self.validation_passes), value.len());
             Ok(value)

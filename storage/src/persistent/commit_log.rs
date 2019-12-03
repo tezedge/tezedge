@@ -72,7 +72,6 @@ impl fmt::Display for Location {
     }
 }
 
-
 impl BincodeEncoded for Location {}
 
 /// Implement this trait for a commit log engine.
@@ -168,5 +167,17 @@ impl CommitLogs {
         }
 
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+impl Location {
+    pub fn new(offset: Offset) -> Self {
+        Self(offset, 0)
+    }
+
+    pub(crate) fn offset(&self) -> Offset {
+        self.0
     }
 }
