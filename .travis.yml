@@ -26,7 +26,15 @@ addons:
       - clang
       - libsodium-dev
       - libev4
+      - libssl-dev
 
 branches:
   only:
     - master
+
+services:
+  - docker
+
+before_install:
+  - docker pull tezos/tezos:babylonnet
+  - docker run --rm -d -p 8732:8732 --name ocaml-node tezos/tezos:babylonnet tezos-node
