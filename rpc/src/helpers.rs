@@ -20,7 +20,7 @@ pub struct FullBlockInfo {
     pub chain_id: String,
     pub header: InnerBlockHeader,
     pub metadata: HashMap<String, Value>,
-    pub operations: Vec<OperationsForBlocksMessage>,
+    pub operations: Vec<Vec<HashMap<String, Value>>>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -77,7 +77,7 @@ impl FullBlockInfo {
                 signature,
             },
             metadata: serde_json::from_str(json_data.block_header_proto_metadata_json()).unwrap_or_default(),
-            operations: Vec::new(),
+            operations: serde_json::from_str(json_data.operations_proto_metadata_json()).unwrap_or_default(),
         }
     }
 }

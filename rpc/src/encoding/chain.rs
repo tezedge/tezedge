@@ -6,8 +6,6 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value;
 
-use tezos_messages::p2p::encoding::prelude::*;
-
 use crate::helpers::{FullBlockInfo, InnerBlockHeader};
 
 use super::base_types::*;
@@ -25,7 +23,7 @@ pub struct BlockInfo {
     hash: Option<UniString>,
     header: InnerBlockHeader,
     metadata: HashMap<String, Value>,
-    operations: Vec<OperationsForBlocksMessage>,
+    operations: Vec<Vec<HashMap<String, Value>>>,
 }
 
 impl From<FullBlockInfo> for BlockInfo {
