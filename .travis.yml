@@ -36,7 +36,7 @@ services:
   - docker
 
 before_install:
-  - sh run.sh travis
+  - bash run.sh travis
   - docker pull tezos/tezos:babylonnet
   - docker run --rm -d -p 8732:8732 --name ocaml-node tezos/tezos:babylonnet tezos-node
 

@@ -21,3 +21,11 @@ fn integ_test_check_ocaml_node() {
 
 }
 
+#[test]
+fn integ_test_check_ocaml_node_out() {
+
+    let resp = reqwest::get("https://zeronet.simplestaking.com:3000/stats/memory").unwrap();
+    assert!(resp.status().is_success())
+
+}
+
