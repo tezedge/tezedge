@@ -160,7 +160,25 @@ run_docker() {
   # build docker
   docker build -t tezedge-run -f ./docker/run/Dockerfile .
   # run docker
-  docker run -i -t tezedge-run "$@"
+  docker run -i -t -m 4g tezedge-run "$@"
+}
+
+run_travis_docker() {
+  shift # shift past <MODE>
+
+  # build docker
+  cd ./docker/travis || exit 1
+  docker build -t tezedge-run .
+  # run docker on background with port forwarding for RPC
+  #docker run --rm -d -m 4g -p 18732:18732 --name rust-node tezedge-run "$@"
+  docker run --rm -d --net host -m 4g --name rust-node tezedge-run "$@"
+}
+
+travis_check_rpc_running() {
+  while ! curl -s 127.0.0.1:18732 >/dev/null; do
+    echo "waiting for RPC"
+    sleep 30
+  done
 }
 
 case $1 in
@@ -184,6 +202,12 @@ case $1 in
     run_docker "$@"
     ;;
 
+  travis)
+    printf "\033[1;37mRunning Tezedge node in docker\e[0m\n"
+    run_travis_docker "$@"
+    travis_check_rpc_running
+    ;;
+
   -h|--help)
     help
     ;;
@@ -193,4 +217,3 @@ case $1 in
     ;;
 
 esac
-

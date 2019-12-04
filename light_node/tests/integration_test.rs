@@ -5,7 +5,6 @@ mod common;
 // 2 nodes(rust,ocaml) must run and be bootstraped before these tests can be executed
 
 #[test]
-#[ignore]
 fn integ_test_rpc_stats_memory() {
 
     let uri1 = "http://127.0.0.1:18732/stats/memory".to_string(); // local rust node
