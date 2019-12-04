@@ -76,7 +76,7 @@ impl From<ShuttingDown> for ShellChannelMsg {
 
 /// Represents various topics
 pub enum ShellChannelTopic {
-    /// Ordinary cvents generated from shell layer
+    /// Ordinary events generated from shell layer
     ShellEvents,
     /// Control event
     ShellCommands,

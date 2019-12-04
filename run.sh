@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 warn_if_not_using_recommended_rust() {
-  SUPPORTED_VERSION="2019-11-25"
+  SUPPORTED_VERSION="2019-12-03"
   RUST_VERSION=$(rustc --version | gawk 'match($0, /.*\(.* ([0-9-]+)\)/, a) {print a[1]}')
 
   if [ "$RUST_VERSION" != "$SUPPORTED_VERSION" ]; then
@@ -156,8 +156,7 @@ run_docker() {
   shift # shift past <MODE>
 
   # build docker
-  cd ./docker/run/ || exit 1
-  docker build -t tezedge-run .
+  docker build -t tezedge-run -f ./docker/run/Dockerfile .
   # run docker
   docker run -i -t tezedge-run "$@"
 }
