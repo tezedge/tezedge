@@ -38,3 +38,6 @@ services:
 before_install:
   - docker pull tezos/tezos:babylonnet
   - docker run --rm -d -p 8732:8732 --name ocaml-node tezos/tezos:babylonnet tezos-node
+
+install:
+  - travis_wait cargo build --verbose
