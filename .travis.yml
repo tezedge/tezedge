@@ -40,4 +40,4 @@ before_install:
   - docker run --rm -d -p 8732:8732 --name ocaml-node tezos/tezos:babylonnet tezos-node
 
 install:
-  - travis_wait cargo build --verbose
+  - travis_wait 40 cargo build --verbose
