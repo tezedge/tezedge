@@ -4,18 +4,9 @@ mod common;
 
 // 2 nodes(rust,ocaml) must run and be bootstraped before these tests can be executed
 
-#[test]
-#[ignore]
-fn integ_test_rpc_stats_memory() {
-
-    let uri1 = "http://127.0.0.1:18732/stats/memory".to_string(); // local rust node
-    let uri2 = "http://127.0.0.1:8732/stats/memory".to_string(); // local ocaml node
-
-    assert!(common::compare_json_structure_of_rpc(uri1, uri2).unwrap())
-}
 
 #[test]
-fn integ_test_check_rust_node() {
+fn integ_test_connect_rust_node() {
 
     let resp = reqwest::get("http://127.0.0.1:18732/stats/memory").unwrap();
     assert!(resp.status().is_success())
@@ -23,10 +14,13 @@ fn integ_test_check_rust_node() {
 }
 
 #[test]
-fn integ_test_check_ocaml_node_out() {
+fn integ_test_rpc_stats_memory() {
 
-    let resp = reqwest::get("https://zeronet.simplestaking.com:3000/stats/memory").unwrap();
-    assert!(resp.status().is_success())
+    let json_rust = common::call_rpc_json("http://127.0.0.1:8732/stats/memory".to_string()).unwrap();
+    let json_ocaml = common::call_rpc_ssl_json("https://zeronet.simplestaking.com:3000/stats/memory".to_string()).unwrap();
 
+    assert!(common::json_structure_match(&json_rust, &json_ocaml))
 }
+
+
 

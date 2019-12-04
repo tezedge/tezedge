@@ -7,20 +7,21 @@ use std::mem::discriminant;
 use failure::Error;
 
 
-pub fn compare_json_structure_of_rpc(uri1: String, uri2: String) -> Result<bool, Error> {
-    let res1 = call_rpc(uri1)?;
-    let res2 = call_rpc(uri2)?;
-
-    let json1: HashMap<String, Value> = serde_json::from_str(&res1)?;
-    let json2: HashMap<String, Value> = serde_json::from_str(&res2)?;
-
-    //compare structure of json
-    Ok(json_structure_match(&json1, &json2))
+pub fn call_rpc_json(uri: String) -> Result<HashMap<String, Value>, Error> {
+    let json = reqwest::get(&uri)?.json()?;
+    println!("resp for uri {} is {:?}", uri, json);
+    Ok(json)
 }
 
-fn call_rpc(request_url: String) -> Result<String, reqwest::Error> {
-    let response_string = reqwest::get(&request_url)?.text()?;
-    Ok(response_string)
+pub fn call_rpc_ssl_json(uri: String) -> Result<HashMap<String, Value>, Error> {
+    let mut res = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()?
+        .get(&uri)
+        .send()?;
+    let json: HashMap<String, Value> = res.json()?;
+    println!("resp for uri {} is {:?}", uri, json);
+    Ok(json)
 }
 
 fn unpack_value_option(opt: Option<&Value>) -> &Value {

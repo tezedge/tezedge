@@ -8,7 +8,7 @@ ENV PATH=/home/appuser/.cargo/bin:$PATH
 ENV RUST_BACKTRACE=1
 ENV SODIUM_USE_PKG_CONFIG=1
 ENV OCAML_BUILD_CHAIN=remote
-RUN cd /home/appuser && git clone ${tezedge_git} && cd tezedge && git checkout master
+RUN cd /home/appuser && git clone ${tezedge_git} && cd tezedge && git checkout $TRAVIS_BRANCH
 WORKDIR /home/appuser/tezedge
 ENTRYPOINT ["./run.sh", "release"]
 CMD []
