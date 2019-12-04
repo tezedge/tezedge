@@ -204,19 +204,18 @@ fn head_chain(chain_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
         empty()
     }
 }
+
 /// GET /chains/<chain_id>/blocks/<block_id> endpoint handler
-fn chains_block_id(chain_id: &str, block_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
+fn chains_block_id(chain_id: &str, block_id: &str, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
     use crate::encoding::chain::BlockInfo;
-    if chain_id != "main" || block_id != "head" {
-        empty()
-    } else {
-        let current_head = fns::get_full_current_head(state);
-        if let Ok(Some(current_head)) = current_head {
-            let resp: BlockInfo = current_head.into();
-            make_json_response(&resp)
+    if chain_id == "main" {
+        if block_id == "head" {
+            result_option_to_json_response(fns::get_full_current_head(state).map(|res| res.map(BlockInfo::from)), log)
         } else {
-            empty()
+            result_option_to_json_response(fns::get_full_block(block_id, db, commit_logs, state).map(|res| res.map(BlockInfo::from)), log)
         }
+    } else {
+        empty()
     }
 }
 
@@ -273,12 +272,12 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ChainsBlockId, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            chains_block_id(chain_id, block_id, state)
+            chains_block_id(chain_id, block_id, db, commit_logs, state, &log)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
             let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state.clone(), genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
-            result_to_json_response(fns::get_blocks(from_block_id, limit, db, commit_logs, state), &log)
+            result_to_json_response(fns::get_blocks(&from_block_id, limit, db, commit_logs, state), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -308,6 +307,20 @@ fn result_to_json_response<T: serde::Serialize>(res: Result<T, failure::Error>, 
     }
 }
 
+/// Returns optional result as a JSON response.
+fn result_option_to_json_response<T: serde::Serialize>(res: Result<Option<T>, failure::Error>, log: &Logger) -> ServiceResult {
+    match res {
+        Ok(opt) => match opt {
+            Some(t) => make_json_response(&t),
+            None => not_found()
+        }
+        Err(err) => {
+            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", err));
+            empty()
+        }
+    }
+}
+
 /// Unwraps a block hash or provides alternative block hash.
 /// Alternatives are: genesis block or current head
 fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, genesis_hash: String) -> String {
@@ -326,24 +339,21 @@ mod fns {
 
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-    use storage::{BlockStorage, BlockStorageReader, ContextStorage};
+    use storage::{BlockStorage, BlockStorageReader, ContextStorage, BlockHeaderWithHash};
     use storage::persistent::CommitLogs;
     use tezos_context::channel::ContextAction;
-    use tezos_encoding::hash::{HashEncoding, HashType};
+    use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
+    use storage::block_storage::BlockJsonData;
 
     /// Retrieve blocks from database.
-    pub(crate) fn get_blocks(block_id: String, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
+    pub(crate) fn get_blocks(block_id: &str, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(db.clone(), commit_logs);
-        let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(&block_id)?;
+        let block_hash = block_id_to_block_hash(block_id)?;
         let blocks = block_storage.get_multiple_with_json_data(&block_hash, limit)?
-            .into_iter().map(|(header, json_data)| {
-            let state = state.read().unwrap();
-            let chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(state.chain_id());
-            FullBlockInfo::new(&BlockApplied::new(header, json_data), &chain_id)
-        }).collect();
+            .into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)).collect();
 
         Ok(blocks)
     }
@@ -351,8 +361,7 @@ mod fns {
     /// Get actions for a specific block in ascending order.
     pub(crate) fn get_block_actions(block_id: &str, db: Arc<rocksdb::DB>) -> Result<Vec<ContextAction>, failure::Error> {
         let context_storage = ContextStorage::new(db);
-
-        let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(block_id)?;
+        let block_hash = block_id_to_block_hash(block_id)?;
         context_storage.get_by_block_hash(&block_hash)
             .map(|values| values.into_iter().map(|v| v.action).collect())
             .map_err(|e| e.into())
@@ -362,11 +371,20 @@ mod fns {
     pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let state = state.read().unwrap();
         let current_head = state.current_head().as_ref().map(|current_head| {
-            let chain_id = HashEncoding::new(HashType::ChainId).bytes_to_string(state.chain_id());
+            let chain_id = chain_id_to_string(state.chain_id());
             FullBlockInfo::new(current_head, &chain_id)
         });
 
         Ok(current_head)
+    }
+
+    /// Get information about block
+    pub(crate) fn get_full_block(block_id: &str, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
+        let block_storage = BlockStorage::new(db, commit_logs);
+        let block_hash = block_id_to_block_hash(block_id)?;
+        let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+
+        Ok(block)
     }
 
     pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
@@ -374,5 +392,22 @@ mod fns {
         memory.get_memory_stats()
     }
 
+    #[inline]
+    fn block_id_to_block_hash(block_id: &str) -> Result<BlockHash, failure::Error> {
+        let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(block_id)?;
+        Ok(block_hash)
+    }
+
+    #[inline]
+    fn chain_id_to_string(chain_id: &ChainId) -> String {
+        HashEncoding::new(HashType::ChainId).bytes_to_string(chain_id)
+    }
+
+    #[inline]
+    fn map_header_and_json_to_full_block_info(header: BlockHeaderWithHash, json_data: BlockJsonData, state: &RpcCollectedStateRef) -> FullBlockInfo {
+        let state = state.read().unwrap();
+        let chain_id = chain_id_to_string(state.chain_id());
+        FullBlockInfo::new(&BlockApplied::new(header, json_data), &chain_id)
+    }
 }
 
