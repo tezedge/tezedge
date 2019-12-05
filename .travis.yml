@@ -42,5 +42,5 @@ install:
   - travis_wait 60 cargo build --verbose
 
 script:
-  cargo test --verbose
-  cargo test --verbose -- --nocapture --test-threads=1 --ignored integ_test
+  - cargo test --verbose
+  - cargo test --verbose -- --nocapture --test-threads=1 --ignored integ_test
