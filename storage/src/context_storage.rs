@@ -11,6 +11,7 @@ use tezos_context::channel::ContextAction;
 use tezos_encoding::hash::{BlockHash, HashType, OperationHash};
 
 use crate::persistent::{CommitLogs, CommitLogSchema, CommitLogWithSchema, DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, Location, SchemaError};
+use crate::persistent::commit_log::fold_consecutive_locations;
 use crate::StorageError;
 
 pub type ContextStorageCommitLog = dyn CommitLogWithSchema<ContextStorage> + Sync + Send;
@@ -47,15 +48,29 @@ impl ContextStorage {
 
     #[inline]
     pub fn get_by_block_hash(&self, block_hash: &BlockHash) -> Result<Vec<ContextRecordValue>, StorageError> {
-        self.context_primary_index.get_by_block_hash(block_hash)?
-            .iter()
-            .map(|location| self.get_record_by_location(location))
-            .collect()
+        self.context_primary_index.get_by_block_hash(block_hash)
+            .and_then(|locations| self.get_records_by_locations(&locations))
     }
 
     /// Retrieve record value from commit log or return error if value is not present.
+    #[inline]
     fn get_record_by_location(&self, location: &Location) -> Result<ContextRecordValue, StorageError> {
         self.clog.get(location).map_err(StorageError::from).or(Err(StorageError::MissingKey))
+    }
+
+    /// Retrieve record values in batch
+    fn get_records_by_locations(&self, locations: &[Location]) -> Result<Vec<ContextRecordValue>, StorageError> {
+        match locations.len() {
+            0 => Ok(Vec::with_capacity(0)),
+            1 => Ok(vec![self.get_record_by_location(&locations[0])?]),
+            _ => {
+                let records = fold_consecutive_locations(locations)
+                    .iter()
+                    .map(|range| self.clog.get_range(range).map_err(StorageError::from))
+                    .collect::<Result<Vec<Vec<_>>, _>>()?;
+                Ok(records.into_iter().flatten().collect())
+            }
+        }
     }
 }
 

@@ -15,8 +15,6 @@ use crate::persistent::BincodeEncoded;
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
 
-
-
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
 /// Possible errors for commit log
@@ -63,10 +61,19 @@ impl slog::Value for CommitLogError {
     }
 }
 
+type ByteLimit = usize;
+type ItemCount = u16;
 
 /// Precisely identifies location of a record in a commit log.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Location(Offset, usize);
+pub struct Location(Offset, ByteLimit);
+
+impl Location {
+    #[inline]
+    pub fn is_consecutive(&self, prev: &Location) -> bool {
+        (prev.0 < self.0) && (self.0 - prev.0 == 1)
+    }
+}
 
 impl fmt::Display for Location {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -76,6 +83,10 @@ impl fmt::Display for Location {
 
 impl BincodeEncoded for Location {}
 
+/// Range of values to get from a commit log
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Range(Offset, ByteLimit, ItemCount);
+
 /// Implement this trait for a commit log engine.
 pub trait CommitLogWithSchema<S: CommitLogSchema> {
     /// Append new record to a commit log.
@@ -83,6 +94,9 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
 
     /// Retrieve a stored record.
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError>;
+
+    /// Retrieve stored records stored in a single range.
+    fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError>;
 }
 
 
@@ -109,11 +123,53 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
 
         Ok(value)
     }
+
+    fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
+        let cl = self.cl_handle(S::name())
+            .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
+        let cl = cl.read().expect("Read lock failed");
+        let msg_buf = cl.read(range.0, fit_batch_read_limit(range.1, range.2))
+            .map_err(|error| CommitLogError::ReadError { error, location: Location(range.0, range.1) })?;
+        msg_buf.iter()
+            .take(range.2 as usize)
+            .map(|message| S::Value::decode(message.payload()).
+                map_err(|_| CommitLogError::ReadError { error: ReadError::CorruptLog, location: Location(message.offset(), message.size() as usize) }))
+            .collect()
+    }
 }
 
 #[inline]
-fn fit_read_limit(limit: usize) -> ReadLimit {
+fn fit_read_limit(limit: ByteLimit) -> ReadLimit {
     ReadLimit::max_bytes(limit + 32)
+}
+
+#[inline]
+fn fit_batch_read_limit(limit: ByteLimit, items: ItemCount) -> ReadLimit {
+    ReadLimit::max_bytes(limit + (32 * items as usize))
+}
+
+pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
+    if locations.is_empty() {
+        Vec::with_capacity(0)
+    } else {
+        let mut ranges = vec![];
+
+        let mut prev = locations[0];
+        let mut range = Range(prev.0, prev.1, 1);
+        for curr in &locations[1..] {
+            if curr.is_consecutive(&prev) {
+                range.1 += curr.1;
+                range.2 += 1;
+            } else {
+                ranges.push(range);
+                range = Range(curr.0, curr.1, 1);
+            }
+            prev = *curr;
+        }
+        ranges.push(range);
+
+        ranges
+    }
 }
 
 /// Provides access to all registered commit logs via a log family reference.
@@ -185,5 +241,45 @@ impl Location {
 
     pub(crate) fn offset(&self) -> Offset {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::persistent::commit_log::fold_consecutive_locations;
+
+    use super::*;
+
+    #[test]
+    fn test_fold_consecutive_locations_empty() {
+        let locations = vec![];
+        let ranges = fold_consecutive_locations(&locations);
+        assert!(ranges.is_empty());
+    }
+
+    #[test]
+    fn test_fold_consecutive_locations_single() {
+        let locations = vec![Location(1, 10)];
+        let ranges = fold_consecutive_locations(&locations);
+        assert_eq!(vec![Range(1, 10, 1)], ranges);
+    }
+
+    #[test]
+    fn test_fold_consecutive_locations_multi() {
+        let locations = vec![
+            Location(1, 10),
+            Location(2, 10),
+            Location(5, 10),
+            Location(7, 10),
+            Location(8, 10),
+            Location(9, 10),
+            Location(6, 10)
+        ];
+        let ranges = fold_consecutive_locations(&locations);
+        assert_eq!(vec![
+            Range(1, 20, 2),
+            Range(5, 10, 1),
+            Range(7, 30, 3),
+            Range(6, 10, 1)], ranges);
     }
 }
