@@ -205,7 +205,7 @@ case $1 in
   travis)
     printf "\033[1;37mRunning Tezedge node in docker\e[0m\n"
     run_travis_docker "$@"
-    travis_check_rpc_running
+    #travis_check_rpc_running
     ;;
 
   -h|--help)
