@@ -259,6 +259,7 @@ mod tests {
     use tezos_encoding::hash::{HashEncoding, HashType};
 
     use super::*;
+    use crate::persistent::open_db;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -282,11 +283,9 @@ mod tests {
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::descriptor()]).unwrap();
+            let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let encoding = HashEncoding::new(HashType::BlockHash);
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
@@ -308,7 +307,7 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
     }
 
     #[test]
@@ -319,11 +318,9 @@ mod tests {
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::descriptor()]).unwrap();
+            let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,
@@ -359,22 +356,20 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        Ok(assert!(DB::destroy(&opts, path).is_ok()))
+        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
     }
 
     #[test]
-    fn merge_meta_value_test() {
+    fn merge_meta_value_test() -> Result<(), Error> {
         use rocksdb::{Options, DB};
 
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![BlockMetaStorage::descriptor()]).unwrap();
+            let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,
@@ -410,6 +405,6 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        assert!(DB::destroy(&opts, path).is_ok());
+        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
     }
 }

@@ -15,6 +15,8 @@ use crate::persistent::BincodeEncoded;
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
 
+
+
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
 /// Possible errors for commit log
@@ -121,13 +123,17 @@ pub struct CommitLogs {
 }
 
 impl CommitLogs {
-    pub fn new<P: AsRef<Path>>(path: P, schemas: &[CommitLogDescriptor]) -> Result<Self, CommitLogError> {
+    pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
+        where
+            P: AsRef<Path>,
+            I: IntoIterator<Item = CommitLogDescriptor>,
+    {
         let myself = Self {
             base_path: path.as_ref().into(),
             commit_log_map: RwLock::new(HashMap::new()),
         };
 
-        for descriptor in schemas {
+        for descriptor in cfs.into_iter() {
             Self::register(&myself, descriptor.name())?;
         }
 
@@ -135,7 +141,7 @@ impl CommitLogs {
     }
 
     /// Register a new commit log.
-    pub fn register(&self, name: &str) -> Result<(), CommitLogError> {
+    fn register(&self, name: &str) -> Result<(), CommitLogError> {
         let path = self.base_path.join(name);
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
@@ -153,7 +159,7 @@ impl CommitLogs {
 
     /// Retrieve handle to a registered commit log.
     #[inline]
-    pub fn cl_handle(&self, name: &str) -> Option<CommitLogRef> {
+    fn cl_handle(&self, name: &str) -> Option<CommitLogRef> {
         let commit_log_map = self.commit_log_map.read().unwrap();
         commit_log_map.get(name).cloned()
     }

@@ -281,7 +281,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
-            result_to_json_response(fns::get_block_actions(block_id, db), &log)
+            result_to_json_response(fns::get_block_actions(block_id, db, commit_logs), &log)
         }
         _ => not_found()
     }
@@ -339,14 +339,14 @@ mod fns {
 
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-    use storage::{BlockStorage, BlockStorageReader, ContextStorage, BlockHeaderWithHash};
+    use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextStorage};
+    use storage::block_storage::BlockJsonData;
     use storage::persistent::CommitLogs;
     use tezos_context::channel::ContextAction;
     use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
-    use storage::block_storage::BlockJsonData;
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(block_id: &str, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -359,8 +359,8 @@ mod fns {
     }
 
     /// Get actions for a specific block in ascending order.
-    pub(crate) fn get_block_actions(block_id: &str, db: Arc<rocksdb::DB>) -> Result<Vec<ContextAction>, failure::Error> {
-        let context_storage = ContextStorage::new(db);
+    pub(crate) fn get_block_actions(block_id: &str, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Result<Vec<ContextAction>, failure::Error> {
+        let context_storage = ContextStorage::new(db, commit_logs);
         let block_hash = block_id_to_block_hash(block_id)?;
         context_storage.get_by_block_hash(&block_hash)
             .map(|values| values.into_iter().map(|v| v.action).collect())
