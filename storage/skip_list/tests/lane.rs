@@ -10,14 +10,14 @@ mod common;
 #[test]
 fn lane_new() {
     let tmp = TmpDb::new();
-    let lane: Lane<Value> = Lane::new(0, tmp.db());
+    let lane: Lane<Value> = Lane::new(1, 0, tmp.db());
     assert_eq!(lane.level(), 0);
 }
 
 #[test]
 fn lane_higher() {
     let tmp = TmpDb::new();
-    let lane: Lane<Value> = Lane::new(0, tmp.db());
+    let lane: Lane<Value> = Lane::new(2, 0, tmp.db());
     let higher_lane = lane.higher_lane();
     assert_eq!(higher_lane.level(), 1);
 }
@@ -25,7 +25,7 @@ fn lane_higher() {
 #[test]
 fn lane_lower() {
     let tmp = TmpDb::new();
-    let lane: Lane<Value> = Lane::new(1, tmp.db());
+    let lane: Lane<Value> = Lane::new(3, 1, tmp.db());
     let lower_lane = lane.lower_lane();
     assert_eq!(lower_lane.level(), 0);
 }
@@ -33,7 +33,7 @@ fn lane_lower() {
 #[test]
 fn lane_lower_underflow() {
     let tmp = TmpDb::new();
-    let lane: Lane<Value> = Lane::new(0, tmp.db());
+    let lane: Lane<Value> = Lane::new(4, 0, tmp.db());
     let lower_lane = lane.lower_lane();
     assert_eq!(lower_lane.level(), 0);
 }
@@ -41,7 +41,7 @@ fn lane_lower_underflow() {
 #[test]
 fn lane_put_get_values() {
     let tmp = TmpDb::new();
-    let lane = Lane::new(0, tmp.db());
+    let lane = Lane::new(5, 0, tmp.db());
     lane.put(0, &Value::new(vec![0])).expect("failed to put value into lane");
     assert_eq!(lane.get(0).expect("failed to get lane value"), Some(Value::new(vec![0])));
     assert_eq!(lane.get(1).expect("failed to get lane value"), None);
@@ -50,7 +50,7 @@ fn lane_put_get_values() {
 #[test]
 fn lane_base_iterator() {
     let tmp = TmpDb::new();
-    let lane = Lane::new(0, tmp.db());
+    let lane = Lane::new(6, 0, tmp.db());
     for x in 0..=10 {
         lane.put(x, &Value::new(vec![x])).expect("failed to put value into lane");
     }

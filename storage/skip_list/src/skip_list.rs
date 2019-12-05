@@ -66,7 +66,7 @@ impl<C: ListValue> SkipList<C> {
     /// Rebuild state for given index
     pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         let mut current_state: Option<C> = None;
-        let mut lane = Lane::new(Self::index_level(index), self.lane_db.clone());
+        let mut lane = Lane::new(self.list_id, Self::index_level(index), self.lane_db.clone());
         let mut pos = NodeHeader::new(lane.level(), 0);
 
         // There is an sequential index on lowest level, if expected index is bigger than
@@ -112,7 +112,7 @@ impl<C: ListValue> SkipList<C> {
     /// Push new value into the end of the list. Beware, this is operation is
     /// not thread safe and should be handled with care !!!
     pub fn push(&mut self, mut value: C) -> Result<(), SkipListError> {
-        let mut lane = Lane::new(0, self.lane_db.clone());
+        let mut lane = Lane::new(self.list_id, 0, self.lane_db.clone());
         let mut index = self.state.len;
 
         // Insert value into lowest level, as is.

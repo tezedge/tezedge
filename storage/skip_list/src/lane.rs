@@ -7,7 +7,7 @@ use storage::Direction;
 use storage::persistent::{DatabaseWithSchema, KeyValueSchema};
 use storage::persistent::database::{IteratorMode, IteratorWithSchema};
 
-use crate::content::{ListValue, NodeHeader};
+use crate::content::{ListValue, NodeHeader, SkipListId};
 use crate::SkipListError;
 
 pub type LaneDatabase<C> = dyn DatabaseWithSchema<Lane<C>> + Sync + Send;
@@ -17,6 +17,7 @@ pub type LaneDatabase<C> = dyn DatabaseWithSchema<Lane<C>> + Sync + Send;
 /// There should be multiple lanes, to be able to skip multiple nodes and traverse structure faster.
 #[derive(Clone)]
 pub struct Lane<C: ListValue> {
+    list_id: SkipListId,
     level: usize,
     db: Arc<LaneDatabase<C>>,
 }
@@ -32,21 +33,23 @@ impl<C: ListValue> KeyValueSchema for Lane<C> {
 
 impl<C: ListValue> Lane<C> {
     /// Create new lane handler for given database
-    pub fn new(level: usize, db: Arc<LaneDatabase<C>>) -> Self {
-        Self { level, db }
+    pub fn new(list_id: SkipListId, level: usize, db: Arc<LaneDatabase<C>>) -> Self {
+        Self { list_id, level, db }
     }
 
     /// Create handler for a lane on one lower level
     pub fn lower_lane(self) -> Self {
-        Self::new(if self.level == 0 {
+        let level = if self.level == 0 {
             self.level
         } else {
             self.level - 1
-        }, self.db)
+        };
+
+        Self::new(self.list_id, level, self.db)
     }
 
     /// Create handler for a lane on higher level
-    pub fn higher_lane(self) -> Self { Self::new(self.level + 1, self.db) }
+    pub fn higher_lane(self) -> Self { Self::new(self.list_id, self.level + 1, self.db) }
 
     /// Get level of current handler
     pub fn level(&self) -> usize { self.level }
