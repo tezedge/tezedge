@@ -16,7 +16,7 @@ fn integ_test_connect_rust_node() {
 #[test]
 fn integ_test_rpc_stats_memory() {
 
-    let json_rust = common::call_rpc_json("http://127.0.0.1:8732/stats/memory".to_string()).unwrap();
+    let json_rust = common::call_rpc_json("http://127.0.0.1:18732/stats/memory".to_string()).unwrap();
     let json_ocaml = common::call_rpc_ssl_json("https://zeronet.simplestaking.com:3000/stats/memory".to_string()).unwrap();
 
     assert!(common::json_structure_match(&json_rust, &json_ocaml))
