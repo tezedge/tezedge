@@ -9,7 +9,7 @@ storage = { path = "../storage" }
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 shell = { path = "../shell" }
 failure = "0.1"
-rocksdb = "0.12"
+rocksdb = "0.13"
 chrono = "0.4"
 ws = "*"
 tokio = "0.2.0-alpha.6"

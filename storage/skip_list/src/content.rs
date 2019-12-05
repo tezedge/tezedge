@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use serde::{Deserialize, Serialize};
 
 use storage::persistent::{Codec, Decoder, Encoder, SchemaError};
