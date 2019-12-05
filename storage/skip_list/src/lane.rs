@@ -56,7 +56,7 @@ impl<C: ListValue> Lane<C> {
 
     /// Get value from specific index (relative to this lane).
     pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
-        self.db.get(&NodeHeader::new(self.level, index))
+        self.db.get(&NodeHeader::new(self.list_id, self.level, index))
             .map_err(SkipListError::from)
     }
 
@@ -64,14 +64,14 @@ impl<C: ListValue> Lane<C> {
     /// indexes, thus some meta-structure should control and contain data about end of the lane, as
     /// we cannot guarantee correct end handling on lane level.
     pub fn put(&self, index: usize, value: &C) -> Result<(), SkipListError> {
-        self.db.put(&NodeHeader::new(self.level, index), &value)
+        self.db.put(&NodeHeader::new(self.list_id, self.level, index), &value)
             .map_err(SkipListError::from)
     }
 
     /// From starting index, iterate backwards.
     pub fn base_iterator(&self, starting_index: usize) -> Result<IteratorWithSchema<Lane<C>>, SkipListError> {
         self.db.iterator(IteratorMode::From(
-            &NodeHeader::new(self.level, starting_index), Direction::Reverse,
+            &NodeHeader::new(self.list_id, self.level, starting_index), Direction::Reverse,
         )).map_err(SkipListError::from)
     }
 }

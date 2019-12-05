@@ -67,7 +67,7 @@ impl<C: ListValue> SkipList<C> {
     pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         let mut current_state: Option<C> = None;
         let mut lane = Lane::new(self.list_id, Self::index_level(index), self.lane_db.clone());
-        let mut pos = NodeHeader::new(lane.level(), 0);
+        let mut pos = NodeHeader::new(self.list_id, lane.level(), 0);
 
         // There is an sequential index on lowest level, if expected index is bigger than
         // length of chain, it is not stored, otherwise, IT MUST BE FOUND.
