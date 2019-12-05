@@ -1,15 +1,18 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-use storage::persistent::{Codec, Decoder, Encoder, SchemaError};
+use storage::persistent::{Codec, DBError, Decoder, Encoder, SchemaError};
 
 use crate::LEVEL_BASE;
 
 /// Structure for orientation in the list.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeHeader {
+    /// Skip list ID
+    list_id: SkipListId,
     /// Level on which this node exists
     lane_level: usize,
     /// Position of node in lane
@@ -18,11 +21,16 @@ pub struct NodeHeader {
 
 impl NodeHeader {
     pub fn new(lane_level: usize, node_index: usize) -> Self {
-        Self { lane_level, node_index }
+        Self {
+            list_id: 1, // TODO: pass list ID as an argument
+            lane_level,
+            node_index
+        }
     }
 
     pub fn next(&self) -> Self {
         Self {
+            list_id: self.list_id,
             lane_level: self.lane_level,
             node_index: self.node_index + 1,
         }
@@ -33,6 +41,7 @@ impl NodeHeader {
             self.clone()
         } else {
             Self {
+                list_id: self.list_id,
                 lane_level: self.lane_level - 1,
                 node_index: self.lower_index(),
             }
@@ -87,6 +96,23 @@ pub trait ListValue: Codec + Default + std::fmt::Debug {
     fn merge(&mut self, other: &Self);
     /// Create difference between two values.
     fn diff(&mut self, other: &Self);
+}
+
+/// ID of the skip list
+pub type SkipListId = u16;
+
+#[derive(Debug, Fail)]
+pub enum SkipListError {
+    #[fail(display = "Persistent storage error: {}!", error)]
+    PersistentStorageError {
+        error: DBError
+    }
+}
+
+impl From<DBError> for SkipListError {
+    fn from(error: DBError) -> Self {
+        SkipListError::PersistentStorageError { error }
+    }
 }
 
 #[cfg(test)]

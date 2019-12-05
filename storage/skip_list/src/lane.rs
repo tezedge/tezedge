@@ -3,27 +3,22 @@
 
 use std::sync::Arc;
 
-use rocksdb::DB;
-use serde::export::PhantomData;
-
 use storage::Direction;
 use storage::persistent::{DatabaseWithSchema, KeyValueSchema};
-use storage::persistent::database::{
-    IteratorMode, IteratorWithSchema,
-};
+use storage::persistent::database::{IteratorMode, IteratorWithSchema};
 
 use crate::content::{ListValue, NodeHeader};
+use crate::SkipListError;
 
-type LaneDatabase<T> = dyn DatabaseWithSchema<Lane<T>> + Sync + Send;
+pub type LaneDatabase<C> = dyn DatabaseWithSchema<Lane<C>> + Sync + Send;
 
 /// Lane is an way to traverse the chain.
 /// Lane is just an linked list, containing all changes between nodes.
 /// There should be multiple lanes, to be able to skip multiple nodes and traverse structure faster.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Lane<C: ListValue> {
     level: usize,
-    db: Arc<DB>,
-    _pd: PhantomData<C>,
+    db: Arc<LaneDatabase<C>>,
 }
 
 impl<C: ListValue> KeyValueSchema for Lane<C> {
@@ -37,12 +32,8 @@ impl<C: ListValue> KeyValueSchema for Lane<C> {
 
 impl<C: ListValue> Lane<C> {
     /// Create new lane handler for given database
-    pub fn new(level: usize, db: Arc<DB>) -> Self {
-        Self {
-            level,
-            db,
-            _pd: PhantomData,
-        }
+    pub fn new(level: usize, db: Arc<LaneDatabase<C>>) -> Self {
+        Self { level, db }
     }
 
     /// Create handler for a lane on one lower level
@@ -61,24 +52,23 @@ impl<C: ListValue> Lane<C> {
     pub fn level(&self) -> usize { self.level }
 
     /// Get value from specific index (relative to this lane).
-    pub fn get(&self, index: usize) -> Option<C> {
-        self.container().get(&NodeHeader::new(self.level, index)).unwrap()
+    pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
+        self.db.get(&NodeHeader::new(self.level, index))
+            .map_err(SkipListError::from)
     }
 
     /// Put new value on specific index of this lane, beware, that lanes should contain continuous
     /// indexes, thus some meta-structure should control and contain data about end of the lane, as
     /// we cannot guarantee correct end handling on lane level.
-    pub fn put(&self, index: usize, value: &C) {
-        self.container().put(&NodeHeader::new(self.level, index), &value).unwrap();
+    pub fn put(&self, index: usize, value: &C) -> Result<(), SkipListError> {
+        self.db.put(&NodeHeader::new(self.level, index), &value)
+            .map_err(SkipListError::from)
     }
 
     /// From starting index, iterate backwards.
-    pub fn base_iterator(&self, starting_index: usize) -> Option<IteratorWithSchema<Lane<C>>> {
-        self.container().iterator(IteratorMode::From(
+    pub fn base_iterator(&self, starting_index: usize) -> Result<IteratorWithSchema<Lane<C>>, SkipListError> {
+        self.db.iterator(IteratorMode::From(
             &NodeHeader::new(self.level, starting_index), Direction::Reverse,
-        )).ok()
+        )).map_err(SkipListError::from)
     }
-
-    #[inline]
-    fn container(&self) -> &Arc<impl DatabaseWithSchema<Lane<C>>> { &self.db }
 }

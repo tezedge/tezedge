@@ -2,32 +2,31 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp::max;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
-use rocksdb::DB;
+use serde::{Deserialize, Serialize};
 
-use storage::persistent::KeyValueSchema;
+use storage::persistent::{BincodeEncoded, DatabaseWithSchema, KeyValueSchema};
 
-use crate::{
-    content::{ListValue, NodeHeader},
-    lane::Lane,
-    LEVEL_BASE,
-};
+use crate::{content::{ListValue, NodeHeader}, lane::Lane, LEVEL_BASE, SkipListError};
+use crate::content::SkipListId;
+use crate::lane::LaneDatabase;
+
+pub type SkipListDatabase<C> = dyn DatabaseWithSchema<SkipList<C>> + Sync + Send;
 
 /// Data structure implementation, managing structure data, shape and metadata
 /// It is expected, that structure will hold a few GiBs of data, and because of that,
 /// structure is backed by an database.
 pub struct SkipList<C: ListValue> {
-    container: Arc<DB>,
-    levels: usize,
-    len: usize,
-    _pd: PhantomData<C>,
+    lane_db: Arc<LaneDatabase<C>>,
+    list_db: Arc<SkipListDatabase<C>>,
+    list_id: SkipListId,
+    state: SkipListState,
 }
 
 impl<C: ListValue> KeyValueSchema for SkipList<C> {
-    type Key = NodeHeader;
-    type Value = C;
+    type Key = SkipListId;
+    type Value = SkipListState;
 
     fn name() -> &'static str {
         "skip_list"
@@ -36,43 +35,48 @@ impl<C: ListValue> KeyValueSchema for SkipList<C> {
 
 impl<C: ListValue> SkipList<C> {
     /// Create new list in given database
-    pub fn new(db: Arc<DB>) -> Self {
-        Self {
-            container: db,
-            levels: 1,
-            len: 0,
-            _pd: PhantomData,
-        }
+    pub fn new(list_id: SkipListId, db: Arc<rocksdb::DB>) -> Result<Self, SkipListError> {
+        let list_db: Arc<SkipListDatabase<C>> = db.clone();
+        let state = list_db.get(&list_id)?
+            .unwrap_or_else(|| SkipListState {
+                levels: 1,
+                len: 0,
+            });
+
+        Ok(Self { lane_db: db, list_db, list_id, state })
     }
 
     /// Get number of elements stored in this node
+    #[inline]
     pub fn len(&self) -> usize {
-        self.len
+        self.state.len
     }
 
+    #[inline]
     pub fn levels(&self) -> usize {
-        self.levels
+        self.state.levels
     }
 
     /// Check, that given index is stored in structure
+    #[inline]
     pub fn contains(&self, index: usize) -> bool {
-        self.len > index
+        self.state.len > index
     }
 
     /// Rebuild state for given index
-    pub fn get(&self, index: usize) -> Option<C> {
+    pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         let mut current_state: Option<C> = None;
-        let mut lane = Lane::new(Self::index_level(index), self.container.clone());
+        let mut lane = Lane::new(Self::index_level(index), self.lane_db.clone());
         let mut pos = NodeHeader::new(lane.level(), 0);
 
         // There is an sequential index on lowest level, if expected index is bigger than
         // length of chain, it is not stored, otherwise, IT MUST BE FOUND.
-        if index >= self.len {
-            return None;
+        if index >= self.state.len {
+            return Ok(None);
         }
 
         loop {
-            if let Some(value) = lane.get(pos.index()) {
+            if let Some(value) = lane.get(pos.index())? {
                 if let Some(mut state) = current_state {
                     state.merge(&value);
                     current_state = Some(state);
@@ -85,8 +89,8 @@ impl<C: ListValue> SkipList<C> {
                        lane.level(), pos.index(), pos.base_index());
             }
 
-            if pos.base_index() == index && lane.level() == 0 {
-                return current_state;
+            if (pos.base_index() == index) && (lane.level() == 0) {
+                return Ok(current_state);
             } else if pos.next().base_index() > index {
                 // We cannot move horizontally anymore, so we need to descent to lower level.
                 if lane.level() == 0 {
@@ -107,17 +111,16 @@ impl<C: ListValue> SkipList<C> {
 
     /// Push new value into the end of the list. Beware, this is operation is
     /// not thread safe and should be handled with care !!!
-    pub fn push(&mut self, mut value: C) {
-        let mut lane = Lane::new(0, self.container.clone());
-        let mut index = self.len;
+    pub fn push(&mut self, mut value: C) -> Result<(), SkipListError> {
+        let mut lane = Lane::new(0, self.lane_db.clone());
+        let mut index = self.state.len;
 
         // Insert value into lowest level, as is.
-        println!("inserting into bottom lane on index: {}", index);
-        lane.put(index, &value);
+        lane.put(index, &value)?;
 
         // Start building upper lanes
         while index != 0 && (index + 1) % LEVEL_BASE == 0 {
-            let lane_value = lane.base_iterator(index).unwrap()
+            let lane_value = lane.base_iterator(index)?
                 .take(LEVEL_BASE)
                 .map(|(_, val)| {
                     match val {
@@ -136,11 +139,14 @@ impl<C: ListValue> SkipList<C> {
             value = lane_value;
             index = ((index + 1) / LEVEL_BASE) - 1;
             lane = lane.higher_lane();
-            lane.put(index, &value);
+            lane.put(index, &value)?;
         }
 
-        self.levels = max(lane.level() + 1, self.levels);
-        self.len += 1;
+        self.state.levels = max(lane.level() + 1, self.state.levels);
+        self.state.len += 1;
+
+        self.list_db.put(&self.list_id, &self.state)
+            .map_err(SkipListError::from)
     }
 
     /// Find highest level, which we should traverse to hit the index
@@ -152,3 +158,14 @@ impl<C: ListValue> SkipList<C> {
         }
     }
 }
+
+/// This structure holds state of the skip list which will be persisted into a database.
+#[derive(Serialize, Deserialize)]
+pub struct SkipListState {
+    /// how many levels (lanes) does skip list contain
+    levels: usize,
+    /// length (number of unique items) stored in skip list
+    len: usize,
+}
+
+impl BincodeEncoded for SkipListState {}

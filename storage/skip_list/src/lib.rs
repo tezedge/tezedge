@@ -19,7 +19,7 @@
 //! aggregated changes on lane descend {S015, S1215}.
 #![allow(dead_code)]
 
-pub use crate::content::ListValue;
+pub use crate::content::{ListValue, SkipListError};
 pub use crate::lane::Lane;
 pub use crate::skip_list::SkipList;
 

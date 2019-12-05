@@ -42,9 +42,9 @@ fn lane_lower_underflow() {
 fn lane_put_get_values() {
     let tmp = TmpDb::new();
     let lane = Lane::new(0, tmp.db());
-    lane.put(0, &Value::new(vec![0]));
-    assert_eq!(lane.get(0), Some(Value::new(vec![0])));
-    assert_eq!(lane.get(1), None);
+    lane.put(0, &Value::new(vec![0])).expect("failed to put value into lane");
+    assert_eq!(lane.get(0).expect("failed to get lane value"), Some(Value::new(vec![0])));
+    assert_eq!(lane.get(1).expect("failed to get lane value"), None);
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn lane_base_iterator() {
     let tmp = TmpDb::new();
     let lane = Lane::new(0, tmp.db());
     for x in 0..=10 {
-        lane.put(x, &Value::new(vec![x]));
+        lane.put(x, &Value::new(vec![x])).expect("failed to put value into lane");
     }
 
     let mut index = LEVEL_BASE as i64;
