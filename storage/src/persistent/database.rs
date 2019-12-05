@@ -143,7 +143,7 @@ impl<S: KeyValueSchema> DatabaseWithSchema<S> for DB {
         let contains = if iter.valid() {
             let iter: DBRawIterator = iter.into();
             match iter.key() {
-                Some(key_from_db) => key_from_db == key,
+                Some(key_from_db) => key_from_db == &key[..],
                 None => false
             }
         } else {

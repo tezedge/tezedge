@@ -1,12 +1,18 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-use storage::persistent::{Codec, Decoder, Encoder, SchemaError};
+use storage::persistent::{Codec, DBError, Decoder, Encoder, SchemaError};
 
 use crate::LEVEL_BASE;
 
 /// Structure for orientation in the list.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeHeader {
+    /// Skip list ID
+    list_id: SkipListId,
     /// Level on which this node exists
     lane_level: usize,
     /// Position of node in lane
@@ -14,12 +20,17 @@ pub struct NodeHeader {
 }
 
 impl NodeHeader {
-    pub fn new(lane_level: usize, node_index: usize) -> Self {
-        Self { lane_level, node_index }
+    pub fn new(list_id: SkipListId, lane_level: usize, node_index: usize) -> Self {
+        Self {
+            list_id,
+            lane_level,
+            node_index
+        }
     }
 
     pub fn next(&self) -> Self {
         Self {
+            list_id: self.list_id,
             lane_level: self.lane_level,
             node_index: self.node_index + 1,
         }
@@ -30,6 +41,7 @@ impl NodeHeader {
             self.clone()
         } else {
             Self {
+                list_id: self.list_id,
                 lane_level: self.lane_level - 1,
                 node_index: self.lower_index(),
             }
@@ -86,13 +98,30 @@ pub trait ListValue: Codec + Default + std::fmt::Debug {
     fn diff(&mut self, other: &Self);
 }
 
+/// ID of the skip list
+pub type SkipListId = u16;
+
+#[derive(Debug, Fail)]
+pub enum SkipListError {
+    #[fail(display = "Persistent storage error: {}!", error)]
+    PersistentStorageError {
+        error: DBError
+    }
+}
+
+impl From<DBError> for SkipListError {
+    fn from(error: DBError) -> Self {
+        SkipListError::PersistentStorageError { error }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     pub fn header_next() {
-        let original = NodeHeader::new(0, 0);
+        let original = NodeHeader::new(0, 0, 0);
         let next = original.next();
         assert_eq!(original.lane_level, next.lane_level);
         assert_eq!(original.node_index + 1, next.node_index);
@@ -100,31 +129,31 @@ mod tests {
 
     #[test]
     pub fn header_level() {
-        let original = NodeHeader::new(0, 0);
+        let original = NodeHeader::new(0, 0, 0);
         assert_eq!(original.level(), 0);
     }
 
     #[test]
     pub fn header_index() {
-        let original = NodeHeader::new(0, 0);
+        let original = NodeHeader::new(0, 0, 0);
         assert_eq!(original.index(), 0);
     }
 
     pub fn header_base_index() {
-        let original = NodeHeader::new(0, 0);
+        let original = NodeHeader::new(0, 0, 0);
         assert_eq!(original.base_index(), 0);
-        let original = NodeHeader::new(1, 0);
+        let original = NodeHeader::new(0, 1, 0);
         assert_eq!(original.base_index(), 7);
-        let original = NodeHeader::new(2, 0);
+        let original = NodeHeader::new(0, 2, 0);
         assert_eq!(original.base_index(), 63);
     }
 
     pub fn header_lower_index() {
-        let original = NodeHeader::new(0, 0);
+        let original = NodeHeader::new(0, 0, 0);
         assert_eq!(original.lower_index(), 0);
-        let original = NodeHeader::new(1, 0);
+        let original = NodeHeader::new(0, 1, 0);
         assert_eq!(original.lower_index(), 7);
-        let original = NodeHeader::new(2, 0);
+        let original = NodeHeader::new(0, 2, 0);
         assert_eq!(original.lower_index(), 7);
     }
 }
