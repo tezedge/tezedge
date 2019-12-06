@@ -167,7 +167,7 @@ run_travis_docker() {
   shift # shift past <MODE>
 
   # build docker
-  docker build -t tezedge-run -f ./docker/travis/Dockerfile --build-arg current_branch=$CURRENT_BRANCH .
+  docker build -t tezedge-run -f ./docker/travis/Dockerfile --build-arg current_branch=${TRAVIS_PULL_REQUEST_BRANCH:-$TRAVIS_BRANCH} .
   # run docker on background with port forwarding for RPC
   #docker run --rm -d -m 4g -p 18732:18732 --name rust-node tezedge-run "$@"
   docker run --rm -d --net host -m 4g --name rust-node tezedge-run "$@"
