@@ -243,6 +243,30 @@ pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGene
     })
 }
 
+pub fn decode_context_data(protocol_hash: RustBytes, key: Vec<String>, data: RustBytes) -> Result<Result<Option<String>, ContextDataError>, OcamlError> {
+    runtime::execute(move || {
+        let mut key_list = List::new();
+        key.iter()
+            .rev()
+            .for_each(|k| key_list.push_hd(Str::from(k.as_str()).into()));
+
+        let ocaml_function = ocaml::named_value("decode_context_data").expect("function 'decode_context_data' is not registered");
+        match ocaml_function.call3_exn::<OcamlHash, List, OcamlBytes>(protocol_hash.convert_to(), key_list, data.convert_to()) {
+            Ok(decoded_data) => {
+                let decoded_data: Str = decoded_data.into();
+                if decoded_data.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(decoded_data.as_str().to_string()))
+                }
+            }
+            Err(e) => {
+                Err(ContextDataError::from(e))
+            }
+        }
+    })
+}
+
 pub fn operations_to_ocaml(operations: &Vec<Option<Vec<RustBytes>>>) -> List {
     let mut operations_for_ocaml = List::new();
 

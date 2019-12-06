@@ -1521,8 +1521,8 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre20",
- "tezos_interop_callback 0.0.1-pre20",
+ "tezos_interop 0.0.1-pre21",
+ "tezos_interop_callback 0.0.1-pre21",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2358,7 +2358,7 @@ dependencies = [
  "serial_test 0.3.0 (git+https://github.com/palfrey/serial_test.git)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.1-pre20",
+ "tezos_interop 0.0.1-pre21",
  "tezos_messages 0.1.0",
 ]
 
@@ -2391,7 +2391,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.0.1-pre20"
+version = "0.0.1-pre21"
 dependencies = [
  "colored 1.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2407,12 +2407,12 @@ dependencies = [
  "sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_context 0.0.1",
- "tezos_interop_callback 0.0.1-pre20",
+ "tezos_interop_callback 0.0.1-pre21",
 ]
 
 [[package]]
 name = "tezos_interop_callback"
-version = "0.0.1-pre20"
+version = "0.0.1-pre21"
 dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
