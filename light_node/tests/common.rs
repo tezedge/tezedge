@@ -6,18 +6,27 @@ use std::mem::discriminant;
 use failure::Error;
 
 
-pub fn call_rpc_json(uri: String) -> Result<Value, Error> {
-    let json = reqwest::get(&uri)?.json()?;
-    println!("resp for uri {} is {:?}", uri, json);
-    Ok(json)
-}
+// pub fn call_rpc_json(uri: String, ssl: bool) -> Result<Value, Error> {
+//     if ssl {
+//         call_rpc_json_ssl(uri)
+//     } else {
+//         call_rpc_json_nossl(uri)
+//     }
+// }
 
-pub fn call_rpc_ssl_json(uri: String) -> Result<Value, Error> {
+// this is not supporting ssl
+// pub fn call_rpc_json_nossl(uri: String) -> Result<Value, Error> {
+//     let json = reqwest::get(&uri)?.json()?;
+//     println!("resp for uri {} is {:?}", uri, json);
+//     Ok(json)
+// }
+
+pub fn call_rpc_json(uri: String) -> Result<Value, Error> {
     let mut res = reqwest::Client::builder()
         .danger_accept_invalid_certs(true).build()?
         .get(&uri).send()?;
     let json: Value = res.json()?;
-    println!("resp for uri {} is {:?}", uri, json);
+    //println!("resp for uri {} is {:?}", uri, json);
     Ok(json)
 }
 
@@ -28,7 +37,7 @@ fn unpack_value_option(opt: Option<&Value>) -> &Value {
     }
 }
 
-// compare json structures of a flat Object
+// compare json structures of a single layer Object
 pub fn json_structure_match( json1: &Value, json2: &Value) -> bool {
     match (json1, json2) {
         (Value::Object(j1), Value::Object(j2)) => 
