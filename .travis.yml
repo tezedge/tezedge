@@ -36,10 +36,14 @@ services:
   - docker
 
 before_install:
-  - bash run.sh travis
+  - docker pull otisak/tezedge:latest
+  - export CURRENT_BRANCH=$(if [ "$TRAVIS_PULL_REQUEST" == "false" ]; then echo $TRAVIS_BRANCH; else echo $TRAVIS_PULL_REQUEST_BRANCH; fi)
+  - export GIT_CMD=$(if [ "$TRAVIS_PULL_REQUEST" == "false" ]; then echo "git checkout $CURRENT_BRANCH"; else echo "git fetch origin pull/$TRAVIS_PULL_REQUEST/head:$CURRENT_BRANCH && git checkout $CURRENT_BRANCH"; fi)
+  - docker run -d --net host -m 4g --name tezedge-node --entrypoint /bin/bash otisak/travis-tezedge:latest -c "$GIT_CMD && ./run.sh release"
+  - docker ps -a
 
 install:
-  - travis_wait 60 cargo build --verbose
+  - cargo build --verbose
 
 script:
   - cargo test --verbose
