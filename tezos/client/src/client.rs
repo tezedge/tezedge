@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::{self, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, ContextDataError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
 use tezos_api::identity::Identity;
-use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -130,6 +130,18 @@ pub fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIde
         Err(e) => {
             Err(TezosGenerateIdentityError::GenerationError {
                 message: format!("FFI 'generate_identity' failed! Reason: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Decode protocoled context data
+pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: Vec<u8>) -> Result<Option<String>, ContextDataError> {
+    match ffi::decode_context_data(protocol_hash, key, data) {
+        Ok(result) => Ok(result?),
+        Err(e) => {
+            Err(ContextDataError::DecodeError {
+                message: format!("FFI 'decode_context_data' failed! Reason: {:?}", e)
             })
         }
     }

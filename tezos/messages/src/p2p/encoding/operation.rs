@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{BlockHash, HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{BlockHash, HashEncoding, HashType, OperationHash};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OperationMessage {
@@ -61,7 +61,7 @@ impl Operation {
 impl HasEncoding for Operation {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("branch", Encoding::Hash(HashEncoding::new(HashType::BlockHash))),
+            Field::new("branch", Encoding::Hash(HashType::BlockHash)),
             Field::new("data", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,
@@ -96,7 +96,7 @@ pub struct GetOperationsMessage {
 impl HasEncoding for GetOperationsMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_operations", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::OperationHash))))),
+            Field::new("get_operations", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
         ])
     }
 }

@@ -4,8 +4,8 @@
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{ChainId, HashType};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{ChainId, HashEncoding, HashType};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -38,7 +38,7 @@ impl CurrentHeadMessage {
 impl HasEncoding for CurrentHeadMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashEncoding::new(HashType::ChainId))),
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding())),
             Field::new("current_mempool", Mempool::encoding())
         ])
@@ -79,7 +79,7 @@ impl GetCurrentHeadMessage {
 impl HasEncoding for GetCurrentHeadMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashEncoding::new(HashType::ChainId)))
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId))
         ])
     }
 }

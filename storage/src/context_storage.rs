@@ -7,8 +7,8 @@ use std::sync::Arc;
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{BlockHash, HashType, OperationHash};
 use tezos_context::channel::ContextAction;
-use tezos_encoding::hash::{BlockHash, HashType, OperationHash};
 
 use crate::persistent::{CommitLogs, CommitLogSchema, CommitLogWithSchema, DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, Location, SchemaError};
 use crate::persistent::commit_log::fold_consecutive_locations;
@@ -255,7 +255,7 @@ impl Encoder for ContextPrimaryIndexKey {
 mod tests {
     use failure::Error;
 
-    use tezos_encoding::hash::{HashEncoding, HashType};
+    use crypto::hash::HashType;
 
     use crate::persistent::{open_cl, open_db};
 
@@ -300,14 +300,16 @@ mod tests {
             let db = open_db(path, vec![ContextPrimaryIndex::descriptor()]).unwrap();
             let clog = open_cl(path, vec![ContextStorage::descriptor()])?;
 
-            let block_hash_1 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
-            let block_hash_2 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
+            let str_block_hash_1 = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
+            let block_hash_1 = HashType::BlockHash.string_to_bytes(str_block_hash_1)?;
+            let str_block_hash_2 = "BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ";
+            let block_hash_2 = HashType::BlockHash.string_to_bytes(str_block_hash_2)?;
             let key_1_0 = ContextPrimaryIndexKey { block_hash: block_hash_1.clone(), ordinal_id: 0, operation_hash: Some(ContextPrimaryIndexKey::BLANK_OPERATION_HASH.to_vec()), key_hash: ContextPrimaryIndexKey::BLANK_KEY_HASH.to_vec() };
-            let value_1_0 = ContextRecordValue { action: ContextAction::Set { key: vec!("hello".to_string(), "this".to_string(), "is".to_string(), "dog".to_string()), value: vec![10, 200], operation_hash: None, block_hash: Some(block_hash_1.clone()), context_hash: None } };
+            let value_1_0 = ContextRecordValue { action: ContextAction::Set { key: vec!("hello".to_string(), "this".to_string(), "is".to_string(), "dog".to_string()), value: vec![10, 200], operation_hash: None, block_hash: Some(str_block_hash_1.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0 } };
             let key_1_1 = ContextPrimaryIndexKey { block_hash: block_hash_1.clone(), ordinal_id: 1, operation_hash: Some(ContextPrimaryIndexKey::BLANK_OPERATION_HASH.to_vec()), key_hash: ContextPrimaryIndexKey::BLANK_KEY_HASH.to_vec() };
-            let value_1_1 = ContextRecordValue { action: ContextAction::Set { key: vec!("hello".to_string(), "world".to_string()), value: vec![11, 200], operation_hash: None, block_hash: Some(block_hash_1.clone()), context_hash: None } };
+            let value_1_1 = ContextRecordValue { action: ContextAction::Set { key: vec!("hello".to_string(), "world".to_string()), value: vec![11, 200], operation_hash: None, block_hash: Some(str_block_hash_1.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0 } };
             let key_2_0 = ContextPrimaryIndexKey { block_hash: block_hash_2.clone(), ordinal_id: 0, operation_hash: Some(ContextPrimaryIndexKey::BLANK_OPERATION_HASH.to_vec()), key_hash: ContextPrimaryIndexKey::BLANK_KEY_HASH.to_vec() };
-            let value_2_0 = ContextRecordValue { action: ContextAction::Set { key: vec!("nice".to_string(), "to meet you".to_string()), value: vec![20, 200], operation_hash: None, block_hash: Some(block_hash_2.clone()), context_hash: None } };
+            let value_2_0 = ContextRecordValue { action: ContextAction::Set { key: vec!("nice".to_string(), "to meet you".to_string()), value: vec![20, 200], operation_hash: None, block_hash: Some(str_block_hash_2.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0 } };
 
             let mut storage = ContextStorage::new(Arc::new(db), Arc::new(clog));
             storage.put(&key_1_0, &value_1_0)?;

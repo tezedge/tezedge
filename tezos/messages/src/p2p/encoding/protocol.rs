@@ -3,10 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{HashType, ProtocolHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{HashEncoding, HashType, ProtocolHash};
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CacheReader, CacheWriter, CachedData};
+use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ProtocolMessage {
@@ -122,7 +122,7 @@ pub struct GetProtocolsMessage {
 impl HasEncoding for GetProtocolsMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_protocols", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::ProtocolHash))))),
+            Field::new("get_protocols", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash)))),
         ])
     }
 }

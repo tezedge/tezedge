@@ -7,7 +7,7 @@ use derive_builder::Builder;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::hash::BlockHash;
+use crypto::hash::BlockHash;
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 use crate::persistent::{BincodeEncoded, CommitLogs, CommitLogSchema, CommitLogWithSchema, DatabaseWithSchema, KeyValueSchema, Location};

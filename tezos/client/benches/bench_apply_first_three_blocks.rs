@@ -9,7 +9,7 @@ use test::Bencher;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
-use tezos_encoding::hash::ChainId;
+use crypto::hash::ChainId;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
@@ -87,14 +87,14 @@ fn apply_first_three_blocks(chain_id: ChainId) -> Result<(), failure::Error> {
 
 mod test_data {
     use tezos_api::environment::TezosEnvironment;
-    use tezos_encoding::hash::{ContextHash, HashEncoding, HashType};
+    use crypto::hash::{ContextHash, HashEncoding, HashType};
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashEncoding::new(HashType::ContextHash)
+        HashType::ContextHash
             .string_to_bytes(hash)
             .unwrap()
     }

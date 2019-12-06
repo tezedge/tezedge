@@ -9,10 +9,10 @@ use riker::actors::*;
 use slog::warn;
 use tokio::runtime::Runtime;
 
+use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
-use tezos_encoding::hash::ChainId;
 
 use crate::server::{RpcServiceEnvironment, spawn_server};
 

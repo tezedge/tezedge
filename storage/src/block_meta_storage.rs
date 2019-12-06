@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
-use tezos_encoding::hash::{BlockHash, ChainId, HashType};
+use crypto::hash::{BlockHash, ChainId, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{DatabaseWithSchema, KeyValueSchema, Decoder, Encoder, SchemaError};
+use crate::persistent::{DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
@@ -256,10 +256,11 @@ mod tests {
 
     use failure::Error;
 
-    use tezos_encoding::hash::{HashEncoding, HashType};
+    use crypto::hash::HashType;
+
+    use crate::persistent::open_db;
 
     use super::*;
-    use crate::persistent::open_db;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -286,10 +287,10 @@ mod tests {
 
         {
             let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
-            let encoding = HashEncoding::new(HashType::BlockHash);
+            let encoding = HashType::BlockHash;
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let chain_id = HashEncoding::new(HashType::ChainId).string_to_bytes("NetXgtSLGNJvNye")?;
+            let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
             let v = Meta::genesis_meta(&k, &chain_id);
             let mut storage = BlockMetaStorage::new(Arc::new(db));
             storage.put(&k, &v)?;

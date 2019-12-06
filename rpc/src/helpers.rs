@@ -7,8 +7,8 @@ use std::str::FromStr;
 use serde::Serialize;
 use serde_json::Value;
 
+use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
-use tezos_encoding::hash::{HashEncoding, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::ts_to_rfc3339;
@@ -48,12 +48,12 @@ impl FullBlockInfo {
         let json_data = val.json_data();
         let block_header_info: Option<BlockHeaderInfo> = json_data.block_header_proto_json().parse().ok();
 
-        let predecessor = HashEncoding::new(HashType::BlockHash).bytes_to_string(header.predecessor());
+        let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash = HashEncoding::new(HashType::OperationListListHash).bytes_to_string(header.operations_hash());
+        let operations_hash = HashType::OperationListListHash.bytes_to_string(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = HashEncoding::new(HashType::ContextHash).bytes_to_string(header.context());
-        let hash = HashEncoding::new(HashType::BlockHash).bytes_to_string(&val.header().hash);
+        let context = HashType::ContextHash.bytes_to_string(header.context());
+        let hash = HashType::BlockHash.bytes_to_string(&val.header().hash);
         let (priority, proof_of_work_nonce, signature) = if let Some(x) = block_header_info {
             (Some(x.priority), Some(x.proof_of_work_nonce), Some(x.signature))
         } else {

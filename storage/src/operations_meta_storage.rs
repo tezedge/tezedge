@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
-use tezos_encoding::hash::{BlockHash, ChainId, HashType};
+use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{DatabaseWithSchema, KeyValueSchema, Decoder, Encoder, SchemaError};
+use crate::persistent::{DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 /// Convenience type for operation meta storage database
@@ -235,10 +235,11 @@ mod tests {
 
     use failure::Error;
 
-    use tezos_encoding::hash::{HashEncoding, HashType};
+    use crypto::hash::HashType;
+
+    use crate::persistent::open_db;
 
     use super::*;
-    use crate::persistent::open_db;
 
     #[test]
     fn operations_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -265,7 +266,7 @@ mod tests {
 
         {
             let db = open_db(path, vec![OperationsMetaStorage::descriptor()])?;
-            let encoding = HashEncoding::new(HashType::BlockHash);
+            let encoding = HashType::BlockHash;
 
             let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
             let v = Meta::genesis_meta(&vec![44; 4]);

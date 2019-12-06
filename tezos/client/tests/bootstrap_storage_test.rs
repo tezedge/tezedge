@@ -526,15 +526,15 @@ fn assert_contains(value: &String, attribute: &str) {
 }
 
 mod test_data {
+    use crypto::hash::{ContextHash, HashType};
     use tezos_api::environment::TezosEnvironment;
-    use tezos_encoding::hash::{ContextHash, HashEncoding, HashType};
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashEncoding::new(HashType::ContextHash)
+        HashType::ContextHash
             .string_to_bytes(hash)
             .unwrap()
     }

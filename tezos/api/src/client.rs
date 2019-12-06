@@ -5,8 +5,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::*;
 use tezos_encoding::binary_reader::BinaryReaderError;
-use tezos_encoding::hash::*;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -38,8 +38,8 @@ impl TezosStorageInitInfo {
 
 impl fmt::Debug for TezosStorageInitInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let chain_hash_encoding = HashEncoding::new(HashType::ChainId);
-        let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
+        let chain_hash_encoding = HashType::ChainId;
+        let block_hash_encoding = HashType::BlockHash;
         write!(f, "TezosStorageInitInfo {{ chain_id: {}, genesis_block_header_hash: {}, current_block_header_hash: {} }}",
                chain_hash_encoding.bytes_to_string(&self.chain_id),
                block_hash_encoding.bytes_to_string(&self.genesis_block_header_hash),

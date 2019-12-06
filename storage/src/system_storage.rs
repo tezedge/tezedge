@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::hash::ChainId;
+use crypto::hash::ChainId;
 
 use crate::persistent::{BincodeEncoded, DatabaseWithSchema, KeyValueSchema};
 use crate::StorageError;

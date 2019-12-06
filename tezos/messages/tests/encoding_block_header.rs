@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Error;
-use tezos_encoding::hash::{HashEncoding, HashType};
+use crypto::hash::HashType;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -16,10 +16,10 @@ fn can_deserialize_block_header() -> Result<(), Error> {
     assert_eq!(2, block_header.fitness().len());
     assert_eq!(1544713848, block_header.timestamp());
     assert_eq!("000000000003c762c7df00a856b8bfcaf0676f069f825ca75f37f2bee9fe55ba109cec3d1d041d8c03519626c0c0faa557e778cb09d2e0c729e8556ed6a7a518c84982d1f2682bc6aa753f", &hex::encode(block_header.protocol_data()));
-    assert_eq!("BKoBK7Qa8J4Wvz85MDRWmpAntd5UhPhCh3p6Ga6woJywF8cZkeJ", HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header.message_hash()?));
-    assert_eq!("BKjYUUtYXtXjEuL49jB8ZbFwVdg4hU6U7oKKSC5vp6stYsfFDVN", HashEncoding::new(HashType::BlockHash).bytes_to_string(block_header.predecessor()));
-    assert_eq!("LLoZi3xywrX9swZQgC82m7vj5hmuz6LGAatNq2Muh34oNn71JruZs", HashEncoding::new(HashType::OperationListListHash).bytes_to_string(block_header.operations_hash()));
-    Ok(assert_eq!("CoUoqw1cVKUUNWyAviph5cdsjDpgeNhH2DGkMtgy7N6kfwnbewvS", HashEncoding::new(HashType::ContextHash).bytes_to_string(block_header.context())))
+    assert_eq!("BKoBK7Qa8J4Wvz85MDRWmpAntd5UhPhCh3p6Ga6woJywF8cZkeJ", HashType::BlockHash.bytes_to_string(&block_header.message_hash()?));
+    assert_eq!("BKjYUUtYXtXjEuL49jB8ZbFwVdg4hU6U7oKKSC5vp6stYsfFDVN", HashType::BlockHash.bytes_to_string(block_header.predecessor()));
+    assert_eq!("LLoZi3xywrX9swZQgC82m7vj5hmuz6LGAatNq2Muh34oNn71JruZs", HashType::OperationListListHash.bytes_to_string(block_header.operations_hash()));
+    Ok(assert_eq!("CoUoqw1cVKUUNWyAviph5cdsjDpgeNhH2DGkMtgy7N6kfwnbewvS", HashType::ContextHash.bytes_to_string(block_header.context())))
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn can_deserialize_get_block_headers() -> Result<(), Error> {
     match message {
         PeerMessage::GetBlockHeaders(message) => {
             assert_eq!(1, message.get_block_headers().len());
-            Ok(assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashEncoding::new(HashType::BlockHash).bytes_to_string(message.get_block_headers().get(0).unwrap())))
+            Ok(assert_eq!("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", HashType::BlockHash.bytes_to_string(message.get_block_headers().get(0).unwrap())))
         }
         _ => panic!("Unsupported encoding: {:?}", message)
     }

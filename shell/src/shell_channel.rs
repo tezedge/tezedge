@@ -4,9 +4,9 @@
 use getset::Getters;
 use riker::actors::*;
 
+use crypto::hash::BlockHash;
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
-use tezos_encoding::hash::BlockHash;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]

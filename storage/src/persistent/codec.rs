@@ -4,7 +4,7 @@
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::hash::Hash;
+use crypto::hash::Hash;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]

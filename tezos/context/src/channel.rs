@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
 
-use crate::{ContextHash, ContextKey, ContextValue, BlockHash, OperationHash};
-
 static CHANNEL_ENABLED: AtomicBool = AtomicBool::new(false);
 const CHANNEL_BUFFER_LEN: usize = 131_072;
 
@@ -34,41 +32,56 @@ pub fn enable_context_channel() {
     CHANNEL_ENABLED.store(true, Ordering::Release)
 }
 
+type Hash = Vec<u8>;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ContextAction {
     Set {
-        context_hash: Option<ContextHash>,
-        block_hash: Option<BlockHash>,
-        operation_hash: Option<OperationHash>,
-        key: ContextKey,
-        value: ContextValue,
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        value: Vec<u8>,
+        value_as_json: Option<String>,
+        start_time: f64,
+        end_time: f64,
     },
     Delete {
-        context_hash: Option<ContextHash>,
-        block_hash: Option<BlockHash>,
-        operation_hash: Option<OperationHash>,
-        key: ContextKey,
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
     },
     RemoveRecord {
-        context_hash: Option<ContextHash>,
-        block_hash: Option<BlockHash>,
-        operation_hash: Option<OperationHash>,
-        key: ContextKey,
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
     },
     Copy {
-        context_hash: Option<ContextHash>,
-        block_hash: Option<BlockHash>,
-        operation_hash: Option<OperationHash>,
-        from_key: ContextKey,
-        to_key: ContextKey,
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        from_key: Vec<String>,
+        to_key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
     },
     Checkout {
-        context_hash: ContextHash,
+        context_hash: Hash,
+        start_time: f64,
+        end_time: f64,
     },
     Commit {
-        parent_context_hash: Option<ContextHash>,
-        block_hash: Option<BlockHash>,
-        new_context_hash: ContextHash,
+        parent_context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        new_context_hash: Hash,
+        start_time: f64,
+        end_time: f64,
     },
     /// This is a control event used to shutdown IPC channel
     Shutdown,

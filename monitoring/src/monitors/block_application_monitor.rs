@@ -1,7 +1,12 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::time::Instant;
+
+use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
+
 use crate::handlers::handler_messages::{BlockApplicationMessage, BlockInfo};
-use tezos_encoding::hash::{HashEncoding, HashType};
 
 pub struct ApplicationMonitor {
     total_applied: usize,
@@ -40,7 +45,7 @@ impl ApplicationMonitor {
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
         let last_block = if let Some(ref block) = self.last_applied_block {
             Some(BlockInfo {
-                hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(&block.header().hash),
+                hash: HashType::BlockHash.bytes_to_string(&block.header().hash),
                 level: block.header().header.level(),
             })
         } else {

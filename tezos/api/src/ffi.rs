@@ -201,6 +201,27 @@ impl From<ocaml::Error> for BlockHeaderError {
     }
 }
 
+#[derive(Debug, Fail)]
+pub enum ContextDataError {
+    #[fail(display = "Resolve/decode context data failed to decode: {}!", message)]
+    DecodeError {
+        message: String
+    },
+}
+
+impl From<ocaml::Error> for ContextDataError {
+    fn from(error: ocaml::Error) -> Self {
+        match error {
+            ocaml::Error::Exception(ffi_error) => {
+                ContextDataError::DecodeError {
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                }
+            }
+            _ => panic!("Resolve context data failed! Reason: {:?}", error)
+        }
+    }
+}
+
 fn parse_error_message(ffi_error: ocaml::Value) -> Option<String> {
     if ffi_error.is_block() {
         // for exceptions, in the field 2, there is a message for Failure or Ffi_error

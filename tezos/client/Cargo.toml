@@ -5,6 +5,7 @@ authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
+crypto = { path = "../../crypto" }
 tezos_api = { path = "../api" }
 tezos_encoding = { path = "../encoding" }
 tezos_interop = { path = "../interop" }

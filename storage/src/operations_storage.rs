@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 
-use tezos_encoding::hash::{BlockHash, HashType};
+use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::{DatabaseWithSchema, KeyValueSchema, SchemaError, Decoder, Encoder};
+use crate::persistent::{DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::StorageError;
 
 pub type OperationsStorageDatabase = dyn DatabaseWithSchema<OperationsStorage> + Sync + Send;
@@ -153,20 +153,20 @@ impl Encoder for OperationsForBlocksMessage {
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use failure::Error;
 
-    use tezos_encoding::hash::HashEncoding;
+    use crypto::hash::HashType;
+
+    use crate::persistent::open_db;
 
     use super::*;
-    use crate::persistent::open_db;
 
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = OperationKey {
-            block_hash: HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+            block_hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
             validation_pass: 4,
         };
         let encoded_bytes = expected.encode()?;
@@ -186,9 +186,9 @@ mod tests {
         {
             let db = open_db(path, vec![OperationsStorage::descriptor()])?;
 
-            let block_hash_1 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
-            let block_hash_2 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
-            let block_hash_3 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
+            let block_hash_1 = HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
+            let block_hash_2 = HashType::BlockHash.string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
+            let block_hash_3 = HashType::BlockHash.string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
 
 
             let mut storage = OperationsStorage::new(Arc::new(db));

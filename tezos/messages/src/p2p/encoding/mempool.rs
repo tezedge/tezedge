@@ -4,8 +4,8 @@
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::hash::{HashEncoding, HashType, OperationHash};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -22,8 +22,8 @@ pub struct Mempool {
 impl HasEncoding for Mempool {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::OperationHash))))),
-            Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::OperationHash)))))),
+            Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
+            Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))))),
         ])
     }
 }
