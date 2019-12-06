@@ -8,7 +8,7 @@ use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
 pub use database::{DatabaseWithSchema, DBError};
-pub use schema::{CommitLogSchema, KeyValueSchema};
+pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 pub mod codec;
 pub mod schema;
@@ -35,4 +35,13 @@ fn default_db_options() -> Options {
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
     db_opts
+}
+
+/// Open commit log at a given path.
+pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item = CommitLogDescriptor>
+{
+    CommitLogs::new(path, cfs)
 }

@@ -21,8 +21,8 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{block_storage, BlockMetaStorage, BlockStorage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
-use storage::persistent::{CommitLogs, CommitLogSchema, KeyValueSchema, open_db};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
+use storage::persistent::{CommitLogs, CommitLogSchema, KeyValueSchema, open_db, open_cl};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -35,7 +35,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 3;
+const DATABASE_VERSION: i64 = 4;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -104,7 +104,7 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         .expect("Failed to create chain manager");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), commit_logs.clone(), &init_info, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), protocol_events, log.clone())
+    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), commit_logs.clone(), protocol_events, log.clone())
         .expect("Failed to create context event listener");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -249,7 +249,7 @@ fn main() {
         OperationsMetaStorage::descriptor(),
         EventPayloadStorage::descriptor(),
         EventStorage::descriptor(),
-        ContextStorage::descriptor(),
+        context_storage::ContextPrimaryIndex::descriptor(),
         SystemStorage::descriptor(),
     ];
     let rocks_db = match open_db(&env.storage.bootstrap_db_path, schemas) {
@@ -305,8 +305,9 @@ fn main() {
 
     let schemas = vec![
         BlockStorage::descriptor(),
+        ContextStorage::descriptor()
     ];
-    let commit_logs = match CommitLogs::new(&env.storage.bootstrap_db_path, &schemas) {
+    let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
         Ok(commit_logs) => Arc::new(commit_logs),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
     };

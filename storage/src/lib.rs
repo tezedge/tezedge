@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
 pub use crate::block_storage::{BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
-pub use crate::context_storage::{ContextRecordKey, ContextRecordValue, ContextStorage};
+pub use crate::context_storage::{ContextPrimaryIndexKey, ContextRecordValue, ContextStorage};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
 use crate::persistent::{CommitLogError, CommitLogs, DBError, Decoder, Encoder, SchemaError};

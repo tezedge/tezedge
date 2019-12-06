@@ -92,38 +92,38 @@ run_node() {
   # Supports '--arg=val' and '--arg val' syntax of the commandline arguments.
   while [ "$#" -gt 0 ]; do
     case $1 in
-      -d=*|--tezos-data-dir=*)
+      --tezos-data-dir=*)
         TEZOS_DIR="${1#*=}"
         shift
         ;;
-      -d|--tezos-data-dir)
+      --tezos-data-dir)
         shift
         TEZOS_DIR="$1"
         shift
         ;;
-      -c=*|--config-file=*)
+      --config-file=*)
         CONFIG_FILE="${1#*=}"
         shift
         ;;
-      -c|--config-file)
+      --config-file)
         shift
         CONFIG_FILE="$1"
         shift
         ;;
-      -B=*|--bootstrap-db-path=*)
+      --bootstrap-db-path=*)
         BOOTSTRAP_DIR="${1#*=}"
         shift
         ;;
-      -B|--bootstrap-db-path)
+      --bootstrap-db-path)
         shift
         BOOTSTRAP_DIR="$1"
         shift
         ;;
-      -n=*|--network=*)
+      --network=*)
         NETWORK="${1#*=}"
         shift
         ;;
-      -n|--network)
+      --network)
         shift
         NETWORK="$1"
         shift

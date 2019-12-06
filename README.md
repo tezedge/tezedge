@@ -58,7 +58,7 @@ LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -
 ```
 
 All parameters can be provided also as command line arguments in the same format as in config file, in which case 
-they have higher priority than the ones in conifg file. For example we can use the default config and change the log file path:
+they have higher priority than the ones in config file. For example we can use the default config and change the log file path:
 ```
 LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log
 ```

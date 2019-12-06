@@ -161,6 +161,7 @@ mod tests {
     use tezos_encoding::hash::HashEncoding;
 
     use super::*;
+    use crate::persistent::open_db;
 
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
@@ -181,11 +182,9 @@ mod tests {
         if std::path::Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+
         {
-            let db = DB::open_cf_descriptors(&opts, path, vec![OperationsStorage::descriptor()]).unwrap();
+            let db = open_db(path, vec![OperationsStorage::descriptor()])?;
 
             let block_hash_1 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
             let block_hash_2 = HashEncoding::new(HashType::BlockHash).string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
@@ -218,7 +217,6 @@ mod tests {
             assert_eq!(1, operations.len(), "Was expecting vector of {} elements but instead found {}", 1, operations.len());
 
         }
-        assert!(DB::destroy(&opts, path).is_ok());
-        Ok(())
+        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
     }
 }
