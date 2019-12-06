@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use rand::Rng;
 
+use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
 use storage::persistent::CommitLogs;
-use tezos_encoding::hash::{BlockHash, ChainId};
 
 use crate::collections::{BlockData, UniqueBlockData};
 

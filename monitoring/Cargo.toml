@@ -5,21 +5,22 @@ authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-storage = { path = "../storage" }
-riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
-shell = { path = "../shell" }
-failure = "0.1"
-rocksdb = "0.13"
 chrono = "0.4"
+erased-serde = "0.3"
+failure = "0.1"
+rand = "0.7.2"
+riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
+rocksdb = "0.13"
 ws = "*"
 tokio = "0.2.0-alpha.6"
 serde = "1.0"
 serde_json = "1.0"
-erased-serde = "0.3"
 slog = { version = "2.5", features = ["nested-values"] }
 slog_derive = "0.1.1"
 # local dependencies
+crypto = { path = "../crypto" }
 networking = { path = "../networking" }
+shell = { path = "../shell" }
+storage = { path = "../storage" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_encoding = { path = "../tezos/encoding" }
-rand = "0.7.2"

@@ -227,8 +227,8 @@ impl BinaryReader {
                 buf.copy_to_slice(&mut buf_slice);
                 Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
             }
-            Encoding::Hash(hash_encoding) => {
-                let bytes_sz = hash_encoding.get_bytes_size();
+            Encoding::Hash(hash_type) => {
+                let bytes_sz = hash_type.size();
                 let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
                 safe!(buf, bytes_sz, buf.copy_to_slice(&mut buf_slice));
                 Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))

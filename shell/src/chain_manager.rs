@@ -10,12 +10,12 @@ use itertools::Itertools;
 use riker::actors::*;
 use slog::{debug, FnValue, info, trace, warn};
 
+use crypto::hash::{BlockHash, ChainId, HashType};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
-use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -338,7 +338,7 @@ impl ChainManager {
                                             }
                                         }
                                         None => {
-                                            warn!(log, "Received unexpected block header"; "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_header_with_hash.hash));
+                                            warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_header_with_hash.hash));
                                             ctx.system.stop(received.peer.clone());
                                         }
                                     }
@@ -367,7 +367,7 @@ impl ChainManager {
                                             let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
                                                 peer.operations_response_last = Instant::now();
-                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
+                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_hash));
 
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // update stats
@@ -391,7 +391,7 @@ impl ChainManager {
                                                     peer.queued_operations.remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashEncoding::new(HashType::BlockHash).bytes_to_string(&block_hash));
+                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_hash));
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
@@ -534,7 +534,7 @@ impl Receive<LogStats> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
-        let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
+        let block_hash_encoding = HashType::BlockHash;
         info!(log, "Head info"; "local" => &block_hash_encoding.bytes_to_string(&self.current_head.local), "remote" => &block_hash_encoding.bytes_to_string(&self.current_head.remote), "remote_level" => self.current_head.remote_level);
         info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,

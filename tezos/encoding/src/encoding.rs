@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use super::hash::HashEncoding;
+use crypto::hash::HashType;
 
 #[derive(Debug, Clone)]
 pub struct Field {
@@ -179,16 +179,16 @@ pub enum Encoding {
     Greedy(Box<Encoding>),
     /// Decode various types of hashes. Hash has it's own predefined length and prefix.
     /// This is controller by a hash implementation.
-    Hash(HashEncoding),
+    Hash(HashType),
     /// Provides different encoding based on target data type.
-    Split(Arc<dyn SplitEncodingFn<Output = Encoding> + Send + Sync>),
+    Split(Arc<dyn SplitEncodingFn<Output=Encoding> + Send + Sync>),
     /// Timestamp encoding.
     /// - encoded as RFC 3339 in json
     /// - encoded as [Encoding::Int64] in binary
     Timestamp,
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
-    Lazy(Arc<dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync>)
+    Lazy(Arc<dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync>)
 }
 
 impl Encoding {

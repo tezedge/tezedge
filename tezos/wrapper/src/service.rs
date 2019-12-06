@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 use strum_macros::IntoStaticStr;
 use wait_timeout::ChildExt;
 
+use crypto::hash::ChainId;
 use ipc::*;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::*;
 use tezos_api::identity::Identity;
 use tezos_context::channel::{context_receive, context_send, ContextAction};
-use tezos_encoding::hash::ChainId;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::protocol::*;
@@ -258,6 +258,9 @@ pub struct ProtocolController<'a> {
 }
 
 impl<'a> ProtocolController<'a> {
+    const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
+    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(8);
+
     pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
@@ -265,7 +268,12 @@ impl<'a> ProtocolController<'a> {
             block_header: block_header.clone(),
             operations: operations.clone(),
         }))?;
-        match io.rx.receive()? {
+        // this might take a while, so we will use unusually long timeout
+        io.rx.set_read_timeout(Some(Self::APPLY_BLOCK_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
             NodeMessage::ApplyBlockResult(result) => result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
@@ -298,7 +306,7 @@ impl<'a> ProtocolController<'a> {
             expected_pow,
         }))?;
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Duration::from_secs(600))).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx.set_read_timeout(Some(Self::GENERATE_IDENTITY_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
         io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;

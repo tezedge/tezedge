@@ -11,10 +11,10 @@ use failure::Error;
 use riker::actors::*;
 use slog::{debug, Logger, warn};
 
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, BlockJsonDataBuilder};
+use crypto::hash::{BlockHash, ChainId, HashType};
+use storage::{BlockJsonDataBuilder, BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
 use storage::persistent::CommitLogs;
 use tezos_api::client::TezosStorageInitInfo;
-use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController};
 
 use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -171,7 +171,7 @@ fn feed_chain_to_protocol(
     protocol_controller: ProtocolController,
     log: &Logger,
 ) -> Result<(), Error> {
-    let block_hash_encoding = HashEncoding::new(HashType::BlockHash);
+    let block_hash_encoding = HashType::BlockHash;
     let mut current_head_hash = current_head_hash.clone();
 
     protocol_controller.init_protocol()?;

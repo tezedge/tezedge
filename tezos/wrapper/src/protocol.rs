@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::ChainId;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::*;
 use tezos_api::identity::Identity;
-use tezos_encoding::hash::ChainId;
 use tezos_messages::p2p::encoding::prelude::*;
 
 pub trait ProtocolApi {

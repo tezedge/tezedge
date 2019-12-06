@@ -307,7 +307,7 @@ impl JsonWriter {
 mod tests {
     use serde::Serialize;
 
-    use crate::hash::{HashEncoding, HashType};
+    use crypto::hash::HashType;
     use crate::types::BigInt;
 
     use super::*;
@@ -389,7 +389,7 @@ mod tests {
             Field::new("d", Encoding::Float),
             Field::new("e", Encoding::Enum),
             Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema)))),
-            Field::new("h", Encoding::Hash(HashEncoding::new(HashType::ChainId)))
+            Field::new("h", Encoding::Hash(HashType::ChainId))
 
         ];
 

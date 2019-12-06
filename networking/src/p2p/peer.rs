@@ -16,9 +16,9 @@ use tokio::net::TcpStream;
 use tokio::runtime::TaskExecutor;
 
 use crypto::crypto_box::precompute;
+use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
-use tezos_encoding::hash::{HashEncoding, HashType};
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -242,7 +242,7 @@ impl Receive<Bootstrap> for Peer {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
 
-                    let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&public_key);
+                    let peer_id = HashType::PublicKeyHash.bytes_to_string(&public_key);
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Success {
@@ -339,7 +339,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
     // convert received bytes from remote peer into `ConnectionMessage`
     let received_connection_msg: ConnectionMessage = ConnectionMessage::try_from(received_connection_msg)?;
     let peer_public_key = received_connection_msg.public_key();
-    let peer_id = HashEncoding::new(HashType::PublicKeyHash).bytes_to_string(&peer_public_key);
+    let peer_id = HashType::PublicKeyHash.bytes_to_string(&peer_public_key);
     debug!(log, "Received peer public key"; "public_key" => &peer_id);
 
     // pre-compute encryption key

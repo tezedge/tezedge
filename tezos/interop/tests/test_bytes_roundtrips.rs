@@ -292,7 +292,8 @@ fn test_context_callback() {
                     block_hash,
                     operation_hash,
                     key,
-                    value
+                    value,
+                    ..
                 } => {
                     assert!(context_hash.is_some());
                     assert_eq!(expected_context_hash_cloned, context_hash.unwrap());

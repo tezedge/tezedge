@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use std::convert::TryInto;
 use std::sync::Arc;
 
+use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsStorage, StorageError};
-use tezos_encoding::hash::{BlockHash, ChainId};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::collections::{BlockData, UniqueBlockData};

@@ -7,8 +7,8 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{BlockHash, ContextHash, HashType, OperationListListHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::hash::{BlockHash, ContextHash, HashEncoding, HashType, OperationListListHash};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -69,7 +69,7 @@ impl GetBlockHeadersMessage {
 impl HasEncoding for GetBlockHeadersMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_block_headers", Encoding::dynamic(Encoding::list(Encoding::Hash(HashEncoding::new(HashType::BlockHash))))),
+            Field::new("get_block_headers", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::BlockHash)))),
         ])
     }
 }
@@ -118,10 +118,10 @@ impl HasEncoding for BlockHeader {
         Encoding::Obj(vec![
             Field::new("level", Encoding::Int32),
             Field::new("proto", Encoding::Uint8),
-            Field::new("predecessor", Encoding::Hash(HashEncoding::new(HashType::BlockHash))),
+            Field::new("predecessor", Encoding::Hash(HashType::BlockHash)),
             Field::new("timestamp", Encoding::Timestamp),
             Field::new("validation_pass", Encoding::Uint8),
-            Field::new("operations_hash", Encoding::Hash(HashEncoding::new(HashType::OperationListListHash))),
+            Field::new("operations_hash", Encoding::Hash(HashType::OperationListListHash)),
             Field::new("fitness", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::dynamic(Encoding::list(Encoding::Bytes)),
@@ -130,7 +130,7 @@ impl HasEncoding for BlockHeader {
                     ))
                 }
             ))),
-            Field::new("context", Encoding::Hash(HashEncoding::new(HashType::ContextHash))),
+            Field::new("context", Encoding::Hash(HashType::ContextHash)),
             Field::new("protocol_data", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,

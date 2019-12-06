@@ -22,6 +22,7 @@ slog = { version = "2.5", features = ["nested-values"] }
 slog_derive = "0.1.1"
 tokio = "0.2.0-alpha.6"
 # local dependencies
+crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }

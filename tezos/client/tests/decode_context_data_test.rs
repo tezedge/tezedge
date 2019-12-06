@@ -3,12 +3,12 @@
 
 use std::env;
 
+use crypto::hash::{HashType, ProtocolHash};
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
-use tezos_encoding::hash::{HashEncoding, HashType, ProtocolHash};
 
 fn protocol(hash: &str) -> ProtocolHash {
-    HashEncoding::new(HashType::ProtocolHash)
+    HashType::ProtocolHash
         .string_to_bytes(hash)
         .unwrap()
 }

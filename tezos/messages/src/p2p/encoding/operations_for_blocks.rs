@@ -7,8 +7,8 @@ use std::sync::Arc;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{BlockHash, Hash, HashType};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_encoding::hash::{BlockHash, Hash, HashEncoding, HashType};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter, NeverCache};
 use crate::p2p::encoding::operation::Operation;
@@ -38,7 +38,7 @@ impl OperationsForBlock {
 impl HasEncoding for OperationsForBlock {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashEncoding::new(HashType::BlockHash))),
+            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
             Field::new("validation_pass", Encoding::Int8),
         ])
     }
@@ -116,7 +116,7 @@ pub struct PathRight {
 impl HasEncoding for PathRight {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("left", Encoding::Hash(HashEncoding::new(HashType::OperationListListHash))),
+            Field::new("left", Encoding::Hash(HashType::OperationListListHash)),
             Field::new("path", path_encoding()),
         ])
     }
@@ -149,7 +149,7 @@ impl HasEncoding for PathLeft {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("path", path_encoding()),
-            Field::new("right", Encoding::Hash(HashEncoding::new(HashType::OperationListListHash))),
+            Field::new("right", Encoding::Hash(HashType::OperationListListHash)),
         ])
     }
 }

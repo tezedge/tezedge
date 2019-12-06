@@ -74,12 +74,12 @@ fn main() {
 }
 
 mod tezos {
+    use crypto::hash::ChainId;
     use tezos_api::client::TezosStorageInitInfo;
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_api::identity::Identity;
     use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, init_storage};
-    use tezos_encoding::hash::ChainId;
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 

@@ -8,11 +8,11 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crypto::blake2b;
+use crypto::hash::Hash;
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::binary_writer::BinaryWriter;
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
-use tezos_encoding::hash::Hash;
 use tezos_encoding::json_writer::JsonWriter;
 use tezos_encoding::ser;
 

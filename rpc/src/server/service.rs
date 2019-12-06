@@ -13,10 +13,10 @@ use path_tree::PathTree;
 use riker::actors::ActorSystem;
 use slog::{Logger, warn};
 
+use crypto::hash::{BlockHash, HashType};
 use lazy_static::lazy_static;
 use shell::shell_channel::BlockApplied;
 use storage::persistent::CommitLogs;
-use tezos_encoding::hash::{BlockHash, HashEncoding, HashType};
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
@@ -54,7 +54,7 @@ pub(crate) struct RpcServiceEnvironment {
 
 impl RpcServiceEnvironment {
     pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, genesis_hash: &BlockHash, state: RpcCollectedStateRef, log: Logger) -> Self {
-        Self { sys, actor, db, commit_logs, genesis_hash: HashEncoding::new(HashType::BlockHash).bytes_to_string(genesis_hash), state, log }
+        Self { sys, actor, db, commit_logs, genesis_hash: HashType::BlockHash.bytes_to_string(genesis_hash), state, log }
     }
 }
 
@@ -163,7 +163,7 @@ fn bootstrapped(state: RpcCollectedStateRef) -> ServiceResult {
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
             let current_head: BlockApplied = current_head.clone();
-            let block = HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.header().hash);
+            let block = HashType::BlockHash.bytes_to_string(&current_head.header().hash);
             let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
             BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         }
@@ -327,7 +327,7 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
     block_id.unwrap_or_else(|| {
         let state = state.read().unwrap();
         state.current_head().as_ref()
-            .map(|current_head| HashEncoding::new(HashType::BlockHash).bytes_to_string(&current_head.header().hash))
+            .map(|current_head| HashType::BlockHash.bytes_to_string(&current_head.header().hash))
             .unwrap_or(genesis_hash)
     })
 }
@@ -337,13 +337,13 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 mod fns {
     use std::sync::Arc;
 
+    use crypto::hash::{BlockHash, ChainId, HashType};
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
     use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextStorage};
     use storage::block_storage::BlockJsonData;
     use storage::persistent::CommitLogs;
     use tezos_context::channel::ContextAction;
-    use tezos_encoding::hash::{BlockHash, ChainId, HashEncoding, HashType};
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
@@ -394,13 +394,13 @@ mod fns {
 
     #[inline]
     fn block_id_to_block_hash(block_id: &str) -> Result<BlockHash, failure::Error> {
-        let block_hash = HashEncoding::new(HashType::BlockHash).string_to_bytes(block_id)?;
+        let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
         Ok(block_hash)
     }
 
     #[inline]
     fn chain_id_to_string(chain_id: &ChainId) -> String {
-        HashEncoding::new(HashType::ChainId).bytes_to_string(chain_id)
+        HashType::ChainId.bytes_to_string(chain_id)
     }
 
     #[inline]

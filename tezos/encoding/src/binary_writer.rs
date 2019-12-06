@@ -221,7 +221,7 @@ impl BinaryWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
-            Encoding::Hash(hash_encoding) => {
+            Encoding::Hash(hash_type) => {
                 match value {
                     Value::List(ref values) => {
                         let data_len_before_write = self.data.len();
@@ -236,10 +236,10 @@ impl BinaryWriter {
                         let bytes_sz = self.data.len() - data_len_before_write;
 
                         // check if writen bytes is equal to expected hash size
-                        if bytes_sz == hash_encoding.get_bytes_size() {
+                        if bytes_sz == hash_type.size() {
                             Ok(bytes_sz)
                         } else {
-                            Err(Error::custom(format!("Was expecting {} bytes but got {}", hash_encoding.get_bytes_size(), bytes_sz)))
+                            Err(Error::custom(format!("Was expecting {} bytes but got {}", hash_type.size(), bytes_sz)))
                         }
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value))

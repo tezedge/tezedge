@@ -14,6 +14,7 @@ strum_macros = "0.16.0"
 wait-timeout = "0.2.0"
 # local dependencies
 ipc = { path = "../../ipc" }
+crypto = { path = "../../crypto" }
 tezos_api = { path = "../api" }
 tezos_context = { path = "../context" }
 tezos_encoding = { path = "../encoding" }

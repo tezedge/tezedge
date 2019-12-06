@@ -1,9 +1,9 @@
-#![feature(concat_idents, const_fn, const_if_match)]
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 mod types;
 mod bit_utils;
 
-#[macro_use]
-pub mod hash;
 pub mod encoding;
 
 pub mod de;

@@ -3,10 +3,15 @@
 
 use ocaml::{Array1, caml, List, Str, Tuple, Value};
 
-use tezos_context::*;
 use tezos_context::channel::*;
 
-pub type OcamlBytes = Array1<u8>;
+type OcamlBytes = Array1<u8>;
+type Hash = Vec<u8>;
+type ContextHash = Hash;
+type BlockHash = Hash;
+type OperationHash = Hash;
+type ContextKey = Vec<String>;
+type ContextValue = Vec<u8>;
 
 pub trait Interchange<T> {
     fn convert_to(&self) -> T;
@@ -37,6 +42,7 @@ fn to_hash(hash: Str) -> Option<Hash> {
 }
 
 fn to_string(value: Str) -> Option<String> {
+
     if value.len() <= 0 {
         None
     } else {
@@ -145,8 +151,18 @@ fn context_set(
     value: ContextValue,
     value_as_json: Option<String>,
     start_time: f64,
-    end_time: f64) {
-    context_send(ContextAction::Set { context_hash, block_hash, operation_hash, key, value }).unwrap();
+    end_time: f64)
+{
+    context_send(ContextAction::Set {
+        context_hash,
+        block_hash,
+        operation_hash,
+        key,
+        value,
+        value_as_json,
+        start_time,
+        end_time,
+    }).expect("context_set error");
 }
 
 fn context_delete(
@@ -155,8 +171,16 @@ fn context_delete(
     operation_hash: Option<OperationHash>,
     key: ContextKey,
     start_time: f64,
-    end_time: f64) {
-    context_send(ContextAction::Delete { context_hash, block_hash, operation_hash, key }).unwrap();
+    end_time: f64)
+{
+    context_send(ContextAction::Delete {
+        context_hash,
+        block_hash,
+        operation_hash,
+        key,
+        start_time,
+        end_time,
+    }).expect("context_delete error");
 }
 
 fn context_remove_rec(
@@ -165,25 +189,48 @@ fn context_remove_rec(
     operation_hash: Option<OperationHash>,
     key: ContextKey,
     start_time: f64,
-    end_time: f64) {
-    context_send(ContextAction::RemoveRecord { context_hash, block_hash, operation_hash, key }).unwrap();
+    end_time: f64)
+{
+    context_send(ContextAction::RemoveRecord {
+        context_hash,
+        block_hash,
+        operation_hash,
+        key,
+        start_time,
+        end_time,
+    }).expect("context_remove_rec error");
 }
 
 fn context_copy(
     context_hash: Option<ContextHash>,
     block_hash: Option<BlockHash>,
     operation_hash: Option<OperationHash>,
-    from_key: ContextKey, to_key: ContextKey,
+    from_key: ContextKey,
+    to_key: ContextKey,
     start_time: f64,
-    end_time: f64) {
-    context_send(ContextAction::Copy { context_hash, block_hash, operation_hash, from_key, to_key }).unwrap();
+    end_time: f64)
+{
+    context_send(ContextAction::Copy {
+        context_hash,
+        block_hash,
+        operation_hash,
+        from_key,
+        to_key,
+        start_time,
+        end_time,
+    }).expect("context_copy error");
 }
 
 fn context_checkout(
     context_hash: ContextHash,
     start_time: f64,
-    end_time: f64) {
-    context_send(ContextAction::Checkout { context_hash }).unwrap();
+    end_time: f64)
+{
+    context_send(ContextAction::Checkout {
+        context_hash,
+        start_time,
+        end_time,
+    }).expect("context_checkout error");
 }
 
 fn context_commit(
@@ -191,6 +238,13 @@ fn context_commit(
     block_hash: Option<BlockHash>,
     new_context_hash: ContextHash,
     start_time: f64,
-    end_time: f64) {
-    context_send(ContextAction::Commit { parent_context_hash, block_hash, new_context_hash }).unwrap();
+    end_time: f64)
+{
+    context_send(ContextAction::Commit {
+        parent_context_hash,
+        block_hash,
+        new_context_hash,
+        start_time,
+        end_time,
+    }).expect("context_commit error");
 }

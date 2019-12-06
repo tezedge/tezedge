@@ -3,7 +3,7 @@
 
 use std::collections::{BinaryHeap, HashSet};
 
-use tezos_encoding::hash::BlockHash;
+use crypto::hash::BlockHash;
 
 /// Data structure for holding data about unique block collections
 pub(crate) struct UniqueBlockData<T> {

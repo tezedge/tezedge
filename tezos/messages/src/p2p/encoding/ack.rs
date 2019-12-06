@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, HasEncoding, Tag, TagMap};
 
-use crate::p2p::binary_message::cache::{ CachedData, CacheReader, CacheWriter, NeverCache};
+use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
 
 static DUMMY_BODY_CACHE: NeverCache = NeverCache;
 
