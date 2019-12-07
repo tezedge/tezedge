@@ -83,6 +83,7 @@ macro_rules! num_codec {
 }
 
 num_codec!(u16);
+num_codec!(u64);
 num_codec!(i32);
 
 pub trait BincodeEncoded: Sized + Serialize + for<'a> Deserialize<'a> {

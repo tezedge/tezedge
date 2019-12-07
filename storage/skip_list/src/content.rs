@@ -103,7 +103,7 @@ pub type SkipListId = u16;
 
 #[derive(Debug, Fail)]
 pub enum SkipListError {
-    #[fail(display = "Persistent storage error: {}!", error)]
+    #[fail(display = "Persistent storage error: {}", error)]
     PersistentStorageError {
         error: DBError
     }
