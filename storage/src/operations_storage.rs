@@ -9,10 +9,10 @@ use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::{DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, SchemaError};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::StorageError;
 
-pub type OperationsStorageDatabase = dyn DatabaseWithSchema<OperationsStorage> + Sync + Send;
+pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
 
 pub trait OperationsStorageReader: Sync + Send {
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError>;
@@ -22,26 +22,26 @@ pub trait OperationsStorageReader: Sync + Send {
 
 #[derive(Clone)]
 pub struct OperationsStorage {
-    db: Arc<OperationsStorageDatabase>
+    kv: Arc<OperationsStorageKV>
 }
 
 impl OperationsStorage {
-    pub fn new(db: Arc<OperationsStorageDatabase>) -> Self {
-        Self { db }
+    pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        Self { kv: persistent_storage.kv() }
     }
 
     #[inline]
     pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
             block_hash: message.operations_for_block().hash().clone(),
-            validation_pass: message.operations_for_block().validation_pass() as u8
+            validation_pass: message.operations_for_block().validation_pass() as u8,
         };
         self.put(&key, &message)
     }
 
     #[inline]
     pub fn put(&mut self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        self.db.put(key, value)
+        self.kv.put(key, value)
             .map_err(StorageError::from)
     }
 }
@@ -50,7 +50,7 @@ impl OperationsStorageReader for OperationsStorage {
 
     #[inline]
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError> {
-        self.db.get(key)
+        self.kv.get(key)
             .map_err(StorageError::from)
     }
 
@@ -62,7 +62,7 @@ impl OperationsStorageReader for OperationsStorage {
         };
 
         let mut operations = vec![];
-        for (_key, value) in self.db.prefix_iterator(&key)? {
+        for (_key, value) in self.kv.prefix_iterator(&key)? {
             operations.push(value?);
         }
 
@@ -159,8 +159,6 @@ mod tests {
 
     use crypto::hash::HashType;
 
-    use crate::persistent::open_db;
-
     use super::*;
 
     #[test]
@@ -172,51 +170,5 @@ mod tests {
         let encoded_bytes = expected.encode()?;
         let decoded = OperationKey::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
-    }
-
-    #[test]
-    fn test_get_operations() -> Result<(), Error> {
-        use rocksdb::{Options, DB};
-
-        let path = "__op_storage_get_operations";
-        if std::path::Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
-        }
-
-        {
-            let db = open_db(path, vec![OperationsStorage::descriptor()])?;
-
-            let block_hash_1 = HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
-            let block_hash_2 = HashType::BlockHash.string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
-            let block_hash_3 = HashType::BlockHash.string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
-
-
-            let mut storage = OperationsStorage::new(Arc::new(db));
-            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 3), Path::Op, vec![]);
-            storage.put_operations(&message)?;
-            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 1), Path::Op, vec![]);
-            storage.put_operations(&message)?;
-            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 0), Path::Op, vec![]);
-            storage.put_operations(&message)?;
-            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_2.clone(), 1), Path::Op, vec![]);
-            storage.put_operations(&message)?;
-            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 2), Path::Op, vec![]);
-            storage.put_operations(&message)?;
-            let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_3.clone(), 3), Path::Op, vec![]);
-            storage.put_operations(&message)?;
-
-            let operations = storage.get_operations(&block_hash_1)?;
-            assert_eq!(4, operations.len(), "Was expecting vector of {} elements but instead found {}", 4, operations.len());
-            for i in 0..4 {
-                assert_eq!(i as i8, operations[i].operations_for_block().validation_pass(), "Was expecting operation pass {} but found {}", i, operations[i].operations_for_block().validation_pass());
-                assert_eq!(&block_hash_1, operations[i].operations_for_block().hash(), "Block hash mismatch");
-            }
-            let operations = storage.get_operations(&block_hash_2)?;
-            assert_eq!(1, operations.len(), "Was expecting vector of {} elements but instead found {}", 1, operations.len());
-            let operations = storage.get_operations(&block_hash_3)?;
-            assert_eq!(1, operations.len(), "Was expecting vector of {} elements but instead found {}", 1, operations.len());
-
-        }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
     }
 }

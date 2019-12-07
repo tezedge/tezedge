@@ -1,6 +1,5 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(wait_until)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -8,7 +7,7 @@ use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 
 use failure::Fail;
 
-use storage::persistent::{DatabaseWithSchema, DBError, KeyValueSchema};
+use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
 
 /// Provider a system wide unique sequence generators backed by a permanent storage.
 /// This struct can be safely shared by a multiple threads.
@@ -22,10 +21,11 @@ pub struct Sequences {
     /// Represents how many sequence numbers will be pre-allocated in a single batch.
     seq_batch_size: u16,
     /// Map of all loaded generators
-    generators: Arc<Mutex<HashMap<String, SequenceGenerator>>>,
+    generators: Arc<Mutex<HashMap<String, Arc<SequenceGenerator>>>>,
 }
 
-pub type SequencerDatabase = dyn DatabaseWithSchema<Sequences> + Sync + Send;
+pub type SequenceNumber = u64;
+pub type SequencerDatabase = dyn KeyValueStoreWithSchema<Sequences> + Sync + Send;
 
 impl Sequences {
     pub fn new(db: Arc<SequencerDatabase>, seq_batch_size: u16) -> Self {
@@ -39,59 +39,57 @@ impl Sequences {
     }
 
     /// Retrieve a sequence generator by it's unique name. If generator does not exist it is created.
-    pub fn generator(&self, name: &str) -> Result<SequenceGenerator, SequenceError> {
+    pub fn generator(&self, name: &str) -> Arc<SequenceGenerator> {
         let mut generators = self.generators.lock().unwrap();
-        let generator = match generators.get(name) {
+        match generators.get(name) {
             Some(generator) => generator.clone(),
             None => {
-                let generator = SequenceGenerator::new(name.to_owned(), self.seq_batch_size, self.db.clone())?;
+                let generator = Arc::new(SequenceGenerator::new(name.to_owned(), self.seq_batch_size, self.db.clone()));
                 generators.insert(name.into(), generator.clone());
                 generator
             }
-        };
-        Ok(generator)
+        }
     }
 }
 
 impl KeyValueSchema for Sequences {
     type Key = String;
-    type Value = u64;
+    type Value = SequenceNumber;
 
     fn name() -> &'static str {
         "sequence"
     }
 }
 
-#[derive(Clone)]
 pub struct SequenceGenerator {
     /// Database
     db: Arc<SequencerDatabase>,
     /// Current value of the sequence
-    seq_cur: Arc<AtomicU64>,
+    seq_cur: AtomicU64,
     /// This value represents an offset from the base
-    seq_available: Arc<AtomicI32>,
+    seq_available: AtomicI32,
     /// Represents how many sequence numbers will be pre-allocated in a single batch.
     seq_batch_size: u16,
     /// unique identifier of the sequence
     seq_name: String,
     /// Guarding write access to a database
-    guard: Arc<(Mutex<()>, Condvar)>,
+    guard: (Mutex<()>, Condvar),
 }
 
 impl SequenceGenerator {
-    fn new(seq_name: String, seq_batch_size: u16, db: Arc<SequencerDatabase>) -> Result<Self, SequenceError> {
-        Ok(Self {
-            seq_cur: Arc::new(AtomicU64::new(db.get(&seq_name)?.unwrap_or(0))),
-            seq_available: Arc::new(AtomicI32::new(0)),
-            guard: Arc::new((Mutex::new(()), Condvar::new())),
+    fn new(seq_name: String, seq_batch_size: u16, db: Arc<SequencerDatabase>) -> Self {
+        Self {
+            seq_cur: AtomicU64::new(db.get(&seq_name).unwrap_or_default().unwrap_or(0)),
+            seq_available: AtomicI32::new(0),
+            guard: (Mutex::new(()), Condvar::new()),
             db,
             seq_name,
             seq_batch_size,
-        })
+        }
     }
 
     /// Get next unique sequence number. Value by this function is positive and always increasing.
-    pub fn next(&self) -> Result<u64, SequenceError> {
+    pub fn next(&self) -> Result<SequenceNumber, SequenceError> {
         let seq = loop {
             let available = self.seq_available.fetch_add(-1, Ordering::SeqCst);
 

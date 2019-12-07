@@ -1,13 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::collections::HashMap;
+use std::time::Duration;
 
 use riker::{
     actor::*, actors::SystemMsg,
     system::SystemEvent, system::Timer,
 };
-use rocksdb::DB;
 use slog::{Logger, warn};
 
 use networking::p2p::{
@@ -16,6 +16,7 @@ use networking::p2p::{
 use networking::p2p::network_channel::PeerBootstrapped;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::{BlockMetaStorage, IteratorMode};
+use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::{
@@ -52,8 +53,8 @@ impl Monitor {
         "monitor-manager"
     }
 
-    fn new((event_channel, msg_channel, shell_channel, db): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, Arc<DB>)) -> Self {
-        let blocks_meta = BlockMetaStorage::new(db);
+    fn new((event_channel, msg_channel, shell_channel, persistent_storage): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)) -> Self {
+        let blocks_meta = BlockMetaStorage::new(&persistent_storage);
         let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
             let mut res = 0;
             for _ in iter {
@@ -77,9 +78,9 @@ impl Monitor {
         }
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, db: Arc<DB>) -> Result<MonitorRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage) -> Result<MonitorRef, CreateError> {
         sys.actor_of(
-            Props::new_args(Self::new, (event_channel, msg_channel, shell_channel, db)),
+            Props::new_args(Self::new, (event_channel, msg_channel, shell_channel, persistent_storage.clone())),
             Self::name(),
         )
     }

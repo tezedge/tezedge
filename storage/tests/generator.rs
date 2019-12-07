@@ -2,15 +2,39 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::Path;
+use std::sync::Arc;
 
 use failure::Error;
 
-use sequence::Sequences;
-use storage::persistent::{KeyValueSchema, open_db};
-use std::sync::Arc;
+use storage::persistent::{KeyValueSchema, open_kv};
+use storage::persistent::sequence::Sequences;
 
 #[test]
-fn generator_test_multiple_seq() -> Result<(), Error> {
+fn generator_test_multiple_gen() -> Result<(), Error> {
+    use rocksdb::{Options, DB};
+
+    let path = "__sequence_multigen";
+    if Path::new(path).exists() {
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    {
+        let db = open_kv(path, vec![Sequences::descriptor()]).unwrap();
+        let sequences = Sequences::new(Arc::new(db), 1);
+        let gen_1 = sequences.generator("gen_1");
+        let gen_2 = sequences.generator("gen_2");
+        assert_eq!(0, gen_1.next()?);
+        assert_eq!(1, gen_1.next()?);
+        assert_eq!(2, gen_1.next()?);
+        assert_eq!(0, gen_2.next()?);
+        assert_eq!(3, gen_1.next()?);
+        assert_eq!(1, gen_2.next()?);
+    }
+    Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+}
+
+#[test]
+fn generator_test_cloned_gen() -> Result<(), Error> {
     use rocksdb::{Options, DB};
 
     let path = "__sequence_multiseq";
@@ -19,16 +43,18 @@ fn generator_test_multiple_seq() -> Result<(), Error> {
     }
 
     {
-        let db = open_db(path, vec![Sequences::descriptor()]).unwrap();
-        let sequences = Sequences::new(Arc::new(db), 1);
-        let gen_1 = sequences.generator("gen_1")?;
-        let gen_2 = sequences.generator("gen_2")?;
-        assert_eq!(0, gen_1.next()?);
-        assert_eq!(1, gen_1.next()?);
-        assert_eq!(2, gen_1.next()?);
-        assert_eq!(0, gen_2.next()?);
-        assert_eq!(3, gen_1.next()?);
-        assert_eq!(1, gen_2.next()?);
+        let db = open_kv(path, vec![Sequences::descriptor()]).unwrap();
+        let sequences = Sequences::new(Arc::new(db), 3);
+        let gen_a = sequences.generator("gen");
+        let gen_b = sequences.generator("gen");
+        assert_eq!(0, gen_a.next()?);
+        assert_eq!(1, gen_a.next()?);
+        assert_eq!(2, gen_a.next()?);
+        assert_eq!(3, gen_b.next()?);
+        assert_eq!(4, gen_a.next()?);
+        assert_eq!(5, gen_b.next()?);
+        assert_eq!(6, gen_b.next()?);
+        assert_eq!(7, gen_a.next()?);
     }
     Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
 }
@@ -43,9 +69,9 @@ fn generator_test_batch() -> Result<(), Error> {
     }
 
     {
-        let db = open_db(path, vec![Sequences::descriptor()])?;
+        let db = open_kv(path, vec![Sequences::descriptor()])?;
         let sequences = Sequences::new(Arc::new(db), 100);
-        let gen = sequences.generator("gen")?;
+        let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
             assert_eq!(i, gen.next()?);
         }
@@ -63,12 +89,12 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
     }
 
     {
-        let db = Arc::new(open_db(path, vec![Sequences::descriptor()])?);
+        let db = Arc::new(open_kv(path, vec![Sequences::descriptor()])?);
 
         // First run
         {
             let sequences = Sequences::new(db.clone(), 10);
-            let gen = sequences.generator("gen")?;
+            let gen = sequences.generator("gen");
             for i in 0..7 {
                 assert_eq!(i, gen.next()?, "First run failed");
             }
@@ -77,7 +103,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
         // Second run should continue from the number stored in a database, in this case 10
         {
             let sequences = Sequences::new(db.clone(), 10);
-            let gen = sequences.generator("gen")?;
+            let gen = sequences.generator("gen");
             for i in 0..=50 {
                 assert_eq!(10 + i, gen.next()?, "Second run failed");
             }
@@ -89,7 +115,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
         // were used in the second run.
         {
             let sequences = Sequences::new(db.clone(), 10);
-            let gen = sequences.generator("gen")?;
+            let gen = sequences.generator("gen");
             for i in 0..5 {
                 assert_eq!(70 + i, gen.next()?, "Third run failed");
             }

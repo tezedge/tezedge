@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use chrono::prelude::*;
 use futures::Future;
@@ -16,7 +15,7 @@ use slog::{Logger, warn};
 use crypto::hash::{BlockHash, HashType};
 use lazy_static::lazy_static;
 use shell::shell_channel::BlockApplied;
-use storage::persistent::CommitLogs;
+use storage::persistent::PersistentStorage;
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
@@ -45,16 +44,15 @@ enum Route {
 pub(crate) struct RpcServiceEnvironment {
     sys: ActorSystem,
     actor: RpcServerRef,
-    db: Arc<rocksdb::DB>,
-    commit_logs: Arc<CommitLogs>,
+    persistent_storage: PersistentStorage,
     genesis_hash: String,
     state: RpcCollectedStateRef,
     log: Logger,
 }
 
 impl RpcServiceEnvironment {
-    pub fn new(sys: ActorSystem, actor: RpcServerRef, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, genesis_hash: &BlockHash, state: RpcCollectedStateRef, log: Logger) -> Self {
-        Self { sys, actor, db, commit_logs, genesis_hash: HashType::BlockHash.bytes_to_string(genesis_hash), state, log }
+    pub fn new(sys: ActorSystem, actor: RpcServerRef, persistent_storage: &PersistentStorage, genesis_hash: &BlockHash, state: RpcCollectedStateRef, log: Logger) -> Self {
+        Self { sys, actor, persistent_storage: persistent_storage.clone(), genesis_hash: HashType::BlockHash.bytes_to_string(genesis_hash), state, log }
     }
 }
 
@@ -206,13 +204,13 @@ fn head_chain(chain_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id> endpoint handler
-fn chains_block_id(chain_id: &str, block_id: &str, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+fn chains_block_id(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
     use crate::encoding::chain::BlockInfo;
     if chain_id == "main" {
         if block_id == "head" {
             result_option_to_json_response(fns::get_full_current_head(state).map(|res| res.map(BlockInfo::from)), log)
         } else {
-            result_option_to_json_response(fns::get_full_block(block_id, db, commit_logs, state).map(|res| res.map(BlockInfo::from)), log)
+            result_option_to_json_response(fns::get_full_block(block_id, persistent_storage, state).map(|res| res.map(BlockInfo::from)), log)
         }
     } else {
         empty()
@@ -251,7 +249,7 @@ fn create_routes() -> PathTree<Route> {
 
 /// Simple endpoint routing handler
 async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult {
-    let RpcServiceEnvironment { sys, actor, db, commit_logs, log, genesis_hash, state } = env;
+    let RpcServiceEnvironment { sys, actor, persistent_storage, log, genesis_hash, state } = env;
 
     match (req.method(), find_route(req.uri())) {
         (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(state),
@@ -272,16 +270,16 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ChainsBlockId, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            chains_block_id(chain_id, block_id, db, commit_logs, state, &log)
+            chains_block_id(chain_id, block_id, &persistent_storage, state, &log)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
             let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state.clone(), genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
-            result_to_json_response(fns::get_blocks(&from_block_id, limit, db, commit_logs, state), &log)
+            result_to_json_response(fns::get_blocks(&from_block_id, limit, &persistent_storage, state), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
-            result_to_json_response(fns::get_block_actions(block_id, db, commit_logs), &log)
+            result_to_json_response(fns::get_block_actions(block_id, &persistent_storage), &log)
         }
         _ => not_found()
     }
@@ -335,22 +333,20 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 
 /// This submodule contains service functions implementation.
 mod fns {
-    use std::sync::Arc;
-
     use crypto::hash::{BlockHash, ChainId, HashType};
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
     use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextStorage};
     use storage::block_storage::BlockJsonData;
-    use storage::persistent::CommitLogs;
+    use storage::persistent::PersistentStorage;
     use tezos_context::channel::ContextAction;
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
-    pub(crate) fn get_blocks(block_id: &str, limit: usize, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
-        let block_storage = BlockStorage::new(db.clone(), commit_logs);
+    pub(crate) fn get_blocks(block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
+        let block_storage = BlockStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id)?;
         let blocks = block_storage.get_multiple_with_json_data(&block_hash, limit)?
             .into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)).collect();
@@ -359,8 +355,8 @@ mod fns {
     }
 
     /// Get actions for a specific block in ascending order.
-    pub(crate) fn get_block_actions(block_id: &str, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Result<Vec<ContextAction>, failure::Error> {
-        let context_storage = ContextStorage::new(db, commit_logs);
+    pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
+        let context_storage = ContextStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id)?;
         context_storage.get_by_block_hash(&block_hash)
             .map(|values| values.into_iter().map(|v| v.action).collect())
@@ -379,8 +375,8 @@ mod fns {
     }
 
     /// Get information about block
-    pub(crate) fn get_full_block(block_id: &str, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
-        let block_storage = BlockStorage::new(db, commit_logs);
+    pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
+        let block_storage = BlockStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id)?;
         let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
 

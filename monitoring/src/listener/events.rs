@@ -6,12 +6,12 @@ use std::sync::Arc;
 use failure::_core::cmp::max;
 use serde::{Deserialize, Serialize};
 
-use storage::{IteratorMode, persistent::DatabaseWithSchema, StorageError};
+use storage::{IteratorMode, persistent::KeyValueStoreWithSchema, StorageError};
 use storage::persistent::{KeyValueSchema, Decoder, Encoder, SchemaError};
 
 // --- Storing result in Rocks DB --- //
-pub type EventStorageDatabase = dyn DatabaseWithSchema<EventStorage> + Sync + Send;
-pub type EventPayloadStorageDatabase = dyn DatabaseWithSchema<EventPayloadStorage> + Sync + Send;
+pub type EventStorageDatabase = dyn KeyValueStoreWithSchema<EventStorage> + Sync + Send;
+pub type EventPayloadStorageDatabase = dyn KeyValueStoreWithSchema<EventPayloadStorage> + Sync + Send;
 
 #[derive(Clone)]
 pub struct EventStorage {

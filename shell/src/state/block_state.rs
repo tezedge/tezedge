@@ -3,13 +3,12 @@
 
 use std::cmp;
 use std::cmp::Ordering;
-use std::sync::Arc;
 
 use rand::Rng;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
-use storage::persistent::CommitLogs;
+use storage::persistent::PersistentStorage;
 
 use crate::collections::{BlockData, UniqueBlockData};
 
@@ -21,10 +20,10 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn new(db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, chain_id: &ChainId) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Self {
         BlockState {
-            block_storage: BlockStorage::new(db.clone(), commit_logs),
-            block_meta_storage: BlockMetaStorage::new(db.clone()),
+            block_storage: BlockStorage::new(persistent_storage),
+            block_meta_storage: BlockMetaStorage::new(persistent_storage),
             missing_blocks: UniqueBlockData::new(),
             chain_id: chain_id.clone(),
         }
@@ -73,11 +72,11 @@ impl BlockState {
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
-            let (key, value) = (key?, value?);
-            if value.predecessor.is_none() && (value.chain_id == self.chain_id) {
+            let (block_hash, meta) = (key?, value?);
+            if meta.predecessor().is_none() && (meta.chain_id() == &self.chain_id) {
                 self.missing_blocks.push(MissingBlock {
-                    block_hash: key,
-                    level: value.level
+                    block_hash,
+                    level: meta.level(),
                 });
             }
         }
@@ -96,9 +95,9 @@ impl BlockState {
         let mut rng = rand::thread_rng();
         for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
             let pivot = (1 + rng.gen::<u8>() % 24) as i32;
-            let (key, value) = (key?, value?);
-            if value.is_applied && (value.level != 0) && (value.level % pivot == 0) && (value.chain_id == self.chain_id) {
-                history.push(key);
+            let (block_hash, meta) = (key?, value?);
+            if meta.is_applied() && (meta.level() != 0) && (meta.level() % pivot == 0) && (meta.chain_id() == &self.chain_id) {
+                history.push(block_hash);
                 if history.len() >= history_max {
                     break;
                 }

@@ -4,13 +4,13 @@
 use std::sync::Arc;
 
 use storage::Direction;
-use storage::persistent::{DatabaseWithSchema, KeyValueSchema};
+use storage::persistent::{KeyValueStoreWithSchema, KeyValueSchema};
 use storage::persistent::database::{IteratorMode, IteratorWithSchema};
 
 use crate::content::{ListValue, NodeHeader, SkipListId};
 use crate::SkipListError;
 
-pub type LaneDatabase<C> = dyn DatabaseWithSchema<Lane<C>> + Sync + Send;
+pub type LaneDatabase<C> = dyn KeyValueStoreWithSchema<Lane<C>> + Sync + Send;
 
 /// Lane is an way to traverse the chain.
 /// Lane is just an linked list, containing all changes between nodes.

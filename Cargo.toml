@@ -12,7 +12,6 @@ members = [
     "tezos/wrapper",
     "networking",
     "shell",
-    "storage/sequence",
     "storage/skip_list",
     "storage",
     "light_node",
