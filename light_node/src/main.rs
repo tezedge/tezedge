@@ -251,6 +251,7 @@ fn main() {
         EventPayloadStorage::descriptor(),
         EventStorage::descriptor(),
         context_storage::ContextPrimaryIndex::descriptor(),
+        context_storage::ContextByContractIndex::descriptor(),
         SystemStorage::descriptor(),
         Sequences::descriptor(),
     ];

@@ -175,6 +175,7 @@ pub mod tests_common {
                 OperationsStorage::descriptor(),
                 OperationsMetaStorage::descriptor(),
                 context_storage::ContextPrimaryIndex::descriptor(),
+                context_storage::ContextByContractIndex::descriptor(),
                 SystemStorage::descriptor(),
                 Sequences::descriptor(),
             ])?;

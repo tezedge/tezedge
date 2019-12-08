@@ -10,6 +10,7 @@ use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
+use crate::num_from_slice;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
@@ -193,13 +194,11 @@ impl Decoder for Meta {
             let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
             let is_complete = bytes[is_complete_pos] != 0;
             // level
-            let level_pos = is_complete_pos + 1;
-            let mut level_bytes: [u8; 4] = Default::default();
-            level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
-            let level = i32::from_be_bytes(level_bytes);
+            let level_pos = is_complete_pos + std::mem::size_of::<u8>();
+            let level = num_from_slice!(bytes, level_pos, i32);
             assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
             // chain_id
-            let chain_id_pos = level_pos + level_bytes.len();
+            let chain_id_pos = level_pos + std::mem::size_of::<i32>();
             let chain_id = bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()].to_vec();
             Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level, chain_id })
         } else {

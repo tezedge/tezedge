@@ -36,6 +36,7 @@ enum Route {
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
+    DevGetContractActions,
     StatsMemory,
 }
 
@@ -243,6 +244,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
+    routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
     routes.insert("/stats/memory", Route::StatsMemory);
     routes
 }
@@ -280,6 +282,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
             result_to_json_response(fns::get_block_actions(block_id, &persistent_storage), &log)
+        }
+        (&Method::GET, Some((Route::DevGetContractActions, params, _))) => {
+            let contract_id = find_param_value(&params, "contract_id").unwrap();
+            result_to_json_response(fns::get_contract_actions(contract_id, &persistent_storage), &log)
         }
         _ => not_found()
     }
@@ -338,6 +344,7 @@ mod fns {
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
     use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextStorage};
     use storage::block_storage::BlockJsonData;
+    use storage::context_storage::ContractAddress;
     use storage::persistent::PersistentStorage;
     use tezos_context::channel::ContextAction;
 
@@ -359,6 +366,15 @@ mod fns {
         let context_storage = ContextStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id)?;
         context_storage.get_by_block_hash(&block_hash)
+            .map(|values| values.into_iter().map(|v| v.action).collect())
+            .map_err(|e| e.into())
+    }
+
+    /// Get actions for a specific contract in ascending order.
+    pub(crate) fn get_contract_actions(contract_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
+        let context_storage = ContextStorage::new(persistent_storage);
+        let contract_address = contract_id_to_address(contract_id)?;
+        context_storage.get_by_contract_address(&contract_address)
             .map(|values| values.into_iter().map(|v| v.action).collect())
             .map_err(|e| e.into())
     }
@@ -392,6 +408,12 @@ mod fns {
     fn block_id_to_block_hash(block_id: &str) -> Result<BlockHash, failure::Error> {
         let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
         Ok(block_hash)
+    }
+
+    #[inline]
+    fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, failure::Error> {
+        let contract_address = hex::decode(contract_id)?;
+        Ok(contract_address)
     }
 
     #[inline]

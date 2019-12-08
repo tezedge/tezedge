@@ -9,6 +9,7 @@ use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 use crypto::hash::{BlockHash, ChainId, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
+use crate::num_from_slice;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
@@ -166,9 +167,7 @@ impl Decoder for Meta {
                 None
             };
             // level
-            let mut level_bytes: [u8; 4] = Default::default();
-            level_bytes.copy_from_slice(&bytes[IDX_LEVEL..IDX_LEVEL + 4]);
-            let level = i32::from_be_bytes(level_bytes);
+            let level = num_from_slice!(bytes, IDX_LEVEL, i32);
             // chain_id
             let chain_id = bytes[IDX_CHAIN_ID..IDX_END].to_vec();
             assert_eq!(LEN_CHAIN_ID, chain_id.len(), "Chain ID expected length is {} but found {}", LEN_CHAIN_ID, chain_id.len());

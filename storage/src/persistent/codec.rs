@@ -109,3 +109,18 @@ impl<T> Decoder for T where T: BincodeEncoded {
         T::decode(bytes)
     }
 }
+
+/// Create number from a bytes
+#[macro_export(local_inner_macros)]
+macro_rules! num_from_slice {
+    ($buf:expr, $from_idx:expr, $num:ident) => {{
+        let mut bytes: [u8; std::mem::size_of::<$num>()] = Default::default();
+        bytes.copy_from_slice(&$buf[$from_idx .. $from_idx + std::mem::size_of::<$num>()]);
+        $num::from_be_bytes(bytes)
+    }}
+}
+
+#[inline]
+pub fn vec_from_slice(buf: &[u8], from_idx: usize, size: usize) -> Vec<u8> {
+    buf[from_idx..from_idx + size].to_vec()
+}

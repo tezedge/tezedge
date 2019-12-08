@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, HashType};
 use tezos_context::channel::ContextAction;
 
+use crate::num_from_slice;
 use crate::persistent::{CommitLogSchema, CommitLogWithSchema, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage, SchemaError};
+use crate::persistent::codec::vec_from_slice;
 use crate::persistent::commit_log::fold_consecutive_locations;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
@@ -21,6 +23,7 @@ pub type ContextStorageCommitLog = dyn CommitLogWithSchema<ContextStorage> + Syn
 /// Action is created every time a context is modified.
 pub struct ContextStorage {
     context_primary_index: ContextPrimaryIndex,
+    context_by_contract_index: ContextByContractIndex,
     clog: Arc<ContextStorageCommitLog>,
     generator: Arc<SequenceGenerator>,
 }
@@ -29,6 +32,7 @@ impl ContextStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
             context_primary_index: ContextPrimaryIndex::new(persistent_storage.kv()),
+            context_by_contract_index: ContextByContractIndex::new(persistent_storage.kv()),
             clog: persistent_storage.clog(),
             generator: persistent_storage.seq().generator(Self::name()),
         }
@@ -39,12 +43,25 @@ impl ContextStorage {
         self.clog.append(value)
             .map_err(StorageError::from)
             .and_then(|location| self.generator.next().map(|id| (location, id)).map_err(StorageError::from))
-            .and_then(|(location, id)| self.context_primary_index.put(&ContextPrimaryIndexKey::new(block_hash, id), &location))
+            .and_then(|(location, id)| {
+                let primary_idx_res = self.context_primary_index.put(&ContextPrimaryIndexKey::new(block_hash, id), &location);
+                let contract_idx_res = extract_contract_addresses(value).iter()
+                    .map(|contract_address| self.context_by_contract_index.put(&ContextByContractIndexKey::new(contract_address, id), &location))
+                    .collect::<Result<(), _>>();
+
+                primary_idx_res.and(contract_idx_res)
+            })
     }
 
     #[inline]
     pub fn get_by_block_hash(&self, block_hash: &BlockHash) -> Result<Vec<ContextRecordValue>, StorageError> {
         self.context_primary_index.get_by_block_hash(block_hash)
+            .and_then(|locations| self.get_records_by_locations(&locations))
+    }
+
+    #[inline]
+    pub fn get_by_contract_address(&self, contract_address: &ContractAddress) -> Result<Vec<ContextRecordValue>, StorageError> {
+        self.context_by_contract_index.get_by_contract_address(contract_address)
             .and_then(|locations| self.get_records_by_locations(&locations))
     }
 
@@ -93,9 +110,39 @@ impl ContextRecordValue {
 /// Codec for `ContextRecordValue`
 impl crate::persistent::BincodeEncoded for ContextRecordValue { }
 
+fn extract_contract_addresses(value: &ContextRecordValue) -> Vec<ContractAddress> {
+    let contract_addresses = match &value.action {
+        ContextAction::Set { key, .. }
+        | ContextAction::Delete { key, .. }
+        | ContextAction::RemoveRecord { key, .. } => {
+            vec![action_key_to_contract_address(key)]
+        }
+        ContextAction::Copy { from_key, to_key, .. } => {
+            vec![action_key_to_contract_address(from_key), action_key_to_contract_address(to_key)]
+        }
+        _ => vec![]
+    };
 
+    contract_addresses.into_iter()
+        .filter_map(|c| c)
+        .collect()
+}
 
-/// Index block data as `context_primary_key -> location`.
+fn action_key_to_contract_address(key: &[String]) -> Option<ContractAddress> {
+    if key.len() >= 10 && "data" == key[0] && "contracts" == key[1] && "index" == key[2] {
+        hex::decode(&key[9]).ok()
+    } else {
+        None
+    }
+}
+
+/// Index data as `block_hash -> location`.
+///
+/// Primary index is composed from:
+/// * block header hash
+/// * auto increment ID
+///
+/// This allows for fast search of context actions belonging to a block.
 pub struct ContextPrimaryIndex {
     kv: Arc<ContextPrimaryIndexKV>,
 }
@@ -116,8 +163,7 @@ impl ContextPrimaryIndex {
 
     #[inline]
     fn get_by_block_hash(&self, block_hash: &BlockHash) -> Result<Vec<Location>, StorageError> {
-        let key = ContextPrimaryIndexKey::from_block_hash(block_hash);
-
+        let key = ContextPrimaryIndexKey::from_block_hash_prefix(block_hash);
         self.kv.prefix_iterator(&key)?
             .map(|(_, value)| value.map_err(StorageError::from))
             .collect()
@@ -149,12 +195,11 @@ pub struct ContextPrimaryIndexKey {
 
 impl ContextPrimaryIndexKey {
     const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
-    const LEN_ID: usize = mem::size_of::<u64>();
+    const LEN_ID: usize = mem::size_of::<SequenceNumber>();
+    const LEN_TOTAL: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID;
 
     const IDX_BLOCK_HASH: usize = 0;
     const IDX_ID: usize = Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH;
-
-    const LEN_RECORD_KEY: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID;
 
     pub fn new(block_hash: &BlockHash, id: SequenceNumber) -> Self {
         Self {
@@ -165,7 +210,7 @@ impl ContextPrimaryIndexKey {
 
     /// This is useful only when using prefix iterator to retrieve
     /// actions belonging to the same block.
-    fn from_block_hash(block_hash: &BlockHash) -> Self {
+    fn from_block_hash_prefix(block_hash: &BlockHash) -> Self {
         Self {
             block_hash: block_hash.clone(),
             id: 0,
@@ -178,13 +223,9 @@ impl ContextPrimaryIndexKey {
 /// * bytes layout `[block_hash(32)][id(8)]`
 impl Decoder for ContextPrimaryIndexKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        if Self::LEN_RECORD_KEY == bytes.len() {
-            // block header hash
-            let block_hash = bytes[Self::IDX_BLOCK_HASH..Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH].to_vec();
-            // id
-            let mut id_bytes: [u8; Self::LEN_ID] = Default::default();
-            id_bytes.copy_from_slice(&bytes[Self::IDX_ID..Self::IDX_ID + Self::LEN_ID]);
-            let id = u64::from_be_bytes(id_bytes);
+        if Self::LEN_TOTAL == bytes.len() {
+            let block_hash = vec_from_slice(bytes, Self::IDX_BLOCK_HASH, Self::LEN_BLOCK_HASH);
+            let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
             Ok(ContextPrimaryIndexKey { block_hash, id })
         } else {
             Err(SchemaError::DecodeError)
@@ -197,12 +238,120 @@ impl Decoder for ContextPrimaryIndexKey {
 /// * bytes layout `[block_hash(32)][id(8)]`
 impl Encoder for ContextPrimaryIndexKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        let mut result = Vec::with_capacity(Self::LEN_RECORD_KEY);
-        // block header hash
+        let mut result = Vec::with_capacity(Self::LEN_TOTAL);
         result.extend(&self.block_hash);
-        // ordinal
         result.extend(&self.id.to_be_bytes());
-        assert_eq!(result.len(), Self::LEN_RECORD_KEY, "Result length mismatch");
+        assert_eq!(result.len(), Self::LEN_TOTAL, "Result length mismatch");
+        Ok(result)
+    }
+}
+
+
+/// Index data as `contract_address -> location`.
+///
+/// Index is composed from:
+/// * contract address
+/// * auto increment ID
+///
+/// This allows for fast search of context actions belonging to a contract.
+pub struct ContextByContractIndex {
+    kv: Arc<ContextByContractIndexKV>,
+}
+
+pub type ContextByContractIndexKV = dyn KeyValueStoreWithSchema<ContextByContractIndex> + Sync + Send;
+pub type ContractAddress = Vec<u8>;
+
+impl ContextByContractIndex {
+    fn new(kv: Arc<ContextByContractIndexKV>) -> Self {
+        Self { kv }
+    }
+
+    #[inline]
+    fn put(&mut self, key: &ContextByContractIndexKey, value: &Location) -> Result<(), StorageError> {
+        self.kv.put(key, value).map_err(StorageError::from)
+    }
+
+    #[inline]
+    fn get_by_contract_address(&self, contract_address: &ContractAddress) -> Result<Vec<Location>, StorageError> {
+        let key = ContextByContractIndexKey::from_contract_address_prefix(contract_address);
+        self.kv.prefix_iterator(&key)?
+            .map(|(_, value)| value.map_err(StorageError::from))
+            .collect()
+    }
+}
+
+impl KeyValueSchema for ContextByContractIndex {
+    type Key = ContextByContractIndexKey;
+    type Value = Location;
+
+    fn descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = Options::default();
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextByContractIndexKey::LEN_CONTRACT_ADDRESS));
+        cf_opts.set_memtable_prefix_bloom_ratio(0.2);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    fn name() -> &'static str {
+        "context_by_contract_storage"
+    }
+}
+
+/// Key for a specific action stored in a database.
+#[derive(PartialEq, Debug)]
+pub struct ContextByContractIndexKey {
+    contract_address: ContractAddress,
+    id: SequenceNumber,
+}
+
+impl ContextByContractIndexKey {
+    const LEN_CONTRACT_ADDRESS: usize = 22;
+    const LEN_ID: usize = mem::size_of::<SequenceNumber>();
+    const LEN_TOTAL: usize = Self::LEN_CONTRACT_ADDRESS + Self::LEN_ID;
+
+    const IDX_CONTRACT_ADDRESS: usize = 0;
+    const IDX_ID: usize = Self::IDX_CONTRACT_ADDRESS + Self::LEN_CONTRACT_ADDRESS;
+
+    pub fn new(contract_address: &[u8], id: SequenceNumber) -> Self {
+        Self {
+            contract_address: contract_address.to_vec(),
+            id,
+        }
+    }
+
+    /// This is useful only when using prefix iterator to retrieve
+    /// actions belonging to the same block.
+    fn from_contract_address_prefix(contract_address: &[u8]) -> Self {
+        Self {
+            contract_address: contract_address.to_vec(),
+            id: 0,
+        }
+    }
+}
+
+/// Decoder for `ContextByContractIndexKey`
+///
+/// * bytes layout `[block_hash(32)][id(8)]`
+impl Decoder for ContextByContractIndexKey {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        if Self::LEN_TOTAL == bytes.len() {
+            let contract_address = vec_from_slice(bytes, Self::IDX_CONTRACT_ADDRESS, Self::LEN_CONTRACT_ADDRESS);
+            let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
+            Ok(ContextByContractIndexKey { contract_address, id })
+        } else {
+            Err(SchemaError::DecodeError)
+        }
+    }
+}
+
+/// Encoder for `ContextByContractIndexKey`
+///
+/// * bytes layout `[block_hash(32)][id(8)]`
+impl Encoder for ContextByContractIndexKey {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        let mut result = Vec::with_capacity(Self::LEN_TOTAL);
+        result.extend(&self.contract_address);
+        result.extend(&self.id.to_be_bytes());
+        assert_eq!(result.len(), Self::LEN_TOTAL, "Result length mismatch");
         Ok(result)
     }
 }
@@ -217,10 +366,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn context_record_contract_key_encoded_equals_decoded() -> Result<(), Error> {
+        let expected = ContextByContractIndexKey {
+            contract_address: hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?,
+            id: 6548654,
+        };
+        let encoded_bytes = expected.encode()?;
+        let decoded = ContextByContractIndexKey::decode(&encoded_bytes)?;
+        Ok(assert_eq!(expected, decoded))
+    }
+
+    #[test]
     fn context_record_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = ContextPrimaryIndexKey {
             block_hash: vec![43; HashType::BlockHash.size()],
-            id: 6548654
+            id: 6548654,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextPrimaryIndexKey::decode(&encoded_bytes)?;
@@ -231,7 +391,7 @@ mod tests {
     fn context_record_key_blank_operation_encoded_equals_decoded() -> Result<(), Error> {
         let expected = ContextPrimaryIndexKey {
             block_hash: vec![43; HashType::BlockHash.size()],
-            id: 176105218
+            id: 176105218,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextPrimaryIndexKey::decode(&encoded_bytes)?;
