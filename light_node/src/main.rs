@@ -22,7 +22,8 @@ use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
-use storage::persistent::{CommitLogs, CommitLogSchema, KeyValueSchema, open_db, open_cl};
+use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
+use storage::persistent::sequence::Sequences;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -35,7 +36,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 4;
+const DATABASE_VERSION: i64 = 5;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -78,7 +79,7 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, rocks_db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
+fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, persistent_storage: PersistentStorage, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
     let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -100,21 +101,21 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
             .map(|cfg| cfg.version.clone())
             .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network)))
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), rocks_db.clone(), commit_logs.clone(), &init_info)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_info)
         .expect("Failed to create chain manager");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), rocks_db.clone(), commit_logs.clone(), &init_info, protocol_commands, log.clone())
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_info, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ContextListener::actor(&actor_system, rocks_db.clone(), commit_logs.clone(), protocol_events, log.clone())
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone())
         .expect("Failed to create context event listener");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), rocks_db.clone())
+    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime, rocks_db.clone(), commit_logs.clone(), &init_info)
+    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime, &persistent_storage, &init_info)
         .expect("Failed to create RPC server");
     if env.record {
         info!(log, "Running in record mode");
-        let _ = NetworkChannelListener::actor(&actor_system, rocks_db.clone(), network_channel.clone());
+        let _ = NetworkChannelListener::actor(&actor_system, persistent_storage.kv(), network_channel.clone());
     }
 
     tokio_runtime.block_on(async move {
@@ -250,9 +251,11 @@ fn main() {
         EventPayloadStorage::descriptor(),
         EventStorage::descriptor(),
         context_storage::ContextPrimaryIndex::descriptor(),
+        context_storage::ContextByContractIndex::descriptor(),
         SystemStorage::descriptor(),
+        Sequences::descriptor(),
     ];
-    let rocks_db = match open_db(&env.storage.bootstrap_db_path, schemas) {
+    let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
         Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.bootstrap_db_path), actor_system)
     };
@@ -312,9 +315,12 @@ fn main() {
         Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
     };
 
-    match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, rocks_db.clone(), commit_logs.clone(), log.clone()) {
-        Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, rocks_db.clone(), commit_logs.clone(), protocol_commands, protocol_events, protocol_runner_run, log),
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
+    {
+        let persistent_storage = PersistentStorage::new(rocks_db.clone(), commit_logs.clone());
+        match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, &persistent_storage, log.clone()) {
+            Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log),
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
+        }
     }
 
     commit_logs.flush().expect("Failed to flush commit logs");

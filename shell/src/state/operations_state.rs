@@ -5,10 +5,10 @@ use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryInto;
-use std::sync::Arc;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsStorage, StorageError};
+use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::collections::{BlockData, UniqueBlockData};
@@ -21,11 +21,10 @@ pub struct OperationsState {
 }
 
 impl OperationsState {
-
-    pub fn new(db: Arc<rocksdb::DB>, chain_id: &ChainId) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Self {
         OperationsState {
-            operations_storage: OperationsStorage::new(db.clone()),
-            operations_meta_storage: OperationsMetaStorage::new(db),
+            operations_storage: OperationsStorage::new(persistent_storage),
+            operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
             missing_operations_for_blocks: UniqueBlockData::new(),
             chain_id: chain_id.clone(),
         }
@@ -96,11 +95,11 @@ impl OperationsState {
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.operations_meta_storage.iter(IteratorMode::Start)? {
             let (key, value) = (key?, value?);
-            if !value.is_complete() && (value.chain_id == self.chain_id) {
+            if !value.is_complete() && (value.chain_id() == &self.chain_id) {
                 self.missing_operations_for_blocks.push(MissingOperations {
                     block_hash: key,
                     validation_passes: value.get_missing_validation_passes(),
-                    level: value.level()
+                    level: value.level(),
                 });
             }
         }

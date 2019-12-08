@@ -13,7 +13,7 @@ use rocksdb::DB;
 use serde::{Deserialize, Serialize};
 
 use skip_list::{Lane, ListValue, SkipList};
-use storage::persistent::{BincodeEncoded, KeyValueSchema, open_db};
+use storage::persistent::{BincodeEncoded, KeyValueSchema, open_kv};
 
 pub struct TmpDb {
     db: Arc<DB>,
@@ -25,7 +25,7 @@ impl TmpDb {
         let proc = Command::new("mktemp").args(&["-d"]).output();
         let dir = String::from_utf8(proc.unwrap().stdout)
             .expect("failed to create testing database").trim().to_string();
-        let db = open_db(&dir, vec![Lane::<Value>::descriptor(), SkipList::<Value>::descriptor()]).unwrap();
+        let db = open_kv(&dir, vec![Lane::<Value>::descriptor(), SkipList::<Value>::descriptor()]).unwrap();
         Self {
             db: Arc::new(db),
             tmp_dir: dir,

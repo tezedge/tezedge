@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
-use crate::persistent::{BincodeEncoded, DatabaseWithSchema, KeyValueSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::StorageError;
 
-pub type SystemStorageDatabase = dyn DatabaseWithSchema<SystemStorage> + Sync + Send;
+pub type SystemStorageKv = dyn KeyValueStoreWithSchema<SystemStorage> + Sync + Send;
 pub type DbVersion = i64;
 
 /// Represents storage of the system settings.
@@ -19,22 +19,21 @@ pub type DbVersion = i64;
 /// but instead it provides get_ and set_ methods for each system setting.
 #[derive(Clone)]
 pub struct SystemStorage {
-    db: Arc<SystemStorageDatabase>
+    kv: Arc<SystemStorageKv>
 }
 
 impl SystemStorage {
-
     const CHAIN_ID: &'static str = "chain_id";
     const DB_VERSION: &'static str = "db_version";
 
-    pub fn new(db: Arc<SystemStorageDatabase>) -> Self {
-        SystemStorage { db }
+    pub fn new(kv: Arc<SystemStorageKv>) -> Self {
+        SystemStorage { kv }
     }
 
     #[inline]
     pub fn get_chain_id(&self) -> Result<Option<ChainId>, StorageError> {
-        self.db.get(&Self::CHAIN_ID.to_string())
-            .map(|result|  match result {
+        self.kv.get(&Self::CHAIN_ID.to_string())
+            .map(|result| match result {
                 Some(SystemValue::Hash(value)) => Some(value),
                 _ => None
             })
@@ -43,13 +42,13 @@ impl SystemStorage {
 
     #[inline]
     pub fn set_chain_id(&mut self, chain_id: &ChainId) -> Result<(), StorageError> {
-        self.db.put(&Self::CHAIN_ID.to_string(), &SystemValue::Hash(chain_id.clone()))
+        self.kv.put(&Self::CHAIN_ID.to_string(), &SystemValue::Hash(chain_id.clone()))
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn get_db_version(&self) -> Result<Option<DbVersion>, StorageError> {
-        self.db.get(&Self::DB_VERSION.to_string())
+        self.kv.get(&Self::DB_VERSION.to_string())
             .map(|result|  match result {
                 Some(SystemValue::Integer(value)) => Some(value),
                 _ => None
@@ -59,7 +58,7 @@ impl SystemStorage {
 
     #[inline]
     pub fn set_db_version(&mut self, db_version: DbVersion) -> Result<(), StorageError> {
-        self.db.put(&Self::DB_VERSION.to_string(), &SystemValue::Integer(db_version))
+        self.kv.put(&Self::DB_VERSION.to_string(), &SystemValue::Integer(db_version))
             .map_err(StorageError::from)
     }
 }

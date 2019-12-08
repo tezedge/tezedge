@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![feature(wait_until)]
 
 use std::sync::Arc;
 
@@ -12,13 +13,14 @@ use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
-pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageDatabase};
+pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV};
 pub use crate::block_storage::{BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
 pub use crate::context_storage::{ContextPrimaryIndexKey, ContextRecordValue, ContextStorage};
-pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageDatabase};
-pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageDatabase, OperationsStorageReader};
-use crate::persistent::{CommitLogError, CommitLogs, DBError, Decoder, Encoder, SchemaError};
+pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
+pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
+use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, PersistentStorage, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
+use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
 
 pub mod persistent;
@@ -82,6 +84,10 @@ pub enum StorageError {
     InvalidColumn,
     #[fail(display = "Block hash error")]
     BlockHashError,
+    #[fail(display = "Sequence generator failed: {}", error)]
+    SequenceError {
+        error: SequenceError
+    }
 }
 
 impl From<DBError> for StorageError {
@@ -102,6 +108,12 @@ impl From<SchemaError> for StorageError {
     }
 }
 
+impl From<SequenceError> for StorageError {
+    fn from(error: SequenceError) -> Self {
+        StorageError::SequenceError { error }
+    }
+}
+
 impl slog::Value for StorageError {
     fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
@@ -111,53 +123,82 @@ impl slog::Value for StorageError {
 /// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
 /// Which means that successor of the genesis block is also genesis block. By combining those
 /// two statements we get cyclic relationship and everything breaks..
-pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, genesis_chain_id: &ChainId, db: Arc<rocksdb::DB>, clog: Arc<CommitLogs>, log: Logger) -> Result<(), StorageError> {
+pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, genesis_chain_id: &ChainId, persistent_storage: &PersistentStorage, log: Logger) -> Result<(), StorageError> {
     let genesis_with_hash = BlockHeaderWithHash {
         hash: genesis_hash.clone(),
         header: Arc::new(genesis.clone()),
     };
-    let mut block_storage = BlockStorage::new(db.clone(), clog);
+    let mut block_storage = BlockStorage::new(persistent_storage);
     if block_storage.get(&genesis_with_hash.hash)?.is_none() {
         info!(log, "Initializing storage with genesis block");
         block_storage.put_block_header(&genesis_with_hash)?;
-        let mut block_meta_storage = BlockMetaStorage::new(db.clone());
+        let mut block_meta_storage = BlockMetaStorage::new(persistent_storage);
         block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash, genesis_chain_id))?;
-        let mut operations_meta_storage = OperationsMetaStorage::new(db);
+        let mut operations_meta_storage = OperationsMetaStorage::new(persistent_storage);
         operations_meta_storage.put(&genesis_with_hash.hash, &operations_meta_storage::Meta::genesis_meta(genesis_chain_id))?;
     }
 
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
+
+pub mod tests_common {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
     use failure::Error;
 
-    use crypto::hash::HashType;
-    use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
+    use crate::block_storage;
+    use crate::persistent::*;
+    use crate::persistent::sequence::Sequences;
 
     use super::*;
 
-    #[test]
-    fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
-        let expected = BlockHeaderWithHash {
-            hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
-            header: Arc::new(
-                BlockHeaderBuilder::default()
-                    .level(34)
-                    .proto(1)
-                    .predecessor(HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?)
-                    .timestamp(5_635_634)
-                    .validation_pass(4)
-                    .operations_hash(HashType::OperationListListHash.string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
-                    .fitness(vec![vec![0, 0]])
-                    .context(HashType::ContextHash.string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
-                    .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
-                    .build().unwrap()
-            ),
-        };
-        let encoded_bytes = expected.encode()?;
-        let decoded = BlockHeaderWithHash::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+    pub struct TmpStorage {
+        persistent_storage: PersistentStorage,
+        path: PathBuf,
+    }
+
+    impl TmpStorage {
+        pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+            let path = path.as_ref().to_path_buf();
+            // remove previous data if exists
+            if Path::new(&path).exists() {
+                fs::remove_dir_all(&path).unwrap();
+            }
+
+            let kv = open_kv(&path, vec![
+                block_storage::BlockPrimaryIndex::descriptor(),
+                block_storage::BlockByLevelIndex::descriptor(),
+                BlockMetaStorage::descriptor(),
+                OperationsStorage::descriptor(),
+                OperationsMetaStorage::descriptor(),
+                context_storage::ContextPrimaryIndex::descriptor(),
+                context_storage::ContextByContractIndex::descriptor(),
+                SystemStorage::descriptor(),
+                Sequences::descriptor(),
+            ])?;
+            let clog = open_cl(&path, vec![
+                BlockStorage::descriptor(),
+                ContextStorage::descriptor(),
+            ])?;
+
+            Ok(Self {
+                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
+                path,
+            })
+        }
+
+        pub fn storage(&self) -> &PersistentStorage {
+            &self.persistent_storage
+        }
+    }
+
+    impl Drop for TmpStorage {
+        fn drop(&mut self) {
+            let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
+            let _ = fs::remove_dir_all(&self.path);
+        }
     }
 }

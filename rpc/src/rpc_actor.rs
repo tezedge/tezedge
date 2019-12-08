@@ -11,7 +11,7 @@ use tokio::runtime::Runtime;
 
 use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::persistent::CommitLogs;
+use storage::persistent::PersistentStorage;
 use tezos_api::client::TezosStorageInitInfo;
 
 use crate::server::{RpcServiceEnvironment, spawn_server};
@@ -46,9 +46,9 @@ impl RpcServer {
         Self { shell_channel, state }
     }
 
-    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, runtime: &Runtime, db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, runtime: &Runtime, persistent_storage: &PersistentStorage, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(db.clone(), commit_logs.clone()),
+            current_head: load_current_head(persistent_storage),
             chain_id: tezos_info.chain_id.clone(),
         }));
         let actor_ref = sys.actor_of(
@@ -58,7 +58,7 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let server = spawn_server(&rpc_listen_address, RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), db, commit_logs, &tezos_info.genesis_block_header_hash, shared_state, sys.log()));
+            let server = spawn_server(&rpc_listen_address, RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &tezos_info.genesis_block_header_hash, shared_state, sys.log()));
             let inner_log = sys.log();
             runtime.spawn(async move {
                 if let Err(e) = server.await {
@@ -108,22 +108,22 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>) -> Option<BlockApplied> {
+fn load_current_head(persistent_storage: &PersistentStorage) -> Option<BlockApplied> {
     use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
 
-    BlockMetaStorage::new(db.clone())
+    BlockMetaStorage::new(persistent_storage)
         .iter(IteratorMode::End)
         .and_then(|meta_iterator|
             meta_iterator
                 // unwrap a tuple of Result
                 .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
                 // we are interested in applied blocks only
-                .filter(|(_, meta)| meta.is_applied)
+                .filter(|(_, meta)| meta.is_applied())
                 // get block with the highest level
-                .max_by_key(|(_, meta)| meta.level)
+                .max_by_key(|(_, meta)| meta.level())
                 // get data for the block
                 .map(|(block_hash, _)|
-                    BlockStorage::new(db.clone(), commit_logs)
+                    BlockStorage::new(persistent_storage)
                         .get_with_json_data(&block_hash)
                         .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey))
                 )

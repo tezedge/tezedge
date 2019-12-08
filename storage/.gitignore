@@ -1,3 +1,4 @@
 # Ignore direftories created by DB tests
-/__*
+**/__*
+
 

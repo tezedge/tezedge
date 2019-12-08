@@ -10,8 +10,8 @@ use failure::Error;
 use riker::actors::*;
 use slog::{debug, Logger, warn};
 
-use storage::{ContextPrimaryIndexKey, ContextRecordValue, ContextStorage};
-use storage::persistent::CommitLogs;
+use storage::{ContextRecordValue, ContextStorage};
+use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -28,23 +28,19 @@ pub struct ContextListener {
 pub type ContextListenerRef = ActorRef<ContextListenerMsg>;
 
 impl ContextListener {
-    pub fn actor(sys: &impl ActorRefFactory, rocks_db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, mut event_server: IpcEvtServer, log: Logger) -> Result<ContextListenerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, persistent_storage: &PersistentStorage, mut event_server: IpcEvtServer, log: Logger) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let listener_run = listener_run.clone();
+            let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || {
-                // This is a action sequence generator used to generate unique action identifier.
-                // Identifier is unique only for a specific context, eg. between checkout and commit.
-                let mut action_seq_gen: u32 = 0;
-
-                let mut context_storage = ContextStorage::new(rocks_db, commit_logs);
+                let mut context_storage = ContextStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         &mut context_storage,
-                        &mut action_seq_gen,
                         &log,
                     ) {
                         Ok(()) => debug!(log, "Context listener finished"),
@@ -101,7 +97,6 @@ fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     context_storage: &mut ContextStorage,
-    action_seq_gen: &mut u32,
     log: &Logger,
 ) -> Result<(), Error> {
 
@@ -120,23 +115,19 @@ fn listen_protocol_events(
                 event_count += 1;
 
                 match &msg {
-                    ContextAction::Set { block_hash: Some(block_hash), operation_hash, key, .. }
-                    | ContextAction::Copy { block_hash: Some(block_hash), operation_hash, to_key: key, .. }
-                    | ContextAction::Delete { block_hash: Some(block_hash), operation_hash, key, .. }
-                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), operation_hash, key, .. } => {
-                        let record_key = ContextPrimaryIndexKey::new(block_hash, operation_hash, key, *action_seq_gen);
-                        let record_value = ContextRecordValue::new(msg);
-                        context_storage.put(&record_key, &record_value)?;
+                    ContextAction::Set { block_hash: Some(block_hash), .. }
+                    | ContextAction::Copy { block_hash: Some(block_hash), .. }
+                    | ContextAction::Delete { block_hash: Some(block_hash), .. }
+                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), .. } => {
+                        let key = block_hash.clone();
+                        let value = ContextRecordValue::new(msg);
+                        context_storage.put(&key, &value)?;
                     }
                     ContextAction::Commit { .. } => {
-                        *action_seq_gen = 0;
+                        // ...
                     }
                     ContextAction::Checkout { .. } => {
-                        if *action_seq_gen != 0 {
-                            warn!(log, "Detected a checkout without a previous call to commit");
-                            // reset counter anyway
-                            *action_seq_gen = 0;
-                        }
+                        // ...
                     }
                     _ => (),
                 };

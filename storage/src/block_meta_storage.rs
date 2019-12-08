@@ -3,24 +3,26 @@
 
 use std::sync::Arc;
 
+use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, SchemaError};
+use crate::num_from_slice;
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
-pub type BlockMetaStorageDatabase = dyn DatabaseWithSchema<BlockMetaStorage> + Sync + Send;
+pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
 #[derive(Clone)]
 pub struct BlockMetaStorage {
-    db: Arc<BlockMetaStorageDatabase>
+    kv: Arc<BlockMetaStorageKV>
 }
 
 impl BlockMetaStorage {
-    pub fn new(db: Arc<BlockMetaStorageDatabase>) -> Self {
-        BlockMetaStorage { db }
+    pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        BlockMetaStorage { kv: persistent_storage.kv() }
     }
 
     /// Create new metadata record in storage from given block header
@@ -66,19 +68,19 @@ impl BlockMetaStorage {
 
     #[inline]
     pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
-        self.db.merge(block_hash, meta)
+        self.kv.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
-        self.db.get(block_hash)
+        self.kv.get(block_hash)
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.db.iterator(mode)
+        self.kv.iterator(mode)
             .map_err(StorageError::from)
     }
 }
@@ -111,13 +113,19 @@ macro_rules! has_successor {
 }
 
 /// Meta information for the block
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Getters, CopyGetters, Setters, PartialEq, Debug)]
 pub struct Meta {
-    pub predecessor: Option<BlockHash>,
-    pub successor: Option<BlockHash>,
-    pub is_applied: bool,
-    pub level: i32,
-    pub chain_id: ChainId,
+    #[get = "pub"]
+    predecessor: Option<BlockHash>,
+    #[get = "pub"]
+    successor: Option<BlockHash>,
+    #[get_copy = "pub"]
+    #[set = "pub"]
+    is_applied: bool,
+    #[get_copy = "pub"]
+    level: i32,
+    #[get = "pub"]
+    chain_id: ChainId,
 }
 
 impl Meta {
@@ -159,9 +167,7 @@ impl Decoder for Meta {
                 None
             };
             // level
-            let mut level_bytes: [u8; 4] = Default::default();
-            level_bytes.copy_from_slice(&bytes[IDX_LEVEL..IDX_LEVEL + 4]);
-            let level = i32::from_be_bytes(level_bytes);
+            let level = num_from_slice!(bytes, IDX_LEVEL, i32);
             // chain_id
             let chain_id = bytes[IDX_CHAIN_ID..IDX_END].to_vec();
             assert_eq!(LEN_CHAIN_ID, chain_id.len(), "Chain ID expected length is {} but found {}", LEN_CHAIN_ID, chain_id.len());
@@ -258,7 +264,8 @@ mod tests {
 
     use crypto::hash::HashType;
 
-    use crate::persistent::open_db;
+    use crate::persistent::open_kv;
+    use crate::tests_common::TmpStorage;
 
     use super::*;
 
@@ -278,86 +285,70 @@ mod tests {
 
     #[test]
     fn genesis_block_initialized_success() -> Result<(), Error> {
-        use rocksdb::DB;
+        let tmp_storage = TmpStorage::create("__blockmeta_genesistest")?;
 
-        let path = "__blockmeta_genesistest";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
+        let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+        let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let v = Meta::genesis_meta(&k, &chain_id);
+        let mut storage = BlockMetaStorage::new(tmp_storage.storage());
+        storage.put(&k, &v)?;
+        match storage.get(&k)? {
+            Some(value) => {
+                let expected = Meta {
+                    is_applied: true,
+                    predecessor: Some(k.clone()),
+                    successor: None,
+                    level: 0,
+                    chain_id: chain_id.clone(),
+                };
+                assert_eq!(expected, value);
+            },
+            _ => panic!("value not present"),
         }
 
-        {
-            let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
-            let encoding = HashType::BlockHash;
-
-            let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
-            let v = Meta::genesis_meta(&k, &chain_id);
-            let mut storage = BlockMetaStorage::new(Arc::new(db));
-            storage.put(&k, &v)?;
-            match storage.get(&k)? {
-                Some(value) => {
-                    let expected = Meta {
-                        is_applied: true,
-                        predecessor: Some(k.clone()),
-                        successor: None,
-                        level: 0,
-                        chain_id: chain_id.clone(),
-                    };
-                    assert_eq!(expected, value);
-                },
-                _ => panic!("value not present"),
-            }
-        }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        Ok(())
     }
 
     #[test]
     fn block_meta_storage_test() -> Result<(), Error> {
-        use rocksdb::DB;
+        let tmp_storage = TmpStorage::create("__blockmeta_storagetest")?;
 
-        let path = "__blockmeta_storagetest";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
+        let k = vec![44; 32];
+        let mut v = Meta {
+            is_applied: false,
+            predecessor: None,
+            successor: None,
+            level: 1_245_762,
+            chain_id: vec![44; 4],
+        };
+        let mut storage = BlockMetaStorage::new(tmp_storage.storage());
+        storage.put(&k, &v)?;
+        let p = storage.get(&k)?;
+        assert!(p.is_some());
+        v.is_applied = true;
+        v.successor = Some(vec![21; 32]);
+        storage.put(&k, &v)?;
+        v.is_applied = false;
+        v.predecessor = Some(vec![98; 32]);
+        v.successor = None;
+        storage.put(&k, &v)?;
+        v.predecessor = None;
+        storage.put(&k, &v)?;
+        match storage.get(&k)? {
+            Some(value) => {
+                let expected = Meta {
+                    is_applied: true,
+                    predecessor: Some(vec![98; 32]),
+                    successor: Some(vec![21; 32]),
+                    level: 1_245_762,
+                    chain_id: vec![44; 4],
+                };
+                assert_eq!(expected, value);
+            },
+            _ => panic!("value not present"),
         }
 
-        {
-            let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
-            let k = vec![44; 32];
-            let mut v = Meta {
-                is_applied: false,
-                predecessor: None,
-                successor: None,
-                level: 1_245_762,
-                chain_id: vec![44; 4],
-            };
-            let mut storage = BlockMetaStorage::new(Arc::new(db));
-            storage.put(&k, &v)?;
-            let p = storage.get(&k)?;
-            assert!(p.is_some());
-            v.is_applied = true;
-            v.successor = Some(vec![21; 32]);
-            storage.put(&k, &v)?;
-            v.is_applied = false;
-            v.predecessor = Some(vec![98; 32]);
-            v.successor = None;
-            storage.put(&k, &v)?;
-            v.predecessor = None;
-            storage.put(&k, &v)?;
-            match storage.get(&k)? {
-                Some(value) => {
-                    let expected = Meta {
-                        is_applied: true,
-                        predecessor: Some(vec![98; 32]),
-                        successor: Some(vec![21; 32]),
-                        level: 1_245_762,
-                        chain_id: vec![44; 4],
-                    };
-                    assert_eq!(expected, value);
-                },
-                _ => panic!("value not present"),
-            }
-        }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        Ok(())
     }
 
     #[test]
@@ -370,7 +361,7 @@ mod tests {
         }
 
         {
-            let db = open_db(path, vec![BlockMetaStorage::descriptor()]).unwrap();
+            let db = open_kv(path, vec![BlockMetaStorage::descriptor()]).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,
@@ -379,19 +370,19 @@ mod tests {
                 level: 2,
                 chain_id: vec![44; 4],
             };
-            let p = BlockMetaStorageDatabase::merge(&db, &k, &v);
+            let p = BlockMetaStorageKV::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
             v.is_applied = true;
             v.successor = Some(vec![21; 32]);
-            let _ = BlockMetaStorageDatabase::merge(&db, &k, &v);
+            let _ = BlockMetaStorageKV::merge(&db, &k, &v);
             v.is_applied = false;
             v.predecessor = Some(vec![98; 32]);
             v.successor = None;
-            let _ = BlockMetaStorageDatabase::merge(&db, &k, &v);
+            let _ = BlockMetaStorageKV::merge(&db, &k, &v);
             v.predecessor = None;
-            let m = BlockMetaStorageDatabase::merge(&db, &k, &v);
+            let m = BlockMetaStorageKV::merge(&db, &k, &v);
             assert!(m.is_ok());
-            match BlockMetaStorageDatabase::get(&db, &k) {
+            match BlockMetaStorageKV::get(&db, &k) {
                 Ok(Some(value)) => {
                     let expected = Meta {
                         is_applied: true,

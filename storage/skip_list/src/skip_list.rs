@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use storage::persistent::{BincodeEncoded, DatabaseWithSchema, KeyValueSchema};
+use storage::persistent::{BincodeEncoded, KeyValueStoreWithSchema, KeyValueSchema};
 
 use crate::{content::{ListValue, NodeHeader}, lane::Lane, LEVEL_BASE, SkipListError};
 use crate::content::SkipListId;
 use crate::lane::LaneDatabase;
 
-pub type SkipListDatabase<C> = dyn DatabaseWithSchema<SkipList<C>> + Sync + Send;
+pub type SkipListDatabase<C> = dyn KeyValueStoreWithSchema<SkipList<C>> + Sync + Send;
 
 /// Data structure implementation, managing structure data, shape and metadata
 /// It is expected, that structure will hold a few GiBs of data, and because of that,

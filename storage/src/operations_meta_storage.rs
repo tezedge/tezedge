@@ -10,21 +10,22 @@ use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::persistent::{DatabaseWithSchema, Decoder, Encoder, KeyValueSchema, SchemaError};
+use crate::num_from_slice;
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 /// Convenience type for operation meta storage database
-pub type OperationsMetaStorageDatabase = dyn DatabaseWithSchema<OperationsMetaStorage> + Sync + Send;
+pub type OperationsMetaStorageKV = dyn KeyValueStoreWithSchema<OperationsMetaStorage> + Sync + Send;
 
 /// Operation metadata storage
 #[derive(Clone)]
 pub struct OperationsMetaStorage {
-    db: Arc<OperationsMetaStorageDatabase>
+    kv: Arc<OperationsMetaStorageKV>
 }
 
 impl OperationsMetaStorage {
-    pub fn new(db: Arc<OperationsMetaStorageDatabase>) -> Self {
-        Self { db }
+    pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        Self { kv: persistent_storage.kv() }
     }
 
     #[inline]
@@ -68,25 +69,25 @@ impl OperationsMetaStorage {
 
     #[inline]
     pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
-        self.db.merge(block_hash, meta)
+        self.kv.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
-        self.db.get(block_hash)
+        self.kv.get(block_hash)
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.db.contains(block_hash)
+        self.kv.contains(block_hash)
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.db.iterator(mode)
+        self.kv.iterator(mode)
             .map_err(StorageError::from)
     }
 }
@@ -140,7 +141,7 @@ pub struct Meta {
     is_validation_pass_present: Vec<u8>,
     is_complete: bool,
     level: i32,
-    pub chain_id: ChainId,
+    chain_id: ChainId,
 }
 
 impl Meta {
@@ -173,6 +174,11 @@ impl Meta {
     pub fn level(&self) -> i32 {
         self.level
     }
+
+    #[inline]
+    pub fn chain_id(&self) -> &ChainId {
+        &self.chain_id
+    }
 }
 
 /// Codec for `Meta`
@@ -188,13 +194,11 @@ impl Decoder for Meta {
             let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
             let is_complete = bytes[is_complete_pos] != 0;
             // level
-            let level_pos = is_complete_pos + 1;
-            let mut level_bytes: [u8; 4] = Default::default();
-            level_bytes.copy_from_slice(&bytes[level_pos..level_pos + 4]);
-            let level = i32::from_be_bytes(level_bytes);
+            let level_pos = is_complete_pos + std::mem::size_of::<u8>();
+            let level = num_from_slice!(bytes, level_pos, i32);
             assert!(level >= 0, "Level must be positive number, but instead it is: {}", level);
             // chain_id
-            let chain_id_pos = level_pos + level_bytes.len();
+            let chain_id_pos = level_pos + std::mem::size_of::<i32>();
             let chain_id = bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()].to_vec();
             Ok(Meta { validation_passes, is_validation_pass_present, is_complete, level, chain_id })
         } else {
@@ -237,7 +241,8 @@ mod tests {
 
     use crypto::hash::HashType;
 
-    use crate::persistent::open_db;
+    use crate::persistent::open_kv;
+    use crate::tests_common::TmpStorage;
 
     use super::*;
 
@@ -257,82 +262,66 @@ mod tests {
 
     #[test]
     fn genesis_ops_initialized_success() -> Result<(), Error> {
-        use rocksdb::DB;
+        let tmp_storage = TmpStorage::create("__opmeta_genesistest")?;
 
-        let path = "__opmeta_genesistest";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
-        }
-
-        {
-            let db = open_db(path, vec![OperationsMetaStorage::descriptor()])?;
-            let encoding = HashType::BlockHash;
-
-            let k = encoding.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-            let v = Meta::genesis_meta(&vec![44; 4]);
-            let mut storage = OperationsMetaStorage::new(Arc::new(db));
-            storage.put(&k, &v)?;
-            match storage.get(&k)? {
-                Some(value) => {
-                    let expected = Meta {
-                        validation_passes: 0,
-                        is_validation_pass_present: vec![],
-                        is_complete: true,
-                        level: 0,
-                        chain_id: vec![44; 4],
-                    };
-                    assert_eq!(expected, value);
-                }
-                _ => panic!("value not present"),
+        let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+        let v = Meta::genesis_meta(&vec![44; 4]);
+        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        storage.put(&k, &v)?;
+        match storage.get(&k)? {
+            Some(value) => {
+                let expected = Meta {
+                    validation_passes: 0,
+                    is_validation_pass_present: vec![],
+                    is_complete: true,
+                    level: 0,
+                    chain_id: vec![44; 4],
+                };
+                assert_eq!(expected, value);
             }
+            _ => panic!("value not present"),
         }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+
+        Ok(())
     }
 
     #[test]
     fn operations_meta_storage_test() -> Result<(), Error> {
-        use rocksdb::DB;
+        let tmp_storage = TmpStorage::create("__opmeta_storagetest")?;
 
-        let path = "__opmeta_storagetest";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
-        }
+        let t = true as u8;
+        let f = false as u8;
 
-        {
-            let t = true as u8;
-            let f = false as u8;
-
-            let db = open_db(path, vec![OperationsMetaStorage::descriptor()])?;
-            let k = vec![3, 1, 3, 3, 7];
-            let mut v = Meta {
-                is_complete: false,
-                is_validation_pass_present: vec![f; 5],
-                validation_passes: 5,
-                level: 785,
-                chain_id: vec![44; 4],
-            };
-            let mut storage = OperationsMetaStorage::new(Arc::new(db));
-            storage.put(&k, &v)?;
-            v.is_validation_pass_present[2] = t;
-            storage.put(&k, &v)?;
-            v.is_validation_pass_present[2] = f;
-            v.is_validation_pass_present[3] = t;
-            storage.put(&k, &v)?;
-            v.is_validation_pass_present[3] = f;
-            v.is_complete = true;
-            storage.put(&k, &v)?;
-            storage.put(&k, &v)?;
-            match storage.get(&k)? {
-                Some(value) => {
-                    assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
-                    assert!(value.is_complete);
-                    assert_eq!(785, value.level);
-                    assert_eq!(vec![44; 4], value.chain_id);
-                }
-                _ => panic!("value not present"),
+        let k = vec![3, 1, 3, 3, 7];
+        let mut v = Meta {
+            is_complete: false,
+            is_validation_pass_present: vec![f; 5],
+            validation_passes: 5,
+            level: 785,
+            chain_id: vec![44; 4],
+        };
+        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        storage.put(&k, &v)?;
+        v.is_validation_pass_present[2] = t;
+        storage.put(&k, &v)?;
+        v.is_validation_pass_present[2] = f;
+        v.is_validation_pass_present[3] = t;
+        storage.put(&k, &v)?;
+        v.is_validation_pass_present[3] = f;
+        v.is_complete = true;
+        storage.put(&k, &v)?;
+        storage.put(&k, &v)?;
+        match storage.get(&k)? {
+            Some(value) => {
+                assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
+                assert!(value.is_complete);
+                assert_eq!(785, value.level);
+                assert_eq!(vec![44; 4], value.chain_id);
             }
+            _ => panic!("value not present"),
         }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+
+        Ok(())
     }
 
     #[test]
@@ -348,7 +337,7 @@ mod tests {
             let t = true as u8;
             let f = false as u8;
 
-            let db = open_db(path, vec![OperationsMetaStorage::descriptor()])?;
+            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()])?;
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,
@@ -357,19 +346,19 @@ mod tests {
                 level: 31_337,
                 chain_id: vec![44; 4],
             };
-            let p = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            let p = OperationsMetaStorageKV::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
             v.is_validation_pass_present[2] = t;
-            let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
             v.is_validation_pass_present[2] = f;
             v.is_validation_pass_present[3] = t;
-            let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
             v.is_validation_pass_present[3] = f;
             v.is_complete = true;
-            let _ = OperationsMetaStorageDatabase::merge(&db, &k, &v);
-            let m = OperationsMetaStorageDatabase::merge(&db, &k, &v);
+            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
+            let m = OperationsMetaStorageKV::merge(&db, &k, &v);
             assert!(m.is_ok());
-            match OperationsMetaStorageDatabase::get(&db, &k) {
+            match OperationsMetaStorageKV::get(&db, &k) {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
@@ -385,39 +374,32 @@ mod tests {
 
     #[test]
     fn operations_meta_storage_test_contains() -> Result<(), Error> {
-        use rocksdb::DB;
+        let tmp_storage = TmpStorage::create("__opmeta_storage_test_contains")?;
 
-        let path = "__opmeta_storage_test_contains";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
-        }
+        let k = vec![3, 1, 3, 3, 7];
+        let v = Meta {
+            is_complete: false,
+            is_validation_pass_present: vec![false as u8; 5],
+            validation_passes: 5,
+            level: 785,
+            chain_id: vec![44; 4],
+        };
+        let k_missing_1 = vec![0, 1, 2];
+        let k_added_later = vec![6, 7, 8, 9];
 
-        {
-            let db = open_db(path, vec![OperationsMetaStorage::descriptor()])?;
-            let k = vec![3, 1, 3, 3, 7];
-            let v = Meta {
-                is_complete: false,
-                is_validation_pass_present: vec![false as u8; 5],
-                validation_passes: 5,
-                level: 785,
-                chain_id: vec![44; 4],
-            };
-            let k_missing_1 = vec![0, 1, 2];
-            let k_added_later = vec![6, 7, 8, 9];
+        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        assert!(!storage.contains(&k)?);
+        assert!(!storage.contains(&k_missing_1)?);
+        assert!(!storage.contains(&k_added_later)?);
+        storage.put(&k, &v)?;
+        assert!(storage.contains(&k)?);
+        assert!(!storage.contains(&k_missing_1)?);
+        assert!(!storage.contains(&k_added_later)?);
+        storage.put(&k_added_later, &v)?;
+        assert!(storage.contains(&k)?);
+        assert!(!storage.contains(&k_missing_1)?);
+        assert!(storage.contains(&k_added_later)?);
 
-            let mut storage = OperationsMetaStorage::new(Arc::new(db));
-            assert!(!storage.contains(&k)?);
-            assert!(!storage.contains(&k_missing_1)?);
-            assert!(!storage.contains(&k_added_later)?);
-            storage.put(&k, &v)?;
-            assert!(storage.contains(&k)?);
-            assert!(!storage.contains(&k_missing_1)?);
-            assert!(!storage.contains(&k_added_later)?);
-            storage.put(&k_added_later, &v)?;
-            assert!(storage.contains(&k)?);
-            assert!(!storage.contains(&k_missing_1)?);
-            assert!(storage.contains(&k_added_later)?);
-        }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        Ok(())
     }
 }

@@ -13,7 +13,7 @@ use slog::{debug, Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use storage::{BlockJsonDataBuilder, BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
-use storage::persistent::CommitLogs;
+use storage::persistent::PersistentStorage;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController};
 
@@ -40,19 +40,20 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
-    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, rocks_db: Arc<rocksdb::DB>, commit_logs: Arc<CommitLogs>, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let apply_block_run = apply_block_run.clone();
             let current_head_hash = tezos_init.current_block_header_hash.clone();
             let chain_id = tezos_init.chain_id.clone();
             let shell_channel = shell_channel.clone();
+            let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || {
-                let mut block_storage = BlockStorage::new(rocks_db.clone(), commit_logs);
-                let mut block_meta_storage = BlockMetaStorage::new(rocks_db.clone());
-                let operations_storage = OperationsStorage::new(rocks_db.clone());
-                let operations_meta_storage = OperationsMetaStorage::new(rocks_db);
+                let mut block_storage = BlockStorage::new(&persistent_storage);
+                let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+                let operations_storage = OperationsStorage::new(&persistent_storage);
+                let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
                 let mut ipc_server = ipc_server;
 
                 while apply_block_run.load(Ordering::Acquire) {
@@ -179,12 +180,12 @@ fn feed_chain_to_protocol(
     while apply_block_run.load(Ordering::Acquire) {
         match block_meta_storage.get(&current_head_hash)? {
             Some(mut current_head_meta) => {
-                if current_head_meta.is_applied {
+                if current_head_meta.is_applied() {
                     // Current head is already applied, so we should move to successor
                     // or in case no successor is available do nothing.
-                    match current_head_meta.successor {
+                    match current_head_meta.successor() {
                         Some(successor_hash) => {
-                            current_head_hash = successor_hash;
+                            current_head_hash = successor_hash.clone();
                             continue;
                         }
                         None => ( /* successor is not yet available, we do nothing for now */ )
@@ -206,7 +207,7 @@ fn feed_chain_to_protocol(
                                 let apply_block_result = protocol_controller.apply_block(&chain_id, &current_head.header, &operations)?;
                                 debug!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => apply_block_result.validation_result_message);
                                 // mark current head as applied
-                                current_head_meta.is_applied = true;
+                                current_head_meta.set_is_applied(true);
                                 block_meta_storage.put(&current_head.hash, &current_head_meta)?;
                                 // store json data
                                 let block_json_data = BlockJsonDataBuilder::default()
@@ -227,9 +228,9 @@ fn feed_chain_to_protocol(
 
                                 // Current head is already applied, so we should move to successor
                                 // or in case no successor is available do nothing.
-                                match current_head_meta.successor {
+                                match current_head_meta.successor() {
                                     Some(successor_hash) => {
-                                        current_head_hash = successor_hash;
+                                        current_head_hash = successor_hash.clone();
                                         continue;
                                     }
                                     None => ( /* successor is not yet available, we do nothing for now */ )
