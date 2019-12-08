@@ -5,6 +5,20 @@ use serde_json::Value;
 use std::mem::discriminant;
 use failure::Error;
 
+// configuration
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+
+pub fn get_config() -> Result<Value, Error> {
+    let cfg_file = PathBuf::from("./etc/tezedge/integ_tests.json");
+    let mut file = File::open(cfg_file)?;
+    let mut data = String::new();
+    file.read_to_string(&mut data)?;
+
+    let cfg_json: Value = serde_json::from_str(&data)?;
+    Ok(cfg_json)
+}
 
 // pub fn call_rpc_json(uri: String, ssl: bool) -> Result<Value, Error> {
 //     if ssl {
@@ -21,10 +35,16 @@ use failure::Error;
 //     Ok(json)
 // }
 
-pub fn call_rpc_json(uri: String) -> Result<Value, Error> {
+pub fn call_rpc(url: &str) -> Result<reqwest::Response, reqwest::Error> {
+    reqwest::Client::builder()
+        .danger_accept_invalid_certs(true).build()?
+        .get(url).send()
+}
+
+pub fn call_rpc_json(url: &str) -> Result<Value, Error> {
     let mut res = reqwest::Client::builder()
         .danger_accept_invalid_certs(true).build()?
-        .get(&uri).send()?;
+        .get(url).send()?;
     let json: Value = res.json()?;
     //println!("resp for uri {} is {:?}", uri, json);
     Ok(json)
@@ -37,7 +57,7 @@ fn unpack_value_option(opt: Option<&Value>) -> &Value {
     }
 }
 
-// compare json structures of a single layer Object
+// compare json structures of a single layer Object(Map<String, Value>)
 pub fn json_structure_match( json1: &Value, json2: &Value) -> bool {
     match (json1, json2) {
         (Value::Object(j1), Value::Object(j2)) => 
