@@ -7,7 +7,7 @@ use derive_builder::Builder;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, ContextHash};
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage};
@@ -17,8 +17,9 @@ use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, Ke
 /// That location is then stored as a value in the key-value store.
 #[derive(Clone)]
 pub struct BlockStorage {
-    block_primary_index: BlockPrimaryIndex,
-    block_by_level_index: BlockByLevelIndex,
+    primary_index: BlockPrimaryIndex,
+    by_level_index: BlockByLevelIndex,
+    by_context_hash_index: BlockByContextHashIndex,
     clog: Arc<BlockStorageCommitLog>,
 }
 
@@ -41,14 +42,17 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
+    fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            block_primary_index: BlockPrimaryIndex::new(persistent_storage.kv()),
-            block_by_level_index: BlockByLevelIndex::new(persistent_storage.kv()),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.kv()),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.kv()),
+            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.kv()),
             clog: persistent_storage.clog(),
         }
     }
@@ -61,21 +65,28 @@ impl BlockStorage {
                     block_header: block_header_location,
                     block_json_data: None,
                 };
-                self.block_primary_index.put(&block_header.hash, &location).and(self.block_by_level_index.put(block_header.header.level(), &location))
+                self.primary_index.put(&block_header.hash, &location).and(self.by_level_index.put(block_header.header.level(), &location))
             })
     }
 
     pub fn put_block_json_data(&mut self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
         let updated_column_location = {
             let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
-            let mut column_location = self.block_primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
+            let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
             column_location.block_json_data = Some(block_json_data_location);
             column_location
         };
         let block_header = self.get_block_header_by_location(&updated_column_location)?;
         // update indexes
-        self.block_primary_index.put(&block_header.hash, &updated_column_location)
-            .and(self.block_by_level_index.put(block_header.header.level(), &updated_column_location))
+        self.primary_index.put(&block_header.hash, &updated_column_location)
+            .and(self.by_level_index.put(block_header.header.level(), &updated_column_location))
+    }
+
+    pub fn assign_to_context(&mut self, block_hash: &BlockHash, context_hash: &ContextHash) -> Result<(), StorageError> {
+        match self.primary_index.get(block_hash)? {
+            Some(location) => self.by_context_hash_index.put(context_hash, &location),
+            None => Err(StorageError::MissingKey)
+        }
     }
 
     #[inline]
@@ -101,14 +112,14 @@ impl BlockStorage {
 impl BlockStorageReader for BlockStorage {
     #[inline]
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
-        self.block_primary_index.get(block_hash)?
+        self.primary_index.get(block_hash)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
     }
 
     #[inline]
     fn get_with_json_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        match self.block_primary_index.get(block_hash)? {
+        match self.primary_index.get(block_hash)? {
             Some(location) => self.get_block_json_data_by_location(&location)?
                 .map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data)))
                 .transpose(),
@@ -119,7 +130,7 @@ impl BlockStorageReader for BlockStorage {
     #[inline]
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
         self.get(block_hash)?
-            .map_or_else(|| Ok(Vec::new()), |block| self.block_by_level_index.get_blocks(block.header.level(), limit))?
+            .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks(block.header.level(), limit))?
             .iter()
             .filter_map(|location| self.get_block_json_data_by_location(&location)
                 .and_then(|json_data_opt| json_data_opt.map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data))).transpose()).transpose())
@@ -127,8 +138,15 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        self.by_context_hash_index.get(context_hash)?
+            .map(|location| self.get_block_header_by_location(&location))
+            .transpose()
+    }
+
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.block_primary_index.contains(block_hash)
+        self.primary_index.contains(block_hash)
     }
 }
 
@@ -238,6 +256,41 @@ impl KeyValueSchema for BlockByLevelIndex {
         "block_by_level_storage"
     }
 }
+
+
+/// Index block data as `level -> location`.
+#[derive(Clone)]
+pub struct BlockByContextHashIndex {
+    kv: Arc<BlockByContextHashIndexKV>,
+}
+
+pub type BlockByContextHashIndexKV = dyn KeyValueStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
+
+impl BlockByContextHashIndex {
+    fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
+        Self { kv }
+    }
+
+    fn put(&self, context_hash: &ContextHash, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
+        self.kv.put(context_hash, location)
+            .map_err(StorageError::from)
+    }
+
+    fn get(&self, context_hash: &ContextHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
+        self.kv.get(context_hash).map_err(StorageError::from)
+    }
+}
+
+impl KeyValueSchema for BlockByContextHashIndex {
+    type Key = ContextHash;
+    type Value = BlockStorageColumnsLocation;
+
+    #[inline]
+    fn name() -> &'static str {
+        "block_by_context_hash_storage"
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

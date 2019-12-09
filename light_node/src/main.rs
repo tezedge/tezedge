@@ -245,6 +245,7 @@ fn main() {
     let schemas = vec![
         block_storage::BlockPrimaryIndex::descriptor(),
         block_storage::BlockByLevelIndex::descriptor(),
+        block_storage::BlockByContextHashIndex::descriptor(),
         BlockMetaStorage::descriptor(),
         OperationsStorage::descriptor(),
         OperationsMetaStorage::descriptor(),
