@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 dns-lookup = "1.0.1"
 failure = "0.1"
-futures-preview = "0.3.0-alpha.19"
+futures = "0.3"
 getset = "0.0.9"
 hex = "0.4"
 itertools = "0.8.0"
@@ -21,9 +21,7 @@ rocksdb = "0.13"
 slog = "2.5"
 serde = "1.0.102"
 serde_json = "1.0"
-tokio = "0.2.0-alpha.6"
-tokio-io = "0.2.0-alpha.6"
-tokio-timer = "0.2.0-alpha.6"
+tokio = { version = "0.2", features = ["time"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }

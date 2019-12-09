@@ -80,7 +80,7 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
 }
 
 fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, persistent_storage: PersistentStorage, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
-    let tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+    let mut tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
 
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
@@ -90,7 +90,7 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         &actor_system,
         network_channel.clone(),
         shell_channel.clone(),
-        tokio_runtime.executor(),
+        tokio_runtime.handle().clone(),
         &env.p2p.bootstrap_lookup_addresses,
         &env.p2p.initial_peers,
         env.p2p.peer_threshold,
@@ -111,7 +111,7 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime, &persistent_storage, &init_info)
+    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime.handle(), &persistent_storage, &init_info)
         .expect("Failed to create RPC server");
     if env.record {
         info!(log, "Running in record mode");
@@ -122,30 +122,25 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         use std::thread;
         use std::time::Duration;
 
-        use futures::future;
-        use futures::stream::StreamExt;
-        use tokio::net::signal;
+        use tokio::signal;
 
-        let ctrl_c = signal::ctrl_c().unwrap();
-        let prog = ctrl_c.take(1).for_each(|_| {
-            info!(log, "ctrl-c received!");
+        signal::ctrl_c().await.expect("Failed to listen for ctrl-c event");
+        info!(log, "ctrl-c received!");
 
-            protocol_runner_run.store(false, Ordering::Release);
+        // disable protocol runner auto-restarting feature
+        protocol_runner_run.store(false, Ordering::Release);
 
-            info!(log, "Sending shutdown notification to actors");
-            shell_channel.tell(
-                Publish {
-                    msg: ShuttingDown.into(),
-                    topic: ShellChannelTopic::ShellCommands.into(),
-                }, None
-            );
+        info!(log, "Sending shutdown notification to actors");
+        shell_channel.tell(
+            Publish {
+                msg: ShuttingDown.into(),
+                topic: ShellChannelTopic::ShellCommands.into(),
+            }, None,
+        );
 
-            // give actors some time to shut down
-            thread::sleep(Duration::from_secs(1));
-            // resolve future
-            future::ready(())
-        });
-        prog.await;
+        // give actors some time to shut down
+        thread::sleep(Duration::from_secs(1));
+
         info!(log, "Shutting down actor runtime");
         let _ = actor_system.shutdown().await;
     });

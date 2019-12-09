@@ -9,9 +9,9 @@ build = "build.rs"
 chrono = { version = "0.4.9", features = ["serde"] }
 getset = "0.0.9"
 failure = "0.1"
-futures-preview = "0.3.0-alpha.19"
+futures = "0.3"
 hex = "0.4"
-hyper = "0.13.0-alpha.4"
+hyper = { git = "https://github.com/hyperium/hyper.git" }
 lazy_static = "1.4"
 path-tree = "0.1.9"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
@@ -20,7 +20,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 slog = { version = "2.5", features = ["nested-values"] }
 slog_derive = "0.1.1"
-tokio = "0.2.0-alpha.6"
+tokio = "0.2"
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }

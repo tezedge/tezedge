@@ -8,9 +8,9 @@ use bytes::Buf;
 use bytes::IntoBuf;
 use failure::{Error, Fail};
 use slog::{FnValue, Logger, o, trace};
+use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
-use tokio_io::split::{ReadHalf, WriteHalf};
 
 use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
