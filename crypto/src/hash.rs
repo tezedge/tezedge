@@ -11,6 +11,10 @@ mod prefix_bytes {
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
     pub const PROTOCOL_HASH: [u8; 2] = [2, 170];
     pub const PUBLIC_KEY_HASH: [u8; 2] = [153, 103];
+    pub const CONTRACT_KT1_HASH: [u8; 3] = [2, 90, 121];
+    pub const CONTRACT_TZ1_HASH: [u8; 3] = [6, 161, 159];
+    pub const CONTRACT_TZ2_HASH: [u8; 3] = [6, 161, 161];
+    pub const CONTRACT_TZ3_HASH: [u8; 3] = [6, 161, 164];
 }
 
 pub type Hash = Vec<u8>;
@@ -20,16 +24,31 @@ pub type OperationHash = Hash;
 pub type OperationListListHash = Hash;
 pub type ContextHash = Hash;
 pub type ProtocolHash = Hash;
+pub type ContractHash = Hash;
 
 #[derive(Debug, Copy, Clone)]
 pub enum HashType {
     ChainId,
+    // "\087\082\000" (* Net(15) *)
     BlockHash,
+    // "\001\052" (* B(51) *)
     ProtocolHash,
+    // "\002\170" (* P(51) *)
     ContextHash,
+    // "\079\199" (* Co(52) *)
     OperationHash,
+    // "\005\116" (* o(51) *)
     OperationListListHash,
+    // "\029\159\109" (* LLo(53) *)
     PublicKeyHash,
+    // "\153\103" (* id(30) *)
+    ContractKt1Hash,
+    // "\002\090\121" (* KT1(36) *)
+    ContractTz1Hash,
+    // "\006\161\159" (* tz1(36) *)
+    ContractTz2Hash,
+    // "\006\161\161" (* tz2(36) *)
+    ContractTz3Hash,        // "\006\161\164" (* tz3(36) *)
 }
 
 impl HashType {
@@ -45,6 +64,10 @@ impl HashType {
             HashType::OperationHash => &OPERATION_HASH,
             HashType::OperationListListHash => &OPERATION_LIST_LIST_HASH,
             HashType::PublicKeyHash => &PUBLIC_KEY_HASH,
+            HashType::ContractKt1Hash => &CONTRACT_KT1_HASH,
+            HashType::ContractTz1Hash => &CONTRACT_TZ1_HASH,
+            HashType::ContractTz2Hash => &CONTRACT_TZ2_HASH,
+            HashType::ContractTz3Hash => &CONTRACT_TZ3_HASH,
         }
     }
 
@@ -58,6 +81,10 @@ impl HashType {
             | HashType::OperationHash
             | HashType::OperationListListHash => 32,
             HashType::PublicKeyHash => 16,
+            HashType::ContractKt1Hash
+            | HashType::ContractTz1Hash
+            | HashType::ContractTz2Hash
+            | HashType::ContractTz3Hash => 20,
         }
     }
 
@@ -68,7 +95,11 @@ impl HashType {
             | HashType::ContextHash
             | HashType::ProtocolHash
             | HashType::OperationHash
-            | HashType::OperationListListHash => &copy_bytes,
+            | HashType::OperationListListHash
+            | HashType::ContractKt1Hash
+            | HashType::ContractTz1Hash
+            | HashType::ContractTz2Hash
+            | HashType::ContractTz3Hash => &copy_bytes,
             HashType::PublicKeyHash => &crate::blake2b::digest_128
         }
     }
@@ -145,6 +176,42 @@ mod tests {
     fn test_encode_public_key_hash() -> Result<(), failure::Error> {
         let decoded = HashType::PublicKeyHash.bytes_to_string(&hex::decode("2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a")?);
         let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_contract_tz1() -> Result<(), failure::Error> {
+        let decoded = HashType::ContractTz1Hash.bytes_to_string(&hex::decode("83846eddd5d3c5ed96e962506253958649c84a74")?);
+        let expected = "tz1XdRrrqrMfsFKA8iuw53xHzug9ipr6MuHq";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_contract_tz2() -> Result<(), failure::Error> {
+        let decoded = HashType::ContractTz2Hash.bytes_to_string(&hex::decode("2fcb1d9307f0b1f94c048ff586c09f46614c7e90")?);
+        let expected = "tz2Cfwk4ortcaqAGcVJKSxLiAdcFxXBLBoyY";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_contract_tz3() -> Result<(), failure::Error> {
+        let decoded = HashType::ContractTz3Hash.bytes_to_string(&hex::decode("193b2b3f6b8f8e1e6b39b4d442fc2b432f6427a8")?);
+        let expected = "tz3NdTPb3Ax2rVW2Kq9QEdzfYFkRwhrQRPhX";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_contract_kt1() -> Result<(), failure::Error> {
+        let decoded = HashType::ContractKt1Hash.bytes_to_string(&hex::decode("42b419240509ddacd12839700b7f720b4aa55e4e")?);
+        let expected = "KT1EfTusMLoeCAAGd9MZJn5yKzFr6kJU5U91";
         assert_eq!(expected, decoded);
 
         Ok(())
