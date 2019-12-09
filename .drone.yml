@@ -1,0 +1,54 @@
+kind: pipeline
+name: default
+
+steps:
+- name: build-tezedge
+  image: adonagy/tezedge-ci-builder:latest
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands:
+    - cargo clean && cargo build --release
+
+- name: tezedge-node-run
+  image: adonagy/tezedge-ci-builder:latest
+  user: root
+  detach: true
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands: 
+    - mkdir /tmp/tezedge
+    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner "./target/release/protocol-runner" --p2p-port 19733 --identity-file /drone/src/docker/identities/identity_tezedge.json --ffi-calls-gc-treshold=2000 --peers 176.191.110.22:9732,23.96.48.25:19732,164.68.124.104:19732
+
+- name: ocaml-node-run
+  image: tezos/tezos:babylonnet
+  detach: true
+  commands:
+    - mkdir /home/tezos/data
+    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
+    - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive 
+
+- name: bootstrapping
+  image: adonagy/tezos-node-bootstrap:latest
+
+- name: test
+  image: adonagy/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands:
+    - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
+
+trigger:
+  branch:
+    - master
