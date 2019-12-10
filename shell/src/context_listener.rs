@@ -121,7 +121,11 @@ fn listen_protocol_events(
                     ContextAction::Set { block_hash: Some(block_hash), .. }
                     | ContextAction::Copy { block_hash: Some(block_hash), .. }
                     | ContextAction::Delete { block_hash: Some(block_hash), .. }
-                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), .. } => {
+                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), .. }
+                    | ContextAction::Mem { block_hash: Some(block_hash), .. }
+                    | ContextAction::DirMem { block_hash: Some(block_hash), .. }
+                    | ContextAction::Get { block_hash: Some(block_hash), .. }
+                    | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
                         let key = block_hash.clone();
                         let value = ContextRecordValue::new(msg);
                         context_storage.put(&key, &value)?;

@@ -114,7 +114,11 @@ fn extract_contract_addresses(value: &ContextRecordValue) -> Vec<ContractAddress
     let contract_addresses = match &value.action {
         ContextAction::Set { key, .. }
         | ContextAction::Delete { key, .. }
-        | ContextAction::RemoveRecord { key, .. } => {
+        | ContextAction::RemoveRecord { key, .. }
+        | ContextAction::Mem { key, .. }
+        | ContextAction::DirMem { key, .. }
+        | ContextAction::Get { key, .. }
+        | ContextAction::Fold { key, .. } => {
             vec![action_key_to_contract_address(key)]
         }
         ContextAction::Copy { from_key, to_key, .. } => {
