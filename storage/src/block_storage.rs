@@ -42,6 +42,8 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
+    fn get_every_nth_with_json_data(&self, every_nth: BlockLevel, from_block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
     fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
@@ -107,6 +109,18 @@ impl BlockStorage {
             None => Ok(None)
         }
     }
+
+    #[inline]
+    fn get_blocks_with_json_data_by_location<I>(&self, locations: I) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>
+        where
+            I: IntoIterator<Item=BlockStorageColumnsLocation>
+    {
+        locations
+            .into_iter()
+            .filter_map(|location| self.get_block_json_data_by_location(&location)
+                .and_then(|json_data_opt| json_data_opt.map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data))).transpose()).transpose())
+            .collect()
+    }
 }
 
 impl BlockStorageReader for BlockStorage {
@@ -128,13 +142,17 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_every_nth_with_json_data(&self, every_nth: BlockLevel, from_block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
+        let locations = self.get(from_block_hash)?
+            .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks_by_nth_level(every_nth, block.header.level(), limit))?;
+        self.get_blocks_with_json_data_by_location(locations)
+    }
+
+    #[inline]
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        self.get(block_hash)?
-            .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks(block.header.level(), limit))?
-            .iter()
-            .filter_map(|location| self.get_block_json_data_by_location(&location)
-                .and_then(|json_data_opt| json_data_opt.map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data))).transpose()).transpose())
-            .collect()
+        let locations = self.get(block_hash)?
+            .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks(block.header.level(), limit))?;
+        self.get_blocks_with_json_data_by_location(locations)
     }
 
     #[inline]
@@ -241,6 +259,14 @@ impl BlockByLevelIndex {
 
     fn get_blocks(&self, from_level: BlockLevel, limit: usize) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
         self.kv.iterator(IteratorMode::From(&from_level, Direction::Reverse))?
+            .take(limit)
+            .map(|(_, location)| location.map_err(StorageError::from))
+            .collect()
+    }
+
+    fn get_blocks_by_nth_level(&self, every_nth: BlockLevel, from_level: BlockLevel, limit: usize) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
+        self.kv.iterator(IteratorMode::From(&from_level, Direction::Reverse))?
+            .filter(|(level, _)| *level.as_ref().unwrap() % every_nth == 0)
             .take(limit)
             .map(|(_, location)| location.map_err(StorageError::from))
             .collect()
