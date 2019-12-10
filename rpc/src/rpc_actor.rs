@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 use getset::Getters;
 use riker::actors::*;
 use slog::warn;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -46,7 +46,7 @@ impl RpcServer {
         Self { shell_channel, state }
     }
 
-    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, runtime: &Runtime, persistent_storage: &PersistentStorage, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, tokio_executor: &Handle, persistent_storage: &PersistentStorage, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(persistent_storage),
             chain_id: tezos_info.chain_id.clone(),
@@ -58,10 +58,11 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let server = spawn_server(&rpc_listen_address, RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &tezos_info.genesis_block_header_hash, shared_state, sys.log()));
+            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &tezos_info.genesis_block_header_hash, shared_state, sys.log());
             let inner_log = sys.log();
-            runtime.spawn(async move {
-                if let Err(e) = server.await {
+
+            tokio_executor.spawn(async move {
+                if let Err(e) = spawn_server(&rpc_listen_address, env).await {
                     warn!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
                 }
             });

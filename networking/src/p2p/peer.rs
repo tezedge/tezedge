@@ -11,9 +11,9 @@ use failure::{Error, Fail};
 use futures::lock::Mutex;
 use riker::actors::*;
 use slog::{debug, info, Logger, trace, warn};
-use tokio::future::FutureExt;
 use tokio::net::TcpStream;
-use tokio::runtime::TaskExecutor;
+use tokio::runtime::Handle;
+use tokio::time::timeout;
 
 use crypto::crypto_box::precompute;
 use crypto::hash::HashType;
@@ -90,11 +90,11 @@ impl slog::Value for PeerError {
     }
 }
 
-impl From<tokio::timer::timeout::Elapsed> for PeerError {
-    fn from(timeout: tokio::timer::timeout::Elapsed) -> Self {
+impl From<tokio::time::Elapsed> for PeerError {
+    fn from(timeout: tokio::time::Elapsed) -> Self {
         PeerError::NetworkError {
             message: "Connection timeout",
-            error: timeout.into()
+            error: timeout.into(),
         }
     }
 }
@@ -166,19 +166,19 @@ pub struct Peer {
     /// Network IO
     net: Network,
     /// Tokio task executor
-    tokio_executor: TaskExecutor,
+    tokio_executor: Handle,
 }
 
 impl Peer {
     pub fn actor(sys: &impl ActorRefFactory,
-               network_channel: NetworkChannelRef,
-               listener_port: u16,
-               public_key: &str,
-               secret_key: &str,
-               proof_of_work_stamp: &str,
-               version: &str,
-               tokio_executor: TaskExecutor,
-               socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
+                 network_channel: NetworkChannelRef,
+                 listener_port: u16,
+                 public_key: &str,
+                 secret_key: &str,
+                 proof_of_work_stamp: &str,
+                 version: &str,
+                 tokio_executor: Handle,
+                 socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port,
@@ -192,14 +192,14 @@ impl Peer {
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }
 
-    fn new((event_channel, info, tokio_executor, socket_address): (NetworkChannelRef, Arc<Local>, TaskExecutor, SocketAddr)) -> Self {
+    fn new((event_channel, info, tokio_executor, socket_address): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr)) -> Self {
         Peer {
             network_channel: event_channel,
             local: info,
             net: Network {
                 rx_run: Arc::new(AtomicBool::new(false)),
                 tx: Arc::new(Mutex::new(None)),
-                socket_address
+                socket_address,
             },
             tokio_executor,
         }
@@ -286,7 +286,7 @@ impl Receive<SendMessage> for Peer {
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
-                match tx.write_message(&*msg.message).timeout(IO_TIMEOUT).await {
+                match timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await {
                     Ok(write_result) => {
                         if let Err(e) = write_result {
                             warn!(system.log(), "Failed to send message"; "reason" => e);
@@ -322,14 +322,14 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
         vec![Version::new(info.version.clone(), 0, 0)]);
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
-        match msg_tx.write_message(&connection_message_bytes).timeout(IO_TIMEOUT).await? {
+        match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
             Ok(_) => connection_message_bytes,
             Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "Failed to transfer connection message" })
         }
     };
 
     // receive connection message
-    let received_connection_msg = match msg_rx.read_message().timeout(IO_TIMEOUT).await? {
+    let received_connection_msg = match timeout(IO_TIMEOUT, msg_rx.read_message()).await? {
         Ok(msg) => msg,
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
@@ -354,17 +354,17 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
-    msg_tx.write_message(&metadata).timeout(IO_TIMEOUT).await??;
+    timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
-    let metadata_received = msg_rx.read_message::<MetadataMessage>().timeout(IO_TIMEOUT).await??;
+    let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
-    msg_tx.write_message(&AckMessage::Ack).timeout(IO_TIMEOUT).await??;
+    timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::Ack)).await??;
 
     // receive ack
-    let ack_received = msg_rx.read_message().timeout(IO_TIMEOUT).await??;
+    let ack_received = timeout(IO_TIMEOUT, msg_rx.read_message()).await??;
 
     match ack_received {
         AckMessage::Ack => {
@@ -392,7 +392,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
     info!(log, "Starting to accept messages");
 
     while rx_run.load(Ordering::Acquire) {
-        match rx.read_message::<PeerMessageResponse>().timeout(READ_TIMEOUT_LONG).await {
+        match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
                 Ok(msg) => {
                     let should_broadcast_message = rx_run.load(Ordering::Acquire);

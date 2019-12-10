@@ -14,17 +14,17 @@ use futures::lock::Mutex;
 use rand::seq::SliceRandom;
 use riker::actors::*;
 use slog::{debug, info, Logger, warn};
-use tokio::future::FutureExt;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::runtime::TaskExecutor;
+use tokio::runtime::Handle;
+use tokio::time::timeout;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use tezos_api::identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::subscription::*;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use crate::subscription::*;
 
 /// Timeout for outgoing connections
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -96,7 +96,7 @@ pub struct PeerManager {
     /// List of potential peers to connect to
     potential_peers: HashSet<SocketAddr>,
     /// Tokio runtime
-    tokio_executor: TaskExecutor,
+    tokio_executor: Handle,
     /// We will listen for incoming connection at this port
     listener_port: u16,
     /// Tezos identity
@@ -122,7 +122,7 @@ impl PeerManager {
     pub fn actor(sys: &impl ActorRefFactory,
                  network_channel: NetworkChannelRef,
                  shell_channel: ShellChannelRef,
-                 tokio_executor: TaskExecutor,
+                 tokio_executor: Handle,
                  bootstrap_addresses: &[String],
                  initial_peers: &[SocketAddr],
                  threshold: Threshold,
@@ -151,7 +151,7 @@ impl PeerManager {
     }
 
     fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
-           (NetworkChannelRef, ShellChannelRef, TaskExecutor, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self {
+           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self {
         PeerManager {
             network_channel,
             shell_channel,
@@ -418,7 +418,7 @@ impl Receive<ConnectToPeer> for PeerManager {
 
             self.tokio_executor.spawn(async move {
                 info!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name());
-                match TcpStream::connect(&msg.address).timeout(CONNECT_TIMEOUT).await {
+                match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                     Ok(Ok(stream)) => {
                         info!(system.log(), "Connection successful"; "ip" => msg.address);
                         peer.tell(Bootstrap::outgoing(stream, msg.address), None);

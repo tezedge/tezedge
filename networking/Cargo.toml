@@ -8,14 +8,12 @@ edition = "2018"
 bytes = "0.4.12"
 dns-lookup = "1.0.1"
 failure = "0.1"
-futures-preview = "0.3.0-alpha.19"
+futures = "0.3"
 hex = "0.4"
-hyper = "0.13.0-alpha.4"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 riker-patterns = "0.3.2"
 slog = "2.5"
-tokio = "0.2.0-alpha.6"
-tokio-io = "0.2.0-alpha.6"
+tokio = { version = "0.2", features = ["io-util", "time"] }
 # local dependencies
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
