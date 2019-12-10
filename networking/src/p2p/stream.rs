@@ -5,7 +5,6 @@ use std::convert::TryInto;
 use std::io;
 
 use bytes::Buf;
-use bytes::IntoBuf;
 use failure::{Error, Fail};
 use slog::{FnValue, Logger, o, trace};
 use tokio::io::{ReadHalf, WriteHalf};
@@ -123,7 +122,7 @@ impl MessageReader {
         all_recv_bytes.extend(&msg_len_bytes);
 
         // read the message contents
-        let msg_len = msg_len_bytes.into_buf().get_u16_be() as usize;
+        let msg_len = (&msg_len_bytes[..]).get_u16() as usize;
         let mut msg_content_bytes = vec![0u8; msg_len];
         self.stream.read_exact(&mut msg_content_bytes).await?;
         all_recv_bytes.extend(&msg_content_bytes);

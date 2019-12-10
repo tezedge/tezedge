@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use bytes::{Buf, BufMut, IntoBuf};
+use bytes::{Buf, BufMut};
 use failure::_core::convert::TryFrom;
 use failure::Fail;
 use serde::de::DeserializeOwned;
@@ -172,7 +172,7 @@ impl BinaryChunk {
             // add length
             let mut bytes = vec![];
             // adds MESSAGE_LENGTH_FIELD_SIZE -- 2 bytes with length of the content
-            bytes.put_u16_be(content.len() as u16);
+            bytes.put_u16(content.len() as u16);
             // append data
             bytes.extend(content);
 
@@ -218,7 +218,7 @@ impl TryFrom<Vec<u8>> for BinaryChunk {
         if value.len() < CONTENT_LENGTH_FIELD_BYTES {
             Err(BinaryChunkError::MissingSizeInformation)
         } else if value.len() <= (CONTENT_LENGTH_MAX + CONTENT_LENGTH_FIELD_BYTES) {
-            let expected_content_length = value[0..CONTENT_LENGTH_FIELD_BYTES].to_vec().into_buf().get_u16_be() as usize;
+            let expected_content_length = (&value[0..CONTENT_LENGTH_FIELD_BYTES]).get_u16() as usize;
             if (expected_content_length + CONTENT_LENGTH_FIELD_BYTES) == value.len() {
                 Ok(BinaryChunk(value))
             } else {

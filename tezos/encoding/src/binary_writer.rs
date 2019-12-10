@@ -83,7 +83,7 @@ impl BinaryWriter {
             Encoding::Int16 => {
                 match value {
                     Value::Int16(v) => {
-                        self.data.put_i16_be(*v);
+                        self.data.put_i16(*v);
                         Ok(size_of::<i16>())
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value))
@@ -92,7 +92,7 @@ impl BinaryWriter {
             Encoding::Uint16 => {
                 match value {
                     Value::Uint16(v) => {
-                        self.data.put_u16_be(*v);
+                        self.data.put_u16(*v);
                         Ok(size_of::<u16>())
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value))
@@ -101,7 +101,7 @@ impl BinaryWriter {
             Encoding::Int32 => {
                 match value {
                     Value::Int32(v) => {
-                        self.data.put_i32_be(*v);
+                        self.data.put_i32(*v);
                         Ok(size_of::<i32>())
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value))
@@ -111,7 +111,7 @@ impl BinaryWriter {
                 match value {
                     Value::Int32(v) => {
                         if (*v & 0x7FFF_FFFF) == *v {
-                            self.data.put_i32_be(*v);
+                            self.data.put_i32(*v);
                             Ok(size_of::<i32>())
                         } else {
                             Err(Error::custom("Value is outside of Int31 range"))
@@ -124,7 +124,7 @@ impl BinaryWriter {
                 match value {
                     Value::Int32(v) => {
                         if *v >= 0 {
-                            self.data.put_i32_be(*v);
+                            self.data.put_i32(*v);
                             Ok(size_of::<i32>())
                         } else {
                             Err(Error::custom("Value is outside of Uint32 range"))
@@ -143,7 +143,7 @@ impl BinaryWriter {
             Encoding::Timestamp => {
                 match value {
                     Value::Int64(v) => {
-                        self.data.put_i64_be(*v);
+                        self.data.put_i64(*v);
                         Ok(size_of::<i64>())
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value))
@@ -152,7 +152,7 @@ impl BinaryWriter {
             Encoding::Float => {
                 match value {
                     Value::Float(v) => {
-                        self.data.put_f64_be(*v);
+                        self.data.put_f64(*v);
                         Ok(size_of::<f64>())
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value))
@@ -176,7 +176,7 @@ impl BinaryWriter {
             Encoding::String => {
                 match value {
                     Value::String(v) => {
-                        self.data.put_u32_be(v.len() as u32);
+                        self.data.put_u32(v.len() as u32);
                         self.data.put_slice(v.as_bytes());
                         Ok(size_of::<u32>() + v.len())
                     }
@@ -266,7 +266,7 @@ impl BinaryWriter {
             Encoding::Dynamic(dynamic_encoding) => {
                 let data_len_before_write = self.data.len();
                 // put 0 as a placeholder
-                self.data.put_u32_be(0);
+                self.data.put_u32(0);
                 // we will use this info to create slice of buffer where inner record size will be stored
                 let data_len_after_size_placeholder = self.data.len();
 
@@ -342,7 +342,7 @@ impl BinaryWriter {
     fn write_tag_id(&mut self, tag_sz: usize, tag_id: u16) -> Result<(), Error> {
         match tag_sz {
             1 => Ok(self.data.put_u8(tag_id as u8)),
-            2 => Ok(self.data.put_u16_be(tag_id)),
+            2 => Ok(self.data.put_u16(tag_id)),
             _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
         }
     }
