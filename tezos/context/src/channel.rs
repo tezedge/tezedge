@@ -83,6 +83,38 @@ pub enum ContextAction {
         start_time: f64,
         end_time: f64,
     },
+    Mem {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
+    },
+    DirMem {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
+    },
+    Get {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
+    },
+    Fold {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
+    },
     /// This is a control event used to shutdown IPC channel
     Shutdown,
 }

@@ -469,7 +469,7 @@ impl Environment {
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
             no_of_ffi_calls_treshold_for_gc: args.value_of("ffi-calls-gc-treshold")
-                .unwrap_or("")
+                .unwrap_or("2000")
                 .parse::<i32>()
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
