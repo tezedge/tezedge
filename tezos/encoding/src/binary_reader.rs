@@ -1,5 +1,6 @@
 use bitvec::{Bits, BitVec};
-use bytes::{Buf, IntoBuf};
+use bytes::Buf;
+use bytes::buf::ext::BufExt;
 use failure::Fail;
 use serde::de::Error as SerdeError;
 
@@ -68,7 +69,7 @@ impl BinaryReader {
     }
 
     pub fn read(&self, buf: Vec<u8>, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
-        let mut buf = buf.into_buf();
+        let mut buf = &buf[..];
 
         let result = match encoding {
             Encoding::Obj(schema) => self.decode_record(&mut buf, schema),
@@ -97,13 +98,13 @@ impl BinaryReader {
             Encoding::Unit => Ok(Value::Unit),
             Encoding::Int8 => Ok(Value::Int8(safe!(buf, get_i8, i8))),
             Encoding::Uint8 => Ok(Value::Uint8(safe!(buf, get_u8, u8))),
-            Encoding::Int16 => Ok(Value::Int16(safe!(buf, get_i16_be, i16))),
-            Encoding::Uint16 => Ok(Value::Uint16(safe!(buf, get_u16_be, u16))),
-            Encoding::Int31 => Ok(Value::Int31(safe!(buf, get_i32_be, i32))),
-            Encoding::Int32 => Ok(Value::Int32(safe!(buf, get_i32_be, i32))),
+            Encoding::Int16 => Ok(Value::Int16(safe!(buf, get_i16, i16))),
+            Encoding::Uint16 => Ok(Value::Uint16(safe!(buf, get_u16, u16))),
+            Encoding::Int31 => Ok(Value::Int31(safe!(buf, get_i32, i32))),
+            Encoding::Int32 => Ok(Value::Int32(safe!(buf, get_i32, i32))),
             Encoding::Int64 |
-            Encoding::Timestamp => Ok(Value::Int64(safe!(buf, get_i64_be, i64))),
-            Encoding::Float => Ok(Value::Float(safe!(buf, get_f64_be, f64))),
+            Encoding::Timestamp => Ok(Value::Int64(safe!(buf, get_i64, i64))),
+            Encoding::Float => Ok(Value::Float(safe!(buf, get_f64, f64))),
             Encoding::Bool => {
                 let b = safe!(buf, get_u8, u8);
                 match b {
@@ -113,7 +114,7 @@ impl BinaryReader {
                 }
             }
             Encoding::String => {
-                let bytes_sz = safe!(buf, get_u32_be, u32) as usize;
+                let bytes_sz = safe!(buf, get_u32, u32) as usize;
                 let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
                 safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
                 let str_buf = str_buf.into_vec();
@@ -121,7 +122,7 @@ impl BinaryReader {
             }
             Encoding::Enum => Ok(Value::Enum(None, Some(u32::from(safe!(buf, get_u8, u8))))),
             Encoding::Dynamic(dynamic_encoding) => {
-                let bytes_sz = safe!(buf, get_u32_be, u32) as usize;
+                let bytes_sz = safe!(buf, get_u32, u32) as usize;
                 let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
                 self.decode_value(&mut buf_slice, dynamic_encoding)
             }
@@ -137,7 +138,7 @@ impl BinaryReader {
             Encoding::Tags(tag_sz, ref tag_map) => {
                 let tag_id = match tag_sz {
                     /*u8*/  1 => Ok(u16::from(safe!(buf, get_u8, u8))),
-                    /*u16*/ 2 => Ok(safe!(buf, get_u16_be, u16)),
+                    /*u16*/ 2 => Ok(safe!(buf, get_u16, u16)),
                     _ => Err(de::Error::custom(format!("Unsupported tag size {}", tag_sz)))
                 }?;
 

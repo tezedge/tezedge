@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 bincode = "1.2"
-bytes = "0.4"
+bytes = "0.5"
 commitlog = "0.1"
 derive_builder = "0.9"
 failure = "0.1"
