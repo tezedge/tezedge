@@ -277,7 +277,12 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
             let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state.clone(), genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
-            result_to_json_response(fns::get_blocks(&from_block_id, limit, &persistent_storage, state), &log)
+            let every_nth_level = match find_query_value_as_string(&query, "every_nth").as_ref().map(|x| x.as_str()) {
+                Some("cycle") => Some(4096),
+                Some("voting-period") => Some(4096 * 8),
+                _ => None
+            };
+            result_to_json_response(fns::get_blocks(every_nth_level, &from_block_id, limit, &persistent_storage, state), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -354,12 +359,13 @@ mod fns {
     use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
-    pub(crate) fn get_blocks(block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
+    pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id)?;
-        let blocks = block_storage.get_multiple_with_json_data(&block_hash, limit)?
-            .into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)).collect();
-
+        let blocks = match every_nth_level {
+            Some(every_nth_level) => block_storage.get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
+            None => block_storage.get_multiple_with_json_data(&block_hash, limit),
+        }?.into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)).collect();
         Ok(blocks)
     }
 
