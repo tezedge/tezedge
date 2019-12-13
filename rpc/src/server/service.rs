@@ -34,6 +34,7 @@ enum Route {
     HeadChain,
     ChainsBlockId,
     ContextConstants,
+    DevGetBlockEndorsingRights,
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
@@ -255,6 +256,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
     routes.insert("/dev/context/:id", Route::DevGetContext);
+    routes.insert("/dev/chains/main/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
     routes.insert("/stats/memory", Route::StatsMemory);
     routes
 }
@@ -314,6 +316,12 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             // TODO: Add parameter checks
             let context_level = find_param_value(&params, "id").unwrap();
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            let level = find_query_value_as_string(&query, "level");
+            //make_json_response(&format!("block {:?} level {:?}", block_id, level))
+            result_to_json_response(fns::get_block_endorsing_rights(block_id, level, &persistent_storage), &log)
         }
         _ => not_found()
     }
@@ -380,6 +388,7 @@ mod fns {
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
     use tezos_context::channel::ContextAction;
+    use crate::encoding::helpers::{EndorsingRight, EndorsingRights};
 
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
@@ -414,6 +423,11 @@ mod fns {
         let next_id = if context_records.len() > limit { context_records.last().map(|rec| rec.id()) } else { None };
         context_records.truncate(std::cmp::min(context_records.len(), limit));
         Ok(PagedResult::new(context_records, next_id, limit))
+    }
+
+    pub(crate) fn get_block_endorsing_rights(_block_id: &str, _level: Option<String>, _persistent_storage: &PersistentStorage) -> Result<Option<EndorsingRight>, failure::Error> {
+        let rights = Default::default();
+        Ok(Some(rights))
     }
 
     /// Get information about current head
