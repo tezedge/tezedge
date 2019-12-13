@@ -127,3 +127,22 @@ impl<C> PagedResult<C>
         PagedResult { data, next_id, limit }
     }
 }
+#[derive(Serialize, Debug, Clone)]
+/// Object containing information about the baking rights 
+pub struct BakingRights {
+    pub level: i32,
+    pub delegate: String,
+    pub priority: i32,
+    pub estimated_time: String,
+}
+
+impl BakingRights {
+    pub fn new(level: i32, delegate: String, priority: i32, estimated_time: String) -> Self{
+        Self {
+            level,
+            delegate: delegate.to_string(),
+            priority,
+            estimated_time: estimated_time.to_string(),
+        }
+    }
+}

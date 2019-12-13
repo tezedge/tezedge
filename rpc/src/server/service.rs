@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use chrono::prelude::*;
+use chrono::{DateTime, Utc, Duration};
+
 use futures::Future;
 use hyper::{Body, Error, Method, Request, Response, Server, StatusCode, Uri};
 use hyper::service::{make_service_fn, service_fn};
@@ -24,6 +26,8 @@ use crate::{
 };
 use crate::rpc_actor::RpcCollectedStateRef;
 
+use crate::helpers::BakingRights;
+
 #[derive(Debug)]
 enum Route {
     Bootstrapped,
@@ -34,6 +38,7 @@ enum Route {
     HeadChain,
     ChainsBlockId,
     ContextConstants,
+    ChainsBlockIdBakingRights,
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
@@ -237,6 +242,31 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
     }
 }
 
+/// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
+async fn baking_rights(delegate: Vec<String>, level: Vec<String>, cycle: Vec<String>, max_priority: Vec<String>, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+    let state_read = state.read().unwrap();
+    let timestamp;
+
+    let baking_rights_info = match state_read.current_head().as_ref() {
+        Some(current_head) => {
+            let current_head: BlockApplied = current_head.clone();
+            timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
+
+            let mut estimated_timestamp = DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(30)).unwrap();
+
+            let mut baking_rights = Vec::<BakingRights>::new();
+
+            for x in 0..max_priority[0].parse().unwrap() {
+                baking_rights.push(BakingRights::new(level[0].parse().unwrap(), "delegateX".to_string(), x, estimated_timestamp.to_rfc3339_opts(SecondsFormat::Secs, true)));
+                estimated_timestamp = estimated_timestamp.checked_add_signed(Duration::seconds(40)).unwrap();
+            }
+            baking_rights
+        }
+        None => vec![BakingRights::new(0, String::new().into(), 0, String::new().into())]
+    };
+    make_json_response(&baking_rights_info)
+}
+
 lazy_static! {
     static ref ROUTES: PathTree<Route> = create_routes();
 }
@@ -251,6 +281,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
+    routes.insert("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", Route::ChainsBlockIdBakingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
@@ -314,6 +345,17 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             // TODO: Add parameter checks
             let context_level = find_param_value(&params, "id").unwrap();
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
+            // TODO: Add parameter checks
+            let _block_id = find_param_value(&params, "block_id").unwrap();
+            let _max_priority = get_query_values_as_string(&query, "max_priority");
+            let _level = get_query_values_as_string(&query, "level");
+            let _delegate = get_query_values_as_string(&query, "delegate");
+            let _cycle = get_query_values_as_string(&query, "cycle");
+
+            //result_to_json_response(fns::get_baking_rights(block_id, &persistent_storage), &log)
+            baking_rights(vec!["tz1".to_string()], vec!["22".to_string()], vec!["0".to_string()], vec!["64".to_string()], &persistent_storage, state, &log).await
         }
         _ => not_found()
     }
@@ -415,6 +457,19 @@ mod fns {
         context_records.truncate(std::cmp::min(context_records.len(), limit));
         Ok(PagedResult::new(context_records, next_id, limit))
     }
+
+    // pub(crate) fn get_baking_rights(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<BakingRights>, failure::Error> {
+    //     let max_priority: i32 = 64;
+    //     let level: i32 = 1;
+    //     let delegate: String = "tz1abc".to_string();
+    //     let estimated_timestamp: String = "12.12.12Yesterday".to_string();
+    //     let mut baking_rights = Vec::<BakingRights>::new();
+
+    //     for x in 0..max_priority {
+    //         baking_rights.push(BakingRights::new(level, &delegate, x, &estimated_timestamp));
+    //     }
+    //     Ok(baking_rights)
+    // }
 
     /// Get information about current head
     pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
