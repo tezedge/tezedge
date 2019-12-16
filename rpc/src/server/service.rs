@@ -243,22 +243,46 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
-async fn baking_rights(delegate: Vec<String>, level: Vec<String>, cycle: Vec<String>, max_priority: Vec<String>, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+async fn baking_rights(delegate: Option<String>, level: Option<String>, cycle: Option<String>, max_priority: Option<String>, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
     let state_read = state.read().unwrap();
-    let timestamp;
 
     let baking_rights_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
             let current_head: BlockApplied = current_head.clone();
-            timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
-
-            let mut estimated_timestamp = DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(30)).unwrap();
-
+            let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
+            let head_level = current_head.header().header.level();
             let mut baking_rights = Vec::<BakingRights>::new();
 
-            for x in 0..max_priority[0].parse().unwrap() {
-                baking_rights.push(BakingRights::new(level[0].parse().unwrap(), "delegateX".to_string(), x, estimated_timestamp.to_rfc3339_opts(SecondsFormat::Secs, true)));
-                estimated_timestamp = estimated_timestamp.checked_add_signed(Duration::seconds(40)).unwrap();
+            // If no level is specified, we return the next block to be baked
+            let requested_level = match level {
+                Some(level) => level.parse().unwrap(),
+                None => head_level + 1,
+            };
+
+            // NOTE: not finished, will require an additional loop
+            let requested_cycle = match cycle {
+                Some(cycle) => cycle.parse().unwrap(),
+                None => -1,
+            };
+
+            // If no max_priority is specified set it to the default value: 64
+            let requested_max_priority = match max_priority {
+                Some(max_priority) => max_priority.parse().unwrap(),
+                None => 64,  // TODO: move to constant
+            };
+
+            let mut estimated_timestamp: Option<DateTime<_>>;
+            estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(30)).unwrap());
+            warn!(log, "Head level: {:?} -- Requested level: {:?}", head_level, requested_level);
+
+            for x in 0..requested_max_priority {
+                // we omit the estimated_time field if the block on the requested level is allready baked
+                if head_level <= requested_level {
+                    baking_rights.push(BakingRights::new(requested_level, "delegateX".to_string(), x, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
+                    estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(40)).unwrap());
+                } else {
+                    baking_rights.push(BakingRights::new(requested_level, "delegateX".to_string(), x, None))
+                }
             }
             baking_rights
         }
@@ -349,13 +373,13 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
             // TODO: Add parameter checks
             let _block_id = find_param_value(&params, "block_id").unwrap();
-            let _max_priority = get_query_values_as_string(&query, "max_priority");
-            let _level = get_query_values_as_string(&query, "level");
-            let _delegate = get_query_values_as_string(&query, "delegate");
-            let _cycle = get_query_values_as_string(&query, "cycle");
+            let max_priority = find_query_value_as_string(&query, "max_priority");
+            let level = find_query_value_as_string(&query, "level");
+            let _delegate = find_query_value_as_string(&query, "delegate");
+            let _cycle = find_query_value_as_string(&query, "cycle");
 
             //result_to_json_response(fns::get_baking_rights(block_id, &persistent_storage), &log)
-            baking_rights(vec!["tz1".to_string()], vec!["22".to_string()], vec!["0".to_string()], vec!["64".to_string()], &persistent_storage, state, &log).await
+            baking_rights(Some("tz1".to_string()), level, _cycle, max_priority, &persistent_storage, state, &log).await
         }
         _ => not_found()
     }
