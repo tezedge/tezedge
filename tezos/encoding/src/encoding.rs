@@ -84,21 +84,26 @@ impl TagMap {
 }
 
 pub enum SchemaType {
-    Json, Binary
+    Json,
+    Binary,
 }
 
-pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding + Send + Sync { }
-impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding + Send + Sync { }
-impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> + Send + Sync {
+pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding + Send + Sync {}
+
+impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding + Send + Sync {}
+
+impl fmt::Debug for dyn SplitEncodingFn<Output=Encoding> + Send + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn(SchemaType) -> Encoding")
     }
 }
 
 
-pub trait RecursiveEncodingFn: Fn() -> Encoding + Send + Sync { }
-impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding + Send + Sync { }
-impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync {
+pub trait RecursiveEncodingFn: Fn() -> Encoding + Send + Sync {}
+
+impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding + Send + Sync {}
+
+impl fmt::Debug for dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn() -> Encoding")
     }
@@ -137,6 +142,10 @@ pub enum Encoding {
     /// sign bits ignored, data is then the binary representation of the
     /// absolute value of the number in little-endian order.
     Z,
+    /// Big number
+    /// Almost identical to [Encoding::Z], but does not contain the sign bit in the second most
+    /// significant bit of the first byte
+    Mutez,
     /// Encoding of floating point number (encoded as a floating point number in JSON and a double in binary).
     Float,
     /// Float with bounds in a given range. Both bounds are inclusive.
@@ -188,11 +197,10 @@ pub enum Encoding {
     Timestamp,
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
-    Lazy(Arc<dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync>)
+    Lazy(Arc<dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync>),
 }
 
 impl Encoding {
-
     #[inline]
     pub fn try_unwrap_option_encoding(&self) -> &Encoding {
         match self {
@@ -257,16 +265,15 @@ mod tests {
 
         if let Encoding::Split(inner_encoding) = split_encoding {
             match inner_encoding(SchemaType::Json) {
-                Encoding::Uint16 => { }
+                Encoding::Uint16 => {}
                 _ => panic!("Was expecting Encoding::Uint16")
             }
             match inner_encoding(SchemaType::Binary) {
-                Encoding::Float => { }
+                Encoding::Float => {}
                 _ => panic!("Was expecting Encoding::Float")
             }
         } else {
             panic!("Was expecting Encoding::Split");
         }
     }
-
 }

@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -8,15 +9,14 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{debug, Logger, warn, crit};
+use slog::{crit, debug, Logger, warn};
 
-use storage::{ContextRecordValue, ContextStorage, BlockStorage};
-use storage::persistent::{PersistentStorage, ContextList, ContextMap};
+use crypto::hash::HashType;
+use storage::{BlockStorage, ContextRecordValue, ContextStorage};
+use storage::persistent::{ContextList, ContextMap, PersistentStorage};
+use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
-use std::collections::HashMap;
-use storage::skip_list::Bucket;
-use crypto::hash::HashType;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 

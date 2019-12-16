@@ -195,7 +195,7 @@ impl JsonWriter {
                 }
             }
             Encoding::String |
-            Encoding::Z => {
+            Encoding::Z | Encoding::Mutez => {
                 match value {
                     Value::String(v) => Ok(self.push_str(v)),
                     _ => Err(Error::encoding_mismatch(encoding, value))

@@ -1,5 +1,5 @@
-#[derive(PartialEq, Debug)]
-pub struct BigInt(num_bigint::BigInt);
+#[derive(PartialEq, Debug, Clone)]
+pub struct BigInt(pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for BigInt {
     fn from(from: num_bigint::BigInt) -> Self {
@@ -50,16 +50,6 @@ pub enum Value {
     Int64(i64),
     /// Integer with bounds in a given range. Both bounds are inclusive.
     RangedInt(i32),
-    ///  Big number
-    ///  In JSON, data is encoded as a decimal string.
-    ///  In binary, data is encoded as a variable length sequence of
-    ///  bytes, with a running unary size bit: the most significant bit of
-    ///  each byte tells is this is the last byte in the sequence (0) or if
-    /// there is more to read (1). The second most significant bit of the
-    /// first byte is reserved for the sign (positive if zero). Binary_size and
-    /// sign bits ignored, data is then the binary representation of the
-    /// absolute value of the number in little-endian order.
-    Z(BigInt),
     /// Encoding of floating point number (encoded as a floating point number in JSON and a double in binary).
     Float(f64),
     /// Float with bounds in a given range. Both bounds are inclusive.

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-mod types;
+pub mod types;
 mod bit_utils;
 
 pub mod encoding;
