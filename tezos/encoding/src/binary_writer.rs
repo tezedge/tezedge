@@ -167,7 +167,7 @@ impl BinaryWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
-            Encoding::Z => {
+            Encoding::Z | Encoding::Mutez => {
                 match value {
                     Value::String(v) => self.encode_z(v),
                     _ => Err(Error::encoding_mismatch(encoding, value))
@@ -431,6 +431,38 @@ mod tests {
         }
         let record_schema = vec![
             Field::new("a", Encoding::Z)
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        {
+            let mut writer = BinaryWriter::new();
+            let record = Record {
+                a: num_bigint::BigInt::from(165_316_510).into()
+            };
+            let writer_result = writer.write(&record, &record_encoding).unwrap();
+            let expected_writer_result = hex::decode("9e9ed49d01").unwrap();
+            assert_eq!(expected_writer_result, writer_result);
+        }
+
+        {
+            let mut writer = BinaryWriter::new();
+            let record = Record {
+                a: num_bigint::BigInt::from(3000).into()
+            };
+            let writer_result = writer.write(&record, &record_encoding).unwrap();
+            let expected_writer_result = hex::decode("b82e").unwrap();
+            assert_eq!(expected_writer_result, writer_result);
+        }
+    }
+
+    #[test]
+    fn can_serialize_mutez_to_binary() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            a: BigInt
+        }
+        let record_schema = vec![
+            Field::new("a", Encoding::Mutez)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 

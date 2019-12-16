@@ -12,6 +12,8 @@ getset = "0.0.9"
 hex = "0.4"
 lazy_static = "1.4"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
+

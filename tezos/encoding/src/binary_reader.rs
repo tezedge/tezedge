@@ -222,6 +222,35 @@ impl BinaryReader {
                     Ok(Value::String(str_num))
                 }
             }
+            Encoding::Mutez => {
+                let mut bits: BitVec<bitvec::BigEndian, u8> = BitVec::new();
+
+                let mut has_next_byte = true;
+                while has_next_byte {
+                    let byte = safe!(buf, get_u8, u8);
+                    for bit_idx in 0..7 {
+                        bits.push(byte.get(bit_idx))
+                    }
+
+                    has_next_byte = byte.get(7);
+                }
+
+                let bytes = bits.reverse().trim_left().to_byte_vec();
+
+                let str_num = bytes.iter().enumerate()
+                    .map(|(idx, b)| {
+                        match idx {
+                            0 => format!("{:x}", *b),
+                            _ => format!("{:02x}", *b)
+                        }
+                    })
+                    .fold(String::new(), |mut str_num, val| {
+                        str_num.push_str(&val);
+                        str_num
+                    });
+
+                Ok(Value::String(str_num))
+            }
             Encoding::Bytes => {
                 let bytes_sz = buf.remaining();
                 let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
@@ -262,6 +291,22 @@ mod tests {
     use crate::types::BigInt;
 
     use super::*;
+
+    #[test]
+    fn can_deserialize_mutez_from_binary() {
+        #[derive(Deserialize, Debug)]
+        struct Record {
+            a: BigInt
+        }
+        let record_schema = vec![
+            Field::new("a", Encoding::Mutez)
+        ];
+
+        let record_buf = hex::decode("9e9ed49d01").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
+        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("13b50f1e".to_string()))]), value)
+    }
 
     #[test]
     fn can_deserialize_z_from_binary() {

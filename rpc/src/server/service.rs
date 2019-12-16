@@ -33,6 +33,7 @@ enum Route {
     ValidBlocks,
     HeadChain,
     ChainsBlockId,
+    ContextConstants,
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
@@ -243,6 +244,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/valid_blocks", Route::ValidBlocks);
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
@@ -267,6 +269,11 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let next_protocol = get_query_values_as_string(&query, "next_protocol");
             let chain = get_query_values_as_unistring(&query, "chain");
             valid_blocks(sys, actor, protocol, next_protocol, chain).await
+        }
+        (&Method::GET, Some((Route::ContextConstants, params, _))) => {
+            let chain_id = find_param_value(&params, "chain_id").unwrap();
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_context_constants(chain_id, block_id, context_storage, &persistent_storage), &log)
         }
         (&Method::GET, Some((Route::HeadChain, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
@@ -352,22 +359,24 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 
 /// This submodule contains service functions implementation.
 mod fns {
+    use std::collections::HashMap;
+
     use failure::bail;
 
     use crypto::hash::{BlockHash, ChainId, HashType};
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-    use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextStorage};
+    use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextStorage};
     use storage::block_storage::BlockJsonData;
     use storage::context_storage::ContractAddress;
     use storage::persistent::PersistentStorage;
+    use storage::skip_list::Bucket;
     use tezos_context::channel::ContextAction;
 
+    use crate::ContextList;
+    use crate::encoding::context::ContextConstants;
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
-    use crate::ContextList;
-    use std::collections::HashMap;
-    use storage::skip_list::Bucket;
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -416,6 +425,40 @@ mod fns {
         let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
 
         Ok(block)
+    }
+
+    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
+        let level = if block_id == "head" {
+            let reader = list.read().expect("mutex poisoning");
+            reader.len() - 1
+        } else {
+            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                block_meta.level() as usize
+            } else {
+                return Ok(None);
+            }
+        };
+
+        let protocol_hash;
+        let constants;
+        {
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
+                protocol_hash = data;
+            } else {
+                panic!(format!("Protocol not found in block: {}", block_id))
+            }
+
+            if let Some(Bucket::Exists(data)) = reader.get_key(level, &"data/v1/constants".to_string())? {
+                constants = data;
+            } else {
+                constants = Default::default();
+            }
+        };
+
+        Ok(Some(ContextConstants::transpile_context_bytes(&constants, protocol_hash)?))
     }
 
     pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
