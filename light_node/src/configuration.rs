@@ -72,7 +72,8 @@ pub struct Environment {
     pub identity_json_file_path: PathBuf,
     pub tezos_network: TezosEnvironment,
     pub protocol_runner: PathBuf,
-    pub no_of_ffi_calls_treshold_for_gc: i32,
+    pub no_of_ffi_calls_threshold_for_gc: i32,
+    pub tokio_threads: usize
 }
 
 macro_rules! parse_validator_fn {
@@ -223,12 +224,18 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .value_name("PATH")
                 .help("Path to a tezos protocol runner executable")
                 .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-            .arg(Arg::with_name("ffi-calls-gc-treshold")
-                .long("ffi-calls-gc-treshold")
+            .arg(Arg::with_name("ffi-calls-gc-threshold")
+                .long("ffi-calls-gc-threshold")
                 .takes_value(true)
                 .value_name("NUM")
                 .help("Number of ffi calls, after which will be Ocaml garbage collector called")
                 .validator(parse_validator_fn!(i32, "Value must be a valid number")))
+            .arg(Arg::with_name("tokio-threads")
+                .long("tokio-threads")
+                .takes_value(true)
+                .value_name("NUM")
+                .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
+                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("record")
             .long("record")
             .takes_value(true)
@@ -255,7 +262,8 @@ pub fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "websocket-address");
     validate_required_arg(args, "peer-thresh-low");
     validate_required_arg(args, "peer-thresh-high");
-    validate_required_arg(args, "ffi-calls-gc-treshold");
+    validate_required_arg(args, "ffi-calls-gc-threshold");
+    validate_required_arg(args, "tokio-threads");
     validate_required_arg(args, "identity-file");
     validate_required_arg(args, "record");
 
@@ -468,9 +476,13 @@ impl Environment {
                 .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
-            no_of_ffi_calls_treshold_for_gc: args.value_of("ffi-calls-gc-treshold")
+            no_of_ffi_calls_threshold_for_gc: args.value_of("ffi-calls-gc-threshold")
                 .unwrap_or("2000")
                 .parse::<i32>()
+                .expect("Provided value cannot be converted to number"),
+            tokio_threads: args.value_of("tokio-threads")
+                .unwrap_or("0")
+                .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
         }

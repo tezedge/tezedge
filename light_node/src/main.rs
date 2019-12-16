@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use riker::actors::*;
 use slog::{crit, debug, Drain, error, info, Logger};
-use tokio::runtime::Runtime;
 
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
@@ -81,8 +80,20 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
     Logger::root(drain, slog::o!())
 }
 
+fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runtime::Runtime {
+    let mut builder = tokio::runtime::Builder::new();
+    // use threaded work staling scheduler
+    builder.threaded_scheduler().enable_all();
+    // set number of threads in a thread pool
+    if env.tokio_threads > 0 {
+        builder.num_threads(env.tokio_threads);
+    }
+    // build runtime
+    builder.build().expect("Failed to create tokio runtime")
+}
+
 fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, persistent_storage: PersistentStorage, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
-    let mut tokio_runtime = Runtime::new().expect("Failed to create tokio runtime");
+    let mut tokio_runtime = create_tokio_runtime(env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
@@ -188,7 +199,7 @@ fn main() {
     let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
         TezosRuntimeConfiguration {
             log_enabled: env.logging.ocaml_log_enabled,
-            no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_treshold_for_gc,
+            no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
         },
         env.tezos_network,
         &env.storage.tezos_data_dir,
