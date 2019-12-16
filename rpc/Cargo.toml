@@ -11,7 +11,7 @@ getset = "0.0.9"
 failure = "0.1"
 futures = "0.3"
 hex = "0.4"
-hyper = { git = "https://github.com/hyperium/hyper.git" }
+hyper = "0.13"
 lazy_static = "1.4"
 path-tree = "0.1.9"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
