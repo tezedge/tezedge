@@ -259,7 +259,7 @@ pub struct ProtocolController<'a> {
 
 impl<'a> ProtocolController<'a> {
     const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
-    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(8);
+    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
     pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();

@@ -25,7 +25,7 @@ impl TmpDb {
         let proc = Command::new("mktemp").args(&["-d"]).output();
         let dir = String::from_utf8(proc.unwrap().stdout)
             .expect("failed to create testing database").trim().to_string();
-        let db = open_kv(&dir, vec![Lane::<Value>::descriptor(), SkipList::<Value>::descriptor()]).unwrap();
+        let db = open_kv(&dir, vec![Lane::<u64, u64, Value>::descriptor(), SkipList::<u64, u64, Value>::descriptor()]).unwrap();
         Self {
             db: Arc::new(db),
             tmp_dir: dir,
@@ -45,21 +45,19 @@ impl Drop for TmpDb {
 }
 
 #[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct Value(HashSet<usize>);
+pub struct Value(HashSet<u64>);
 
 impl Value {
-    pub fn new(value: Vec<usize>) -> Self {
+    pub fn new(value: Vec<u64>) -> Self {
         Self(HashSet::from_iter(value))
     }
 }
 
-impl ListValue for Value {
-    /// Merge two sets
+impl ListValue<u64, u64> for Value {
     fn merge(&mut self, other: &Self) {
         self.0.extend(&other.0)
     }
 
-    /// Create the
     fn diff(&mut self, other: &Self) {
         for x in &other.0 {
             if !self.0.contains(x) {
@@ -67,21 +65,25 @@ impl ListValue for Value {
             }
         }
     }
+
+    fn get(&self, value: &u64) -> Option<u64> {
+        self.0.get(value).map(|v| v.clone())
+    }
 }
 
 impl BincodeEncoded for Value {}
 
 #[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct OrderedValue(HashMap<usize, usize>);
+pub struct OrderedValue(HashMap<u64, u64>);
 
 impl OrderedValue {
     #[allow(dead_code)]
-    pub fn new(value: HashMap<usize, usize>) -> Self {
+    pub fn new(value: HashMap<u64, u64>) -> Self {
         Self(value)
     }
 }
 
-impl ListValue for OrderedValue {
+impl ListValue<u64, u64> for OrderedValue {
     /// Merge two sets
     fn merge(&mut self, other: &Self) {
         self.0.extend(&other.0)
@@ -94,6 +96,10 @@ impl ListValue for OrderedValue {
                 self.0.insert(*k, *v);
             }
         }
+    }
+
+    fn get(&self, value: &u64) -> Option<u64> {
+        self.0.get(value).map(|v| v.clone())
     }
 }
 

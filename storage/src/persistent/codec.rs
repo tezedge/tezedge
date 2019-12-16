@@ -5,6 +5,7 @@ use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::Hash;
+use std::collections::HashMap;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -109,6 +110,11 @@ impl<T> Decoder for T where T: BincodeEncoded {
         T::decode(bytes)
     }
 }
+
+impl<K, V> BincodeEncoded for HashMap<K, V>
+    where K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a>,
+          V: Serialize + for<'a> Deserialize<'a>
+{}
 
 /// Create number from a bytes
 #[macro_export(local_inner_macros)]

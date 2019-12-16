@@ -18,11 +18,10 @@ use networking::p2p::network_channel::NetworkChannel;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
-use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
-use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
+use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage, ContextMap};
 use storage::persistent::sequence::Sequences;
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
@@ -31,6 +30,9 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
+use storage::skip_list::{SkipList, Lane, Bucket};
+use std::collections::HashMap;
+use shell::context_listener::ContextListener;
 
 mod configuration;
 mod identity;
@@ -216,7 +218,7 @@ fn main() {
                 Ok(identity) => {
                     info!(log, "Identity loaded from file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
                     identity
-                },
+                }
                 Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
             }
         } else {
@@ -228,13 +230,13 @@ fn main() {
                         Ok(()) => {
                             info!(log, "Generated identity stored to file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
                             identity
-                        },
+                        }
                         Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
                     }
-                },
+                }
                 Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
-        }
-    };
+            }
+        };
     drop(protocol_controller);
 
     let schemas = vec![
@@ -249,6 +251,8 @@ fn main() {
         context_storage::ContextPrimaryIndex::descriptor(),
         context_storage::ContextByContractIndex::descriptor(),
         SystemStorage::descriptor(),
+        SkipList::<String, Bucket<Vec<u8>>, ContextMap>::descriptor(),
+        Lane::<String, Vec<u8>, HashMap<String, Vec<u8>>>::descriptor(),
         Sequences::descriptor(),
     ];
     let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
@@ -286,11 +290,11 @@ fn main() {
                         Ok(process) => {
                             info!(log, "Protocol runner started successfully");
                             process
-                        },
+                        }
                         Err(e) => {
                             crit!(log, "Failed to spawn protocol runner process"; "reason" => e);
-                            break
-                        },
+                            break;
+                        }
                     };
                 }
                 thread::sleep(Duration::from_secs(1));

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use lazy_static::lazy_static;
 
 static CHANNEL_ENABLED: AtomicBool = AtomicBool::new(false);
-const CHANNEL_BUFFER_LEN: usize = 131_072;
+const CHANNEL_BUFFER_LEN: usize = 1_048_576;
 
 lazy_static! {
     static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(CHANNEL_BUFFER_LEN);

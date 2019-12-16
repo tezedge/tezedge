@@ -36,6 +36,7 @@ enum Route {
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
+    DevGetContext,
     DevGetContractActions,
     StatsMemory,
 }
@@ -245,6 +246,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
+    routes.insert("/dev/context/:id", Route::DevGetContext);
     routes.insert("/stats/memory", Route::StatsMemory);
     routes
 }
@@ -252,6 +254,7 @@ fn create_routes() -> PathTree<Route> {
 /// Simple endpoint routing handler
 async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult {
     let RpcServiceEnvironment { sys, actor, persistent_storage, log, genesis_hash, state } = env;
+    let context_storage = persistent_storage.context_storage();
 
     match (req.method(), find_route(req.uri())) {
         (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(state),
@@ -291,6 +294,11 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::DevGetContractActions, params, _))) => {
             let contract_id = find_param_value(&params, "contract_id").unwrap();
             result_to_json_response(fns::get_contract_actions(contract_id, &persistent_storage), &log)
+        }
+        (&Method::GET, Some((Route::DevGetContext, params, _))) => {
+            // TODO: Add parameter checks
+            let context_level = find_param_value(&params, "id").unwrap();
+            result_to_json_response(fns::get_context(context_level, context_storage), &log)
         }
         _ => not_found()
     }
@@ -357,6 +365,9 @@ mod fns {
 
     use crate::helpers::FullBlockInfo;
     use crate::rpc_actor::RpcCollectedStateRef;
+    use crate::ContextList;
+    use std::collections::HashMap;
+    use storage::skip_list::Bucket;
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -410,6 +421,14 @@ mod fns {
     pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
         let memory = Memory::new();
         memory.get_memory_stats()
+    }
+
+    pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+        let level = level.parse()?;
+        {
+            let storage = list.read().expect("poisoned storage lock");
+            storage.get(level).map_err(|e| e.into())
+        }
     }
 
     #[inline]

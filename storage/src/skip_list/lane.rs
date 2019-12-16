@@ -3,26 +3,25 @@
 
 use std::sync::Arc;
 
-use storage::Direction;
-use storage::persistent::{KeyValueStoreWithSchema, KeyValueSchema};
-use storage::persistent::database::{IteratorMode, IteratorWithSchema};
+use crate::Direction;
+use crate::persistent::{KeyValueStoreWithSchema, KeyValueSchema, Codec};
+use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
-use crate::content::{ListValue, NodeHeader, SkipListId};
-use crate::SkipListError;
+use crate::skip_list::content::{ListValue, NodeHeader, SkipListId};
+use crate::skip_list::SkipListError;
 
-pub type LaneDatabase<C> = dyn KeyValueStoreWithSchema<Lane<C>> + Sync + Send;
+pub type LaneDatabase<K, V, C> = dyn KeyValueStoreWithSchema<Lane<K, V, C>> + Sync + Send;
 
 /// Lane is an way to traverse the chain.
 /// Lane is just an linked list, containing all changes between nodes.
 /// There should be multiple lanes, to be able to skip multiple nodes and traverse structure faster.
-#[derive(Clone)]
-pub struct Lane<C: ListValue> {
+pub struct Lane<K: Codec, V: Codec, C: ListValue<K, V>> {
     list_id: SkipListId,
     level: usize,
-    db: Arc<LaneDatabase<C>>,
+    db: Arc<LaneDatabase<K,V,C>>,
 }
 
-impl<C: ListValue> KeyValueSchema for Lane<C> {
+impl<K: Codec, V: Codec, C: ListValue<K, V>> KeyValueSchema for Lane<K, V, C> {
     type Key = NodeHeader;
     type Value = C;
 
@@ -31,9 +30,9 @@ impl<C: ListValue> KeyValueSchema for Lane<C> {
     }
 }
 
-impl<C: ListValue> Lane<C> {
+impl<K: Codec, V: Codec, C: ListValue<K, V>> Lane<K, V, C> {
     /// Create new lane handler for given database
-    pub fn new(list_id: SkipListId, level: usize, db: Arc<LaneDatabase<C>>) -> Self {
+    pub fn new(list_id: SkipListId, level: usize, db: Arc<LaneDatabase<K, V, C>>) -> Self {
         Self { list_id, level, db }
     }
 
@@ -69,7 +68,7 @@ impl<C: ListValue> Lane<C> {
     }
 
     /// From starting index, iterate backwards.
-    pub fn base_iterator(&self, starting_index: usize) -> Result<IteratorWithSchema<Lane<C>>, SkipListError> {
+    pub fn base_iterator(&self, starting_index: usize) -> Result<IteratorWithSchema<Lane<K, V, C>>, SkipListError> {
         self.db.iterator(IteratorMode::From(
             &NodeHeader::new(self.list_id, self.level, starting_index), Direction::Reverse,
         )).map_err(SkipListError::from)

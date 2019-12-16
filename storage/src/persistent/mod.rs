@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use rocksdb::{ColumnFamilyDescriptor, DB, Options};
 
@@ -12,6 +12,8 @@ pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
+use crate::skip_list::{SkipList, Bucket};
+use std::collections::HashMap;
 
 pub mod sequence;
 pub mod codec;
@@ -51,6 +53,9 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 }
 
 
+pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
+pub type ContextList = Arc<RwLock<SkipList<String, Bucket<Vec<u8>>, ContextMap>>>;
+
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
 pub struct PersistentStorage {
@@ -60,14 +65,17 @@ pub struct PersistentStorage {
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
     seq: Arc<Sequences>,
+    /// skip list backed context storage
+    cs: ContextList,
 }
 
 impl PersistentStorage {
     pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
         Self {
             seq: Arc::new(Sequences::new(kv.clone(), 1000)),
-            kv,
+            kv: kv.clone(),
             clog,
+            cs: Arc::new(RwLock::new(SkipList::<String, Bucket<Vec<u8>>, ContextMap>::new(0, kv).expect("failed to initialize context storage"))),
         }
     }
 
@@ -85,5 +93,8 @@ impl PersistentStorage {
     pub fn seq(&self) -> Arc<Sequences> {
         self.seq.clone()
     }
+
+    #[inline]
+    pub fn context_storage(&self) -> ContextList { self.cs.clone() }
 }
 
