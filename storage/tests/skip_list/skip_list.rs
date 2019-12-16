@@ -9,24 +9,26 @@ use crate::common::{OrderedValue, TmpDb, Value};
 
 mod common;
 
+type TestList<C> = SkipList<u64, u64, C>;
+
 #[test]
 fn list_new() {
     let tmp = TmpDb::new();
-    let list = SkipList::<Value>::new(1, tmp.db()).expect("failed to create skip list");
+    let list = TestList::<Value>::new(1, tmp.db()).expect("failed to create skip list");
     assert_eq!(list.len(), 0);
 }
 
 #[test]
 fn list_push() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<Value>::new(2, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<Value>::new(2, tmp.db()).expect("failed to create skip list");
     list.push(Value::new(vec![1])).expect("failed to push value to skip list");
     assert!(list.contains(0));
 }
 
 #[test]
 fn list_index_level() {
-    type List = SkipList<Value>;
+    type List = TestList<Value>;
     for index in 0..7 {
         assert_eq!(List::index_level(index), 0);
     }
@@ -38,7 +40,7 @@ fn list_index_level() {
 #[test]
 fn list_check_first() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<Value>::new(3, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<Value>::new(3, tmp.db()).expect("failed to create skip list");
     list.push(Value::new(vec![1])).expect("failed to push value to skip list");
     let val = list.get(0).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(0), "List `get` and `contains` return inconsistent answers");
@@ -49,7 +51,7 @@ fn list_check_first() {
 #[test]
 fn list_check_second() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<Value>::new(4, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<Value>::new(4, tmp.db()).expect("failed to create skip list");
     list.push(Value::new(vec![1])).expect("failed to push value to skip list");
     list.push(Value::new(vec![2])).expect("failed to push value to skip list");
     let val = list.get(1).expect("failed to get value from skip list");
@@ -61,7 +63,7 @@ fn list_check_second() {
 #[test]
 fn list_check_bottom_lane() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<Value>::new(5, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<Value>::new(5, tmp.db()).expect("failed to create skip list");
     for index in 0..=6 {
         list.push(Value::new(vec![index])).expect("failed to push value to skip list");
     }
@@ -75,7 +77,7 @@ fn list_check_bottom_lane() {
 #[test]
 pub fn list_check_faster_lane() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<Value>::new(6, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<Value>::new(6, tmp.db()).expect("failed to create skip list");
     for index in 0..=7 {
         list.push(Value::new(vec![index])).expect("failed to push value to skip list");
     }
@@ -89,7 +91,7 @@ pub fn list_check_faster_lane() {
 #[test]
 pub fn list_check_lane_traversal() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<Value>::new(7, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<Value>::new(7, tmp.db()).expect("failed to create skip list");
     for index in 0..=63 {
         list.push(Value::new(vec![index])).expect("failed to push value to skip list");
     }
@@ -103,7 +105,7 @@ pub fn list_check_lane_traversal() {
 #[test]
 pub fn list_check_lane_order_traversal() {
     let tmp = TmpDb::new();
-    let mut list = SkipList::<OrderedValue>::new(8, tmp.db()).expect("failed to create skip list");
+    let mut list = TestList::<OrderedValue>::new(8, tmp.db()).expect("failed to create skip list");
     for (value, key) in (0..=63).zip((0..=7).cycle()) {
         let mut map = HashMap::new();
         map.insert(key, value);
@@ -118,4 +120,20 @@ pub fn list_check_lane_order_traversal() {
         expected.insert(key, value);
     }
     assert_eq!(val.unwrap(), OrderedValue::new(expected));
+}
+
+#[test]
+pub fn list_check_get_key() {
+    let tmp = TmpDb::new();
+    let mut list = TestList::<OrderedValue>::new(8, tmp.db()).expect("failed to create skip list");
+    for x in 0..=7 {
+        let mut map = HashMap::new();
+        map.insert(x, x);
+        list.push(OrderedValue::new(map)).expect("failed to store value into skip list");
+    }
+    assert_eq!(list.levels(), 2);
+    let val = list.get_key(7, &7);
+    assert_eq!(val.unwrap(), Some(7));
+    let val = list.get_key(6, &7);
+    assert_eq!(val.unwrap(), None);
 }

@@ -4,9 +4,10 @@
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-use storage::persistent::{Codec, DBError, Decoder, Encoder, SchemaError};
+use crate::persistent::{Codec, DBError, Decoder, Encoder, SchemaError, BincodeEncoded};
 
-use crate::LEVEL_BASE;
+use crate::skip_list::LEVEL_BASE;
+use std::collections::HashMap;
 
 /// Structure for orientation in the list.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -24,7 +25,7 @@ impl NodeHeader {
         Self {
             list_id,
             lane_level,
-            node_index
+            node_index,
         }
     }
 
@@ -33,6 +34,18 @@ impl NodeHeader {
             list_id: self.list_id,
             lane_level: self.lane_level,
             node_index: self.node_index + 1,
+        }
+    }
+
+    pub fn prev(&self) -> Self {
+        if self.node_index == 0 {
+            self.clone()
+        } else {
+            Self {
+                list_id: self.list_id,
+                lane_level: self.lane_level,
+                node_index: self.node_index - 1,
+            }
         }
     }
 
@@ -45,6 +58,14 @@ impl NodeHeader {
                 lane_level: self.lane_level - 1,
                 node_index: self.lower_index(),
             }
+        }
+    }
+
+    pub fn higher(&self) -> Self {
+        Self {
+            list_id: self.list_id,
+            lane_level: self.lane_level + 1,
+            node_index: self.higher_index(),
         }
     }
 
@@ -62,6 +83,18 @@ impl NodeHeader {
         } else {
             ((self.node_index + 1) * LEVEL_BASE) - 1
         }
+    }
+
+    pub fn higher_index(&self) -> usize {
+        if self.node_index < LEVEL_BASE {
+            0
+        } else {
+            ((self.node_index + 1) / 8) - 1
+        }
+    }
+
+    pub fn is_edge_node(&self) -> bool {
+        (self.node_index + 1) % LEVEL_BASE == 0
     }
 
     pub fn level(&self) -> usize {
@@ -91,11 +124,18 @@ impl Encoder for NodeHeader {
 /// Value must be able to be recreated by merging, and then split by difference.
 /// diff = A.diff(B);
 /// A.merge(diff) == B
-pub trait ListValue: Codec + Default + std::fmt::Debug {
+pub trait ListValue<K, V>: Codec + Default
+    where K: Codec,
+          V: Codec,
+{
     /// Merge two values into one, in-place
     fn merge(&mut self, other: &Self);
+
     /// Create difference between two values.
     fn diff(&mut self, other: &Self);
+
+    // Get value from stored container
+    fn get(&self, value: &K) -> Option<V>;
 }
 
 /// ID of the skip list
@@ -114,6 +154,35 @@ impl From<DBError> for SkipListError {
         SkipListError::PersistentStorageError { error }
     }
 }
+
+impl<K: Codec, V: Codec> ListValue<K, V> for HashMap<K, V>
+    where K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a> + Clone,
+          V: Serialize + for<'a> Deserialize<'a> + Clone
+{
+    fn merge(&mut self, other: &Self) {
+        self.extend(other.clone())
+    }
+
+    fn diff(&mut self, other: &Self) {
+        for (k, v) in other {
+            if !self.contains_key(k) {
+                self.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    fn get(&self, value: &K) -> Option<V> {
+        self.get(value).map(|val| val.clone())
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+pub enum Bucket<V> {
+    Exists(V),
+    Deleted,
+}
+
+impl<V: Serialize + for<'a> Deserialize<'a>> BincodeEncoded for Bucket<V> {}
 
 #[cfg(test)]
 mod tests {

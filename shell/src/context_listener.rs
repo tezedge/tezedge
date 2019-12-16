@@ -8,12 +8,15 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{debug, Logger, warn};
+use slog::{debug, Logger, warn, crit};
 
 use storage::{ContextRecordValue, ContextStorage, BlockStorage};
-use storage::persistent::PersistentStorage;
+use storage::persistent::{PersistentStorage, ContextList, ContextMap};
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
+use std::collections::HashMap;
+use storage::skip_list::Bucket;
+use crypto::hash::HashType;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -29,6 +32,7 @@ pub type ContextListenerRef = ActorRef<ContextListenerMsg>;
 
 impl ContextListener {
     pub fn actor(sys: &impl ActorRefFactory, persistent_storage: &PersistentStorage, mut event_server: IpcEvtServer, log: Logger) -> Result<ContextListenerRef, CreateError> {
+        let storage = persistent_storage.context_storage();
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let listener_run = listener_run.clone();
@@ -43,6 +47,7 @@ impl ContextListener {
                         &mut event_server,
                         &mut context_storage,
                         &mut block_storage,
+                        storage.clone(),
                         &log,
                     ) {
                         Ok(()) => debug!(log, "Context listener finished"),
@@ -100,14 +105,16 @@ fn listen_protocol_events(
     event_server: &mut IpcEvtServer,
     context_storage: &mut ContextStorage,
     block_storage: &mut BlockStorage,
+    storage: ContextList,
     log: &Logger,
 ) -> Result<(), Error> {
-
     debug!(log, "Waiting for connection from protocol runner");
     let mut rx = event_server.accept()?;
     debug!(log, "Received connection from protocol runner. Starting to process context events.");
 
     let mut event_count = 0;
+    let mut state: ContextMap = Default::default();
+    let mut blocks: HashMap<Vec<u8>, ContextMap> = Default::default();
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
@@ -118,11 +125,50 @@ fn listen_protocol_events(
                 event_count += 1;
 
                 match &msg {
-                    ContextAction::Set { block_hash: Some(block_hash), .. }
-                    | ContextAction::Copy { block_hash: Some(block_hash), .. }
-                    | ContextAction::Delete { block_hash: Some(block_hash), .. }
-                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), .. }
-                    | ContextAction::Mem { block_hash: Some(block_hash), .. }
+                    ContextAction::Set { block_hash: Some(block_hash), key, value, .. } => {
+                        let state = get_default(&mut blocks, block_hash.clone());
+                        state.insert(key.join("/"), Bucket::Exists(value.clone()));
+
+                        context_storage.put(&block_hash.clone(), &ContextRecordValue::new(msg))?;
+                    }
+                    ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, .. } => {
+                        let partial_state = get_default(&mut blocks, block_hash.clone());
+
+                        let from_key = from_key.join("/");
+                        let to_key = key.join("/");
+                        if let Some(value) = partial_state.get(&from_key) {
+                            let value = value.clone();
+                            state.insert(to_key, value);
+                        } else if let Some(value) = state.get(&from_key) {
+                            let value = value.clone();
+                            state.insert(to_key, value);
+                        } else {
+                            warn!(log, "Trying to copy from non-existent location"; "from" => from_key, "to" => to_key);
+                        }
+
+                        context_storage.put(&block_hash.clone(), &ContextRecordValue::new(msg))?;
+                    }
+                    ContextAction::Delete { block_hash: Some(block_hash), key, .. }
+                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, .. } => {
+                        let state = get_default(&mut blocks, block_hash.clone());
+                        state.insert(key.join("/"), Bucket::Deleted);
+
+                        context_storage.put(&block_hash.clone(), &ContextRecordValue::new(msg))?;
+                    }
+                    ContextAction::Commit { new_context_hash, block_hash: Some(block_hash), .. } => {
+                        if let Some(block) = blocks.get(block_hash) {
+                            let mut writer = storage.write().expect("lock poisoning");
+                            writer.push(block.clone())?;
+                        } else {
+                            crit!(log, "Trying to commit non-existent block"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
+                        }
+                        blocks.clear();
+                        block_storage.assign_to_context(block_hash, new_context_hash)?
+                    }
+                    ContextAction::Checkout { context_hash: _, .. } => {
+                        /**/
+                    }
+                    ContextAction::Mem { block_hash: Some(block_hash), .. }
                     | ContextAction::DirMem { block_hash: Some(block_hash), .. }
                     | ContextAction::Get { block_hash: Some(block_hash), .. }
                     | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
@@ -130,23 +176,21 @@ fn listen_protocol_events(
                         let value = ContextRecordValue::new(msg);
                         context_storage.put(&key, &value)?;
                     }
-                    ContextAction::Commit { block_hash: Some(block_hash), new_context_hash, .. } => {
-                        block_storage.assign_to_context(block_hash, new_context_hash)?
-                    }
-                    ContextAction::Checkout { .. } => {
-                        // ...
-                    }
                     _ => (),
                 };
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
                 break;
-            },
+            }
         }
-
     }
 
     Ok(())
 }
 
+/// Get value contained in the dictionary, or create new entry associated with given key
+/// populated with default value
+fn get_default(state: &mut HashMap<Vec<u8>, ContextMap>, block_hash: Vec<u8>) -> &mut ContextMap {
+    state.entry(block_hash).or_insert(Default::default())
+}

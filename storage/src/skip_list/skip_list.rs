@@ -6,25 +6,25 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use storage::persistent::{BincodeEncoded, KeyValueStoreWithSchema, KeyValueSchema};
+use crate::persistent::{BincodeEncoded, KeyValueStoreWithSchema, KeyValueSchema, Codec};
 
-use crate::{content::{ListValue, NodeHeader}, lane::Lane, LEVEL_BASE, SkipListError};
-use crate::content::SkipListId;
-use crate::lane::LaneDatabase;
+use crate::skip_list::{content::{ListValue, NodeHeader}, lane::Lane, LEVEL_BASE, SkipListError};
+use crate::skip_list::content::SkipListId;
+use crate::skip_list::lane::LaneDatabase;
 
-pub type SkipListDatabase<C> = dyn KeyValueStoreWithSchema<SkipList<C>> + Sync + Send;
+pub type SkipListDatabase<K, V, C> = dyn KeyValueStoreWithSchema<SkipList<K, V, C>> + Sync + Send;
 
 /// Data structure implementation, managing structure data, shape and metadata
 /// It is expected, that structure will hold a few GiBs of data, and because of that,
 /// structure is backed by an database.
-pub struct SkipList<C: ListValue> {
-    lane_db: Arc<LaneDatabase<C>>,
-    list_db: Arc<SkipListDatabase<C>>,
+pub struct SkipList<K: Codec, V: Codec, C: ListValue<K, V>> {
+    lane_db: Arc<LaneDatabase<K, V, C>>,
+    list_db: Arc<SkipListDatabase<K, V, C>>,
     list_id: SkipListId,
     state: SkipListState,
 }
 
-impl<C: ListValue> KeyValueSchema for SkipList<C> {
+impl<K: Codec, V: Codec, C: ListValue<K, V>> KeyValueSchema for SkipList<K, V, C> {
     type Key = SkipListId;
     type Value = SkipListState;
 
@@ -33,10 +33,10 @@ impl<C: ListValue> KeyValueSchema for SkipList<C> {
     }
 }
 
-impl<C: ListValue> SkipList<C> {
+impl<K: Codec, V: Codec, C: ListValue<K, V>> SkipList<K, V, C> {
     /// Create new list in given database
     pub fn new(list_id: SkipListId, db: Arc<rocksdb::DB>) -> Result<Self, SkipListError> {
-        let list_db: Arc<SkipListDatabase<C>> = db.clone();
+        let list_db: Arc<SkipListDatabase<K, V, C>> = db.clone();
         let state = list_db.get(&list_id)?
             .unwrap_or_else(|| SkipListState {
                 levels: 1,
@@ -65,15 +65,15 @@ impl<C: ListValue> SkipList<C> {
 
     /// Rebuild state for given index
     pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
-        let mut current_state: Option<C> = None;
-        let mut lane = Lane::new(self.list_id, Self::index_level(index), self.lane_db.clone());
-        let mut pos = NodeHeader::new(self.list_id, lane.level(), 0);
-
         // There is an sequential index on lowest level, if expected index is bigger than
         // length of chain, it is not stored, otherwise, IT MUST BE FOUND.
         if index >= self.state.len {
             return Ok(None);
         }
+
+        let mut current_state: Option<C> = None;
+        let mut lane = Lane::new(self.list_id, Self::index_level(index), self.lane_db.clone());
+        let mut pos = NodeHeader::new(self.list_id, lane.level(), 0);
 
         loop {
             if let Some(value) = lane.get(pos.index())? {
@@ -105,6 +105,40 @@ impl<C: ListValue> SkipList<C> {
             } else {
                 // We can still move horizontally on current lane.
                 pos = pos.next();
+            }
+        }
+    }
+
+    /// Get single value from state at given index
+    pub fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
+        if index >= self.state.len {
+            return Ok(None);
+        }
+
+        let highest_level = Self::index_level(index);
+        let mut lane: Lane<K, V, C> = Lane::new(self.list_id, 0, self.lane_db.clone());
+        let mut pos = NodeHeader::new(self.list_id, lane.level(), index);
+
+        loop {
+            if let Some(state) = lane.get(pos.index())? {
+                if let Some(value) = state.get(key) {
+                    return Ok(Some(value));
+                } else {
+                    if pos.is_edge_node() && pos.level() < highest_level {
+                        pos = pos.higher();
+                        lane = lane.higher_lane();
+                    } else {
+                        if pos.base_index() == 0 {
+                            return Ok(None);
+                        } else {
+                            pos = pos.prev();
+                        }
+                    }
+                }
+            } else {
+                panic!("Value not found in lanes, even thou it should: \
+                current_level: {} | current_lane_index: {} | current_index: {}",
+                       lane.level(), pos.index(), pos.base_index());
             }
         }
     }
@@ -155,6 +189,57 @@ impl<C: ListValue> SkipList<C> {
             0
         } else {
             f64::log((index + 1) as f64, LEVEL_BASE as f64).floor() as usize
+        }
+    }
+
+    /// Build a difference object between two indexes.
+    /// `list.get(from).merge(list.diff(from, to)) == list.get(to)`
+    /// !!! Experimental !!!
+    #[allow(dead_code)]
+    fn diff(&self, from: usize, to: usize) -> Result<Option<C>, SkipListError> {
+        if from > to || from >= self.state.len {
+            return Ok(None);
+        }
+
+        let mut lane = Lane::new(self.list_id, 0, self.lane_db.clone());
+        let mut pos = NodeHeader::new(self.list_id, lane.level(), from);
+        let mut acc = Default::default();
+        let mut ascend = true;
+
+        loop {
+            let mut merge = true;
+
+            // Diff should be done in three phases:
+            // Phase 1 is base crawling:
+            // - You want to get to the "edge" to ascend to as higher lane as possible by crawling on lower lanes
+            // - Skipping values whilst ascending, merging while crawling
+            // Phase 2 is to take the fastest lane
+            // Phase 3 natural descend
+            if pos.base_index() == to && pos.level() == 0 {
+                return Ok(Some(acc));
+            } else {
+                if ascend && pos.is_edge_node() && pos.higher().next().base_index() <= to {
+                    pos = pos.higher();
+                    lane = lane.higher_lane();
+                    merge = false;
+                } else if pos.next().base_index() > to {
+                    pos = pos.lower();
+                    lane = lane.lower_lane();
+                    ascend = false;
+                } else {
+                    pos = pos.next()
+                }
+
+                if merge {
+                    if let Some(value) = lane.get(pos.index())? {
+                        acc.merge(&value)
+                    } else {
+                        panic!("Value not found in lanes, even thou it should: \
+                                    current_level: {} | current_lane_index: {} | current_index: {}",
+                               lane.level(), pos.index(), pos.base_index());
+                    }
+                }
+            }
         }
     }
 }

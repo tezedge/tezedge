@@ -28,7 +28,7 @@ pub(crate) struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<BlockApplied>,
     #[get = "pub(crate)"]
-    chain_id: ChainId
+    chain_id: ChainId,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor

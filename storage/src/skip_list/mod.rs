@@ -19,9 +19,9 @@
 //! aggregated changes on lane descend {S015, S1215}.
 #![allow(dead_code)]
 
-pub use crate::content::{ListValue, SkipListError};
-pub use crate::lane::Lane;
-pub use crate::skip_list::SkipList;
+pub use crate::skip_list::content::{ListValue, SkipListError, Bucket};
+pub use crate::skip_list::lane::Lane;
+pub use crate::skip_list::skip_list::SkipList;
 
 mod content;
 mod lane;
