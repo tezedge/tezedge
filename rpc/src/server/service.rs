@@ -379,6 +379,8 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let _cycle = find_query_value_as_string(&query, "cycle");
 
             //result_to_json_response(fns::get_baking_rights(block_id, &persistent_storage), &log)
+            warn!(log, "{:?}", fns::get_rolls(_block_id, &persistent_storage, context_storage));
+            warn!(log, "Reported....");
             baking_rights(Some("tz1".to_string()), level, _cycle, max_priority, &persistent_storage, state, &log).await
         }
         _ => not_found()
@@ -482,18 +484,78 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    // pub(crate) fn get_baking_rights(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<BakingRights>, failure::Error> {
-    //     let max_priority: i32 = 64;
-    //     let level: i32 = 1;
-    //     let delegate: String = "tz1abc".to_string();
-    //     let estimated_timestamp: String = "12.12.12Yesterday".to_string();
-    //     let mut baking_rights = Vec::<BakingRights>::new();
+    pub(crate) fn get_rolls(block_id: &str, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+        let level = {
+            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                block_meta.level() as usize
+            } else {
+                return Ok(None);
+            }
+        };
 
-    //     for x in 0..max_priority {
-    //         baking_rights.push(BakingRights::new(level, &delegate, x, &estimated_timestamp));
-    //     }
-    //     Ok(baking_rights)
-    // }
+        let context = {
+            let reader = list.read().unwrap();
+            if let Ok(Some(ctx)) = reader.get(level) {
+                ctx
+            } else {
+                panic!("Context not found")
+            }
+        };
+
+        // get all the relevant data out of the context database
+        let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
+            .filter(|(k, _)| k.contains("roll_list") || k.contains("data/rolls/owner/current") || k.contains("/successor") || k.contains("/random_seed"))
+            .collect();
+
+        // get the roll_lists out of the context storage
+        // roll lists are the beginning of a linked list of the rolls pointing to the data/rolls/owner/current/*/*/<first_roll>
+        // This seems a little redundant... but with the above solution we only traverse the whole context only once
+        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = &data.into_iter()
+            .filter(|(k, _)| k.contains("roll_list"))
+            .collect();
+            
+        let mut roll_owners: HashMap<u32, String> = HashMap::new();
+
+        for key in roll_lists.keys() {
+            // extract the delegate address (public key hash <pkh>) from the key
+            let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
+
+            // get the first roll
+            let mut next_roll;
+            if let Some(Bucket::Exists(roll)) = roll_lists.get(key) {
+                next_roll = roll;
+            } else {
+                panic!("No first roll for the delegate")
+            }
+
+            // fill out the roll_owners hash map using the linked list from the context storage
+            loop {
+                // Note: I think we should replace this with the ffi decode_context_data functions
+                // this is just a temporary solution (looks awfull)
+                let mut roll_num_array: [u8; 4] = [Default::default(); 4];
+                roll_num_array[..next_roll.len()].copy_from_slice(next_roll);
+                let roll_num = u32::from_be_bytes(roll_num_array);
+                // construct the whole owner key
+                // Note: this will work up to 0xffff rolls, not sure how exactly they implement rolls over this number with this key format
+                let owner_key = format!("data/rolls/owner/current/{}/{}/{}", next_roll[3], next_roll[2], roll_num);
+                let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
+            
+                if let Some(roll) = data.get(&owner_key) {
+                    roll_owners.insert(roll_num, public_key_hash.clone());
+                } else {
+                    panic!("Roll owner key not found for key: {}", &owner_key)
+                }
+                if let Some(Bucket::Exists(roll)) = data.get(&successor_key) {
+                    next_roll = roll
+                } else {
+                    break;
+                }
+            }
+        }
+        Ok(Some(data))
+    }
 
     /// Get information about current head
     pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
@@ -615,7 +677,6 @@ mod fns {
         let chain_id = chain_id_to_string(state.chain_id());
         FullBlockInfo::new(&BlockApplied::new(header, json_data), &chain_id)
     }
-
 
     #[cfg(test)]
     mod tests {
