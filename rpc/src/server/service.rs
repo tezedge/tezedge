@@ -18,6 +18,7 @@ use crypto::hash::{BlockHash, HashType};
 use lazy_static::lazy_static;
 use shell::shell_channel::BlockApplied;
 use storage::persistent::PersistentStorage;
+use rand::Rng;
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
@@ -243,7 +244,7 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
-async fn baking_rights(delegate: Option<String>, level: Option<String>, cycle: Option<String>, max_priority: Option<String>, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+async fn baking_rights(delegate: Option<String>, level: &Option<String>, cycle: Option<String>, max_priority: String, state: RpcCollectedStateRef, rolls: Option<HashMap<u32, String>>, log: &Logger) -> ServiceResult {
     let state_read = state.read().unwrap();
 
     let baking_rights_info = match state_read.current_head().as_ref() {
@@ -259,32 +260,53 @@ async fn baking_rights(delegate: Option<String>, level: Option<String>, cycle: O
                 None => head_level + 1,
             };
 
-            // NOTE: not finished, will require an additional loop
+            // NOTE: not finished, will require an additional loop to go trough all the levels of the cycle
             let requested_cycle = match cycle {
                 Some(cycle) => cycle.parse().unwrap(),
                 None => -1,
             };
 
-            // If no max_priority is specified set it to the default value: 64
-            let requested_max_priority = match max_priority {
-                Some(max_priority) => max_priority.parse().unwrap(),
-                None => 64,  // TODO: move to constant
+            // delegate
+            let requested_delegate = match delegate {
+                Some(delegate) => delegate,
+                None => "all".to_string() // all
+            };
+            // random number generator
+            let mut rng = rand::thread_rng();
+
+            // get the rolls
+            let roll_owners = match rolls {
+                Some(r) => r,
+                None => panic!("Error getting rolls")
             };
 
             let mut estimated_timestamp: Option<DateTime<_>>;
             estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(30)).unwrap());
             warn!(log, "Head level: {:?} -- Requested level: {:?}", head_level, requested_level);
 
-            for x in 0..requested_max_priority {
+            for x in 0..max_priority.parse().unwrap() {
+                // draw the rolls for the requested parameters
+                // Note: this is a temporary solution, we should replace it with the tezos PRNG
+                // It will utilize the random_seed found in the context storage and the cycle_position of the
+                // block to be baked
+                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
+                    Some(d) => d,
+                    None => panic!("Roll not found")
+                };
+                
                 // we omit the estimated_time field if the block on the requested level is allready baked
                 if head_level <= requested_level {
-                    baking_rights.push(BakingRights::new(requested_level, "delegateX".to_string(), x, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
+                    baking_rights.push(BakingRights::new(requested_level, delegate_to_assign.to_string(), x, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
                     estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(40)).unwrap());
                 } else {
-                    baking_rights.push(BakingRights::new(requested_level, "delegateX".to_string(), x, None))
+                    baking_rights.push(BakingRights::new(requested_level, delegate_to_assign.to_string(), x, None))
                 }
             }
-            baking_rights
+            if requested_delegate == "all" {
+                baking_rights
+            } else {
+                baking_rights.into_iter().filter(|val| val.delegate.contains(&requested_delegate)).collect::<Vec<BakingRights>>()
+            }
         }
         None => vec![BakingRights::new(0, String::new().into(), 0, String::new().into())]
     };
@@ -372,14 +394,14 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         }
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
             // TODO: Add parameter checks
-            let _block_id = find_param_value(&params, "block_id").unwrap();
-            let max_priority = find_query_value_as_string(&query, "max_priority");
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            let max_priority = find_query_value_as_string(&query, "max_priority").unwrap_or("64".to_string());
             let level = find_query_value_as_string(&query, "level");
-            let _delegate = find_query_value_as_string(&query, "delegate");
+            let delegate = find_query_value_as_string(&query, "delegate");
             let _cycle = find_query_value_as_string(&query, "cycle");
 
-            warn!(log, "{:?}", fns::get_rolls(_block_id, &persistent_storage, context_storage));
-            baking_rights(Some("tz1".to_string()), level, _cycle, max_priority, &persistent_storage, state, &log).await
+            let rolls = fns::get_rolls(block_id, &level, &persistent_storage, context_storage).unwrap();
+            baking_rights(delegate, &level, _cycle, max_priority, state, rolls, &log).await
         }
         _ => not_found()
     }
@@ -496,16 +518,21 @@ mod fns {
         }
     }
 
-    pub(crate) fn get_rolls(block_id: &str, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
-        let level;
-        match get_block_level(block_id, persistent_storage, &list).unwrap() {
-            Some(v) => level = v,
-            None => return Ok(None)  // Cannot get level
-        }
+    pub(crate) fn get_rolls(block_id: &str, level: &Option<String>, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
+        // check if there is a level request from the query
+        let requested_level = match level {
+            Some(lvl) => lvl.parse().unwrap(),
+            None => {
+                match get_block_level(block_id, persistent_storage, &list).unwrap() {
+                    Some(v) => v,
+                    None => return Ok(None)  // Cannot get level
+                }
+            }
+        };
 
         let context = {
             let reader = list.read().unwrap();
-            if let Ok(Some(ctx)) = reader.get(level) {
+            if let Ok(Some(ctx)) = reader.get(requested_level) {
                 ctx
             } else {
                 panic!("Context not found")
@@ -551,11 +578,13 @@ mod fns {
                 let owner_key = format!("data/rolls/owner/current/{}/{}/{}", next_roll[3], next_roll[2], roll_num);
                 let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
             
-                if let Some(roll) = data.get(&owner_key) {
+                if let Some(_roll) = data.get(&owner_key) {
                     roll_owners.insert(roll_num, public_key_hash.clone());
                 } else {
                     panic!("Roll owner key not found for key: {}", &owner_key)
                 }
+
+                // get the next roll for the delegate
                 if let Some(Bucket::Exists(roll)) = data.get(&successor_key) {
                     next_roll = roll
                 } else {

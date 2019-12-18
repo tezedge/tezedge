@@ -21,6 +21,8 @@ serde_json = "1.0"
 slog = { version = "2.5", features = ["nested-values"] }
 slog_derive = "0.1.1"
 tokio = { version = "0.2", features = ["macros"] }
+# temporary dependencie, until we implement the PRNG from tezos
+rand = "0.7.2"
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
