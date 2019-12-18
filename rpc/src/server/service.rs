@@ -378,9 +378,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let _delegate = find_query_value_as_string(&query, "delegate");
             let _cycle = find_query_value_as_string(&query, "cycle");
 
-            //result_to_json_response(fns::get_baking_rights(block_id, &persistent_storage), &log)
             warn!(log, "{:?}", fns::get_rolls(_block_id, &persistent_storage, context_storage));
-            warn!(log, "Reported....");
             baking_rights(Some("tz1".to_string()), level, _cycle, max_priority, &persistent_storage, state, &log).await
         }
         _ => not_found()
@@ -483,17 +481,27 @@ mod fns {
         context_records.truncate(std::cmp::min(context_records.len(), limit));
         Ok(PagedResult::new(context_records, next_id, limit))
     }
-
-    pub(crate) fn get_rolls(block_id: &str, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
-        let level = {
+    pub(crate) fn get_block_level(block_id: &str, persistent_storage: &PersistentStorage, list: &ContextList) -> Result<Option<usize>, failure::Error> {
+        if block_id == "head" {
+            let reader = list.read().expect("mutex poisoning");
+            Ok(Some(reader.len() - 1))
+        } else {
             let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
             let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
             if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                block_meta.level() as usize
+                Ok(Some(block_meta.level() as usize))
             } else {
-                return Ok(None);
+                Ok(None)
             }
-        };
+        }
+    }
+
+    pub(crate) fn get_rolls(block_id: &str, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
+        let level;
+        match get_block_level(block_id, persistent_storage, &list).unwrap() {
+            Some(v) => level = v,
+            None => return Ok(None)  // Cannot get level
+        }
 
         let context = {
             let reader = list.read().unwrap();
