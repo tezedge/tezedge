@@ -484,7 +484,7 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn get_rolls(block_id: &str, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+    pub(crate) fn get_rolls(block_id: &str, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
         let level = {
             let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
             let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
@@ -504,6 +504,7 @@ mod fns {
             }
         };
 
+        let roll_data = context.clone();
         // get all the relevant data out of the context database
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
             .filter(|(k, _)| k.contains("roll_list") || k.contains("data/rolls/owner/current") || k.contains("/successor") || k.contains("/random_seed"))
@@ -512,7 +513,7 @@ mod fns {
         // get the roll_lists out of the context storage
         // roll lists are the beginning of a linked list of the rolls pointing to the data/rolls/owner/current/*/*/<first_roll>
         // This seems a little redundant... but with the above solution we only traverse the whole context only once
-        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = &data.into_iter()
+        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = roll_data.into_iter()
             .filter(|(k, _)| k.contains("roll_list"))
             .collect();
             
@@ -554,7 +555,7 @@ mod fns {
                 }
             }
         }
-        Ok(Some(data))
+        Ok(Some(roll_owners))
     }
 
     /// Get information about current head
