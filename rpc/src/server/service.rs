@@ -298,9 +298,12 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let block_id = find_param_value(&params, "block_id").unwrap();
             result_to_json_response(fns::get_block_actions(block_id, &persistent_storage), &log)
         }
-        (&Method::GET, Some((Route::DevGetContractActions, params, _))) => {
+        (&Method::GET, Some((Route::DevGetContractActions, params, query))) => {
             let contract_id = find_param_value(&params, "contract_id").unwrap();
-            result_to_json_response(fns::get_contract_actions(contract_id, &persistent_storage), &log)
+            let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
+            let offset = find_query_value_as_usize(&query, "offset").unwrap_or(0);
+            println!("limit={:?} offset={:?}", limit, offset);
+            result_to_json_response(fns::get_contract_actions(contract_id, &persistent_storage, limit, offset), &log)
         }
         (&Method::GET, Some((Route::DevGetContext, params, _))) => {
             // TODO: Add parameter checks
@@ -399,10 +402,10 @@ mod fns {
     }
 
     /// Get actions for a specific contract in ascending order.
-    pub(crate) fn get_contract_actions(contract_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
+    pub(crate) fn get_contract_actions(contract_id: &str, persistent_storage: &PersistentStorage, limit:usize, offset:usize) -> Result<Vec<ContextAction>, failure::Error> {
         let context_storage = ContextStorage::new(persistent_storage);
         let contract_address = contract_id_to_address(contract_id)?;
-        context_storage.get_by_contract_address(&contract_address)
+        context_storage.get_by_contract_address(&contract_address, limit, offset)
             .map(|values| values.into_iter().map(|v| v.action).collect())
             .map_err(|e| e.into())
     }

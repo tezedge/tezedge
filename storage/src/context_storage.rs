@@ -16,6 +16,7 @@ use crate::persistent::codec::vec_from_slice;
 use crate::persistent::commit_log::fold_consecutive_locations;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
+use crate::{Direction, IteratorMode};
 
 pub type ContextStorageCommitLog = dyn CommitLogWithSchema<ContextStorage> + Sync + Send;
 
@@ -60,8 +61,8 @@ impl ContextStorage {
     }
 
     #[inline]
-    pub fn get_by_contract_address(&self, contract_address: &ContractAddress) -> Result<Vec<ContextRecordValue>, StorageError> {
-        self.context_by_contract_index.get_by_contract_address(contract_address)
+    pub fn get_by_contract_address(&self, contract_address: &ContractAddress, limit: usize, offset: usize) -> Result<Vec<ContextRecordValue>, StorageError> {
+        self.context_by_contract_index.get_by_contract_address(contract_address, limit, offset)
             .and_then(|locations| self.get_records_by_locations(&locations))
     }
 
@@ -276,9 +277,10 @@ impl ContextByContractIndex {
     }
 
     #[inline]
-    fn get_by_contract_address(&self, contract_address: &ContractAddress) -> Result<Vec<Location>, StorageError> {
+    fn get_by_contract_address(&self, contract_address: &ContractAddress, limit: usize, _offset: usize) -> Result<Vec<Location>, StorageError> {
         let key = ContextByContractIndexKey::from_contract_address_prefix(contract_address);
-        self.kv.prefix_iterator(&key)?
+        self.kv.iterator(IteratorMode::From(&key, Direction::Reverse))?
+            .take(limit)
             .map(|(_, value)| value.map_err(StorageError::from))
             .collect()
     }
