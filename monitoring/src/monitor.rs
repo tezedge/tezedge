@@ -131,7 +131,7 @@ impl Actor for Monitor {
 
         // Every second, send yourself a message to broadcast the monitoring to all connected clients
         ctx.schedule(Duration::from_secs(1),
-                     Duration::from_secs(1),
+                     Duration::from_secs(2),
                      ctx.myself(), None,
                      BroadcastSignal::PublishPeerStatistics);
         ctx.schedule(Duration::from_secs_f32(1.5),
@@ -186,8 +186,9 @@ impl Receive<BroadcastSignal> for Monitor {
                 let bootstrap_stats: HandlerMessage = self.bootstrap_monitor.snapshot().into();
                 self.msg_channel.tell(bootstrap_stats, ctx.myself().into());
 
-                let payload = self.blocks_monitor.snapshot();
-                self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
+                // moved to chain_monitor
+                // let payload = self.blocks_monitor.snapshot();
+                // self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
 
                 let payload = self.block_application_monitor.snapshot();
                 self.msg_channel.tell(HandlerMessage::BlockApplicationStatus { payload }, ctx.myself().into());
@@ -195,9 +196,9 @@ impl Receive<BroadcastSignal> for Monitor {
                 let payload = self.chain_monitor.snapshot();
                 self.msg_channel.tell(HandlerMessage::ChainStatus { payload }, ctx.myself().into());
             }
-            BroadcastSignal::PeerUpdate(msg) => {
-                let msg: HandlerMessage = msg.into();
-                self.msg_channel.tell(msg, ctx.myself().into())
+            BroadcastSignal::PeerUpdate(_msg) => {
+            //     let msg: HandlerMessage = msg.into();
+            //     self.msg_channel.tell(msg, ctx.myself().into())
             }
         }
     }
