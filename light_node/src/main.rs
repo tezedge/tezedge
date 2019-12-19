@@ -36,7 +36,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 6;
+const DATABASE_VERSION: i64 = 7;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
