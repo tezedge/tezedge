@@ -242,7 +242,7 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
-async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
+async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, _log: &Logger) -> ServiceResult {
     let state_read = state.read().unwrap();
 
     let baking_rights_info = match state_read.current_head().as_ref() {
@@ -337,7 +337,6 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
         }
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
-            // TODO: Add parameter checks
             let block_id = find_param_value(&params, "block_id").unwrap();
             let max_priority = find_query_value_as_string(&query, "max_priority").unwrap_or("64".to_string());
             let level = find_query_value_as_string(&query, "level");
@@ -498,7 +497,7 @@ mod fns {
             .collect();
 
         // get the roll_lists out of the context storage
-        // roll lists are the beginning of a linked list of the rolls pointing to the data/rolls/owner/current/*/*/<first_roll>
+        // roll_lists are the beginning of a linked list of the rolls pointing to the data/rolls/owner/current/*/*/<first_roll>
         // This seems a little redundant... but with the above solution we only traverse the whole context only once
         let roll_lists: HashMap<String, Bucket<Vec<u8>>> = roll_data.into_iter()
             .filter(|(k, _)| k.contains("roll_list"))
@@ -522,11 +521,14 @@ mod fns {
             // fill out the roll_owners hash map using the linked list from the context storage
             loop {
                 // Note: I think we should replace this with the ffi decode_context_data functions
+
                 // this is just a temporary solution (looks awfull)
                 let mut roll_num_array: [u8; 4] = [Default::default(); 4];
                 roll_num_array[..next_roll.len()].copy_from_slice(next_roll);
                 let roll_num = u32::from_be_bytes(roll_num_array);
-                // construct the whole owner key
+
+                // construct the whole owner/successor key
+                // /<rol_num little-endian 1st byte>/<roll_num little-endian 2nd byte>/<roll_num in decimal>
                 // Note: this will work up to 0xffff rolls, not sure how exactly they implement rolls over this number with this key format
                 let owner_key = format!("data/rolls/owner/current/{}/{}/{}", next_roll[3], next_roll[2], roll_num);
                 let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
@@ -548,9 +550,10 @@ mod fns {
         Ok(Some(roll_owners))
     }
 
-    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
+    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, _cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
         let mut baking_rights = Vec::<BakingRights>::new();
-            
+        
+        // level of the block specified in the url params
         let block_level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
             Some(v) => v,
             None => panic!("Cannot get level")  // Cannot get level
@@ -559,6 +562,9 @@ mod fns {
         let requested_cycle = match cycle.parse() {
             // cycle requested from query
             Ok(cycle) => {
+                // check whether the cycle is reachable
+                // the storage stores cycle up to: current_cycle + perserved_cycles(5) + 2
+                // e.g. if head is in cycle 66, we can get the rights for up to cycle 73
                 if ((cycle as i32 - (block_level as i32 / 2048)).abs() as i32) <= 7 {
                     cycle
                 } else {
@@ -566,7 +572,7 @@ mod fns {
                 }
             },
             // no cycle requested
-            Err(_e) => -1 // block_level as i32 / 2048
+            Err(_e) => -1
         };
 
         // If no level is specified, we return the next block to be baked
@@ -575,17 +581,15 @@ mod fns {
             None => head_level + 1,
         };
 
-        let level_to_itarate_to;
-        if requested_cycle >= 0 {
-            requested_level = requested_cycle * 2048 as i32; // start of the cycle
-            level_to_itarate_to = requested_level + 2048;
+        // if a cycle is specified, we need to iterate through all of the levels in the cycle
+        let level_to_itarate_to = if requested_cycle >= 0 {
+            requested_level = requested_cycle * 2048 as i32; // first block of the cycle
+            requested_level + 2048
         } else {
-            level_to_itarate_to = requested_level;
-        }
+            requested_level
+        };
 
-        let rolls = get_rolls(block_id, &cycle, persistent_storage, list).unwrap();
-
-        // delegate
+        // get the requested delegate from the query, set to all if not specified
         let requested_delegate = match delegate {
             Some(delegate) => delegate,
             None => "all".to_string() // all
@@ -593,12 +597,14 @@ mod fns {
         // random number generator
         let mut rng = rand::thread_rng();
 
-        // get the rolls
+        // get the rolls from the context storage
+        let rolls = get_rolls(block_id, &cycle, persistent_storage, list).unwrap();
         let roll_owners = match rolls {
             Some(r) => r,
             None => panic!("Error getting rolls")
         };
 
+        // iterate through the whole cycle if necessery
         for level in requested_level..(level_to_itarate_to + 1) {
             // 30 is from the protocol constants
             let seconds_to_add = (level - head_level).abs() * 30;
@@ -618,7 +624,7 @@ mod fns {
                     None => panic!("Roll not found")
                 };
                 
-                // if the delegate was assgined and the the has_all flag is not set skip this delegate
+                // if the delegate was assgined and the the has_all flag is not set skip this priority
                 if assigned.contains(delegate_to_assign) && !has_all {
                     continue;
                 }
