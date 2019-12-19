@@ -420,7 +420,7 @@ mod fns {
     use crate::rpc_actor::RpcCollectedStateRef;
 
     use hex::FromHex;
-    use chrono::{DateTime, Utc, Duration};
+    use chrono::{DateTime, Duration};
     use chrono::prelude::*;
     use crate::helpers::BakingRights;
     use rand::Rng;
@@ -470,7 +470,7 @@ mod fns {
         }
     }
 
-    pub(crate) fn get_rolls(block_id: &str, cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
+    pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
         // get the level of from the block
         let level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
             Some(v) => v,
@@ -550,7 +550,7 @@ mod fns {
         Ok(Some(roll_owners))
     }
 
-    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, _cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
+    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
         let mut baking_rights = Vec::<BakingRights>::new();
         
         // level of the block specified in the url params
