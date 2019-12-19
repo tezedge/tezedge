@@ -144,7 +144,6 @@ pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: 
 
 
 pub mod tests_common {
-    use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -154,7 +153,7 @@ pub mod tests_common {
     use crate::block_storage;
     use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
-    use crate::skip_list::{Bucket, Lane, SkipList};
+    use crate::skip_list::{Lane, DatabaseBackedSkipList};
 
     use super::*;
 
@@ -182,8 +181,8 @@ pub mod tests_common {
                 context_storage::ContextByContractIndex::descriptor(),
                 SystemStorage::descriptor(),
                 Sequences::descriptor(),
-                SkipList::<String, Bucket<Vec<u8>>, ContextMap>::descriptor(),
-                Lane::<String, Vec<u8>, HashMap<String, Vec<u8>>>::descriptor(),
+                DatabaseBackedSkipList::descriptor(),
+                Lane::descriptor(),
             ])?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),

@@ -17,11 +17,13 @@ use networking::p2p::network_channel::NetworkChannel;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
+use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
-use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage, ContextMap};
+use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
+use storage::skip_list::{Lane, DatabaseBackedSkipList};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -29,15 +31,12 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use storage::skip_list::{SkipList, Lane, Bucket};
-use std::collections::HashMap;
-use shell::context_listener::ContextListener;
 
 mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 5;
+const DATABASE_VERSION: i64 = 6;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -262,8 +261,8 @@ fn main() {
         context_storage::ContextPrimaryIndex::descriptor(),
         context_storage::ContextByContractIndex::descriptor(),
         SystemStorage::descriptor(),
-        SkipList::<String, Bucket<Vec<u8>>, ContextMap>::descriptor(),
-        Lane::<String, Vec<u8>, HashMap<String, Vec<u8>>>::descriptor(),
+        DatabaseBackedSkipList::descriptor(),
+        Lane::descriptor(),
         Sequences::descriptor(),
     ];
     let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
