@@ -258,15 +258,6 @@ async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<
                 Some(v) => v,
                 None => panic!("Cannot get level")  // Cannot get level
             };
-            
-            // let requested_cycle;
-            // if cycle == "" {
-            //     requested_cycle = cycle_level / 2048;
-            // } else if (cycle.parse().unwrap() - cycle_level) <= 7 {
-            //     requested_cycle = cycle.parse().unwrap();
-            // } else {
-            //     panic!("Cycle unreachable")
-            // }
 
             let requested_cycle = match cycle.parse() {
                 // cycle requested from query
@@ -316,6 +307,7 @@ async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<
                 let seconds_to_add = (level - head_level).abs() * 30;
                 let mut estimated_timestamp: Option<DateTime<_>>;
                 estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(seconds_to_add.into())).unwrap());
+                
                 // remove later
                 warn!(log, "Head level: {:?} -- Requested level: {:?}", head_level, level);
                 // as we assign the roles, the default behavior is to include only the top priority for the delegate
@@ -326,7 +318,7 @@ async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<
                     // Note: this is a temporary solution, we should replace it with the tezos PRNG
                     // It will utilize the random_seed found in the context storage and the cycle_position of the
                     // block to be baked
-                    let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, (roll_owners.len() - 1) as u32)) {
+                    let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
                         Some(d) => d,
                         None => panic!("Roll not found")
                     };
@@ -446,6 +438,8 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let cycle = find_query_value_as_string(&query, "cycle").unwrap_or("".to_string());
             let has_all = query.contains_key("all");
 
+            //warn!(log, "Args = Block Id: {:?} max_priority: {:?} level: {:?} delegate: {:?} cycle {:?}", &block_id, &max_priority, level.clone().unwrap_or("".to_string()), delegate.clone().unwrap_or("".to_string()), &cycle);
+
             baking_rights(block_id, delegate, &level, &cycle, max_priority, has_all, state, &persistent_storage, context_storage, &log).await
         }
         _ => not_found()
@@ -519,6 +513,8 @@ mod fns {
     use crate::helpers::{FullBlockInfo, PagedResult};
     use crate::rpc_actor::RpcCollectedStateRef;
 
+    use hex::FromHex;
+
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
@@ -583,8 +579,6 @@ mod fns {
             }
         };
 
-
-
         let roll_data = context.clone();
         // get all the relevant data out of the context database
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
@@ -603,6 +597,7 @@ mod fns {
         for key in roll_lists.keys() {
             // extract the delegate address (public key hash <pkh>) from the key
             let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
+            let contract_id = address_to_contract_id(&public_key_hash).unwrap();
 
             // get the first roll
             let mut next_roll;
@@ -625,7 +620,7 @@ mod fns {
                 let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
             
                 if let Some(_roll) = data.get(&owner_key) {
-                    roll_owners.insert(roll_num, public_key_hash.clone());
+                    roll_owners.insert(roll_num, contract_id.clone());
                 } else {
                     panic!("Roll owner key not found for key: {}", &owner_key)
                 }
@@ -748,6 +743,32 @@ mod fns {
         };
 
         Ok(contract_address)
+    }
+
+    #[inline]
+    fn address_to_contract_id(address: &str) -> Result<String, failure::Error> {
+
+        let contract_id = match &address[0..2] {
+            "00" => {
+                match &address[2..4] {
+                    "00" => {
+                        HashType::ContractTz1Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                    }
+                    "01" => {
+                        HashType::ContractTz2Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                    }
+                    "02" => {
+                        HashType::ContractTz3Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                    }
+                    _ => bail!("Invalid contract id")
+                }
+            }
+            "01" => {
+                HashType::ContractKt1Hash.bytes_to_string(&<[u8; 22]>::from_hex(&address[2..42])?)
+            }
+            _ => bail!("Invalid contract id")
+        };
+        Ok(contract_id)
     }
 
     #[inline]
