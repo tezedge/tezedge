@@ -1,11 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use chrono::prelude::*;
-use chrono::{DateTime, Utc, Duration};
 
 use futures::Future;
 use hyper::{Body, Error, Method, Request, Response, Server, StatusCode, Uri};
@@ -18,7 +17,6 @@ use crypto::hash::{BlockHash, HashType};
 use lazy_static::lazy_static;
 use shell::shell_channel::BlockApplied;
 use storage::persistent::{PersistentStorage, ContextList};
-use rand::Rng;
 
 use crate::{
     encoding::{base_types::*, monitor::BootstrapInfo}, make_json_response, rpc_actor::RpcServerRef,
@@ -252,98 +250,7 @@ async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<
             let current_head: BlockApplied = current_head.clone();
             let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
             let head_level = current_head.header().header.level();
-            let mut baking_rights = Vec::<BakingRights>::new();
-            
-            let block_level = match fns::get_block_level(block_id, persistent_storage, &list).unwrap() {
-                Some(v) => v,
-                None => panic!("Cannot get level")  // Cannot get level
-            };
-
-            let requested_cycle = match cycle.parse() {
-                // cycle requested from query
-                Ok(cycle) => {
-                    if ((cycle as i32 - (block_level as i32 / 2048)).abs() as i32) <= 7 {
-                        cycle
-                    } else {
-                        panic!("Cycle not found in block: {}", block_id)
-                    }
-                },
-                // no cycle requested
-                Err(_e) => -1 // block_level as i32 / 2048
-            };
-
-            // If no level is specified, we return the next block to be baked
-            let mut requested_level = match level {
-                Some(level) => level.parse().unwrap(),
-                None => head_level + 1,
-            };
-
-            let level_to_itarate_to;
-            if requested_cycle >= 0 {
-                requested_level = requested_cycle * 2048 as i32; // start of the cycle
-                level_to_itarate_to = requested_level + 2048;
-            } else {
-                level_to_itarate_to = requested_level;
-            }
-
-            let rolls = fns::get_rolls(block_id, &cycle, persistent_storage, list).unwrap();
-
-            // delegate
-            let requested_delegate = match delegate {
-                Some(delegate) => delegate,
-                None => "all".to_string() // all
-            };
-            // random number generator
-            let mut rng = rand::thread_rng();
-
-            // get the rolls
-            let roll_owners = match rolls {
-                Some(r) => r,
-                None => panic!("Error getting rolls")
-            };
-
-            for level in requested_level..(level_to_itarate_to + 1) {
-                // 30 is from the protocol constants
-                let seconds_to_add = (level - head_level).abs() * 30;
-                let mut estimated_timestamp: Option<DateTime<_>>;
-                estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(seconds_to_add.into())).unwrap());
-                
-                // remove later
-                warn!(log, "Head level: {:?} -- Requested level: {:?}", head_level, level);
-                // as we assign the roles, the default behavior is to include only the top priority for the delegate
-                // we define a hashset to keep track of the delegates with priorities allready assigned
-                let mut assigned = HashSet::new();
-                for priority in 0..max_priority.parse().unwrap() {
-                    // draw the rolls for the requested parameters
-                    // Note: this is a temporary solution, we should replace it with the tezos PRNG
-                    // It will utilize the random_seed found in the context storage and the cycle_position of the
-                    // block to be baked
-                    let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
-                        Some(d) => d,
-                        None => panic!("Roll not found")
-                    };
-                    
-                    // if the delegate was assgined and the the has_all flag is not set skip this delegate
-                    if assigned.contains(delegate_to_assign) && !has_all {
-                        continue;
-                    }
-
-                    // we omit the estimated_time field if the block on the requested level is allready baked
-                    if head_level <= level {
-                        baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
-                        estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(40)).unwrap());
-                    } else {
-                        baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, None))
-                    }
-                    assigned.insert(delegate_to_assign);
-                }
-            }
-            // if there is no delegate specified, retrive all the delegates 
-            if requested_delegate == "all" {
-                baking_rights
-            } else {
-                baking_rights.into_iter().filter(|val| val.delegate.contains(&requested_delegate)).collect::<Vec<BakingRights>>()
-            }
+            fns::get_baking_rights(block_id, delegate, level, cycle, max_priority, has_all, head_level, timestamp, list, persistent_storage).unwrap().unwrap()
         }
         None => vec![BakingRights::new(0, String::new().into(), 0, String::new().into())]
     };
@@ -494,7 +401,7 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 
 /// This submodule contains service functions implementation.
 mod fns {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use failure::bail;
 
@@ -514,6 +421,11 @@ mod fns {
     use crate::rpc_actor::RpcCollectedStateRef;
 
     use hex::FromHex;
+    use chrono::{DateTime, Utc, Duration};
+    use chrono::prelude::*;
+    use crate::helpers::BakingRights;
+    use rand::Rng;
+
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -634,6 +546,99 @@ mod fns {
             }
         }
         Ok(Some(roll_owners))
+    }
+
+    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
+        let mut baking_rights = Vec::<BakingRights>::new();
+            
+        let block_level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
+            Some(v) => v,
+            None => panic!("Cannot get level")  // Cannot get level
+        };
+
+        let requested_cycle = match cycle.parse() {
+            // cycle requested from query
+            Ok(cycle) => {
+                if ((cycle as i32 - (block_level as i32 / 2048)).abs() as i32) <= 7 {
+                    cycle
+                } else {
+                    panic!("Cycle not found in block: {}", block_id)
+                }
+            },
+            // no cycle requested
+            Err(_e) => -1 // block_level as i32 / 2048
+        };
+
+        // If no level is specified, we return the next block to be baked
+        let mut requested_level = match level {
+            Some(level) => level.parse().unwrap(),
+            None => head_level + 1,
+        };
+
+        let level_to_itarate_to;
+        if requested_cycle >= 0 {
+            requested_level = requested_cycle * 2048 as i32; // start of the cycle
+            level_to_itarate_to = requested_level + 2048;
+        } else {
+            level_to_itarate_to = requested_level;
+        }
+
+        let rolls = get_rolls(block_id, &cycle, persistent_storage, list).unwrap();
+
+        // delegate
+        let requested_delegate = match delegate {
+            Some(delegate) => delegate,
+            None => "all".to_string() // all
+        };
+        // random number generator
+        let mut rng = rand::thread_rng();
+
+        // get the rolls
+        let roll_owners = match rolls {
+            Some(r) => r,
+            None => panic!("Error getting rolls")
+        };
+
+        for level in requested_level..(level_to_itarate_to + 1) {
+            // 30 is from the protocol constants
+            let seconds_to_add = (level - head_level).abs() * 30;
+            let mut estimated_timestamp: Option<DateTime<_>>;
+            estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(seconds_to_add.into())).unwrap());
+            
+            // as we assign the roles, the default behavior is to include only the top priority for the delegate
+            // we define a hashset to keep track of the delegates with priorities allready assigned
+            let mut assigned = HashSet::new();
+            for priority in 0..max_priority.parse().unwrap() {
+                // draw the rolls for the requested parameters
+                // Note: this is a temporary solution, we should replace it with the tezos PRNG
+                // It will utilize the random_seed found in the context storage and the cycle_position of the
+                // block to be baked
+                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
+                    Some(d) => d,
+                    None => panic!("Roll not found")
+                };
+                
+                // if the delegate was assgined and the the has_all flag is not set skip this delegate
+                if assigned.contains(delegate_to_assign) && !has_all {
+                    continue;
+                }
+
+                // we omit the estimated_time field if the block on the requested level is allready baked
+                if head_level <= level {
+                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
+                    estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(40)).unwrap());
+                } else {
+                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, None))
+                }
+                assigned.insert(delegate_to_assign);
+            }
+        }
+        // if there is no delegate specified, retrive all the delegates 
+        if requested_delegate == "all" {
+            Ok(Some(baking_rights))
+        } else {
+            Ok(Some(baking_rights.into_iter().filter(|val| val.delegate.contains(&requested_delegate)).collect::<Vec<BakingRights>>()))
+        }
     }
 
     /// Get information about current head
