@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 use chrono::prelude::*;
@@ -109,7 +109,7 @@ fn parse_query_string(query: &str) -> HashMap<&str, Vec<&str>> {
     let mut ret: HashMap<&str, Vec<&str>> = HashMap::new();
     for (key, value) in query.split('&').map(|x| {
         let mut parts = x.split('=');
-        (parts.next().unwrap(), parts.next().unwrap())
+        (parts.next().unwrap(), parts.next().unwrap_or(""))
     }) {
         if let Some(vals) = ret.get_mut(key) {
             vals.push(value);
@@ -244,7 +244,7 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
-async fn baking_rights(delegate: Option<String>, level: &Option<String>, cycle: Option<String>, max_priority: String, state: RpcCollectedStateRef, rolls: Option<HashMap<u32, String>>, log: &Logger) -> ServiceResult {
+async fn baking_rights(delegate: Option<String>, level: &Option<String>, cycle: Option<String>, max_priority: String, has_all: bool, state: RpcCollectedStateRef, rolls: Option<HashMap<u32, String>>, log: &Logger) -> ServiceResult {
     let state_read = state.read().unwrap();
 
     let baking_rights_info = match state_read.current_head().as_ref() {
@@ -259,6 +259,7 @@ async fn baking_rights(delegate: Option<String>, level: &Option<String>, cycle: 
                 Some(level) => level.parse().unwrap(),
                 None => head_level + 1,
             };
+            let seconds_to_add = (requested_level - head_level).abs() * 30;
 
             // NOTE: not finished, will require an additional loop to go trough all the levels of the cycle
             let requested_cycle = match cycle {
@@ -281,19 +282,29 @@ async fn baking_rights(delegate: Option<String>, level: &Option<String>, cycle: 
             };
 
             let mut estimated_timestamp: Option<DateTime<_>>;
-            estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(30)).unwrap());
+            estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(seconds_to_add.into())).unwrap());
+            // remove later
             warn!(log, "Head level: {:?} -- Requested level: {:?}", head_level, requested_level);
 
+            
+            // as we assign the roles, the default behavior is to include only the top priority for the delegate
+            // we define a hashset to keep track of the delegates with priorities allready assigned
+            let mut assigned = HashSet::new();
             for x in 0..max_priority.parse().unwrap() {
                 // draw the rolls for the requested parameters
                 // Note: this is a temporary solution, we should replace it with the tezos PRNG
                 // It will utilize the random_seed found in the context storage and the cycle_position of the
                 // block to be baked
-                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
+                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, (roll_owners.len() - 1) as u32)) {
                     Some(d) => d,
                     None => panic!("Roll not found")
                 };
                 
+                // if the delegate was assgined and the the has_all flag is not set skip this delegate
+                if assigned.contains(delegate_to_assign) && !has_all {
+                    continue;
+                }
+
                 // we omit the estimated_time field if the block on the requested level is allready baked
                 if head_level <= requested_level {
                     baking_rights.push(BakingRights::new(requested_level, delegate_to_assign.to_string(), x, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
@@ -301,7 +312,9 @@ async fn baking_rights(delegate: Option<String>, level: &Option<String>, cycle: 
                 } else {
                     baking_rights.push(BakingRights::new(requested_level, delegate_to_assign.to_string(), x, None))
                 }
+                assigned.insert(delegate_to_assign);
             }
+            // if there is no delegate specifiedm, retrive all the delegates 
             if requested_delegate == "all" {
                 baking_rights
             } else {
@@ -399,9 +412,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let level = find_query_value_as_string(&query, "level");
             let delegate = find_query_value_as_string(&query, "delegate");
             let _cycle = find_query_value_as_string(&query, "cycle");
+            let has_all = query.contains_key("all");
 
             let rolls = fns::get_rolls(block_id, &level, &persistent_storage, context_storage).unwrap();
-            baking_rights(delegate, &level, _cycle, max_priority, state, rolls, &log).await
+            baking_rights(delegate, &level, _cycle, max_priority, has_all, state, rolls, &log).await
         }
         _ => not_found()
     }
@@ -530,6 +544,7 @@ mod fns {
             }
         };
 
+        // get the whole context
         let context = {
             let reader = list.read().unwrap();
             if let Ok(Some(ctx)) = reader.get(requested_level) {
@@ -542,7 +557,7 @@ mod fns {
         let roll_data = context.clone();
         // get all the relevant data out of the context database
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
-            .filter(|(k, _)| k.contains("roll_list") || k.contains("data/rolls/owner/current") || k.contains("/successor") || k.contains("/random_seed"))
+            .filter(|(k, _)| k.contains("data/rolls/owner/current") || k.contains("/successor") || k.contains("/random_seed"))
             .collect();
 
         // get the roll_lists out of the context storage
