@@ -41,7 +41,7 @@ fn get_remote_lib() -> RemoteLib {
     let artifact_for_platform = match platform.os_type {
         OSType::Ubuntu => match platform.version.as_str() {
             "16.04" => Some("libtezos-ffi-ubuntu16.so"),
-            "18.04" | "18:10" => Some("libtezos-ffi-ubuntu18.so"),
+            "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
             "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so"),
             _ => None,
         }
