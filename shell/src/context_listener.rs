@@ -12,7 +12,7 @@ use riker::actors::*;
 use slog::{crit, debug, Logger, warn};
 
 use crypto::hash::HashType;
-use storage::{BlockStorage, ContextRecordValue, ContextStorage};
+use storage::{BlockStorage, ContextStorage};
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
@@ -129,7 +129,7 @@ fn listen_protocol_events(
                         let state = get_default(&mut blocks, block_hash.clone());
                         state.insert(key.join("/"), Bucket::Exists(value.clone()));
 
-                        context_storage.put(&block_hash.clone(), &ContextRecordValue::new(msg))?;
+                        context_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, .. } => {
                         let partial_state = get_default(&mut blocks, block_hash.clone());
@@ -146,14 +146,14 @@ fn listen_protocol_events(
                             warn!(log, "Trying to copy from non-existent location"; "from" => from_key, "to" => to_key);
                         }
 
-                        context_storage.put(&block_hash.clone(), &ContextRecordValue::new(msg))?;
+                        context_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Delete { block_hash: Some(block_hash), key, .. }
                     | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, .. } => {
                         let state = get_default(&mut blocks, block_hash.clone());
                         state.insert(key.join("/"), Bucket::Deleted);
 
-                        context_storage.put(&block_hash.clone(), &ContextRecordValue::new(msg))?;
+                        context_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Commit { new_context_hash, block_hash: Some(block_hash), .. } => {
                         if let Some(block) = blocks.get(block_hash) {
@@ -173,8 +173,7 @@ fn listen_protocol_events(
                     | ContextAction::Get { block_hash: Some(block_hash), .. }
                     | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
                         let key = block_hash.clone();
-                        let value = ContextRecordValue::new(msg);
-                        context_storage.put(&key, &value)?;
+                        context_storage.put_action(&key, msg)?;
                     }
                     _ => (),
                 };

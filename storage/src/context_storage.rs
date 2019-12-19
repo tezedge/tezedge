@@ -4,6 +4,7 @@
 use std::mem;
 use std::sync::Arc;
 
+use getset::{CopyGetters, Getters};
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
@@ -39,18 +40,18 @@ impl ContextStorage {
     }
 
     #[inline]
-    pub fn put(&mut self, block_hash: &BlockHash, value: &ContextRecordValue) -> Result<(), StorageError> {
-        self.clog.append(value)
-            .map_err(StorageError::from)
-            .and_then(|location| self.generator.next().map(|id| (location, id)).map_err(StorageError::from))
-            .and_then(|(location, id)| {
-                let primary_idx_res = self.context_primary_index.put(&ContextPrimaryIndexKey::new(block_hash, id), &location);
-                let contract_idx_res = extract_contract_addresses(value).iter()
-                    .map(|contract_address| self.context_by_contract_index.put(&ContextByContractIndexKey::new(contract_address, id), &location))
-                    .collect::<Result<(), _>>();
-
-                primary_idx_res.and(contract_idx_res)
-            })
+    pub fn put_action(&mut self, block_hash: &BlockHash, action: ContextAction) -> Result<(), StorageError> {
+        // generate ID
+        let id = self.generator.next()?;
+        let value = ContextRecordValue::new(action, id);
+        // store into commit log
+        let location = self.clog.append(&value)?;
+        // populate indexes
+        let primary_idx_res = self.context_primary_index.put(&ContextPrimaryIndexKey::new(block_hash, id), &location);
+        let contract_idx_res = extract_contract_addresses(&value).iter()
+            .map(|contract_address| self.context_by_contract_index.put(&ContextByContractIndexKey::new(contract_address, id), &location))
+            .collect::<Result<(), _>>();
+        primary_idx_res.and(contract_idx_res)
     }
 
     #[inline]
@@ -60,8 +61,8 @@ impl ContextStorage {
     }
 
     #[inline]
-    pub fn get_by_contract_address(&self, contract_address: &ContractAddress) -> Result<Vec<ContextRecordValue>, StorageError> {
-        self.context_by_contract_index.get_by_contract_address(contract_address)
+    pub fn get_by_contract_address(&self, contract_address: &ContractAddress, from_id: Option<SequenceNumber>, limit: usize) -> Result<Vec<ContextRecordValue>, StorageError> {
+        self.context_by_contract_index.get_by_contract_address(contract_address, from_id, limit)
             .and_then(|locations| self.get_records_by_locations(&locations))
     }
 
@@ -96,14 +97,21 @@ impl CommitLogSchema for ContextStorage {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Getters, CopyGetters, Serialize, Deserialize)]
 pub struct ContextRecordValue {
-    pub action: ContextAction,
+    #[get = "pub"]
+    action: ContextAction,
+    #[get_copy = "pub"]
+    id: SequenceNumber,
 }
 
 impl ContextRecordValue {
-    pub fn new(action: ContextAction) -> Self {
-        Self { action }
+    pub fn new(action: ContextAction, id: SequenceNumber) -> Self {
+        Self { action, id }
+    }
+
+    pub fn into_action(self) -> ContextAction {
+        self.action
     }
 }
 
@@ -276,9 +284,12 @@ impl ContextByContractIndex {
     }
 
     #[inline]
-    fn get_by_contract_address(&self, contract_address: &ContractAddress) -> Result<Vec<Location>, StorageError> {
-        let key = ContextByContractIndexKey::from_contract_address_prefix(contract_address);
-        self.kv.prefix_iterator(&key)?
+    fn get_by_contract_address(&self, contract_address: &ContractAddress, from_id: Option<SequenceNumber>, limit: usize) -> Result<Vec<Location>, StorageError> {
+        let iterate_from_key = from_id
+            .map_or_else(|| ContextByContractIndexKey::from_contract_address_prefix(contract_address), |from_id| ContextByContractIndexKey::new(contract_address, from_id));
+
+        self.kv.prefix_iterator(&iterate_from_key)?
+            .take(limit)
             .map(|(_, value)| value.map_err(StorageError::from))
             .collect()
     }

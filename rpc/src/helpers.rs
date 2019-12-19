@@ -106,3 +106,24 @@ impl FromStr for BlockHeaderInfo {
         })
     }
 }
+
+/// Represents generic paged result.
+#[derive(Debug, Serialize)]
+pub struct PagedResult<C: Serialize> {
+    /// Paged result data.
+    data: C,
+    /// ID of the next item if more items are available.
+    /// If no more items are available then `None`.
+    next_id: Option<u64>,
+    /// Limit used in the request which produced this paged result.
+    limit: usize,
+}
+
+impl<C> PagedResult<C>
+    where
+        C: Serialize
+{
+    pub fn new(data: C, next_id: Option<u64>, limit: usize) -> Self {
+        PagedResult { data, next_id, limit }
+    }
+}

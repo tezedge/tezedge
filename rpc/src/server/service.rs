@@ -144,6 +144,12 @@ fn find_query_value_as_usize<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, 
     find_query_value(query, key).and_then(|value| value.parse::<usize>().ok())
 }
 
+/// Gets a single `u64` value from parsed query.
+#[inline]
+fn find_query_value_as_u64<'a, 'b>(query: &'a HashMap<&'a str, Vec<&'a str>>, key: &'b str) -> Option<u64> {
+    find_query_value(query, key).and_then(|value| value.parse::<u64>().ok())
+}
+
 /// Finds a parameter in a parameter array. This has complexity of O(n) but number of parameters
 /// is fairly low (less than 4) so I'm fine with it.
 #[inline]
@@ -298,9 +304,11 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let block_id = find_param_value(&params, "block_id").unwrap();
             result_to_json_response(fns::get_block_actions(block_id, &persistent_storage), &log)
         }
-        (&Method::GET, Some((Route::DevGetContractActions, params, _))) => {
+        (&Method::GET, Some((Route::DevGetContractActions, params, query))) => {
             let contract_id = find_param_value(&params, "contract_id").unwrap();
-            result_to_json_response(fns::get_contract_actions(contract_id, &persistent_storage), &log)
+            let from_id = find_query_value_as_u64(&query, "from_id");
+            let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
+            result_to_json_response(fns::get_contract_actions(contract_id, from_id, limit, &persistent_storage), &log)
         }
         (&Method::GET, Some((Route::DevGetContext, params, _))) => {
             // TODO: Add parameter checks
@@ -366,7 +374,7 @@ mod fns {
     use crypto::hash::{BlockHash, ChainId, HashType};
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-    use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextStorage};
+    use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
     use storage::block_storage::BlockJsonData;
     use storage::context_storage::ContractAddress;
     use storage::persistent::PersistentStorage;
@@ -375,7 +383,7 @@ mod fns {
 
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::FullBlockInfo;
+    use crate::helpers::{FullBlockInfo, PagedResult};
     use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
@@ -394,17 +402,18 @@ mod fns {
         let context_storage = ContextStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id)?;
         context_storage.get_by_block_hash(&block_hash)
-            .map(|values| values.into_iter().map(|v| v.action).collect())
+            .map(|values| values.into_iter().map(|v| v.into_action()).collect())
             .map_err(|e| e.into())
     }
 
     /// Get actions for a specific contract in ascending order.
-    pub(crate) fn get_contract_actions(contract_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
+    pub(crate) fn get_contract_actions(contract_id: &str, from_id: Option<u64>, limit: usize, persistent_storage: &PersistentStorage) -> Result<PagedResult<Vec<ContextRecordValue>>, failure::Error> {
         let context_storage = ContextStorage::new(persistent_storage);
         let contract_address = contract_id_to_address(contract_id)?;
-        context_storage.get_by_contract_address(&contract_address)
-            .map(|values| values.into_iter().map(|v| v.action).collect())
-            .map_err(|e| e.into())
+        let mut context_records = context_storage.get_by_contract_address(&contract_address, from_id, limit + 1)?;
+        let next_id = if context_records.len() > limit { context_records.last().map(|rec| rec.id()) } else { None };
+        context_records.truncate(std::cmp::min(context_records.len(), limit));
+        Ok(PagedResult::new(context_records, next_id, limit))
     }
 
     /// Get information about current head
