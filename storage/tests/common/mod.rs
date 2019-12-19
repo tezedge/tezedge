@@ -1,48 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    process::Command,
-    sync::Arc,
-};
 use std::collections::{HashMap, HashSet};
-use std::fs::remove_dir_all;
 use std::iter::FromIterator;
 
-use rocksdb::DB;
 use serde::{Deserialize, Serialize};
 
-use skip_list::{Lane, ListValue, SkipList};
-use storage::persistent::{BincodeEncoded, KeyValueSchema, open_kv};
-
-pub struct TmpDb {
-    db: Arc<DB>,
-    tmp_dir: String,
-}
-
-impl TmpDb {
-    pub fn new() -> Self {
-        let proc = Command::new("mktemp").args(&["-d"]).output();
-        let dir = String::from_utf8(proc.unwrap().stdout)
-            .expect("failed to create testing database").trim().to_string();
-        let db = open_kv(&dir, vec![Lane::<u64, u64, Value>::descriptor(), SkipList::<u64, u64, Value>::descriptor()]).unwrap();
-        Self {
-            db: Arc::new(db),
-            tmp_dir: dir,
-        }
-    }
-
-    pub fn db(&self) -> Arc<DB> {
-        self.db.clone()
-    }
-}
-
-impl Drop for TmpDb {
-    fn drop(&mut self) {
-        remove_dir_all(&self.tmp_dir)
-            .expect("Failed to remove temp database directory");
-    }
-}
+use storage::persistent::BincodeEncoded;
+use storage::skip_list::ListValue;
 
 #[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Value(HashSet<u64>);

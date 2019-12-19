@@ -40,10 +40,33 @@ Install libs required to build RocksDB package:
 sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev
 ```
 
+**4. Supported Linux distributions**
+
+We are linking rust code with pre-compiled Tezos shared library. For your convenience we have created pre-compiled binary files
+for most of the popular linux distributions:
+
+supported linux distributions:
+* Ubuntu
+    * 16.04
+    * 18.04 and 18.10
+    * 19.04
+* Debian
+    * 9
+    * 10
+* OpenSUSE
+    * 15.1
+    * 15.2
+* CentOS
+    * 6
+    * 7
+    * 8
+    
+If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
+
 Running the node
 ------------
 
-**4. Running Tezedge node manually** 
+**5. Running Tezedge node manually** 
 
 The node can built through the `cargo build` or `cargo build --release`, be aware, release build can take 
 much longer to compile. environment variable `SODIUM_USE_PKG_CONFIG=1` mus be set. Put together, node can be build, for example, like this:
@@ -67,7 +90,7 @@ Full description of all arguments is in the light_node [README](light_node/READM
 
 
 
-**5. Running Tezedge node using run.sh script** 
+**6. Running Tezedge node using run.sh script** 
 
 On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnent variables, build and run tezedge node. 
 All arguments can be provided to the `run.sh` script in the same manner as described in the previous section - Running Tezedge node manually.

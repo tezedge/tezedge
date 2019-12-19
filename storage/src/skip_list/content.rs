@@ -155,6 +155,12 @@ impl From<DBError> for SkipListError {
     }
 }
 
+impl From<SchemaError> for SkipListError {
+    fn from(error: SchemaError) -> Self {
+        SkipListError::PersistentStorageError { error: error.into() }
+    }
+}
+
 impl<K: Codec, V: Codec> ListValue<K, V> for HashMap<K, V>
     where K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a> + Clone,
           V: Serialize + for<'a> Deserialize<'a> + Clone

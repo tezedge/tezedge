@@ -25,7 +25,7 @@ fn block_storage_read_write() -> Result<(), Error> {
 
 #[test]
 fn block_storage_assign_context() -> Result<(), Error> {
-    let tmp_storage = TmpStorage::create("__block_assiign_to_context")?;
+    let tmp_storage = TmpStorage::create("__block_assign_to_context")?;
     let mut storage = BlockStorage::new(tmp_storage.storage());
 
     let block_header = make_test_block_header()?;

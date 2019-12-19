@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -12,8 +13,7 @@ pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
-use crate::skip_list::{SkipList, Bucket};
-use std::collections::HashMap;
+use crate::skip_list::{Bucket, DatabaseBackedSkipList, TypedSkipList};
 
 pub mod sequence;
 pub mod codec;
@@ -54,7 +54,7 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 
 
 pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
-pub type ContextList = Arc<RwLock<SkipList<String, Bucket<Vec<u8>>, ContextMap>>>;
+pub type ContextList = Arc<RwLock<dyn TypedSkipList<String, Bucket<Vec<u8>>, ContextMap> + Sync + Send>>;
 
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
@@ -75,7 +75,7 @@ impl PersistentStorage {
             seq: Arc::new(Sequences::new(kv.clone(), 1000)),
             kv: kv.clone(),
             clog,
-            cs: Arc::new(RwLock::new(SkipList::<String, Bucket<Vec<u8>>, ContextMap>::new(0, kv).expect("failed to initialize context storage"))),
+            cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
         }
     }
 

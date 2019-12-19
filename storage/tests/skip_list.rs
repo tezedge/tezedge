@@ -3,32 +3,31 @@
 
 use std::collections::HashMap;
 
-use skip_list::SkipList;
+use storage::skip_list::{DatabaseBackedSkipList, TypedSkipList};
+use storage::tests_common::TmpStorage;
 
-use crate::common::{OrderedValue, TmpDb, Value};
+use crate::common::{OrderedValue, Value};
 
 mod common;
 
-type TestList<C> = SkipList<u64, u64, C>;
-
 #[test]
 fn list_new() {
-    let tmp = TmpDb::new();
-    let list = TestList::<Value>::new(1, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_new").expect("Storage error");
+    let list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(1, tmp_storage.storage().kv()).expect("failed to create skip list"));
     assert_eq!(list.len(), 0);
 }
 
 #[test]
 fn list_push() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<Value>::new(2, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_push").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(2, tmp_storage.storage().kv()).expect("failed to create skip list"));
     list.push(Value::new(vec![1])).expect("failed to push value to skip list");
     assert!(list.contains(0));
 }
 
 #[test]
 fn list_index_level() {
-    type List = TestList<Value>;
+    type List = DatabaseBackedSkipList;
     for index in 0..7 {
         assert_eq!(List::index_level(index), 0);
     }
@@ -39,8 +38,8 @@ fn list_index_level() {
 
 #[test]
 fn list_check_first() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<Value>::new(3, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_first").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(3, tmp_storage.storage().kv()).expect("failed to create skip list"));
     list.push(Value::new(vec![1])).expect("failed to push value to skip list");
     let val = list.get(0).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(0), "List `get` and `contains` return inconsistent answers");
@@ -50,8 +49,8 @@ fn list_check_first() {
 
 #[test]
 fn list_check_second() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<Value>::new(4, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_second").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(4, tmp_storage.storage().kv()).expect("failed to create skip list"));
     list.push(Value::new(vec![1])).expect("failed to push value to skip list");
     list.push(Value::new(vec![2])).expect("failed to push value to skip list");
     let val = list.get(1).expect("failed to get value from skip list");
@@ -62,8 +61,8 @@ fn list_check_second() {
 
 #[test]
 fn list_check_bottom_lane() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<Value>::new(5, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_bottom_lane").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(5, tmp_storage.storage().kv()).expect("failed to create skip list"));
     for index in 0..=6 {
         list.push(Value::new(vec![index])).expect("failed to push value to skip list");
     }
@@ -76,8 +75,8 @@ fn list_check_bottom_lane() {
 
 #[test]
 pub fn list_check_faster_lane() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<Value>::new(6, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_faster_lane").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(6, tmp_storage.storage().kv()).expect("failed to create skip list"));
     for index in 0..=7 {
         list.push(Value::new(vec![index])).expect("failed to push value to skip list");
     }
@@ -90,8 +89,8 @@ pub fn list_check_faster_lane() {
 
 #[test]
 pub fn list_check_lane_traversal() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<Value>::new(7, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_lane_traversal").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(7, tmp_storage.storage().kv()).expect("failed to create skip list"));
     for index in 0..=63 {
         list.push(Value::new(vec![index])).expect("failed to push value to skip list");
     }
@@ -104,8 +103,8 @@ pub fn list_check_lane_traversal() {
 
 #[test]
 pub fn list_check_lane_order_traversal() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<OrderedValue>::new(8, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_lane_order_traversal").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
     for (value, key) in (0..=63).zip((0..=7).cycle()) {
         let mut map = HashMap::new();
         map.insert(key, value);
@@ -124,8 +123,8 @@ pub fn list_check_lane_order_traversal() {
 
 #[test]
 pub fn list_check_get_key() {
-    let tmp = TmpDb::new();
-    let mut list = TestList::<OrderedValue>::new(8, tmp.db()).expect("failed to create skip list");
+    let tmp_storage = TmpStorage::create("__skip_list:list_check_get_key").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
     for x in 0..=7 {
         let mut map = HashMap::new();
         map.insert(x, x);

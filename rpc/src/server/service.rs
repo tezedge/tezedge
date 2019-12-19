@@ -441,8 +441,8 @@ mod fns {
             }
         };
 
-        let protocol_hash;
-        let constants;
+        let protocol_hash: Vec<u8>;
+        let constants: Vec<u8>;
         {
             let reader = list.read().unwrap();
             if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {

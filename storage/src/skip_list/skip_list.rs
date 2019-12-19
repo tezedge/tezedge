@@ -8,23 +8,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::persistent::{BincodeEncoded, KeyValueStoreWithSchema, KeyValueSchema, Codec};
 
-use crate::skip_list::{content::{ListValue, NodeHeader}, lane::Lane, LEVEL_BASE, SkipListError};
+use crate::skip_list::{content::{ListValue, NodeHeader}, lane::Lane, lane::TypedLane, LEVEL_BASE, SkipListError};
 use crate::skip_list::content::SkipListId;
 use crate::skip_list::lane::LaneDatabase;
 
-pub type SkipListDatabase<K, V, C> = dyn KeyValueStoreWithSchema<SkipList<K, V, C>> + Sync + Send;
+pub type SkipListDatabase = dyn KeyValueStoreWithSchema<DatabaseBackedSkipList> + Sync + Send;
 
 /// Data structure implementation, managing structure data, shape and metadata
 /// It is expected, that structure will hold a few GiBs of data, and because of that,
 /// structure is backed by an database.
-pub struct SkipList<K: Codec, V: Codec, C: ListValue<K, V>> {
-    lane_db: Arc<LaneDatabase<K, V, C>>,
-    list_db: Arc<SkipListDatabase<K, V, C>>,
+pub struct DatabaseBackedSkipList {
+    lane_db: Arc<LaneDatabase>,
+    list_db: Arc<SkipListDatabase>,
     list_id: SkipListId,
     state: SkipListState,
 }
 
-impl<K: Codec, V: Codec, C: ListValue<K, V>> KeyValueSchema for SkipList<K, V, C> {
+impl KeyValueSchema for DatabaseBackedSkipList {
     type Key = SkipListId;
     type Value = SkipListState;
 
@@ -33,10 +33,10 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> KeyValueSchema for SkipList<K, V, C
     }
 }
 
-impl<K: Codec, V: Codec, C: ListValue<K, V>> SkipList<K, V, C> {
+impl DatabaseBackedSkipList {
     /// Create new list in given database
     pub fn new(list_id: SkipListId, db: Arc<rocksdb::DB>) -> Result<Self, SkipListError> {
-        let list_db: Arc<SkipListDatabase<K, V, C>> = db.clone();
+        let list_db: Arc<SkipListDatabase> = db.clone();
         let state = list_db.get(&list_id)?
             .unwrap_or_else(|| SkipListState {
                 levels: 1,
@@ -46,25 +46,56 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> SkipList<K, V, C> {
         Ok(Self { lane_db: db, list_db, list_id, state })
     }
 
+    /// Find highest level, which we should traverse to hit the index
+    pub fn index_level(index: usize) -> usize {
+        if index == 0 {
+            0
+        } else {
+            f64::log((index + 1) as f64, LEVEL_BASE as f64).floor() as usize
+        }
+    }
+}
+
+pub trait SkipList {
+    fn len(&self) -> usize;
+
+    fn levels(&self) -> usize;
+
+    fn contains(&self, index: usize) -> bool;
+}
+
+impl SkipList for DatabaseBackedSkipList {
     /// Get number of elements stored in this node
     #[inline]
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.state.len
     }
 
     #[inline]
-    pub fn levels(&self) -> usize {
+    fn levels(&self) -> usize {
         self.state.levels
     }
 
     /// Check, that given index is stored in structure
     #[inline]
-    pub fn contains(&self, index: usize) -> bool {
+    fn contains(&self, index: usize) -> bool {
         self.state.len > index
     }
+}
 
+pub trait TypedSkipList<K: Codec, V: Codec, C: ListValue<K, V>>: SkipList {
+    fn get(&self, index: usize) -> Result<Option<C>, SkipListError>;
+
+    fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError>;
+
+    fn push(&mut self, value: C) -> Result<(), SkipListError>;
+
+    fn diff(&self, from: usize, to: usize) -> Result<Option<C>, SkipListError>;
+}
+
+impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for DatabaseBackedSkipList {
     /// Rebuild state for given index
-    pub fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
+    fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         // There is an sequential index on lowest level, if expected index is bigger than
         // length of chain, it is not stored, otherwise, IT MUST BE FOUND.
         if index >= self.state.len {
@@ -110,17 +141,17 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> SkipList<K, V, C> {
     }
 
     /// Get single value from state at given index
-    pub fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
+    fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
         if index >= self.state.len {
             return Ok(None);
         }
 
         let highest_level = Self::index_level(index);
-        let mut lane: Lane<K, V, C> = Lane::new(self.list_id, 0, self.lane_db.clone());
+        let mut lane = Lane::new(self.list_id, 0, self.lane_db.clone());
         let mut pos = NodeHeader::new(self.list_id, lane.level(), index);
 
         loop {
-            if let Some(state) = lane.get(pos.index())? {
+            if let Some(state) = lane.get(pos.index())? as Option<C> {
                 if let Some(value) = state.get(key) {
                     return Ok(Some(value));
                 } else {
@@ -145,7 +176,7 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> SkipList<K, V, C> {
 
     /// Push new value into the end of the list. Beware, this is operation is
     /// not thread safe and should be handled with care !!!
-    pub fn push(&mut self, mut value: C) -> Result<(), SkipListError> {
+    fn push(&mut self, mut value: C) -> Result<(), SkipListError> {
         let mut lane = Lane::new(self.list_id, 0, self.lane_db.clone());
         let mut index = self.state.len;
 
@@ -183,19 +214,10 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> SkipList<K, V, C> {
             .map_err(SkipListError::from)
     }
 
-    /// Find highest level, which we should traverse to hit the index
-    pub fn index_level(index: usize) -> usize {
-        if index == 0 {
-            0
-        } else {
-            f64::log((index + 1) as f64, LEVEL_BASE as f64).floor() as usize
-        }
-    }
 
     /// Build a difference object between two indexes.
     /// `list.get(from).merge(list.diff(from, to)) == list.get(to)`
     /// !!! Experimental !!!
-    #[allow(dead_code)]
     fn diff(&self, from: usize, to: usize) -> Result<Option<C>, SkipListError> {
         if from > to || from >= self.state.len {
             return Ok(None);
