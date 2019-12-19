@@ -19,7 +19,9 @@ Valid values are:
   * build automatically resolves OS a downloads correct pre-build library distribution
 
 ##### Local OCaml development
-If you want to build rust library with local build of Ocaml library from Tezos sources, you can set:
+If you want to build rust library with local build of Ocaml library from Tezos sources, you can set env variables to:
 * `OCAML_BUILD_CHAIN=local`
 * `UPDATE_GIT=false`
 * `TEZOS_BASE_DIR=<your-local-directory-with-tezos-sources>`
+
+and run `SODIUM_USE_PKG_CONFIG=1 cargo build` to build tezedge node manually.
