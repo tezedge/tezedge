@@ -128,8 +128,8 @@ impl ContextConstants {
             if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_gas_limit_per_block") {
                 ret.hard_gas_limit_per_block = format!("{}", num.0);
             }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("proof_of_work_threshold") {
-                ret.proof_of_work_threshold = format!("{}", num.0);
+            if let Some(UniversalValue::Number(num)) = consts.get("proof_of_work_threshold") {
+                ret.proof_of_work_threshold = format!("{}", num);
             }
             if let Some(UniversalValue::BigNumber(num)) = consts.get("tokens_per_roll") {
                 ret.tokens_per_roll = format!("{}", num.0);
@@ -161,8 +161,8 @@ impl ContextConstants {
             if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_storage_limit_per_operation") {
                 ret.hard_storage_limit_per_operation = format!("{}", num.0);
             }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("test_chain_duration") {
-                ret.test_chain_duration = format!("{}", num.0);
+            if let Some(UniversalValue::Number(num)) = consts.get("test_chain_duration") {
+                ret.test_chain_duration = format!("{}", num);
             }
             if let Some(UniversalValue::Number(num)) = consts.get("quorum_min") {
                 ret.quorum_min = num.clone();

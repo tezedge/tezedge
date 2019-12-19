@@ -41,7 +41,7 @@ impl FixedConstants {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ParametricConstants {
-    preserved_cycle: u8,
+    preserved_cycles: u8,
     blocks_per_cycle: i32,
     blocks_per_commitment: i32,
     blocks_per_roll_snapshot: i32,
@@ -75,7 +75,7 @@ pub struct ParametricConstants {
 impl ParametricConstants {
     pub fn as_map(self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
-        ret.insert("preserved_cycle", UniversalValue::num(self.preserved_cycle));
+        ret.insert("preserved_cycles", UniversalValue::num(self.preserved_cycles));
         ret.insert("blocks_per_cycle", UniversalValue::num(self.blocks_per_cycle));
         ret.insert("blocks_per_commitment", UniversalValue::num(self.blocks_per_commitment));
         ret.insert("blocks_per_roll_snapshot", UniversalValue::num(self.blocks_per_roll_snapshot));
@@ -108,7 +108,7 @@ impl ParametricConstants {
 impl HasEncoding for ParametricConstants {
     fn encoding() -> Encoding {
             Encoding::Obj(vec![
-                Field::new("preserved_cycle", Encoding::Uint8),
+                Field::new("preserved_cycles", Encoding::Uint8),
                 Field::new("blocks_per_cycle", Encoding::Int32),
                 Field::new("blocks_per_commitment", Encoding::Int32),
                 Field::new("blocks_per_roll_snapshot", Encoding::Int32),

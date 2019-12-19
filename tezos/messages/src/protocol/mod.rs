@@ -17,6 +17,7 @@ pub mod proto_004;
 pub mod proto_005;
 pub mod proto_005_2;
 
+#[derive(Debug, Clone)]
 pub enum UniversalValue {
     Number(i64),
     BigNumber(BigInt),
