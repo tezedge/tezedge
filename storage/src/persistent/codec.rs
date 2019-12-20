@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::Hash;
 use std::collections::HashMap;
+use std::ops::Range;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -129,4 +130,9 @@ macro_rules! num_from_slice {
 #[inline]
 pub fn vec_from_slice(buf: &[u8], from_idx: usize, size: usize) -> Vec<u8> {
     buf[from_idx..from_idx + size].to_vec()
+}
+
+#[inline]
+pub const fn range_from_idx_len(idx: usize, len: usize) -> Range<usize> {
+    idx..idx + len
 }

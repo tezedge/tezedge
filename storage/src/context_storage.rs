@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cmp::Ordering;
 use std::mem;
 use std::sync::Arc;
 
@@ -13,10 +14,11 @@ use tezos_context::channel::ContextAction;
 
 use crate::num_from_slice;
 use crate::persistent::{CommitLogSchema, CommitLogWithSchema, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage, SchemaError};
-use crate::persistent::codec::vec_from_slice;
+use crate::persistent::codec::{vec_from_slice, range_from_idx_len};
 use crate::persistent::commit_log::fold_consecutive_locations;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
+use std::ops::Range;
 
 pub type ContextStorageCommitLog = dyn CommitLogWithSchema<ContextStorage> + Sync + Send;
 
@@ -303,6 +305,7 @@ impl KeyValueSchema for ContextByContractIndex {
         let mut cf_opts = Options::default();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextByContractIndexKey::LEN_CONTRACT_ADDRESS));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
+        cf_opts.set_comparator("reverse_id", ContextByContractIndexKey::reverse_id_comparator);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
@@ -326,6 +329,9 @@ impl ContextByContractIndexKey {
     const IDX_CONTRACT_ADDRESS: usize = 0;
     const IDX_ID: usize = Self::IDX_CONTRACT_ADDRESS + Self::LEN_CONTRACT_ADDRESS;
 
+    const RANGE_CONTRACT_ADDRESS: Range<usize> = range_from_idx_len(Self::IDX_CONTRACT_ADDRESS, Self::LEN_CONTRACT_ADDRESS);
+    const RANGE_ID: Range<usize> = Self::IDX_ID..Self::IDX_ID + Self::LEN_ID;
+
     pub fn new(contract_address: &[u8], id: SequenceNumber) -> Self {
         Self {
             contract_address: contract_address.to_vec(),
@@ -338,8 +344,32 @@ impl ContextByContractIndexKey {
     fn from_contract_address_prefix(contract_address: &[u8]) -> Self {
         Self {
             contract_address: contract_address.to_vec(),
-            id: 0,
+            id: std::u64::MAX,
         }
+    }
+
+    /// Comparator that sorts records in a descending order.
+    fn reverse_id_comparator(a: &[u8], b: &[u8]) -> Ordering {
+        assert_eq!(a.len(), b.len(), "Cannot compare keys of mismatching length");
+        assert_eq!(a.len(), Self::LEN_TOTAL, "Key is expected to have exactly {} bytes", Self::LEN_TOTAL);
+
+        for idx in Self::RANGE_CONTRACT_ADDRESS {
+            match a[idx].cmp(&b[idx]) {
+                Ordering::Greater => return Ordering::Greater,
+                Ordering::Less => return Ordering::Less,
+                Ordering::Equal => ()
+            }
+        }
+        // order ID in reverse
+        for idx in Self::RANGE_ID {
+            match a[idx].cmp(&b[idx]) {
+                Ordering::Greater => return Ordering::Less,
+                Ordering::Less => return Ordering::Greater,
+                Ordering::Equal => ()
+            }
+        }
+
+        Ordering::Equal
     }
 }
 
@@ -349,7 +379,7 @@ impl ContextByContractIndexKey {
 impl Decoder for ContextByContractIndexKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if Self::LEN_TOTAL == bytes.len() {
-            let contract_address = vec_from_slice(bytes, Self::IDX_CONTRACT_ADDRESS, Self::LEN_CONTRACT_ADDRESS);
+            let contract_address = bytes[Self::RANGE_CONTRACT_ADDRESS].to_vec();
             let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
             Ok(ContextByContractIndexKey { contract_address, id })
         } else {
@@ -411,5 +441,19 @@ mod tests {
         let encoded_bytes = expected.encode()?;
         let decoded = ContextPrimaryIndexKey::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
+    }
+
+    #[test]
+    fn reverse_id_comparator_correct_order() -> Result<(), Error> {
+        let a = ContextByContractIndexKey {
+            contract_address: hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?,
+            id: 6548,
+        }.encode()?;
+        let b = ContextByContractIndexKey {
+            contract_address: hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?,
+            id: 6546,
+        }.encode()?;
+
+        Ok(assert_eq!(Ordering::Less, ContextByContractIndexKey::reverse_id_comparator(&a, &b)))
     }
 }

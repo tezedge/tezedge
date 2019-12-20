@@ -1,6 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(wait_until)]
+#![feature(wait_until, const_fn, const_if_match)]
 
 use std::sync::Arc;
 
