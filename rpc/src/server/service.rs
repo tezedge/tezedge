@@ -321,7 +321,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let block_id = find_param_value(&params, "block_id").unwrap();
             let level = find_query_value_as_string(&query, "level");
             //make_json_response(&format!("block {:?} level {:?}", block_id, level))
-            result_to_json_response(fns::get_block_endorsing_rights(block_id, level, &persistent_storage), &log)
+            result_to_json_response(fns::get_block_endorsing_rights(block_id, level, context_storage, &persistent_storage), &log)
         }
         _ => not_found()
     }
@@ -388,10 +388,10 @@ mod fns {
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
     use tezos_context::channel::ContextAction;
-    use crate::encoding::helpers::{EndorsingRight, EndorsingRights};
-
+    
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
+    use crate::encoding::endorsing_rights::{EndorsingRight, EndorsingRights};
     use crate::helpers::{FullBlockInfo, PagedResult};
     use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -425,9 +425,41 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn get_block_endorsing_rights(_block_id: &str, _level: Option<String>, _persistent_storage: &PersistentStorage) -> Result<Option<EndorsingRight>, failure::Error> {
-        let rights = Default::default();
-        Ok(Some(rights))
+    pub(crate) fn get_block_endorsing_rights(block_id: &str, level: Option<String>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<EndorsingRight>, failure::Error> {
+        //let rights = Default::default();
+        //Ok(Some(rights))
+        let level = if block_id == "head" {
+            let reader = list.read().expect("mutex poisoning");
+            reader.len() - 1
+        } else {
+            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                block_meta.level() as usize
+            } else {
+                return Ok(None);
+            }
+        };
+
+        //let protocol_hash: Vec<u8>;
+        let bin_data: Vec<u8>;
+        {
+            let reader = list.read().unwrap();
+            // if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
+            //     protocol_hash = data;
+            // } else {
+            //     panic!(format!("Protocol not found in block: {}", block_id))
+            // }
+
+            if let Some(Bucket::Exists(data)) = reader.get_key(level, &"data/rolls/owner/current/25/2/537".to_string())? {
+                bin_data = data;
+            } else {
+                bin_data = Default::default();
+            }
+        };
+
+        Ok(Some(EndorsingRight::transpile_context_bytes(&bin_data)?))
+
     }
 
     /// Get information about current head

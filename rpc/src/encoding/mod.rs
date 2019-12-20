@@ -2,7 +2,7 @@ pub mod base_types;
 pub mod monitor;
 pub mod chain;
 pub mod context;
-pub mod helpers;
+pub mod endorsing_rights;
 
 #[cfg(test)]
 pub mod test_helpers {

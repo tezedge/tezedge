@@ -20,13 +20,25 @@ pub mod proto_005_2;
 #[derive(Debug, Clone)]
 pub enum UniversalValue {
     Number(i64),
+    NumberU16(u16),
+    NumberI32(i32),
     BigNumber(BigInt),
     List(Vec<Box<UniversalValue>>),
+    ListU16(Vec<Box<UniversalValue>>),
+    String(String),
 }
 
 impl UniversalValue {
     fn num<T: Into<i64>>(val: T) -> Self {
         Self::Number(val.into())
+    }
+
+    fn num_u16<T: Into<u16>>(val: T) -> Self {
+        Self::NumberU16(val.into())
+    }
+
+    fn num_i32<T: Into<i32>>(val: T) -> Self {
+        Self::NumberI32(val.into())
     }
 
     fn big_num(val: BigInt) -> Self {
@@ -39,6 +51,18 @@ impl UniversalValue {
             ret.push(Box::new(Self::num(x.clone())))
         }
         Self::List(ret)
+    }
+    
+    fn num_list_u16<'a, T: 'a + Into<u16> + Clone, I: IntoIterator<Item=&'a T>>(val: I) -> Self {
+        let mut ret: Vec<Box<UniversalValue>> = Default::default();
+        for x in val {
+            ret.push(Box::new(Self::num_u16(x.clone())))
+        }
+        Self::ListU16(ret)
+    }
+
+    fn string(val: String) -> Self {
+        Self::String(val)
     }
 }
 
@@ -83,4 +107,10 @@ pub fn get_constants(bytes: &[u8], protocol: ProtocolHash) -> Result<Option<Hash
         }
         _ => Ok(None)
     }
+}
+
+pub fn get_endorsing_data(bytes: &[u8]) -> Result<Option<HashMap<&'static str, UniversalValue>>, Error> {
+    use crate::protocol::proto_001::endorsing_rights::EndorsingRightEncode;
+    let param = EndorsingRightEncode::from_bytes(bytes.to_vec())?.as_map();
+    Ok(Some(param))
 }
