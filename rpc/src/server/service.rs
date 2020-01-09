@@ -412,6 +412,7 @@ mod fns {
     use storage::context_storage::ContractAddress;
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
+    use storage::num_from_slice;
     use tezos_context::channel::ContextAction;
 
     use crate::ContextList;
@@ -471,8 +472,10 @@ mod fns {
     }
 
     pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
+        const ROLL_NUM_SIZE: usize = 4;
+
         // get the level of from the block
-        let level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
+        let level = match get_block_level(block_id, persistent_storage, &list)? {
             Some(v) => v,
             None => return Ok(None)  // Cannot get level
         };
@@ -486,7 +489,7 @@ mod fns {
             if let Ok(Some(ctx)) = reader.get(level) {
                 ctx
             } else {
-                panic!("Context not found")
+                bail!("Context not found")
             }
         };
 
@@ -507,7 +510,9 @@ mod fns {
 
         for key in roll_lists.keys() {
             // extract the delegate address (public key hash <pkh>) from the key
-            let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
+            // let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
+            let public_key_hash: String = key.split('/').collect::<Vec<_>>().get(9).unwrap_or(&"Address error").to_string(); //[9]
+
             let contract_id = address_to_contract_id(&public_key_hash).unwrap();
 
             // get the first roll
@@ -515,7 +520,7 @@ mod fns {
             if let Some(Bucket::Exists(roll)) = roll_lists.get(key) {
                 next_roll = roll;
             } else {
-                panic!("No first roll for the delegate")
+                bail!("No first roll for the delegate")
             }
 
             // fill out the roll_owners hash map using the linked list from the context storage
@@ -523,9 +528,11 @@ mod fns {
                 // Note: I think we should replace this with the ffi decode_context_data functions
 
                 // this is just a temporary solution (looks awfull)
-                let mut roll_num_array: [u8; 4] = [Default::default(); 4];
-                roll_num_array[..next_roll.len()].copy_from_slice(next_roll);
-                let roll_num = u32::from_be_bytes(roll_num_array);
+                // let mut roll_num_array: [u8; 4] = [Default::default(); 4];
+                // roll_num_array[..next_roll.len()].copy_from_slice(next_roll);
+                // let roll_num = u32::from_be_bytes(roll_num_array);
+
+                let roll_num = num_from_slice!(next_roll, ROLL_NUM_SIZE, u32);
 
                 // construct the whole owner/successor key
                 // /<rol_num little-endian 1st byte>/<roll_num little-endian 2nd byte>/<roll_num in decimal>
@@ -536,7 +543,7 @@ mod fns {
                 if let Some(_roll) = data.get(&owner_key) {
                     roll_owners.insert(roll_num, contract_id.clone());
                 } else {
-                    panic!("Roll owner key not found for key: {}", &owner_key)
+                    bail!("Roll owner key not found for key: {}", &owner_key)
                 }
 
                 // get the next roll for the delegate
@@ -551,12 +558,13 @@ mod fns {
     }
 
     pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
+        const NO_CYCLE_FLAG: i32 = -1;
         let mut baking_rights = Vec::<BakingRights>::new();
         
         // level of the block specified in the url params
         let block_level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
             Some(v) => v,
-            None => panic!("Cannot get level")  // Cannot get level
+            None => bail!("Cannot get level")  // Cannot get level
         };
 
         let requested_cycle = match cycle.parse() {
@@ -568,11 +576,11 @@ mod fns {
                 if ((cycle as i32 - (block_level as i32 / 2048)).abs() as i32) <= 7 {
                     cycle
                 } else {
-                    panic!("Cycle not found in block: {}", block_id)
+                    bail!("Cycle not found in block: {}", block_id)
                 }
             },
             // no cycle requested
-            Err(_e) => -1
+            Err(_e) => NO_CYCLE_FLAG
         };
 
         // If no level is specified, we return the next block to be baked
@@ -601,7 +609,7 @@ mod fns {
         let rolls = get_rolls(block_id, &cycle, persistent_storage, list).unwrap();
         let roll_owners = match rolls {
             Some(r) => r,
-            None => panic!("Error getting rolls")
+            None => bail!("Error getting rolls")
         };
 
         // iterate through the whole cycle if necessery
@@ -621,7 +629,7 @@ mod fns {
                 // block to be baked
                 let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
                     Some(d) => d,
-                    None => panic!("Roll not found")
+                    None => bail!("Roll not found")
                 };
                 
                 // if the delegate was assgined and the the has_all flag is not set skip this priority
@@ -643,7 +651,7 @@ mod fns {
         if requested_delegate == "all" {
             Ok(Some(baking_rights))
         } else {
-            Ok(Some(baking_rights.into_iter().filter(|val| val.delegate.contains(&requested_delegate)).collect::<Vec<BakingRights>>()))
+            Ok(Some(baking_rights.into_iter().filter(|val| val.delegate().contains(&requested_delegate)).collect::<Vec<BakingRights>>()))
         }
     }
 

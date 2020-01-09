@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use getset::Getters;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -129,12 +130,17 @@ impl<C> PagedResult<C>
 }
 #[derive(Serialize, Debug, Clone)]
 /// Object containing information about the baking rights 
+#[derive(Serialize, Debug, Clone, Getters)]
 pub struct BakingRights {
-    pub level: i32,
-    pub delegate: String,
-    pub priority: i32,
+    #[get = "pub(crate)"]
+    level: i32,
+    #[get = "pub(crate)"]
+    delegate: String,
+    #[get = "pub(crate)"]
+    priority: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub estimated_time: Option<String>,
+    #[get = "pub(crate)"]
+    estimated_time: Option<String>,
 }
 
 impl BakingRights {
