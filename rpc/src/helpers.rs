@@ -133,18 +133,18 @@ impl<C> PagedResult<C>
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct BakingRights {
     #[get = "pub(crate)"]
-    level: i32,
+    level: i64,
     #[get = "pub(crate)"]
     delegate: String,
     #[get = "pub(crate)"]
-    priority: i32,
+    priority: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[get = "pub(crate)"]
     estimated_time: Option<String>,
 }
 
 impl BakingRights {
-    pub fn new(level: i32, delegate: String, priority: i32, estimated_time: Option<String>) -> Self{
+    pub fn new(level: i64, delegate: String, priority: i64, estimated_time: Option<String>) -> Self{
         Self {
             level,
             delegate: delegate.to_string(),

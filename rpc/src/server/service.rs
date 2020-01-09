@@ -250,7 +250,7 @@ async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<
             let current_head: BlockApplied = current_head.clone();
             let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
             let head_level = current_head.header().header.level();
-            fns::get_baking_rights(block_id, delegate, level, cycle, max_priority, has_all, head_level, timestamp, list, persistent_storage).unwrap().unwrap()
+            fns::get_baking_rights(block_id, delegate, level, cycle, max_priority, has_all, head_level.into(), timestamp, list, persistent_storage).unwrap().unwrap()
         }
         None => vec![BakingRights::new(0, String::new().into(), 0, String::new().into())]
     };
@@ -471,8 +471,8 @@ mod fns {
         }
     }
 
-    pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<u32, String>>, failure::Error> {
-        const ROLL_NUM_SIZE: usize = 4;
+    pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
+        const ROLL_NUM_SIZE: usize = 0;
 
         // get the level of from the block
         let level = match get_block_level(block_id, persistent_storage, &list)? {
@@ -506,7 +506,7 @@ mod fns {
             .filter(|(k, _)| k.contains("roll_list"))
             .collect();
             
-        let mut roll_owners: HashMap<u32, String> = HashMap::new();
+        let mut roll_owners: HashMap<i64, String> = HashMap::new();
 
         for key in roll_lists.keys() {
             // extract the delegate address (public key hash <pkh>) from the key
@@ -532,7 +532,7 @@ mod fns {
                 // roll_num_array[..next_roll.len()].copy_from_slice(next_roll);
                 // let roll_num = u32::from_be_bytes(roll_num_array);
 
-                let roll_num = num_from_slice!(next_roll, ROLL_NUM_SIZE, u32);
+                let roll_num = num_from_slice!(next_roll, ROLL_NUM_SIZE, i32);
 
                 // construct the whole owner/successor key
                 // /<rol_num little-endian 1st byte>/<roll_num little-endian 2nd byte>/<roll_num in decimal>
@@ -541,7 +541,7 @@ mod fns {
                 let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
             
                 if let Some(_roll) = data.get(&owner_key) {
-                    roll_owners.insert(roll_num, contract_id.clone());
+                    roll_owners.insert(roll_num.into(), contract_id.clone());
                 } else {
                     bail!("Roll owner key not found for key: {}", &owner_key)
                 }
@@ -557,9 +557,19 @@ mod fns {
         Ok(Some(roll_owners))
     }
 
-    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i32, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
-        const NO_CYCLE_FLAG: i32 = -1;
+    pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i64, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
+        const NO_CYCLE_FLAG: i64 = -1;
         let mut baking_rights = Vec::<BakingRights>::new();
+
+        // get the protocol constants from the context
+        let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage).unwrap() {
+            Some(v) => v,
+            None => bail!("Cannot get protocol constants")
+        };
+        let time_between_blocks: Vec<i64> = constants.time_between_blocks()
+            .into_iter()
+            .map(|x| x.parse().unwrap())
+            .collect();
         
         // level of the block specified in the url params
         let block_level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
@@ -567,13 +577,13 @@ mod fns {
             None => bail!("Cannot get level")  // Cannot get level
         };
 
-        let requested_cycle = match cycle.parse() {
+        let requested_cycle: i64 = match cycle.parse() {
             // cycle requested from query
             Ok(cycle) => {
                 // check whether the cycle is reachable
                 // the storage stores cycle up to: current_cycle + perserved_cycles(5) + 2
                 // e.g. if head is in cycle 66, we can get the rights for up to cycle 73
-                if ((cycle as i32 - (block_level as i32 / 2048)).abs() as i32) <= 7 {
+                if ((cycle as i64 - (block_level as i64 / constants.blocks_per_cycle())).abs() as i64) <= constants.preserved_cycles() + 2 {
                     cycle
                 } else {
                     bail!("Cycle not found in block: {}", block_id)
@@ -584,15 +594,15 @@ mod fns {
         };
 
         // If no level is specified, we return the next block to be baked
-        let mut requested_level = match level {
+        let mut requested_level: i64 = match level {
             Some(level) => level.parse().unwrap(),
             None => head_level + 1,
         };
 
         // if a cycle is specified, we need to iterate through all of the levels in the cycle
         let level_to_itarate_to = if requested_cycle >= 0 {
-            requested_level = requested_cycle * 2048 as i32; // first block of the cycle
-            requested_level + 2048
+            requested_level = requested_cycle * constants.blocks_per_cycle(); // first block of the cycle
+            requested_level + constants.blocks_per_cycle()
         } else {
             requested_level
         };
@@ -615,7 +625,7 @@ mod fns {
         // iterate through the whole cycle if necessery
         for level in requested_level..(level_to_itarate_to + 1) {
             // 30 is from the protocol constants
-            let seconds_to_add = (level - head_level).abs() * 30;
+            let seconds_to_add = (level - head_level).abs() * time_between_blocks[0];
             let mut estimated_timestamp: Option<DateTime<_>>;
             estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(seconds_to_add.into())).unwrap());
             
@@ -627,7 +637,7 @@ mod fns {
                 // Note: this is a temporary solution, we should replace it with the tezos PRNG
                 // It will utilize the random_seed found in the context storage and the cycle_position of the
                 // block to be baked
-                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as u32)) {
+                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as i64)) {
                     Some(d) => d,
                     None => bail!("Roll not found")
                 };
@@ -640,7 +650,7 @@ mod fns {
                 // we omit the estimated_time field if the block on the requested level is allready baked
                 if head_level <= level {
                     baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
-                    estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(40)).unwrap());
+                    estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(time_between_blocks[1])).unwrap());
                 } else {
                     baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, None))
                 }
