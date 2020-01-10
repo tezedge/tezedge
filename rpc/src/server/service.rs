@@ -472,7 +472,7 @@ mod fns {
     }
 
     pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
-        const ROLL_NUM_SIZE: usize = 0;
+        const ROLL_NUM_START: usize = 0;
 
         // get the level of from the block
         let level = match get_block_level(block_id, persistent_storage, &list)? {
@@ -525,14 +525,7 @@ mod fns {
 
             // fill out the roll_owners hash map using the linked list from the context storage
             loop {
-                // Note: I think we should replace this with the ffi decode_context_data functions
-
-                // this is just a temporary solution (looks awfull)
-                // let mut roll_num_array: [u8; 4] = [Default::default(); 4];
-                // roll_num_array[..next_roll.len()].copy_from_slice(next_roll);
-                // let roll_num = u32::from_be_bytes(roll_num_array);
-
-                let roll_num = num_from_slice!(next_roll, ROLL_NUM_SIZE, i32);
+                let roll_num = num_from_slice!(next_roll, ROLL_NUM_START, i32);
 
                 // construct the whole owner/successor key
                 // /<rol_num little-endian 1st byte>/<roll_num little-endian 2nd byte>/<roll_num in decimal>
@@ -540,7 +533,7 @@ mod fns {
                 let owner_key = format!("data/rolls/owner/current/{}/{}/{}", next_roll[3], next_roll[2], roll_num);
                 let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
             
-                if let Some(_roll) = data.get(&owner_key) {
+                if let Some(Bucket::Exists(_roll)) = data.get(&owner_key) {
                     roll_owners.insert(roll_num.into(), contract_id.clone());
                 } else {
                     bail!("Roll owner key not found for key: {}", &owner_key)
@@ -566,6 +559,8 @@ mod fns {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
+
+        // time between blocks values. String -> i64
         let time_between_blocks: Vec<i64> = constants.time_between_blocks()
             .into_iter()
             .map(|x| x.parse().unwrap())
