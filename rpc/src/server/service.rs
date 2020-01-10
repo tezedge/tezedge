@@ -473,6 +473,7 @@ mod fns {
 
     pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
         const ROLL_NUM_START: usize = 0;
+        const ADDRESS_POSITION: usize = 9;
 
         // get the level of from the block
         let level = match get_block_level(block_id, persistent_storage, &list)? {
@@ -511,9 +512,12 @@ mod fns {
         for key in roll_lists.keys() {
             // extract the delegate address (public key hash <pkh>) from the key
             // let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
-            let public_key_hash: String = key.split('/').collect::<Vec<_>>().get(9).unwrap_or(&"Address error").to_string(); //[9]
+            let public_key_hash: String = match key.split('/').collect::<Vec<_>>().get(ADDRESS_POSITION) {
+                Some(v) => v.to_string(),
+                None => bail!("Address not found in key")
+            };
 
-            let contract_id = address_to_contract_id(&public_key_hash).unwrap();
+            let contract_id = address_to_contract_id(&public_key_hash)?;
 
             // get the first roll
             let mut next_roll;
@@ -555,7 +559,7 @@ mod fns {
         let mut baking_rights = Vec::<BakingRights>::new();
 
         // get the protocol constants from the context
-        let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage).unwrap() {
+        let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage)? {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
@@ -567,7 +571,7 @@ mod fns {
             .collect();
         
         // level of the block specified in the url params
-        let block_level = match get_block_level(block_id, persistent_storage, &list).unwrap() {
+        let block_level = match get_block_level(block_id, persistent_storage, &list)? {
             Some(v) => v,
             None => bail!("Cannot get level")  // Cannot get level
         };
@@ -590,7 +594,7 @@ mod fns {
 
         // If no level is specified, we return the next block to be baked
         let mut requested_level: i64 = match level {
-            Some(level) => level.parse().unwrap(),
+            Some(level) => level.parse()?,
             None => head_level + 1,
         };
 
@@ -611,7 +615,7 @@ mod fns {
         let mut rng = rand::thread_rng();
 
         // get the rolls from the context storage
-        let rolls = get_rolls(block_id, &cycle, persistent_storage, list).unwrap();
+        let rolls = get_rolls(block_id, &cycle, persistent_storage, list)?;
         let roll_owners = match rolls {
             Some(r) => r,
             None => bail!("Error getting rolls")
@@ -627,7 +631,7 @@ mod fns {
             // as we assign the roles, the default behavior is to include only the top priority for the delegate
             // we define a hashset to keep track of the delegates with priorities allready assigned
             let mut assigned = HashSet::new();
-            for priority in 0..max_priority.parse().unwrap() {
+            for priority in 0..max_priority.parse()? {
                 // draw the rolls for the requested parameters
                 // Note: this is a temporary solution, we should replace it with the tezos PRNG
                 // It will utilize the random_seed found in the context storage and the cycle_position of the
