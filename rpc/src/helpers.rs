@@ -127,3 +127,22 @@ impl<C> PagedResult<C>
         PagedResult { data, next_id, limit }
     }
 }
+
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct EndorsingRight {
+    level: i64,
+    delegate: String,
+    slots: Vec<u8>,
+    estimated_time: String
+}
+
+impl EndorsingRight {
+    pub fn new(level: i64, delegate: String, slots: Vec<u8>, estimated_time: String) -> Self {
+        Self {
+            level,
+            delegate: delegate.to_string(),
+            slots,
+            estimated_time,
+        }
+    }
+}

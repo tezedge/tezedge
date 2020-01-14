@@ -387,12 +387,12 @@ mod fns {
     use storage::context_storage::ContractAddress;
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
+    use storage::num_from_slice;
     use tezos_context::channel::ContextAction;
     
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::encoding::endorsing_rights::{EndorsingRight, EndorsingRights};
-    use crate::helpers::{FullBlockInfo, PagedResult};
+    use crate::helpers::{FullBlockInfo, PagedResult, EndorsingRight};
     use crate::rpc_actor::RpcCollectedStateRef;
 
     /// Retrieve blocks from database.
@@ -425,7 +425,7 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn get_block_endorsing_rights(block_id: &str, level: Option<String>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<EndorsingRight>, failure::Error> {
+    pub(crate) fn get_block_endorsing_rights(block_id: &str, level: Option<String>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<HashMap<i64, String>>, failure::Error> {
         //let rights = Default::default();
         //Ok(Some(rights))
         let level = if block_id == "head" {
@@ -441,24 +441,81 @@ mod fns {
             }
         };
 
-        //let protocol_hash: Vec<u8>;
-        let bin_data: Vec<u8>;
+        let mut context_rollers: HashMap<i64, String> = HashMap::new();
         {
-            let reader = list.read().unwrap();
-            // if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
-            //     protocol_hash = data;
-            // } else {
-            //     panic!(format!("Protocol not found in block: {}", block_id))
-            // }
+            let context_data = {
+                let reader = match list.read() {
+                    Ok(r) => r,
+                    _ => bail!("mutex poisoning")
+                };
+                if let Ok(Some(c)) = reader.get(level) {
+                    c
+                } else {
+                    bail!("Context data not found")
+                }
+            };
+            let cloned_context = context_data.clone();
+            let roll_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.into_iter()
+                .filter(|(k, _)| k.contains("roll_list"))
+                .collect();
+            let data: HashMap<String, Bucket<Vec<u8>>> = cloned_context.into_iter()
+                .filter(|(k, _)| k.contains("data/rolls/owner") || k.contains("/successor") || k.contains("/random_seed"))
+                .collect();
 
-            if let Some(Bucket::Exists(data)) = reader.get_key(level, &"data/rolls/owner/current/25/2/537".to_string())? {
-                bin_data = data;
-            } else {
-                bin_data = Default::default();
+            for roll_key in roll_lists.keys() {
+                // get public key hash from key string
+                let public_key: String = match roll_key.split('/').collect::<Vec<_>>().get(9) {
+                    Some(v) => v.to_string(),
+                    None => bail!("public key not found in roll list key")
+                };
+
+                let mut roll;
+                // get first roll
+                if let Some(Bucket::Exists(r)) = roll_lists.get(roll_key) {
+                    roll = r;
+                } else {
+                    bail!("No data in roll")
+                }
+                // fill roll data and get all successors rolls
+                loop {
+                    let roll_num = num_from_slice!(roll, 0, i32);
+                    let owner_key = format!("data/rolls/owner/current/{}/{}/{}", roll[3], roll[2], roll_num);
+                    let successor_key = format!("data/rolls/index/{}/{}/{}/successor", roll[3], roll[2], roll_num);
+
+                    if let Some(Bucket::Exists(_r)) = data.get(&owner_key) {
+                        context_rollers.insert( roll_num.into(), public_key.clone() );
+                    } else {
+                        bail!("Roller key not found for key: {}", &owner_key)
+                    }
+
+                    // get next roll
+                    if let Some(Bucket::Exists(r)) = data.get(&successor_key) {
+                        roll = r
+                    } else {
+                        break;
+                    }
+                }
+
             }
         };
+        // generate endorsers from random seed
+        // if generating for one level is enought to take seed during rollers collecting alse need to select seed for each level from context list
+        let mut endorsement_rights = Vec::<EndorsingRight>::new();
 
-        Ok(Some(EndorsingRight::transpile_context_bytes(&bin_data)?))
+        // get the protocol constants from the context
+        let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage)? {
+            Some(v) => v,
+            None => bail!("Cannot get protocol constants")
+        };
+
+        // let time_between_blocks: Vec<i64> = constants.time_between_blocks()
+        // .into_iter()
+        // .map(|x| x.parse().unwrap())
+        // .collect();
+
+        Ok(Some(context_rollers))
+
+
 
     }
 
