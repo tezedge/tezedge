@@ -405,6 +405,7 @@ mod fns {
     use failure::bail;
 
     use crypto::hash::{BlockHash, ChainId, HashType};
+    use crypto::blake2b;
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
     use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
@@ -426,6 +427,23 @@ mod fns {
     use crate::helpers::BakingRights;
     use rand::Rng;
 
+    macro_rules! merge_slices {
+        ( $($x:expr),* ) => {{
+            let mut res = vec![];
+            $(
+                res.extend_from_slice($x);
+            )*
+            res
+        }}
+    }
+
+    macro_rules! num_from_slice_le {
+        ($buf:expr, $from_idx:expr, $num:ident) => {{
+            let mut bytes: [u8; std::mem::size_of::<$num>()] = Default::default();
+            bytes.copy_from_slice(&$buf[$from_idx .. $from_idx + std::mem::size_of::<$num>()]);
+            $num::from_le_bytes(bytes)
+        }}
+    }
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -471,15 +489,15 @@ mod fns {
         }
     }
 
-    pub(crate) fn get_rolls(block_id: &str, _cycle: &String, persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
+    pub(crate) fn get_rolls(level: usize, _cycle: &String, _persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
         const ROLL_NUM_START: usize = 0;
         const ADDRESS_POSITION: usize = 9;
 
         // get the level of from the block
-        let level = match get_block_level(block_id, persistent_storage, &list)? {
-            Some(v) => v,
-            None => return Ok(None)  // Cannot get level
-        };
+        // let level = match get_block_level(block_id, persistent_storage, &list)? {
+        //     Some(v) => v,
+        //     None => return Ok(None)  // Cannot get level
+        // };
 
         // TODO: implement getting the random seed out of context storage
         //       based on the cycle 
@@ -612,10 +630,58 @@ mod fns {
             None => "all".to_string() // all
         };
         // random number generator
-        let mut rng = rand::thread_rng();
+        // let mut rng = rand::thread_rng();
 
+        let cycle_of_requested_level = requested_level / constants.blocks_per_cycle();
+        let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
+        println!("{}", snapshot_key);
+        let roll_snapshot;
+        {
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(requested_level as usize, &snapshot_key)? {
+                roll_snapshot = num_from_slice!(data, 0, i16);
+            } else {
+                roll_snapshot = Default::default();
+            }
+        }
+
+        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_requested_level, roll_snapshot);
+        println!("{}", last_roll_key);
+
+        let last_roll;
+        {
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(requested_level as usize, &last_roll_key)? {
+                last_roll = num_from_slice!(data, 0, i32);
+            } else {
+                last_roll = Default::default();
+            }
+        }
+        println!("Last roll: {}", last_roll);
+
+        let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
+        println!("{}", random_seed_key);
+        let random_seed;
+        {
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(requested_level as usize, &random_seed_key)? {
+                random_seed = data;
+            } else {
+                random_seed = Default::default();
+            }
+        }
+        
+        let mut snapshot_level;
+
+        if cycle_of_requested_level <= *constants.preserved_cycles() {
+            snapshot_level = head_level;
+        } else {
+            snapshot_level = ((cycle_of_requested_level - constants.preserved_cycles()) * constants.blocks_per_cycle()) + ((roll_snapshot + 1) as i64 * constants.blocks_per_roll_snapshot());
+        };
+
+        println!("Snapshot level: {}", snapshot_level);
         // get the rolls from the context storage
-        let rolls = get_rolls(block_id, &cycle, persistent_storage, list)?;
+        let rolls = get_rolls(snapshot_level as usize, &cycle, persistent_storage, list)?;
         let roll_owners = match rolls {
             Some(r) => r,
             None => bail!("Error getting rolls")
@@ -636,7 +702,10 @@ mod fns {
                 // Note: this is a temporary solution, we should replace it with the tezos PRNG
                 // It will utilize the random_seed found in the context storage and the cycle_position of the
                 // block to be baked
-                let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as i64)) {
+                // let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as i64)) {
+                let randomed = get_random_number(&random_seed, *constants.nonce_length() as usize, level as i32, priority, last_roll)?;
+                println!("RANDOMMED ROLL: {}", randomed);
+                let delegate_to_assign = match roll_owners.get(&randomed) {
                     Some(d) => d,
                     None => bail!("Roll not found")
                 };
@@ -648,10 +717,10 @@ mod fns {
 
                 // we omit the estimated_time field if the block on the requested level is allready baked
                 if head_level <= level {
-                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
+                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(estimated_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
                     estimated_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(time_between_blocks[1])).unwrap());
                 } else {
-                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority, None))
+                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), None))
                 }
                 assigned.insert(delegate_to_assign);
             }
@@ -729,6 +798,42 @@ mod fns {
             let storage = list.read().expect("poisoned storage lock");
             storage.get(level).map_err(|e| e.into())
         }
+    }
+
+    // tezos PRNG
+    //TODO: should create a module for this
+    pub(crate) fn get_random_number(random_seed: &[u8], nonce_size: usize, level: i32, offset: i32, bound: i32) -> Result<i64, failure::Error> {
+        let zero_bytes: Vec<u8> = vec![0; nonce_size];
+        let baking_rights_string = "level baking:".to_string();
+        let cycle_position = level % 2048; // TODO: use from constants
+
+        println!("Initial vec: {:?}", merge_slices!(random_seed, &zero_bytes, &baking_rights_string.clone().into_bytes(), &cycle_position.to_le_bytes()));
+
+        let rd = blake2b::digest_256(&merge_slices!(random_seed, &zero_bytes, &baking_rights_string.into_bytes(), &cycle_position.to_le_bytes())).to_vec();
+        println!("Rd: {:?}", rd);
+        
+        let higher = num_from_slice_le!(rd, 0, i32) ^ offset;
+        println!("HIGHER BYTES: {:?}",&higher.to_le_bytes());
+        println!("Rd after mod: {:?}", merge_slices!(&higher.to_le_bytes(), &rd[4..]));
+        let mut sequence = blake2b::digest_256(&merge_slices!(&higher.to_le_bytes(), &rd[4..])).to_vec();
+        println!("Sequence: {:?}", sequence);
+        let v: i32;
+        // Note: we can use while here most likely, using loop to be semanticly similar to the ocaml version
+        loop {
+            let hashed = blake2b::digest_256(&sequence).to_vec();
+            let drop_if_over = i32::max_value() - (i32::max_value() % bound);
+
+            let r = num_from_slice_le!(hashed, 0, i32).abs();
+
+            if r >= drop_if_over {
+                sequence = hashed;
+                continue;
+            } else {
+                v = r % bound;
+                break;
+            };
+        }
+        Ok(v.into())
     }
 
     #[inline]

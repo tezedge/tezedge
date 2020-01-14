@@ -8,6 +8,7 @@ use getset::Getters;
 #[serde(default)]
 pub struct ContextConstants {
     proof_of_work_nonce_size: i64,
+    #[get = "pub(crate)"]
     nonce_length: i64,
     max_revelations_per_block: i64,
     max_operation_data_length: i64,
@@ -17,6 +18,7 @@ pub struct ContextConstants {
     #[get = "pub(crate)"]
     blocks_per_cycle: i64,
     blocks_per_commitment: i64,
+    #[get = "pub(crate)"]
     blocks_per_roll_snapshot: i64,
     blocks_per_voting_period: i64,
     #[get = "pub(crate)"]
