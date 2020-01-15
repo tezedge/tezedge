@@ -132,13 +132,13 @@ impl<C> PagedResult<C>
 pub struct EndorsingRight {
     level: i64,
     delegate: String,
-    slots: Vec<i64>,
+    slots: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     estimated_time: Option<String>
 }
 
 impl EndorsingRight {
-    pub fn new(level: i64, delegate: String, slots: Vec<i64>, estimated_time: Option<String>) -> Self {
+    pub fn new(level: i64, delegate: String, slots: Vec<u8>, estimated_time: Option<String>) -> Self {
         Self {
             level,
             delegate: delegate.to_string(),
