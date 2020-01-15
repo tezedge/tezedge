@@ -41,6 +41,7 @@ enum Route {
     DevGetContext,
     DevGetContractActions,
     StatsMemory,
+    DevTimestamp
 }
 
 /// Server environment parameters
@@ -257,6 +258,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
     routes.insert("/dev/context/:id", Route::DevGetContext);
     routes.insert("/dev/chains/main/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
+    routes.insert("/dev/timestamp/:block_id", Route::DevTimestamp);
     routes.insert("/stats/memory", Route::StatsMemory);
     routes
 }
@@ -306,6 +308,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let block_id = find_param_value(&params, "block_id").unwrap();
             result_to_json_response(fns::get_block_actions(block_id, &persistent_storage), &log)
         }
+        (&Method::GET, Some((Route::DevTimestamp, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_block_timestamp(block_id, &persistent_storage), &log)
+        }
         (&Method::GET, Some((Route::DevGetContractActions, params, query))) => {
             let contract_id = find_param_value(&params, "contract_id").unwrap();
             let from_id = find_query_value_as_u64(&query, "from_id");
@@ -320,8 +326,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
             let level = find_query_value_as_string(&query, "level");
+            let cycle = find_query_value_as_string(&query, "cycle");
+            let delegate = find_query_value_as_string(&query, "delegate");
             //make_json_response(&format!("block {:?} level {:?}", block_id, level))
-            result_to_json_response(fns::get_block_endorsing_rights(block_id, level, context_storage, &persistent_storage), &log)
+            result_to_json_response(fns::get_block_endorsing_rights(block_id, level, cycle, delegate, context_storage, &persistent_storage), &log)
         }
         _ => not_found()
     }
@@ -378,6 +386,7 @@ mod fns {
     use std::collections::HashMap;
 
     use failure::bail;
+    use hex::FromHex;
 
     use crypto::hash::{BlockHash, ChainId, HashType};
     use shell::shell_channel::BlockApplied;
@@ -406,6 +415,17 @@ mod fns {
         Ok(blocks)
     }
 
+        /// Retrieve blocks from database.
+    pub(crate) fn get_block_timestamp(block_id: &str, persistent_storage: &PersistentStorage) -> Result<i64, failure::Error> {
+        let block_storage = BlockStorage::new(persistent_storage);
+        let block_hash = block_id_to_block_hash(block_id)?;
+        let timestamp = match block_storage.get(&block_hash)? {
+            Some(current_head) => current_head.header.timestamp(),
+            None => bail!("block not found in db {}", block_id)
+        };
+        Ok(timestamp)
+    }    
+
     /// Get actions for a specific block in ascending order.
     pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
         let context_storage = ContextStorage::new(persistent_storage);
@@ -425,82 +445,112 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn get_block_endorsing_rights(block_id: &str, level: Option<String>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<HashMap<i64, String>>, failure::Error> {
-        //let rights = Default::default();
-        //Ok(Some(rights))
-        let level = if block_id == "head" {
-            let reader = list.read().expect("mutex poisoning");
-            reader.len() - 1
-        } else {
-            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
-            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
-            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                block_meta.level() as usize
-            } else {
-                return Ok(None);
+    fn address_to_contract_id(address: &str) -> Result<String, failure::Error> {
+        if address.len() < 4 {
+            bail!("short hash address of contract: {}", address)
+        }
+        let contract_id = match &address[0..2] {
+            "00" => {
+                if address.len() < 44 {
+                    bail!("short hash address of contract: {}", address)
+                }
+                match &address[2..4] {
+                    "00" => {
+                        HashType::ContractTz1Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                    }
+                    "01" => {
+                        HashType::ContractTz2Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                    }
+                    "02" => {
+                        HashType::ContractTz3Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                    }
+                    _ => bail!("Invalid contract id")
+                }
             }
+            "01" => {
+                if address.len() < 42 {
+                    bail!("short hash address of contract: {}", address)
+                }
+                HashType::ContractKt1Hash.bytes_to_string(&<[u8; 22]>::from_hex(&address[2..42])?)
+            }
+            _ => bail!("Invalid contract id")
         };
+        Ok(contract_id)
+    }
 
+    fn get_context_rollers(level: usize, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
         let mut context_rollers: HashMap<i64, String> = HashMap::new();
-        {
-            let context_data = {
-                let reader = match list.read() {
-                    Ok(r) => r,
-                    _ => bail!("mutex poisoning")
-                };
-                if let Ok(Some(c)) = reader.get(level) {
-                    c
-                } else {
-                    bail!("Context data not found")
-                }
-            };
-            let cloned_context = context_data.clone();
-            let roll_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.into_iter()
-                .filter(|(k, _)| k.contains("roll_list"))
-                .collect();
-            let data: HashMap<String, Bucket<Vec<u8>>> = cloned_context.into_iter()
-                .filter(|(k, _)| k.contains("data/rolls/owner") || k.contains("/successor") || k.contains("/random_seed"))
-                .collect();
-
-            for roll_key in roll_lists.keys() {
-                // get public key hash from key string
-                let public_key: String = match roll_key.split('/').collect::<Vec<_>>().get(9) {
-                    Some(v) => v.to_string(),
-                    None => bail!("public key not found in roll list key")
-                };
-
-                let mut roll;
-                // get first roll
-                if let Some(Bucket::Exists(r)) = roll_lists.get(roll_key) {
-                    roll = r;
-                } else {
-                    bail!("No data in roll")
-                }
-                // fill roll data and get all successors rolls
-                loop {
-                    let roll_num = num_from_slice!(roll, 0, i32);
-                    let owner_key = format!("data/rolls/owner/current/{}/{}/{}", roll[3], roll[2], roll_num);
-                    let successor_key = format!("data/rolls/index/{}/{}/{}/successor", roll[3], roll[2], roll_num);
-
-                    if let Some(Bucket::Exists(_r)) = data.get(&owner_key) {
-                        context_rollers.insert( roll_num.into(), public_key.clone() );
-                    } else {
-                        bail!("Roller key not found for key: {}", &owner_key)
-                    }
-
-                    // get next roll
-                    if let Some(Bucket::Exists(r)) = data.get(&successor_key) {
-                        roll = r
-                    } else {
-                        break;
-                    }
-                }
-
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(level) {
+                c
+            } else {
+                bail!("Context data not found")
             }
         };
-        // generate endorsers from random seed
-        // if generating for one level is enought to take seed during rollers collecting alse need to select seed for each level from context list
-        let mut endorsement_rights = Vec::<EndorsingRight>::new();
+        let cloned_context = context_data.clone();
+        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.into_iter()
+            .filter(|(k, _)| k.contains("roll_list"))
+            .collect();
+        let data: HashMap<String, Bucket<Vec<u8>>> = cloned_context.into_iter()
+            .filter(|(k, _)| k.contains("data/rolls/owner") || k.contains("/successor") || k.contains("/random_seed"))
+            .collect();
+
+        for roll_key in roll_lists.keys() {
+            // get public key hash from key string
+            let public_key: String = match roll_key.split('/').collect::<Vec<_>>().get(9) {
+                Some(v) => v.to_string(),
+                None => bail!("public key not found in roll list key")
+            };
+
+            let contract_address = match address_to_contract_id(&public_key) {
+                Ok(r) => r,
+                Err(e) => bail!(e)
+            };
+
+            let mut roll;
+            // get first roll
+            if let Some(Bucket::Exists(r)) = roll_lists.get(roll_key) {
+                roll = r;
+            } else {
+                bail!("No data in roll")
+            }
+            // fill roll data and get all successors rolls
+            loop {
+                let roll_num = num_from_slice!(roll, 0, i32);
+                let owner_key = format!("data/rolls/owner/current/{}/{}/{}", roll[3], roll[2], roll_num);
+                let successor_key = format!("data/rolls/index/{}/{}/{}/successor", roll[3], roll[2], roll_num);
+
+                if let Some(Bucket::Exists(_r)) = data.get(&owner_key) {
+                    context_rollers.insert( roll_num.into(), contract_address.clone() );
+                } else {
+                    bail!("Roller key not found for key: {}", &owner_key)
+                }
+
+                // get next roll
+                if let Some(Bucket::Exists(r)) = data.get(&successor_key) {
+                    roll = r
+                } else {
+                    break;
+                }
+            }
+        }
+        Ok(Some(context_rollers))
+    }
+
+    pub(crate) fn get_block_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, _input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
+        
+        let block_level: usize = if let Ok(Some(l)) = get_level_by_block_id(block_id, list.clone(), persistent_storage) {
+            l
+        } else {
+            bail!("Level not found for block_id {}", block_id)
+        };
+
+        let requested_level: usize = if let Some(l) = input_level { //first check if level was in query
+            l.parse::<usize>().expect("Can not recognize level as number")
+        } else { //if level not specified the get it by block
+            block_level
+        };
 
         // get the protocol constants from the context
         let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage)? {
@@ -508,14 +558,102 @@ mod fns {
             None => bail!("Cannot get protocol constants")
         };
 
-        // let time_between_blocks: Vec<i64> = constants.time_between_blocks()
-        // .into_iter()
-        // .map(|x| x.parse().unwrap())
-        // .collect();
+        //check cycle
+        let cycle: Option<i64> = if let Some(c) = input_cycle {
+            let target_cycle:i64 = c.parse().expect("wrong format of cycle query parameter");
+            //check cycle interval
+            let current_cycle = (block_level as i64 / constants.blocks_per_cycle()) as i64;
+            if (target_cycle - current_cycle).abs() <= constants.preserved_cycles() + 2 {
+                Some(target_cycle)
+            } else {
+                // TODO: below is response format to implement:
+                // [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":4,"requested":11,"latest":10}]
+                // maybe this check for cycle should be before this fn is called and provided as parameter
+                bail!("requested cycle out of interval")
+            }
+        } else {
+            None
+        };
+        
+        //assign level iterator
+        let mut is_cycle = false;
+        let level_iterator = if let Some(c) = cycle {
+            is_cycle = true;
+            //first and last level of cycle
+            let first_cycle_lvl = c * constants.blocks_per_cycle();
+            first_cycle_lvl ..= first_cycle_lvl + constants.blocks_per_cycle()
+        } else {
+            requested_level as i64 ..= requested_level as i64
+        };
 
-        Ok(Some(context_rollers))
+        let time_between_blocks: Vec<i64> = constants.time_between_blocks()
+        .into_iter()
+        .map(|x| x.parse().unwrap())
+        .collect();
+
+        // optimalization: if we do not need get block header timestamp then do not get it
+        let block_timestamp: i64 = if is_cycle || block_level < requested_level {
+            //get block timestamp by block_id
+            match get_block_timestamp(block_id, &persistent_storage) {
+                Ok(t) => t,
+                Err(e) => bail!(e)
+            }
+        } else {
+            0 //dummy value
+        };
+
+        let context_rollers = match get_context_rollers(block_level, list.clone()) {
+            Ok(rollers) => if let Some(r) = rollers {
+                    r
+                } else {
+                    bail!("Empty rollers list")
+                }
+            ,
+            Err(e) => bail!(e)
+        };
+
+        let mut endorsing_rights = Vec::<EndorsingRight>::new();
+        let block_head_level = block_level as i64;
+        for level in level_iterator {
+            //check if we compute estimated time
+            let estimated_time: Option<String> = if block_head_level < level {
+                let est_timestamp = ((level - block_head_level).abs() * time_between_blocks[0]) + block_timestamp;
+                Some(est_timestamp.to_string())
+            } else {
+                None
+            };
+
+            //here will come algorithm for random num generation for 32 endorsement slots
+            // now just take first 32 delegates in hash
+            let mut count = 0;
+            let mut endorsement_hash: HashMap<String, Vec<i64>> = HashMap::new();
+            for roll_num in context_rollers.keys() {
+                if let Some(delegate) = context_rollers.get(roll_num) {
+                    let slots = endorsement_hash.entry(delegate.clone()).or_insert( Vec::new() );
+                    slots.push(*roll_num);
+                    // if let Some(slots) = endorsement_hash.get(delegate) {
+                    //     slots.push(*roll_num);
+                    //     endorsement_hash.insert(k: K, v: V)
+                    // } else {
+                    //     let slots
+
+                    // }
+                } else {
+                    bail!("no roller for roll number {}", roll_num);
+                }
+                count += 1;
+                if count > 32 {
+                    break;
+                }
+            }
+           
+            for delegate in endorsement_hash.keys() {
+                endorsing_rights.push(EndorsingRight::new(level, delegate.clone(), endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
+            }
+        }
 
 
+        Ok(Some(endorsing_rights))
 
     }
 
@@ -539,18 +677,27 @@ mod fns {
         Ok(block)
     }
 
-    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
+    fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<usize>, failure::Error> {
         let level = if block_id == "head" {
             let reader = list.read().expect("mutex poisoning");
-            reader.len() - 1
+            Some(reader.len() - 1)
         } else {
             let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
             let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
             if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                block_meta.level() as usize
+                Some(block_meta.level() as usize)
             } else {
-                return Ok(None);
+                None
             }
+        };
+        Ok(level)
+    }
+
+    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
+        let level = if let Ok(Some(l)) = get_level_by_block_id(block_id, list.clone(), persistent_storage) {
+            l
+        } else {
+            bail!("Level not found for block_id {}", block_id)
         };
 
         let protocol_hash: Vec<u8>;
