@@ -432,7 +432,7 @@ mod fns {
 
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
         // get level from block header
-        let block_level: usize = if let Ok(Some(l)) = get_level_by_block_id(block_id, list.clone(), persistent_storage) {
+        let block_level: usize = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
             l
         } else {
             bail!("Level not found for block_id {}", block_id)
@@ -485,7 +485,7 @@ mod fns {
     }
 
     pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
-        let level = if let Ok(Some(l)) = get_level_by_block_id(block_id, list.clone(), persistent_storage) {
+        let level: usize = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
             l
         } else {
             bail!("Level not found for block_id {}", block_id)
@@ -639,8 +639,8 @@ mod fns {
 
                 if let Some(Bucket::Exists(_r)) = data.get(&owner_key) {
                     context_rollers.insert( roll_num.into(), contract_address.clone() );
-                } else {
-                    bail!("Roller key not found for key:{} of public key:{} level:{}", &owner_key, &public_key, level)
+                } else { // there can be also Bucket::Deleted
+                    break;
                 }
 
                 // get next roll
