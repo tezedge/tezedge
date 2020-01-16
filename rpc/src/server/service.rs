@@ -590,7 +590,7 @@ mod fns {
         
         // level of the block specified in the url params
         let block_level = match get_block_level(block_id, persistent_storage, &list)? {
-            Some(v) => v,
+            Some(v) => v as i64,
             None => bail!("Cannot get level")  // Cannot get level
         };
 
@@ -600,7 +600,7 @@ mod fns {
                 // check whether the cycle is reachable
                 // the storage stores cycle up to: current_cycle + perserved_cycles(5) + 2
                 // e.g. if head is in cycle 66, we can get the rights for up to cycle 73
-                if ((cycle as i64 - (block_level as i64 / constants.blocks_per_cycle())).abs() as i64) <= constants.preserved_cycles() + 2 {
+                if ((cycle as i64 - (block_level / constants.blocks_per_cycle())).abs() as i64) <= constants.preserved_cycles() + 2 {
                     cycle
                 } else {
                     bail!("Cycle not found in block: {}", block_id)
@@ -613,7 +613,7 @@ mod fns {
         // If no level is specified, we return the next block to be baked
         let mut requested_level: i64 = match level {
             Some(level) => level.parse()?,
-            None => head_level + 1,
+            None => block_level + 1,
         };
 
         // if a cycle is specified, we need to iterate through all of the levels in the cycle
@@ -705,6 +705,7 @@ mod fns {
                 // let delegate_to_assign = match roll_owners.get(&rng.gen_range(0, roll_owners.len() as i64)) {
                 let randomed = get_random_number(&random_seed, *constants.nonce_length() as usize, level as i32, priority, last_roll)?;
                 println!("RANDOMMED ROLL: {}", randomed);
+                println!("");
                 let delegate_to_assign = match roll_owners.get(&randomed) {
                     Some(d) => d,
                     None => bail!("Roll not found")
@@ -803,19 +804,29 @@ mod fns {
     // tezos PRNG
     //TODO: should create a module for this
     pub(crate) fn get_random_number(random_seed: &[u8], nonce_size: usize, level: i32, offset: i32, bound: i32) -> Result<i64, failure::Error> {
-        let zero_bytes: Vec<u8> = vec![0; nonce_size];
-        let baking_rights_string = "level baking:".to_string();
+        let zero_bytes: Vec<u8> = vec![0; 32];
+        // Note: use only the baking variant for now
+        const BAKING_STRING: &[u8] = b"level baking:";
+
         let cycle_position = level % 2048; // TODO: use from constants
 
-        println!("Initial vec: {:?}", merge_slices!(random_seed, &zero_bytes, &baking_rights_string.clone().into_bytes(), &cycle_position.to_le_bytes()));
+        println!("Offset: {:?}", offset);
+        println!("Bound: {:?}", bound);
+        println!("Level: {:?}", level);
+        println!("Cycle position: {:?}", &cycle_position);
+        println!("Use string: {:?}", &BAKING_STRING);
 
-        let rd = blake2b::digest_256(&merge_slices!(random_seed, &zero_bytes, &baking_rights_string.into_bytes(), &cycle_position.to_le_bytes())).to_vec();
+        // with zero bytes
+        println!("Initial vec: {:?}", merge_slices!(random_seed, &zero_bytes, BAKING_STRING, &cycle_position.to_be_bytes()));
+        let rd = blake2b::digest_256(&merge_slices!(random_seed, &zero_bytes, BAKING_STRING, &cycle_position.to_be_bytes())).to_vec();
+
         println!("Rd: {:?}", rd);
         
-        let higher = num_from_slice_le!(rd, 0, i32) ^ offset;
-        println!("HIGHER BYTES: {:?}",&higher.to_le_bytes());
-        println!("Rd after mod: {:?}", merge_slices!(&higher.to_le_bytes(), &rd[4..]));
-        let mut sequence = blake2b::digest_256(&merge_slices!(&higher.to_le_bytes(), &rd[4..])).to_vec();
+        let higher = num_from_slice!(rd, 0, i32) ^ offset;
+        println!("HIGHER BYTES: {:?}", &higher.to_be_bytes());
+        println!("Rd after mod: {:?}", merge_slices!(&higher.to_be_bytes(), &rd[4..]));
+        
+        let mut sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..])).to_vec();
         println!("Sequence: {:?}", sequence);
         let v: i32;
         // Note: we can use while here most likely, using loop to be semanticly similar to the ocaml version
@@ -823,7 +834,7 @@ mod fns {
             let hashed = blake2b::digest_256(&sequence).to_vec();
             let drop_if_over = i32::max_value() - (i32::max_value() % bound);
 
-            let r = num_from_slice_le!(hashed, 0, i32).abs();
+            let r = num_from_slice!(hashed, 0, i32).abs();
 
             if r >= drop_if_over {
                 sequence = hashed;
