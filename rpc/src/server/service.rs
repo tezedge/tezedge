@@ -640,7 +640,7 @@ mod fns {
                 if let Some(Bucket::Exists(_r)) = data.get(&owner_key) {
                     context_rollers.insert( roll_num.into(), contract_address.clone() );
                 } else {
-                    bail!("Roller key not found for key: {}", &owner_key)
+                    bail!("Roller key not found for key:{} of public key:{} level:{}", &owner_key, &public_key, level)
                 }
 
                 // get next roll
@@ -661,7 +661,7 @@ mod fns {
         let requested_level: usize = if let Some(l) = input_level { //first check if level was in query
             l.parse::<usize>().expect("Can not recognize level as a number")
         } else { //if level not specified the get it by block
-            block_level
+            block_level+1
         };
 
         //assign level iterator
@@ -701,7 +701,7 @@ mod fns {
         let context_rollers =if let Some(rollers) = get_context_rollers(block_level, list.clone())? {
             rollers
         } else {
-            bail!("Empty rollers list")
+            bail!("Empty rollers list for level {}", block_level)
         };
 
         let mut endorsing_rights = Vec::<EndorsingRight>::new();
