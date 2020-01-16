@@ -669,7 +669,7 @@ mod fns {
         let level_iterator = if let Some(c) = cycle {
             is_cycle = true;
             //first and last level of cycle
-            let first_cycle_lvl = c * constants.blocks_per_cycle();
+            let first_cycle_lvl = c * constants.blocks_per_cycle() + 1;
             first_cycle_lvl ..= first_cycle_lvl + constants.blocks_per_cycle()
         } else {
             requested_level as i64 ..= requested_level as i64
