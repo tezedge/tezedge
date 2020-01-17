@@ -252,7 +252,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
-    routes.insert("/chains/main/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
+    routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
@@ -607,12 +607,15 @@ mod fns {
                 bail!("Context data not found")
             }
         };
-        let cloned_context = context_data.clone();
-        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.into_iter()
+        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
             .filter(|(k, _)| k.contains("roll_list"))
             .collect();
-        let data: HashMap<String, Bucket<Vec<u8>>> = cloned_context.into_iter()
-            .filter(|(k, _)| k.contains("data/rolls/owner") || k.contains("/successor") || k.contains("/random_seed"))
+        // take smaller chunks of context data to optimalize key searching
+        let owner_data: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("data/rolls/owner"))
+            .collect();
+        let successor_data: HashMap<String, Bucket<Vec<u8>>> = context_data.into_iter()
+            .filter(|(k, _)| k.contains("/successor") || k.contains("/random_seed"))
             .collect();
 
         for roll_key in roll_lists.keys() {
@@ -637,14 +640,14 @@ mod fns {
                 let owner_key = format!("data/rolls/owner/current/{}/{}/{}", roll[3], roll[2], roll_num);
                 let successor_key = format!("data/rolls/index/{}/{}/{}/successor", roll[3], roll[2], roll_num);
 
-                if let Some(Bucket::Exists(_r)) = data.get(&owner_key) {
+                if let Some(Bucket::Exists(_r)) = owner_data.get(&owner_key) {
                     context_rollers.insert( roll_num.into(), contract_address.clone() );
                 } else { // there can be also Bucket::Deleted
                     break;
                 }
 
                 // get next roll
-                if let Some(Bucket::Exists(r)) = data.get(&successor_key) {
+                if let Some(Bucket::Exists(r)) = successor_data.get(&successor_key) {
                     roll = r
                 } else {
                     break;
