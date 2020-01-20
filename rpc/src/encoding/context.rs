@@ -2,9 +2,8 @@ use serde::{Serialize, Deserialize};
 use crypto::hash::ProtocolHash;
 use failure::Error;
 use tezos_messages::protocol::UniversalValue;
-use getset::Getters;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Getters)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(default)]
 pub struct ContextConstants {
     proof_of_work_nonce_size: i64,
@@ -12,14 +11,11 @@ pub struct ContextConstants {
     max_revelations_per_block: i64,
     max_operation_data_length: i64,
     max_proposals_per_delegate: i64,
-    #[get = "pub(crate)"]
     preserved_cycles: i64,
-    #[get = "pub(crate)"]
     blocks_per_cycle: i64,
     blocks_per_commitment: i64,
     blocks_per_roll_snapshot: i64,
     blocks_per_voting_period: i64,
-    #[get = "pub(crate)"]
     time_between_blocks: Vec<String>,
     endorsers_per_block: i64,
     hard_gas_limit_per_operation: String,
