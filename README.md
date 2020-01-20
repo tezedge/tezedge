@@ -2,6 +2,7 @@ Tezedge
 ===========
 
 [![Build Status](https://travis-ci.com/simplestaking/tezedge.svg?branch=master)](https://travis-ci.com/simplestaking/tezedge)
+[![Build Status](http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg)](http://ci.tezedge.com/simplestaking/tezedge)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
