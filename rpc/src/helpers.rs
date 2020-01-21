@@ -128,7 +128,6 @@ impl<C> PagedResult<C>
         PagedResult { data, next_id, limit }
     }
 }
-#[derive(Serialize, Debug, Clone)]
 /// Object containing information about the baking rights 
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct BakingRights {

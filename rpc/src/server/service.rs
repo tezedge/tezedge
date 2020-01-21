@@ -466,6 +466,7 @@ mod fns {
         context_records.truncate(std::cmp::min(context_records.len(), limit));
         Ok(PagedResult::new(context_records, next_id, limit))
     }
+    
     pub(crate) fn get_block_level(block_id: &str, persistent_storage: &PersistentStorage, list: &ContextList) -> Result<Option<usize>, failure::Error> {
         if block_id == "head" {
             let reader = list.read().expect("mutex poisoning");
@@ -568,11 +569,6 @@ mod fns {
             None => bail!("Cannot get protocol constants")
         };
 
-        println!("Preserved cycles: {}", constants.preserved_cycles());
-        println!("Preserved cycles: {}", constants.preserved_cycles());
-        println!("Blocks per cycle: {}", constants.blocks_per_roll_snapshot());
-
-
         // time between blocks values. String -> i64
         let time_between_blocks: Vec<i64> = constants.time_between_blocks()
             .into_iter()
@@ -580,12 +576,20 @@ mod fns {
             .collect();
         
         // level of the block specified in the url params
-        let block_level = match get_block_level(block_id, persistent_storage, &list)? {
-            Some(v) => v as i64,
-            None => bail!("Cannot get level")  // Cannot get level
+        let block_level = if block_id == "head" {
+            head_level as usize
+        } else {
+            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                block_meta.level() as usize
+            } else {
+                return Ok(None);
+            }
         };
 
         println!("Block level: {}", block_level);
+        println!("Head level: {}", head_level);
 
         let requested_cycle: i64 = match cycle.parse() {
             // cycle requested from query
@@ -593,7 +597,7 @@ mod fns {
                 // check whether the cycle is reachable
                 // the storage stores cycle up to: current_cycle + perserved_cycles(5) + 2
                 // e.g. if head is in cycle 66, we can get the rights for up to cycle 73
-                if ((cycle as i64 - (block_level / constants.blocks_per_cycle())).abs() as i64) <= constants.preserved_cycles() + 2 {
+                if ((cycle as i64 - (block_level as i64 / constants.blocks_per_cycle())).abs() as i64) <= constants.preserved_cycles() + 2 {
                     cycle
                 } else {
                     bail!("Cycle not found in block: {}", block_id)
@@ -606,7 +610,7 @@ mod fns {
         // If no level is specified, we return the next block to be baked
         let mut requested_level: i64 = match level {
             Some(level) => level.parse()?,
-            None => block_level + 1,
+            None => block_level as i64 + 1,
         };
 
         // if a cycle is specified, we need to iterate through all of the levels in the cycle
@@ -626,6 +630,14 @@ mod fns {
 
         let cycle_of_requested_level = (requested_level - 1) / constants.blocks_per_cycle();
 
+        let cycle_of_rolls;
+
+        if cycle_of_requested_level < (*constants.preserved_cycles() + 2) {
+            cycle_of_rolls = cycle_of_requested_level;
+        } else {
+            cycle_of_rolls = cycle_of_requested_level - constants.preserved_cycles() - 2;
+        };
+
         let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
         println!("{}", snapshot_key);
 
@@ -641,18 +653,15 @@ mod fns {
             }
         }
 
-        let cycle_of_rolls;
         let snapshot_level;
 
         // the seed and the rolls for the first preserved_cycles are pregenerated and won't change until preserved_cycles + 1
         println!("Requeste level cycle: {}", cycle_of_requested_level);
 
-        if cycle_of_requested_level <= *constants.preserved_cycles() {
+        if cycle_of_requested_level < (*constants.preserved_cycles() + 2) {
             snapshot_level = head_level;
-            cycle_of_rolls = cycle_of_requested_level;
         } else {
-            cycle_of_rolls = cycle_of_requested_level - constants.preserved_cycles() - 2;
-            snapshot_level = (cycle_of_rolls * constants.blocks_per_cycle()) + ((roll_snapshot as i64 + 1) * constants.blocks_per_roll_snapshot());
+            snapshot_level = (cycle_of_rolls * constants.blocks_per_cycle()) + ((roll_snapshot as i64) * constants.blocks_per_roll_snapshot());
         };
 
         println!("Snapshot level: {}", snapshot_level);
@@ -663,22 +672,24 @@ mod fns {
         let last_roll;
         {
             let reader = list.read().unwrap();
-            if let Some(Bucket::Exists(data)) = reader.get_key(snapshot_level as usize, &last_roll_key)? {
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &last_roll_key)? {
                 last_roll = num_from_slice!(data, 0, i32);
             } else {
+                println!("Last roll not found, setting default");
                 last_roll = Default::default();
             }
         }
         println!("Last roll: {}", last_roll);
 
-        let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
+        let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_rolls);
         println!("{}", random_seed_key);
         let random_seed;
         {
             let reader = list.read().unwrap();
-            if let Some(Bucket::Exists(data)) = reader.get_key(snapshot_level as usize, &random_seed_key)? {
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &random_seed_key)? {
                 random_seed = data;
             } else {
+                println!("Seed not found, setting to default");
                 random_seed = Default::default();
             }
         }
@@ -711,6 +722,7 @@ mod fns {
                         delegate_to_assign = d;
                         break;
                     } else {
+                        println!("[baking-rights] no delegate assigned to roll {}", random_num);
                         state = sequence;
                         continue;
                     }
