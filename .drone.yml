@@ -23,8 +23,8 @@ steps:
     OCAML_BUILD_CHAIN: remote
     LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
   commands: 
-    - mkdir /tmp/tezedge
-    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner "./target/release/protocol-runner" --p2p-port 19733 --identity-file /drone/src/docker/identities/identity_tezedge.json --ffi-calls-gc-treshold=2000 --peers 176.191.110.22:9732,23.96.48.25:19732,164.68.124.104:19732
+    - mkdir /tmp/tezedge_developer
+    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 38732 --tezos-data-dir=/tmp/tezedge_developer
 
 - name: ocaml-node-run
   image: tezos/tezos:babylonnet
