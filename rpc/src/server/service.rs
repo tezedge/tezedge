@@ -39,6 +39,7 @@ enum Route {
     DevGetBlocks,
     DevGetBlockActions,
     DevGetContext,
+    DevGetContextKey,
     DevGetContractActions,
     StatsMemory,
 }
@@ -258,6 +259,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
     routes.insert("/dev/context/:id", Route::DevGetContext);
     routes.insert("/stats/memory", Route::StatsMemory);
+    routes.insert("/dev/context/:level", Route::DevGetContextKey);
     routes
 }
 
@@ -316,6 +318,12 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             // TODO: Add parameter checks
             let context_level = find_param_value(&params, "id").unwrap();
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::DevGetContextKey, params, query))) => {
+            // TODO: Add parameter checks
+            let context_level = find_param_value(&params, "level").unwrap();
+            let context_key = find_query_value_as_string(&query, "key").unwrap();
+            result_to_json_response(fns::get_key_from_context(context_level, &context_key, context_storage), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -429,6 +437,17 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
+    pub(crate) fn get_key_from_context(level: &str, key: &str, list: ContextList) -> Result<Option<Vec<u8>>, failure::Error> {
+        let ctxt_level: i32 = level.parse().unwrap();
+        
+        let reader = list.read().unwrap();
+
+        match reader.get_key(ctxt_level as usize, &key.to_string())? {
+            Some(Bucket::Exists(data)) => Ok(Some(data)),
+            Some(Bucket::Deleted) => Ok(Some(Vec::new())),
+            None => Ok(None)
+        }
+    }
 
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
         // get level from block header

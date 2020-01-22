@@ -27,6 +27,19 @@ async fn integration_test_dev() {
     integration_tests_rpc("BM9xFVaVv6mi7ckPbTgxEe7TStcfFmteJCpafUZcn75qi2wAHrC").await
 }
 
+#[ignore]
+#[tokio::test]
+async fn integration_test_context_roll_snapshot() {
+    // "data/cycle/6/roll_snapshot" is set in level 4096, we must find it in the levels to come (as Deleted or Existd)
+
+    for level in 4096..10000 {
+        println!("Checking level: {} for key data/cycle/6/roll_snapshot", level);
+        let res;
+        res = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}?key={}", "dev/context", level.to_string(), "data/cycle/6/roll_snapshot")).await.unwrap();
+        // returns the value if Exists, empty Vec [] if Deleted, None if not found
+        assert!(!res.is_null());
+    }
+}
 
 async fn integration_tests_rpc(start_block: &str) {
     let mut prev_block = start_block.to_string();
@@ -118,14 +131,14 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
     let url = match node {
         NodeType::Ocaml => format!(
-            "http://ocaml-node-run:8732/{}",
-            //"http://127.0.0.1:8732/{}", //switch for local testing
+            //"http://ocaml-node-run:8732/{}",
+            "http://127.0.0.1:8732/{}", //switch for local testing
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            "http://tezedge-node-run:18732/{}",
+            //"http://tezedge-node-run:18732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
-            //"http://127.0.0.1:18732/{}", //swith for local testing
+            "http://127.0.0.1:18732/{}", //swith for local testing
             rpc_path
         ), // Tezedge node
     }.parse().expect("Invalid URL");

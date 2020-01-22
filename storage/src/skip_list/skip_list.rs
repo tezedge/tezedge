@@ -159,7 +159,7 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
                         pos = pos.higher();
                         lane = lane.higher_lane();
                     } else {
-                        if pos.base_index() == 0 {
+                        if pos.index() == 0 {
                             return Ok(None);
                         } else {
                             pos = pos.prev();
