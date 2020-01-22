@@ -637,11 +637,13 @@ mod fns {
     #[inline]
     fn get_endorsing_rights(block_id: &str, block_level: i64, input_level: Option<String>, cycle: Option<i64>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
         
-        // get requested level or use block head level
+        // get requested level or use block head level+1
+        let mut is_requested_level = false;
         let mut requested_level: i64 = if let Some(l) = input_level { //first check if level was in query
+            is_requested_level=true;
             l.parse().expect("Can not recognize level as a number")
         } else { //if level not specified the get it by block
-            block_level
+            block_level+1
         };
 
         //assign level iterator and assign requested level to correct cycle
@@ -650,14 +652,15 @@ mod fns {
         let blocks_per_cycle = constants.blocks_per_cycle();
         let level_iterator = if let Some(c) = cycle {
             is_cycle = true;
+            is_requested_level = true;
             //first and last level of cycle
             //asign requested level to first level of the cycle to correctly compute snapshot
             requested_level = c * blocks_per_cycle + 1;
             cycle_of_requested_level = c;
-            requested_level ..= requested_level + blocks_per_cycle
+            requested_level .. requested_level + blocks_per_cycle
         } else {
-            cycle_of_requested_level = requested_level / blocks_per_cycle;
-            requested_level ..= requested_level
+            cycle_of_requested_level = (requested_level-1) / blocks_per_cycle;
+            requested_level .. requested_level+1
         };
         
         let level_to_get_snapshot_and_seed;
@@ -728,7 +731,7 @@ mod fns {
             .map(|x| x.parse().unwrap())
             .collect();
         // optimalization: if we do not need get block header timestamp then do not get it
-        let block_timestamp: i64 = if is_cycle || block_level <= requested_level {
+        let block_timestamp: i64 = if is_cycle || block_level <= requested_level-1 {
             //get block timestamp by block_id
             get_block_header_timestamp(block_id, &persistent_storage, state)?
         } else {
@@ -747,9 +750,14 @@ mod fns {
         const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
         let mut endorsing_rights = Vec::<EndorsingRight>::new();
         for level in level_iterator {
+            let timestamp_level: i64 = level-1;
+            let mut out_level: i64 = level;
+            if !is_requested_level {
+                out_level -= 1;
+            }
             //check if we compute estimated time
-            let estimated_time: Option<String> = if block_level <= level {
-                let est_timestamp = ((level - block_level).abs() * time_between_blocks[0]) + block_timestamp;
+            let estimated_time: Option<String> = if block_level <= timestamp_level {
+                let est_timestamp = ((timestamp_level - block_level).abs() * time_between_blocks[0]) + block_timestamp;
                 Some(ts_to_rfc3339(est_timestamp))
             } else {
                 None
@@ -757,10 +765,10 @@ mod fns {
 
             let mut endorsement_hash: HashMap<String, Vec<u8>> = HashMap::new();
             let random_seed_state = random_seed.to_vec();
-            for endorser_slot in 1 ..=* constants.endorsers_per_block() as u8 {
+            for endorser_slot in 0 .. *constants.endorsers_per_block() as u8 {
                 let mut state = random_seed_state.clone();
                 loop {
-                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, *constants.blocks_per_cycle() as i32, ENDORSEMENT_USE_STRING, level as i32, endorser_slot as i32, last_roll)?;
+                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, *constants.blocks_per_cycle() as i32, ENDORSEMENT_USE_STRING, out_level as i32, endorser_slot as i32, last_roll)?;
 
                     if let Some(delegate) = context_rollers.get(&random_num) {
                         let slots = endorsement_hash.entry(delegate.clone()).or_insert( Vec::new() );
@@ -778,7 +786,7 @@ mod fns {
                 if check_delegates && delegate.to_string() != delegate_filter {
                     continue
                 }
-                endorsing_rights.push(EndorsingRight::new(level, delegate.to_string(), endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
+                endorsing_rights.push(EndorsingRight::new(out_level, delegate.to_string(), endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
             }
         }
 
