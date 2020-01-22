@@ -24,11 +24,13 @@ async fn integration_test_full() {
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
     // start development tests from 1000th block
-    integration_tests_rpc("BM9xFVaVv6mi7ckPbTgxEe7TStcfFmteJCpafUZcn75qi2wAHrC").await
+    // integration_tests_rpc("BM9xFVaVv6mi7ckPbTgxEe7TStcfFmteJCpafUZcn75qi2wAHrC").await
+
+    // test only the roll_snapshot for now
+    integration_test_context_roll_snapshot().await
 }
 
-#[ignore]
-#[tokio::test]
+
 async fn integration_test_context_roll_snapshot() {
     // "data/cycle/6/roll_snapshot" is set in level 4096, we must find it in the levels to come (as Deleted or Existd)
 
@@ -131,14 +133,14 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
     let url = match node {
         NodeType::Ocaml => format!(
-            //"http://ocaml-node-run:8732/{}",
-            "http://127.0.0.1:8732/{}", //switch for local testing
+            "http://ocaml-node-run:8732/{}",
+            //"http://127.0.0.1:8732/{}", //switch for local testing
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            //"http://tezedge-node-run:18732/{}",
+            "http://tezedge-node-run:18732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
-            "http://127.0.0.1:18732/{}", //swith for local testing
+            //"http://127.0.0.1:18732/{}", //swith for local testing
             rpc_path
         ), // Tezedge node
     }.parse().expect("Invalid URL");

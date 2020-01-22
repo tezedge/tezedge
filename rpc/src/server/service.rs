@@ -39,7 +39,6 @@ enum Route {
     DevGetBlocks,
     DevGetBlockActions,
     DevGetContext,
-    DevGetContextKey,
     DevGetContractActions,
     StatsMemory,
 }
@@ -259,7 +258,6 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
     routes.insert("/dev/context/:id", Route::DevGetContext);
     routes.insert("/stats/memory", Route::StatsMemory);
-    routes.insert("/dev/context/:level", Route::DevGetContextKey);
     routes
 }
 
@@ -314,16 +312,14 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
             result_to_json_response(fns::get_contract_actions(contract_id, from_id, limit, &persistent_storage), &log)
         }
-        (&Method::GET, Some((Route::DevGetContext, params, _))) => {
+        (&Method::GET, Some((Route::DevGetContext, params, query))) => {
             // TODO: Add parameter checks
             let context_level = find_param_value(&params, "id").unwrap();
-            result_to_json_response(fns::get_context(context_level, context_storage), &log)
-        }
-        (&Method::GET, Some((Route::DevGetContextKey, params, query))) => {
-            // TODO: Add parameter checks
-            let context_level = find_param_value(&params, "level").unwrap();
-            let context_key = find_query_value_as_string(&query, "key").unwrap();
-            result_to_json_response(fns::get_key_from_context(context_level, &context_key, context_storage), &log)
+            let context_key = find_query_value_as_string(&query, "key");
+            match context_key {
+                Some(key) => result_to_json_response(fns::get_key_from_context(context_level, &key, context_storage), &log),
+                None => result_to_json_response(fns::get_context(context_level, context_storage), &log)
+            }
         }
         (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -437,14 +433,18 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn get_key_from_context(level: &str, key: &str, list: ContextList) -> Result<Option<Vec<u8>>, failure::Error> {
+    pub(crate) fn get_key_from_context(level: &str, key: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
         let ctxt_level: i32 = level.parse().unwrap();
         
         let reader = list.read().unwrap();
 
         match reader.get_key(ctxt_level as usize, &key.to_string())? {
-            Some(Bucket::Exists(data)) => Ok(Some(data)),
-            Some(Bucket::Deleted) => Ok(Some(Vec::new())),
+            Some(Bucket::Exists(data)) => {
+                let mut map = HashMap::new();
+                map.insert("0".to_string(), Bucket::Exists(data));
+                Ok(Some(map))
+            },
+            Some(Bucket::Deleted) => Ok(Some(HashMap::new())),
             None => Ok(None)
         }
     }
