@@ -143,7 +143,8 @@ fn listen_protocol_events(
                             let value = value.clone();
                             state.insert(to_key, value);
                         } else {
-                            warn!(log, "Trying to copy from non-existent location"; "from" => from_key, "to" => to_key);
+                            warn!(log, "Trying to copy from non-existent location"; "from" => &from_key, "to" => &to_key);
+                            state.insert(to_key, Bucket::Invalid);
                         }
 
                         context_storage.put_action(&block_hash.clone(), msg)?;
