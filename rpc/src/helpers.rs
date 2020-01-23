@@ -67,6 +67,22 @@ impl FullBlockInfo {
     }
 }
 
+impl Into<HashMap<String, Value>> for InnerBlockHeader {
+    fn into(self) -> HashMap<String, Value> {
+        let mut map: HashMap<String, Value> = HashMap::new();
+        map.insert("level".to_string(), self.level.into());
+        map.insert("proto".to_string(), self.proto.into());
+        map.insert("predecessor".to_string(), self.predecessor.into());
+        map.insert("timestamp".to_string(), self.timestamp.into());
+        map.insert("validation_pass".to_string(), self.validation_pass.into());
+        map.insert("operations_hash".to_string(), self.operations_hash.into());
+        map.insert("fitness".to_string(), self.fitness.into());
+        map.insert("context".to_string(), self.context.into());
+        map.extend(self.protocol_data);
+        map
+    }
+}
+
 /// Represents generic paged result.
 #[derive(Debug, Serialize)]
 pub struct PagedResult<C: Serialize> {
