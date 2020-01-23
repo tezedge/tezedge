@@ -35,6 +35,7 @@ enum Route {
     HeadChain,
     ChainsBlockId,
     ContextConstants,
+    ContextCycle,
     DevGetBlockEndorsingRights,
     // -------------------------- //
     DevGetBlocks,
@@ -253,6 +254,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", Route::ContextCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
@@ -317,6 +319,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             // TODO: Add parameter checks
             let context_level = find_param_value(&params, "id").unwrap();
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ContextCycle, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_cycle_from_context(block_id, context_storage), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -446,6 +452,45 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
+    pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+
+        let ctxt_level: usize = level.parse().unwrap();
+        
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(ctxt_level) {
+                c
+            } else {
+                bail!("Context data not found")
+            }
+        };
+
+        let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("cycle"))
+            .collect();
+
+        // display all keys
+        // let mut map = HashMap::new();
+        // for cycle_key in cycle_lists.keys() {
+
+        //     // println!("[cycle] level: {:?} cycle: {:?}", ctxt_level, cycle_key);
+
+        //     let value;
+        //     if let Some(Bucket::Exists(c)) = cycle_lists.get(cycle_key) {
+        //         value = c;
+        //     } else {
+        //         bail!("No data in cycle")
+        //     }
+
+        //     map.insert( 
+        //         cycle_key.to_string(),
+        //         Bucket::Exists(value)
+        //     );
+
+        // }
+
+        Ok(Some(cycle_lists))
+    }
 
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         // get level from block id

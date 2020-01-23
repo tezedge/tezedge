@@ -135,7 +135,7 @@ async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::v
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            "http://tezedge-node-run:18732/{}",
+            "http://tezedge-node-run:38732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
             //"http://127.0.0.1:18732/{}", //swith for local testing
             rpc_path

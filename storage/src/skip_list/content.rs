@@ -146,7 +146,9 @@ pub enum SkipListError {
     #[fail(display = "Persistent storage error: {}", error)]
     PersistentStorageError {
         error: DBError
-    }
+    },
+    #[fail(display = "Index is out of skip list bounds")]
+    OutOfBoundsError
 }
 
 impl From<DBError> for SkipListError {
@@ -185,6 +187,7 @@ impl<K: Codec, V: Codec> ListValue<K, V> for HashMap<K, V>
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Bucket<V> {
     Exists(V),
+    Invalid,
     Deleted,
 }
 

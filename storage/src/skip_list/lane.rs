@@ -10,6 +10,7 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::skip_list::content::{NodeHeader, SkipListId};
 use crate::skip_list::SkipListError;
 use std::marker::PhantomData;
+use std::iter::Take;
 
 pub type LaneDatabase = dyn KeyValueStoreWithSchema<Lane> + Sync + Send;
 
@@ -63,6 +64,8 @@ pub trait TypedLane<C: Codec> {
     fn put(&self, index: usize, value: &C) -> Result<(), SkipListError>;
 
     fn base_iterator(&self, starting_index: usize) -> Result<LaneIterator<C>, SkipListError>;
+
+    fn rev_base_iterator(&self, end_index: usize, count: usize) -> Result<SizedLaneIterator<C>, SkipListError>;
 }
 
 impl<C: Codec> TypedLane<C> for Lane {
@@ -89,12 +92,36 @@ impl<C: Codec> TypedLane<C> for Lane {
         )).map_err(SkipListError::from)?;
         Ok(LaneIterator(iterator, PhantomData))
     }
+
+    /// Create iterator of items starting from index - count and going up to the index
+    fn rev_base_iterator(&self, end_index: usize, count: usize) -> Result<SizedLaneIterator<C>, SkipListError> {
+        if count > end_index + 1 || count == 0 {
+            Err(SkipListError::OutOfBoundsError)
+        } else {
+            let starting_index = end_index + 1 - count;
+            let iterator = self.db.iterator(IteratorMode::From(
+                &NodeHeader::new(self.list_id, self.level, starting_index), Direction::Forward,
+            )).map_err(SkipListError::from)?.take(count);
+            Ok(SizedLaneIterator(iterator, count, PhantomData))
+        }
+    }
 }
 
 pub struct LaneIterator<'a, D: Decoder>(IteratorWithSchema<'a, Lane>, PhantomData<D>);
 
-impl<'a, D: Decoder> Iterator for LaneIterator<'a, D>
-{
+impl<'a, D: Decoder> Iterator for LaneIterator<'a, D> {
+    type Item = (Result<NodeHeader, SchemaError>, Result<D, SchemaError>);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+            .map(|(k, v)| (k, v.and_then(|v| D::decode(&v))))
+    }
+}
+
+pub struct SizedLaneIterator<'a, D: Decoder>(Take<IteratorWithSchema<'a, Lane>>, usize, PhantomData<D>);
+
+impl<'a, D: Decoder> Iterator for SizedLaneIterator<'a, D> {
     type Item = (Result<NodeHeader, SchemaError>, Result<D, SchemaError>);
 
     #[inline]
