@@ -903,7 +903,7 @@ mod fns {
         // nonce_size == nonce_hash_size == 32 in the current protocol
         let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
-        let cycle_position = level_position(level as i64, blocks_per_cycle as i64);
+        let cycle_position = level_position(level as i64, blocks_per_cycle as i64) as i32;
 
         // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
         let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();

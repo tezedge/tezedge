@@ -23,8 +23,8 @@ async fn integration_test_full() {
 #[tokio::test]
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
-    // start development tests from 10000th block
-    integration_tests_rpc("BM7ujXb2iX5Kvj4zBhCstZysvGryEvp6DEnTRpn1uZ1wSNnSQij").await
+    // start development tests from 12600th block
+    integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await
 }
 
 async fn integration_tests_rpc(start_block: &str) {
