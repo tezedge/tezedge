@@ -1948,6 +1948,7 @@ dependencies = [
  "getset 0.0.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hyper 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "networking 0.1.0",
  "path-tree 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
