@@ -152,3 +152,27 @@ impl BakingRights {
         }
     }
 }
+
+/// Object containing information about the baking rights 
+#[derive(Serialize, Debug, Clone, Getters)]
+pub struct StakingRightsContextData {
+    #[get = "pub(crate)"]
+    roll_snapshot: i16,
+    #[get = "pub(crate)"]
+    last_roll: i32,
+    #[get = "pub(crate)"]
+    random_seed: Vec<u8>,
+    #[get = "pub(crate)"]
+    rolls: HashMap<i64, String>,
+}
+
+impl StakingRightsContextData {
+    pub fn new(roll_snapshot: i16, last_roll: i32, random_seed: Vec<u8>, rolls: HashMap<i64, String>) -> Self{
+        Self {
+            roll_snapshot,
+            last_roll,
+            random_seed,
+            rolls,
+        }
+    }
+}

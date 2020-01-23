@@ -20,6 +20,12 @@ pub fn digest_128(data: &[u8]) -> Vec<u8> {
         .expect("Blake2b unexpectedly failed on correct digest length")
 }
 
+// Generate digest of length 160 bits (20bytes) from arbitrary binary data
+pub fn digest_160(data: &[u8]) -> Vec<u8> {
+    digest(data, 20)
+        .expect("Blake2b unexpectedly failed on correct digest length")
+}
+
 /// Arbitrary Blake2b digest generation from generic data.
 // Should be noted, that base Blake2b supports arbitrary digest length from 16 to 64 bytes
 fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bLengthError> {

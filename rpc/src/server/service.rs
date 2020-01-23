@@ -418,14 +418,13 @@ mod fns {
 
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::{FullBlockInfo, PagedResult};
+    use crate::helpers::{FullBlockInfo, PagedResult, StakingRightsContextData};
     use crate::rpc_actor::RpcCollectedStateRef;
 
     use hex::FromHex;
     use chrono::{DateTime, Duration};
     use chrono::prelude::*;
     use crate::helpers::BakingRights;
-    use rand::Rng;
 
     macro_rules! merge_slices {
         ( $($x:expr),* ) => {{
@@ -482,7 +481,8 @@ mod fns {
         }
     }
 
-    pub(crate) fn get_rolls(level: usize, _cycle: &String, _persistent_storage: &PersistentStorage, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
+    pub(crate) fn get_rolls(level: usize, cycle: i64, snapshot: i16, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
+        // TODO: rework this to use the /owner/snapshot keys!!
         const ROLL_NUM_START: usize = 0;
         const ADDRESS_POSITION: usize = 9;
 
@@ -499,64 +499,116 @@ mod fns {
         let roll_data = context.clone();
         // get all the relevant data out of the context database
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
-            .filter(|(k, _)| k.contains("data/rolls/owner/current") || k.contains("/successor") || k.contains("/random_seed"))
-            .collect();
-
-        // get the roll_lists out of the context storage
-        // roll_lists are the beginning of a linked list of the rolls pointing to the data/rolls/owner/current/*/*/<first_roll>
-        // This seems a little redundant... but with the above solution we only traverse the whole context only once
-        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = roll_data.into_iter()
-            .filter(|(k, _)| k.contains("roll_list"))
+            .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
             .collect();
             
         let mut roll_owners: HashMap<i64, String> = HashMap::new();
 
-        for key in roll_lists.keys() {
-            // extract the delegate address (public key hash <pkh>) from the key
-            // let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
-            let public_key_hash: String = match key.split('/').collect::<Vec<_>>().get(ADDRESS_POSITION) {
-                Some(v) => v.to_string(),
-                None => bail!("Address not found in key")
-            };
+        // TODO: iterate through all the owners, get the roll num and decode the value (it is a public key) to get the pkh address (tz1...)
 
-            let contract_id = address_to_contract_id(&public_key_hash)?;
+        // for key in roll_lists.keys() {
+        //     // extract the delegate address (public key hash <pkh>) from the key
+        //     // let public_key_hash: String = key.split('/').collect::<Vec<_>>()[9].to_string(); //[9]
+        //     let public_key_hash: String = match key.split('/').collect::<Vec<_>>().get(ADDRESS_POSITION) {
+        //         Some(v) => v.to_string(),
+        //         None => bail!("Address not found in key")
+        //     };
 
-            // get the first roll
-            let mut next_roll;
-            if let Some(Bucket::Exists(roll)) = roll_lists.get(key) {
-                next_roll = roll;
-            } else {
-                bail!("No first roll for the delegate")
-            }
+        //     let contract_id = address_to_contract_id(&public_key_hash)?;
 
-            // fill out the roll_owners hash map using the linked list from the context storage
-            loop {
-                let roll_num = num_from_slice!(next_roll, ROLL_NUM_START, i32);
+        //     // get the first roll
+        //     let mut next_roll;
+        //     if let Some(Bucket::Exists(roll)) = roll_lists.get(key) {
+        //         next_roll = roll;
+        //     } else {
+        //         bail!("No first roll for the delegate")
+        //     }
 
-                // construct the whole owner/successor key
-                // /<rol_num little-endian 1st byte>/<roll_num little-endian 2nd byte>/<roll_num in decimal>
-                // Note: this will work up to 0xffff rolls, not sure how exactly they implement rolls over this number with this key format
-                let owner_key = format!("data/rolls/owner/current/{}/{}/{}", next_roll[3], next_roll[2], roll_num);
-                let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
+        //     // fill out the roll_owners hash map using the linked list from the context storage
+        //     loop {
+        //         let roll_num = num_from_slice!(next_roll, ROLL_NUM_START, i32);
+
+        //         // construct the whole owner/successor key
+        //         // /<rol_num little-endian 1st byte>/<roll_num little-endian 2nd byte>/<roll_num in decimal>
+        //         // Note: this will work up to 0xffff rolls, not sure how exactly they implement rolls over this number with this key format
+        //         let owner_key = format!("data/rolls/owner/snapshot/{}/{}/{}/{}/{}", cycle, snapshot, next_roll[3], next_roll[2], roll_num);
+        //         let successor_key = format!("data/rolls/index/{}/{}/{}/successor", next_roll[3], next_roll[2], roll_num);
             
-                if let Some(Bucket::Exists(_roll)) = data.get(&owner_key) {
-                    roll_owners.insert(roll_num.into(), contract_id.clone());
-                } else {
-                    // bail!("Roll owner key not found for key: {}", &owner_key)
-                    break;
-                }
+        //         if let Some(Bucket::Exists(_roll)) = data.get(&owner_key) {
+        //             roll_owners.insert(roll_num.into(), contract_id.clone());
+        //         } else {
+        //             // bail!("Roll owner key not found for key: {}", &owner_key)
+        //             // we still need to check, if it has a successor
+        //             break;
+        //         }
 
-                // get the next roll for the delegate
-                if let Some(Bucket::Exists(roll)) = data.get(&successor_key) {
-                    next_roll = roll
-                } else {
-                    break;
-                }
-            }
-        }
+        //         // get the next roll for the delegate
+        //         if let Some(Bucket::Exists(roll)) = data.get(&successor_key) {
+        //             next_roll = roll
+        //         } else {
+        //             break;
+        //         }
+        //     }
+        // }
         Ok(Some(roll_owners))
     }
 
+    pub(crate) fn get_staking_context_data(level: usize, list: ContextList, persistent_storage: &PersistentStorage, constants: &ContextConstants) -> Result<StakingRightsContextData, failure::Error> {
+        let cycle_of_requested_level = (level as i64 - 1) / constants.blocks_per_cycle();
+
+        let roll_snapshot;
+        {
+            let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
+            println!("{}", snapshot_key);
+
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(level, &snapshot_key)? {
+                println!("Got snapshot!");
+                roll_snapshot = num_from_slice!(data, 0, i16);
+            } else {
+                println!("Not found, setting default snapshot!");
+                roll_snapshot = Default::default();
+            }
+        };
+
+        let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
+        let random_seed;
+        {
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(level, &random_seed_key)? {
+                random_seed = data;
+            } else {
+                println!("Seed not found, setting to default");
+                random_seed = Default::default();
+            }
+        }
+
+        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_requested_level, roll_snapshot - 1);  // is the -1 necessary??
+
+        let last_roll;
+        {
+            let reader = list.read().unwrap();
+            if let Some(Bucket::Exists(data)) = reader.get_key(level, &last_roll_key)? {
+                last_roll = num_from_slice!(data, 0, i32);
+            } else {
+                println!("Last roll not found, setting default");
+                last_roll = Default::default();
+            }
+        }
+        println!("Last roll: {}", last_roll);
+
+        // get the rolls from the context storage
+        let rolls = get_rolls(level, cycle_of_requested_level, roll_snapshot, list)?;
+        let roll_owners = match rolls {
+            Some(r) => r,
+            None => bail!("Error getting rolls")
+        };
+
+        Ok(StakingRightsContextData::new(roll_snapshot, last_roll, random_seed, roll_owners))
+    }
+
+
+    //s
     pub(crate) fn get_baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, head_level: i64, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
         const NO_CYCLE_FLAG: i64 = -1;
         const BAKING_USE_STRING: &[u8] = b"level baking:";
@@ -628,78 +680,7 @@ mod fns {
         };
         println!("Requested level: {}", requested_level);
 
-        let cycle_of_requested_level = (requested_level - 1) / constants.blocks_per_cycle();
-
-        let cycle_of_rolls;
-
-        if cycle_of_requested_level < (*constants.preserved_cycles() + 2) {
-            cycle_of_rolls = cycle_of_requested_level;
-        } else {
-            cycle_of_rolls = cycle_of_requested_level - constants.preserved_cycles() - 2;
-        };
-
-        let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
-        println!("{}", snapshot_key);
-
-        let roll_snapshot;
-        {
-            let reader = list.read().unwrap();
-            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &snapshot_key)? {
-                roll_snapshot = num_from_slice!(data, 0, i16);
-                println!("Got snapshot! : {}", roll_snapshot);
-            } else {
-                roll_snapshot = Default::default();
-                println!("Not found, setting default snapshot! : {}", roll_snapshot);
-            }
-        }
-
-        let snapshot_level;
-
-        // the seed and the rolls for the first preserved_cycles are pregenerated and won't change until preserved_cycles + 1
-        println!("Requeste level cycle: {}", cycle_of_requested_level);
-
-        if cycle_of_requested_level < (*constants.preserved_cycles() + 2) {
-            snapshot_level = head_level;
-        } else {
-            snapshot_level = (cycle_of_rolls * constants.blocks_per_cycle()) + ((roll_snapshot as i64) * constants.blocks_per_roll_snapshot());
-        };
-
-        println!("Snapshot level: {}", snapshot_level);
-        
-        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_rolls, roll_snapshot);
-        println!("{}", last_roll_key);
-
-        let last_roll;
-        {
-            let reader = list.read().unwrap();
-            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &last_roll_key)? {
-                last_roll = num_from_slice!(data, 0, i32);
-            } else {
-                println!("Last roll not found, setting default");
-                last_roll = Default::default();
-            }
-        }
-        println!("Last roll: {}", last_roll);
-
-        let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_rolls);
-        println!("{}", random_seed_key);
-        let random_seed;
-        {
-            let reader = list.read().unwrap();
-            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &random_seed_key)? {
-                random_seed = data;
-            } else {
-                println!("Seed not found, setting to default");
-                random_seed = Default::default();
-            }
-        }
-        
-        // get the rolls from the context storage
-        let rolls = get_rolls(snapshot_level as usize, &cycle, persistent_storage, list)?;
-        let roll_owners = match rolls {
-            Some(r) => r,
-            None => bail!("Error getting rolls")
-        };
+        let context_data = get_staking_context_data(block_level as usize, list, persistent_storage, &constants)?;
 
         // iterate through the whole cycle if necessery
         for level in requested_level..(level_to_itarate_to + 1) {
@@ -714,11 +695,11 @@ mod fns {
             for priority in 0..max_priority.parse()? {
                 // draw the rolls for the requested parameters
                 let delegate_to_assign;
-                let mut state = random_seed.to_vec();
+                let mut state = context_data.random_seed().to_vec();
                 loop {
-                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, *constants.blocks_per_cycle() as i32, BAKING_USE_STRING, level as i32, priority, last_roll)?;
+                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, *constants.blocks_per_cycle() as i32, BAKING_USE_STRING, level as i32, priority, *context_data.last_roll())?;
 
-                    if let Some(d) = roll_owners.get(&random_num) {
+                    if let Some(d) = context_data.rolls().get(&random_num) {
                         delegate_to_assign = d;
                         break;
                     } else {
@@ -925,6 +906,27 @@ mod fns {
                 HashType::ContractKt1Hash.bytes_to_string(&<[u8; 22]>::from_hex(&address[2..42])?)
             }
             _ => bail!("Invalid contract id")
+        };
+        Ok(contract_id)
+    }
+
+    // TODO: test this! 
+    #[inline]
+    fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
+        let tag = pk[0];
+        let hash = blake2b::digest_160(&pk[1..]);
+
+        let contract_id = match tag {
+            0 => {
+                HashType::ContractTz1Hash.bytes_to_string(&hash)
+            }
+            1 => {
+                HashType::ContractTz2Hash.bytes_to_string(&hash)
+            }
+            2 => {
+                HashType::ContractTz3Hash.bytes_to_string(&hash)
+            }
+            _ => bail!("Invalid public key")
         };
         Ok(contract_id)
     }
