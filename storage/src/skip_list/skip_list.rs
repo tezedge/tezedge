@@ -120,21 +120,20 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
                        lane.level(), pos.index(), pos.base_index());
             }
 
-            if (pos.base_index() == index) && (lane.level() == 0) {
+            if pos.base_index() == index {
                 return Ok(current_state);
-            } else if pos.next().base_index() > index {
-                // We cannot move horizontally anymore, so we need to descent to lower level.
-                if lane.level() == 0 {
-                    // We hit bottom and we cannot move horizontally. Yet it is not requested index
-                    // Something gone wrong.
-                    panic!("Correct value was skipped");
-                } else {
-                    // Make a descend
-                    lane = lane.lower_lane();
-                    pos = pos.lower();
-                }
             } else {
-                // We can still move horizontally on current lane.
+                while pos.next().base_index() > index {
+                    // We cannot move horizontally anymore, so we need to descent to lower level.
+                    if lane.level() == 0 {
+                        panic!("Correct value was skipped");
+                    } else {
+                        // Make descend
+                        lane = lane.lower_lane();
+                        pos = pos.lower();
+                    }
+                }
+
                 pos = pos.next();
             }
         }
@@ -159,7 +158,7 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
                         pos = pos.higher();
                         lane = lane.higher_lane();
                     } else {
-                        if pos.base_index() == 0 {
+                        if pos.index() == 0 {
                             return Ok(None);
                         } else {
                             pos = pos.prev();
@@ -185,22 +184,23 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
 
         // Start building upper lanes
         while index != 0 && (index + 1) % LEVEL_BASE == 0 {
-            let lane_value = lane.base_iterator(index)?
-                .take(LEVEL_BASE)
+            let lane_value = lane.rev_base_iterator(index, LEVEL_BASE)?
                 .map(|(_, val)| {
                     match val {
                         Ok(val) => val,
                         Err(err) => panic!("Skip list database failure: {}", err)
                     }
                 })
-                .fold(None, |state: Option<C>, value| {
+                .fold(None, |state: Option<C>, value: C| {
                     if let Some(mut state) = state {
-                        state.diff(&value);
+                        state.merge(&value);
                         Some(state)
                     } else {
                         Some(value)
                     }
-                }).unwrap();
+                })
+                .unwrap();
+
             value = lane_value;
             index = ((index + 1) / LEVEL_BASE) - 1;
             lane = lane.higher_lane();
