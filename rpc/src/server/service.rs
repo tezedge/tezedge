@@ -397,7 +397,7 @@ mod fns {
     
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::{FullBlockInfo, PagedResult, EndorsingRight};
+    use crate::helpers::{FullBlockInfo, PagedResult, EndorsingRight, cycle_from_level, level_position};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -458,8 +458,9 @@ mod fns {
         };
 
         //check input cycle
-        //TODO input_level should be checked same as cycle
-        let current_cycle = (block_level / constants.blocks_per_cycle()) as i64;
+        //TODO new check for level and cycle, if requested_cycle == current_cycle - preserved_cycles && last block level
+        // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
+        let current_cycle = cycle_from_level(block_level, *constants.blocks_per_cycle());
         let cycle: Option<i64> = if let Some(c) = input_cycle {
             let requested_cycle:i64 = c.parse().expect("wrong format of cycle query parameter");
             //check cycle interval
@@ -476,7 +477,7 @@ mod fns {
         let level: Option<i64> = if let Some(c) = input_level {
             let requested_level:i64 = c.parse().expect("wrong format of cycle query parameter");
             //check cycle interval
-            let requested_cycle = (requested_level-1) / constants.blocks_per_cycle();
+            let requested_cycle = cycle_from_level(requested_level, *constants.blocks_per_cycle());
             if (requested_cycle - current_cycle).abs() <= *constants.preserved_cycles() {
                 Some(requested_level)
             } else {
@@ -673,7 +674,7 @@ mod fns {
         //assign level iterator and assign requested level to correct cycle
         let mut is_cycle = false;
         let cycle_of_requested_level;
-        let blocks_per_cycle = constants.blocks_per_cycle();
+        let blocks_per_cycle = *constants.blocks_per_cycle() as i64;
         let level_iterator = if let Some(c) = cycle {
             is_cycle = true;
             is_requested_level = true;
@@ -683,7 +684,7 @@ mod fns {
             cycle_of_requested_level = c;
             requested_level .. requested_level + blocks_per_cycle
         } else {
-            cycle_of_requested_level = (requested_level-1) / blocks_per_cycle;
+            cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
             requested_level .. requested_level+1
         };
         println!("begin: block_id:{} level:{} cycle:{} is_cycle:{} requested_level:{}", block_id, requested_level, cycle_of_requested_level, is_cycle, is_requested_level);
@@ -791,7 +792,7 @@ mod fns {
             for endorser_slot in (0 .. *constants.endorsers_per_block() as u8).rev() {
                 let mut state = random_seed_state.clone();
                 loop {
-                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, *blocks_per_cycle as i32, ENDORSEMENT_USE_STRING, level as i32, endorser_slot as i32, last_roll)?;
+                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, blocks_per_cycle as i32, ENDORSEMENT_USE_STRING, level as i32, endorser_slot as i32, last_roll)?;
 
                     if let Some(delegate) = context_rollers.get(&random_num) {
                         let slots = endorsement_hash.entry(delegate.clone()).or_insert( Vec::new() );
@@ -902,12 +903,7 @@ mod fns {
         // nonce_size == nonce_hash_size == 32 in the current protocol
         let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
-        // the position of the block in its cycle
-        // level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-        let mut cycle_position = (level % blocks_per_cycle) - 1;
-        if cycle_position < 0 { //for last block
-            cycle_position = blocks_per_cycle - 1
-        }
+        let cycle_position = level_position(level as i64, blocks_per_cycle as i64);
 
         // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
         let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();

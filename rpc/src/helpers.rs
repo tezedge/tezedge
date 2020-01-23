@@ -123,3 +123,63 @@ impl EndorsingRight {
         }
     }
 }
+
+
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct RpcErrorMsg {
+    kind: String, // "permanent"
+    id: String, // "proto.005-PsBabyM1.seed.unknown_seed"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    missing_key: Option<MissingKey>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oldest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requested: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest: Option<String>,
+}
+
+impl RpcErrorMsg {
+    pub fn new(
+        kind: String, 
+        id: String, 
+        missing_key: Option<MissingKey>,
+        oldest: Option<String>,
+        requested: Option<String>,
+        latest: Option<String>) -> Self {
+
+        Self {
+            kind: kind.to_string(),
+            id: id.to_string(),
+            missing_key,
+            oldest,
+            requested,
+            latest,
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct MissingKey {
+    cycle: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    random_seed: Option<String>,
+}
+
+// cycle in which is given level
+// level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
+pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> i64 {
+    (level - 1) / blocks_per_cycle
+
+}
+
+// the position of the block in its cycle
+// level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
+pub fn level_position(level:i64, blocks_per_cycle:i64) -> i64 {
+    let cycle_position = (level % blocks_per_cycle) - 1;
+    if cycle_position < 0 { //for last block
+        blocks_per_cycle - 1
+    } else {
+        cycle_position
+    }
+}
