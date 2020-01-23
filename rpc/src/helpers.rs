@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -34,31 +33,19 @@ pub struct InnerBlockHeader {
     pub operations_hash: String,
     pub fitness: Vec<String>,
     pub context: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub priority: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub proof_of_work_nonce: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<String>,
+    pub protocol_data: HashMap<String, Value>,
 }
 
 impl FullBlockInfo {
     pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
         let header: &BlockHeader = &val.header().header;
-        let json_data = val.json_data();
-        let block_header_info: Option<BlockHeaderInfo> = json_data.block_header_proto_json().parse().ok();
-
         let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
         let operations_hash = HashType::OperationListListHash.bytes_to_string(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
         let context = HashType::ContextHash.bytes_to_string(header.context());
         let hash = HashType::BlockHash.bytes_to_string(&val.header().hash);
-        let (priority, proof_of_work_nonce, signature) = if let Some(x) = block_header_info {
-            (Some(x.priority), Some(x.proof_of_work_nonce), Some(x.signature))
-        } else {
-            (None, None, None)
-        };
+        let json_data = val.json_data();
 
         Self {
             hash,
@@ -72,38 +59,11 @@ impl FullBlockInfo {
                 operations_hash,
                 fitness,
                 context,
-                priority,
-                proof_of_work_nonce,
-                signature,
+                protocol_data: serde_json::from_str(json_data.block_header_proto_json()).unwrap_or_default()
             },
             metadata: serde_json::from_str(json_data.block_header_proto_metadata_json()).unwrap_or_default(),
             operations: serde_json::from_str(json_data.operations_proto_metadata_json()).unwrap_or_default(),
         }
-    }
-}
-
-/// Structure containing basic information from block header
-#[derive(Clone, Debug)]
-pub struct BlockHeaderInfo {
-    pub priority: i32,
-    pub proof_of_work_nonce: String,
-    pub signature: String,
-}
-
-impl FromStr for BlockHeaderInfo {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let des: HashMap<&str, &str> = serde_json::from_str(s)?;
-        Ok(Self {
-            priority: if let Some(val) = des.get("priority") {
-                val.parse().unwrap_or(0)
-            } else {
-                0
-            },
-            proof_of_work_nonce: (*des.get("proof_of_work_nonce").unwrap_or(&"")).into(),
-            signature: (*des.get("signature").unwrap_or(&"")).into(),
-        })
     }
 }
 

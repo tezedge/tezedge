@@ -28,8 +28,17 @@ pub struct BlockInfo {
 
 impl From<FullBlockInfo> for BlockInfo {
     fn from(val: FullBlockInfo) -> Self {
+
+        let protocol: Option<UniString> = match val.metadata.get("protocol") {
+            Some(value) => match value.as_str() {
+                Some(proto) => Some(proto.to_string().into()),
+                None => None
+            },
+            None => None
+        };
+
         Self {
-            protocol: None,
+            protocol,
             chain_id: Some(val.chain_id.into()),
             hash: Some(val.hash.into()),
             header: val.header,
