@@ -656,10 +656,17 @@ mod fns {
         
         // get requested level or use block head level+1
         let mut is_requested_level = false;
-        let mut requested_level: i64 = if let Some(l) = input_level { //first check if level was in query
+        let mut output_level: i64;
+        let mut requested_level: i64 = if let Some(level) = input_level { //first check if level was in query
             is_requested_level=true;
-            l
+            output_level = level;
+            if level < 1 {
+                1
+            } else {
+                level
+            }
         } else { //if level not specified the get it by block
+            output_level = block_level;
             block_level
         };
 
@@ -797,13 +804,16 @@ mod fns {
                 }
             }
 
+            if is_cycle {
+                output_level = level;
+            }
             for delegate in endorsement_hash.keys().sorted().rev() {
                 let delegate_contract_id  = address_to_contract_id(delegate)?;
                 // filter delegates
                 if check_delegates && delegate_contract_id != delegate_filter {
                     continue
                 }
-                endorsing_rights.push(EndorsingRight::new(level, delegate_contract_id, endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
+                endorsing_rights.push(EndorsingRight::new(output_level, delegate_contract_id, endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
             }
         }
 
