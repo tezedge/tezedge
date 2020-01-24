@@ -157,9 +157,21 @@ impl BakingRights {
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct StakingRightsContextData {
     #[get = "pub(crate)"]
+    head_level: i32,
+    #[get = "pub(crate)"]
+    block_level: i32,
+    #[get = "pub(crate)"]
     roll_snapshot: i16,
     #[get = "pub(crate)"]
     last_roll: i32,
+    #[get = "pub(crate)"]
+    blocks_per_cycle: i64,
+    #[get = "pub(crate)"]
+    preserved_cycles: i64,
+    #[get = "pub(crate)"]
+    nonce_length: i64,
+    #[get = "pub(crate)"]
+    time_between_blocks: Vec<i64>,
     #[get = "pub(crate)"]
     random_seed: Vec<u8>,
     #[get = "pub(crate)"]
@@ -167,10 +179,16 @@ pub struct StakingRightsContextData {
 }
 
 impl StakingRightsContextData {
-    pub fn new(roll_snapshot: i16, last_roll: i32, random_seed: Vec<u8>, rolls: HashMap<i64, String>) -> Self{
+    pub fn new(head_level: i32, block_level: i32, roll_snapshot: i16, last_roll: i32, blocks_per_cycle: i64, preserved_cycles: i64, nonce_length: i64, time_between_blocks: Vec<i64>, random_seed: Vec<u8>, rolls: HashMap<i64, String>) -> Self{
         Self {
+            head_level,
+            block_level,
             roll_snapshot,
             last_roll,
+            blocks_per_cycle,
+            preserved_cycles,
+            nonce_length,
+            time_between_blocks,
             random_seed,
             rolls,
         }
