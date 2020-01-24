@@ -24,7 +24,7 @@ steps:
     LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
   commands: 
     - mkdir /tmp/tezedge_developer
-    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 38732 --tezos-data-dir=/tmp/tezedge_developer
+    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer
 
 - name: ocaml-node-run
   image: tezos/tezos:babylonnet
