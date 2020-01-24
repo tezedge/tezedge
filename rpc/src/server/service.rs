@@ -23,6 +23,7 @@ use crate::{
     ts_to_rfc3339,
 };
 use crate::rpc_actor::RpcCollectedStateRef;
+use crate::helpers::RpcResponseData;
 
 #[derive(Debug)]
 enum Route {
@@ -322,8 +323,20 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let level = find_query_value_as_string(&query, "level");
             let cycle = find_query_value_as_string(&query, "cycle");
             let delegate = find_query_value_as_string(&query, "delegate");
-            //make_json_response(&format!("block {:?} level {:?}", block_id, level))
-            result_to_json_response(fns::check_and_get_endorsing_rights(block_id, level, cycle, delegate, context_storage, &persistent_storage, state), &log)
+
+            match fns::check_and_get_endorsing_rights(block_id, level, cycle, delegate, context_storage, &persistent_storage, state) {
+                Ok(Some(RpcResponseData::EndorsingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
+                Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
+                Err(e) => { //pass error to response parser
+                    let res: Result<Option<String>, failure::Error> = Err(e);
+                    result_to_json_response(res, &log)
+                }
+                _ => { //ignore other options
+                    warn!(&log, "Wrong RpcResponseData format");
+                    let res: Result<Option<String>, failure::Error> = Ok(None);
+                    result_to_json_response(res, &log)
+                }
+            }
         }
         _ => not_found()
     }
@@ -397,7 +410,7 @@ mod fns {
     
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::{FullBlockInfo, PagedResult, EndorsingRight, cycle_from_level, level_position};
+    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, cycle_from_level, level_position};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -442,8 +455,8 @@ mod fns {
     }
 
 
-    pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
-        // get level from block header
+    pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+        // get level from block id
         let block_level = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
             l as i64
         } else {
@@ -456,39 +469,53 @@ mod fns {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
+        let preserved_cycles = *constants.preserved_cycles();
+        let current_cycle = cycle_from_level(block_level, *constants.blocks_per_cycle());
 
         //check input cycle
-        //TODO new check for level and cycle, if requested_cycle == current_cycle - preserved_cycles && last block level
+        //TODO new check for level and cycle, if requested_cycle == current_cycle - preserved_cycles && is last block level, output:
         // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
-        let current_cycle = cycle_from_level(block_level, *constants.blocks_per_cycle());
         let cycle: Option<i64> = if let Some(c) = input_cycle {
             let requested_cycle:i64 = c.parse().expect("wrong format of cycle query parameter");
             //check cycle interval
-            if (requested_cycle - current_cycle).abs() <= *constants.preserved_cycles() {
+            if (requested_cycle - current_cycle).abs() <= preserved_cycles {
                 Some(requested_cycle)
             } else {
-                // TODO: below is response format to return instead of endorsing rights in case of error:
-                // [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":4,"requested":11,"latest":10}]
-                bail!("requested cycle out of interval")
+                let error_msg = RpcErrorMsg::new(
+                    "permanent".to_string(),
+                    "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
+                    None,
+                    Some((  std::cmp::max(0, current_cycle-preserved_cycles) ).to_string()),
+                    Some(requested_cycle.to_string()),
+                    Some((current_cycle+preserved_cycles).to_string()),
+                );
+                return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
             }
         } else {
             None
         };
+
+        // check if level is in aloved cycle interval
         let level: Option<i64> = if let Some(c) = input_level {
             let requested_level:i64 = c.parse().expect("wrong format of cycle query parameter");
             //check cycle interval
             let requested_cycle = cycle_from_level(requested_level, *constants.blocks_per_cycle());
-            if (requested_cycle - current_cycle).abs() <= *constants.preserved_cycles() {
+            if (requested_cycle - current_cycle).abs() <= preserved_cycles {
                 Some(requested_level)
             } else {
-                // TODO: below is response format to return instead of endorsing rights in case of error:
-                // [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":4,"requested":11,"latest":10}]
-                bail!("requested level out of interval")
+                let error_msg = RpcErrorMsg::new(
+                    "permanent".to_string(),
+                    "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
+                    None,
+                    Some(( std::cmp::max(0, current_cycle-preserved_cycles) ).to_string()),
+                    Some(requested_cycle.to_string()),
+                    Some((current_cycle+preserved_cycles).to_string()),
+                );
+                return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
             }
         } else {
             None
         };
-
 
         get_endorsing_rights(block_id, block_level, level, cycle, input_delegate, constants, list, persistent_storage, state)
     }
@@ -653,10 +680,11 @@ mod fns {
     }
 
     #[inline]
-    fn get_endorsing_rights(block_id: &str, block_level: i64, input_level: Option<i64>, cycle: Option<i64>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
+    fn get_endorsing_rights(block_id: &str, block_level: i64, input_level: Option<i64>, cycle: Option<i64>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
         // get requested level or use block head level+1
         let mut is_requested_level = false;
+        // output_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut output_level: i64;
         let mut requested_level: i64 = if let Some(level) = input_level { //first check if level was in query
             is_requested_level=true;
@@ -674,7 +702,7 @@ mod fns {
         //assign level iterator and assign requested level to correct cycle
         let mut is_cycle = false;
         let cycle_of_requested_level;
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i64;
+        let blocks_per_cycle: i64 = *constants.blocks_per_cycle();
         let level_iterator = if let Some(c) = cycle {
             is_cycle = true;
             is_requested_level = true;
@@ -698,27 +726,28 @@ mod fns {
         } else {
             let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
             // roll snapshot and random seed is set in last block of requested - preserved_cycles cycle
+            // TODO use requested_level after ctx is fixed
             level_to_get_snapshot_and_seed = (cycle_of_requested_level - constants.preserved_cycles()) * blocks_per_cycle;
             println!("get snapshot_key: level:{} ctx key:{}", level_to_get_snapshot_and_seed, snapshot_key);
             let reader = list.read().expect("mutex poisoning");
             if let Some(Bucket::Exists(data)) = reader.get_key(level_to_get_snapshot_and_seed as usize, &snapshot_key)? {
                 num_from_slice!(data, 0, i16)
             } else {
-                bail!("snapshot_key not found: level:{} ctx key:{}", level_to_get_snapshot_and_seed, snapshot_key);
+                bail!("key not found in ctx: level:{} ctx key:{}", level_to_get_snapshot_and_seed, snapshot_key);
             }
         };
 
+        // TODO use requested_level after ctx is fixed
         let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
         println!("get random_seed: level:{} ctx key:{}", level_to_get_snapshot_and_seed, random_seed_key);
-        let random_seed;
-        {
+        let random_seed = {
             let reader = list.read().expect("mutex poisoning");
             if let Some(Bucket::Exists(data)) = reader.get_key(level_to_get_snapshot_and_seed as usize, &random_seed_key)? {
-                random_seed = data;
+                data
             } else {
-                bail!("not found random_seed in level:{} ctx key:{}", level_to_get_snapshot_and_seed, random_seed_key);
+                bail!("key not found in ctx: level:{}, key:{}", level_to_get_snapshot_and_seed, random_seed_key);
             }
-        }
+        };
 
         let snapshot_level;
         if cycle_of_requested_level < *constants.preserved_cycles()+2 {
@@ -728,18 +757,18 @@ mod fns {
             // last_roll is set in last block of snapshot
             snapshot_level = (cycle_of_rolls * blocks_per_cycle) + ((roll_snapshot as i64) * constants.blocks_per_roll_snapshot());
         };
+        // TODO use requested_level after ctx is fixed
         // snapshots of last_roll are listed from 0, so x last_roll in row have index of roll_snapshot-1
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_requested_level, roll_snapshot-1);
         println!("get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
-        let last_roll;
-        {
+        let last_roll = {
             let reader = list.read().expect("mutex poisoning");
             if let Some(Bucket::Exists(data)) = reader.get_key(snapshot_level as usize, &last_roll_key)? {
-                last_roll = num_from_slice!(data, 0, i32);
+                num_from_slice!(data, 0, i32)
             } else {
-                bail!("can not get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
+                bail!("key not found in ctx: level:{} ctx key:{}", snapshot_level, last_roll_key);
             }
-        }
+        };
         
         // get list of rollers from context DB
         println!("get_context_rollers: level:{}", snapshot_level);
@@ -749,7 +778,7 @@ mod fns {
             bail!("Empty rollers list for level {}", block_level)
         };
 
-        // timestamp computations
+        // prepare timestamp computations
         let time_between_blocks: Vec<i64> = constants.time_between_blocks()
             .into_iter()
             .map(|x| x.parse().unwrap())
@@ -818,7 +847,7 @@ mod fns {
             }
         }
 
-        Ok(Some(endorsing_rights))
+        Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
     }
 
     #[inline]

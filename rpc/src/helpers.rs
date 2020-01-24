@@ -104,6 +104,12 @@ impl<C> PagedResult<C>
     }
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub enum RpcResponseData {
+    EndorsingRights(Vec<EndorsingRight>),
+    ErrorMsg(RpcErrorMsg),
+}
+
 #[derive(Serialize, Debug, Clone, Default)]
 pub struct EndorsingRight {
     level: i64,
@@ -123,7 +129,6 @@ impl EndorsingRight {
         }
     }
 }
-
 
 #[derive(Serialize, Debug, Clone, Default)]
 pub struct RpcErrorMsg {
@@ -170,7 +175,6 @@ pub struct MissingKey {
 // level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
 pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> i64 {
     (level - 1) / blocks_per_cycle
-
 }
 
 // the position of the block in its cycle
