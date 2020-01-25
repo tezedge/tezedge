@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 use serde_json::Value;
+use getset::Getters;
 
 use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
@@ -104,13 +105,15 @@ impl<C> PagedResult<C>
     }
 }
 
+// Enum defining possible response structures for RPC calls
 #[derive(Serialize, Debug, Clone)]
 pub enum RpcResponseData {
     EndorsingRights(Vec<EndorsingRight>),
     ErrorMsg(RpcErrorMsg),
 }
 
-#[derive(Serialize, Debug, Clone, Default)]
+// endorsing rights structure, final response look like Vec<EndorsingRight>
+#[derive(Serialize, Debug, Clone)]
 pub struct EndorsingRight {
     level: i64,
     delegate: String,
@@ -130,12 +133,15 @@ impl EndorsingRight {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Default)]
+// struct is defining Error message response, thre are different keys is these messages so only needed one are defined for each message
+#[derive(Serialize, Debug, Clone)]
 pub struct RpcErrorMsg {
     kind: String, // "permanent"
     id: String, // "proto.005-PsBabyM1.seed.unknown_seed"
     #[serde(skip_serializing_if = "Option::is_none")]
-    missing_key: Option<MissingKey>,
+    missing_key: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    function: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     oldest: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,7 +154,8 @@ impl RpcErrorMsg {
     pub fn new(
         kind: String, 
         id: String, 
-        missing_key: Option<MissingKey>,
+        missing_key: Option<Vec<Value>>,
+        function: Option<String>,
         oldest: Option<String>,
         requested: Option<String>,
         latest: Option<String>) -> Self {
@@ -157,6 +164,7 @@ impl RpcErrorMsg {
             kind: kind.to_string(),
             id: id.to_string(),
             missing_key,
+            function,
             oldest,
             requested,
             latest,
@@ -164,11 +172,24 @@ impl RpcErrorMsg {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Default)]
-pub struct MissingKey {
-    cycle: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    random_seed: Option<String>,
+#[derive(Serialize, Debug, Clone, Getters)]
+pub struct CycleData {
+    #[get = "pub(crate)"]
+    random_seed: Vec<u8>,
+    #[get = "pub(crate)"]
+    last_roll: i32,
+    #[get = "pub(crate)"]
+    rollers: HashMap<i64, String>,
+}
+
+impl CycleData {
+    pub fn new(random_seed: Vec<u8>, last_roll: i32, rollers: HashMap<i64, String>) -> Self {
+        Self {
+            random_seed,
+            last_roll,
+            rollers,
+        }
+    }
 }
 
 // cycle in which is given level

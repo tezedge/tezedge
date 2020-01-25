@@ -32,6 +32,7 @@ async fn integration_tests_rpc(start_block: &str) {
     // TODO: take const from constants? from which block?
     const BLOCKS_PER_SNAPSHOT: i64 = 256;
     const BLOCKS_PER_CYCLE: i64 = 2048;
+    const PERSERVED_CYCLES: i64 = 3;
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
@@ -78,11 +79,23 @@ async fn integration_tests_rpc(start_block: &str) {
             println!("run cycle tests: {}, level: {:?}", cycle, level);
 
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle+3)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle+PERSERVED_CYCLES)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, cycle-2) )).await;
             //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
 
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "context/constants")).await;
+
+            // known ocaml node bugs
+            // - endorsing rights: for cycle 0, when requested cycle 4 there should be cycle check error:
+            //  [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":0,"requested":4,"latest":3}]
+            //  instead there is panic on 
+            //  [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","last_roll","1"],"function":"get"}]
+            // if cycle==0 {
+            //     let block_level_1000 = "BM9xFVaVv6mi7ckPbTgxEe7TStcfFmteJCpafUZcn75qi2wAHrC";
+            //     test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", block_level_1000, "helpers/endorsing_rights", 4)).await;
+            // }
+            // - endorsing rights: if there is last level of cycle is not possible to request cycle - PERSERVED_CYCLES
+            // test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, cycle-PERSERVED_CYCLES) )).await;
 
             // ------------------- End of tests for each cycle of the cycle --------------------
 
