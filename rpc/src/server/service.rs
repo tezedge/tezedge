@@ -408,12 +408,11 @@ mod fns {
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
     use storage::num_from_slice;
-    use tezos_baking::helpers::{cycle_from_level, get_pseudo_random_number};
     use tezos_context::channel::ContextAction;
     
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData};
+    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 

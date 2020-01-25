@@ -1961,7 +1961,6 @@ dependencies = [
  "slog_derive 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "storage 0.1.0",
  "tezos_api 0.1.0",
- "tezos_baking 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
@@ -2410,15 +2409,6 @@ dependencies = [
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
-]
-
-[[package]]
-name = "tezos_baking"
-version = "0.1.0"
-dependencies = [
- "crypto 0.1.0",
- "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "storage 0.1.0",
 ]
 
 [[package]]

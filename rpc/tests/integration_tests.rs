@@ -24,8 +24,8 @@ async fn integration_test_full() {
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
     // start development tests from block:
-    //integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
-    integration_tests_rpc("BLYr7qUkCK8ZNNQZqn9opBP3giFU1wA4zb8LSn5PxDBi6v3Rd2Y").await // level=19000
+    integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
+    //integration_tests_rpc("BLYr7qUkCK8ZNNQZqn9opBP3giFU1wA4zb8LSn5PxDBi6v3Rd2Y").await // level=19000
     //integration_tests_rpc("BMdwdpjSwFsY55YtxGAXqQdiNdVTfDBgtynMXHzRTgqUoXoEiT8").await // level=25000
 }
 

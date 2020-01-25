@@ -28,7 +28,6 @@ networking = { path = "../networking" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
-tezos_baking = { path = "../tezos/baking" }
 tezos_context = { path = "../tezos/context" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
