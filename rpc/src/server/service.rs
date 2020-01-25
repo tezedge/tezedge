@@ -460,7 +460,7 @@ mod fns {
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         // get level from block id
         let block_level = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
-            l as i64
+            l as i32
         } else {
             bail!("Level not found for block_id {}", block_id)
         };
@@ -471,12 +471,13 @@ mod fns {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
-        let preserved_cycles = *constants.preserved_cycles();
-        let current_cycle = cycle_from_level(block_level, *constants.blocks_per_cycle());
+        let preserved_cycles = *constants.preserved_cycles() as i32;
+        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
+        let current_cycle = cycle_from_level(block_level, blocks_per_cycle);
 
         //check input cycle
-        let cycle: Option<i64> = if let Some(c) = input_cycle {
-            let requested_cycle:i64 = c.parse().expect("wrong format of cycle query parameter");
+        let cycle: Option<i32> = if let Some(c) = input_cycle {
+            let requested_cycle:i32 = c.parse().expect("wrong format of cycle query parameter");
             //check cycle interval
             if (requested_cycle - current_cycle).abs() <= preserved_cycles {
                 Some(requested_cycle)
@@ -497,10 +498,10 @@ mod fns {
         };
 
         // check if level is in aloved cycle interval
-        let level: Option<i64> = if let Some(c) = input_level {
-            let requested_level:i64 = c.parse().expect("wrong format of cycle query parameter");
+        let level: Option<i32> = if let Some(c) = input_level {
+            let requested_level:i32 = c.parse().expect("wrong format of cycle query parameter");
             //check cycle interval
-            let requested_cycle = cycle_from_level(requested_level, *constants.blocks_per_cycle());
+            let requested_cycle = cycle_from_level(requested_level, blocks_per_cycle);
             if (requested_cycle - current_cycle).abs() <= preserved_cycles {
                 Some(requested_level)
             } else {
@@ -621,8 +622,8 @@ mod fns {
     }
 
     #[inline]
-    fn get_context_rollers(level: usize, list: ContextList) -> Result<Option<HashMap<i64, String>>, failure::Error> {
-        let mut context_rollers: HashMap<i64, String> = HashMap::new();
+    fn get_context_rollers(level: usize, list: ContextList) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+        let mut context_rollers: HashMap<i32, String> = HashMap::new();
         let context_data = {
             let reader = list.read().expect("mutex poisoning");
             if let Ok(Some(c)) = reader.get(level) {
@@ -653,7 +654,7 @@ mod fns {
             let mut roll = if let Some(Bucket::Exists(r)) = roll_lists.get(roll_key) {
                 r
             } else {
-                bail!("No data in roll")
+                bail!("empty roll_key")
             };
 
             // fill roll data and get all successors rolls
@@ -680,15 +681,15 @@ mod fns {
     }
 
     #[inline]
-    fn get_endorsing_rights(block_id: &str, block_level: i64, input_level: Option<i64>, cycle: Option<i64>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+    fn get_endorsing_rights(block_id: &str, block_level: i32, input_level: Option<i32>, cycle: Option<i32>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
         // get requested level or use block head level+1
         let mut is_requested_level = false;
         // output_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         // this level is inserted to final endorsing rights
-        let mut output_level: i64;
+        let mut output_level: i32;
         // first check if level was in query
-        let mut requested_level: i64 = if let Some(level) = input_level { 
+        let mut requested_level: i32 = if let Some(level) = input_level { 
             is_requested_level=true;
             output_level = level;
             if level < 1 {
@@ -704,7 +705,7 @@ mod fns {
         //assign level iterator and assign requested level to correct cycle
         let mut is_cycle = false;
         let cycle_of_requested_level;
-        let blocks_per_cycle: i64 = *constants.blocks_per_cycle();
+        let blocks_per_cycle: i32 = *constants.blocks_per_cycle() as i32;
         let level_iterator = if let Some(c) = cycle {
             is_cycle = true;
             is_requested_level = true;
@@ -723,10 +724,7 @@ mod fns {
             Ok(d) => d,
             Err(e) => {
                 // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
-                let mut missing_key = Vec::new();
-                missing_key.push(json!("cycle"));
-                missing_key.push(json!(4));
-                missing_key.push(json!(format!("{}",e)));
+                let missing_key = json!(["cycle",format!("{}", cycle_of_requested_level),format!("{}", e)]);
                 let error_msg = RpcErrorMsg::new(
                     "permanent".to_string(),
                     "proto.005-PsBabyM1.context.storage_error".to_string(), //TODO generate key according protocol
@@ -762,17 +760,19 @@ mod fns {
             "".to_string() //dummy value, never used
         };
 
+        // byte string for PRNG
         const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
         let mut endorsing_rights = Vec::<EndorsingRight>::new();
+        // when query param cycle is specified then iterate over all cycle levels, else only given level
         for level in level_iterator {
-            let timestamp_level: i64 = if is_requested_level {
+            let timestamp_level = if is_requested_level {
                 level - 1
             } else {
                 level
             };
             //check if estimated time is computed and convert from raw epoch time to rfc3339 format
             let estimated_time: Option<String> = if block_level <= timestamp_level {
-                let est_timestamp = ((timestamp_level - block_level).abs() * time_between_blocks[0]) + block_timestamp;
+                let est_timestamp = ((timestamp_level - block_level).abs() as i64 * time_between_blocks[0]) + block_timestamp;
                 Some(ts_to_rfc3339(est_timestamp))
             } else {
                 None
@@ -787,7 +787,7 @@ mod fns {
                 // if roll number is not found then reroll with new state till roll nuber is found in context_rollers
                 let mut state = random_seed.clone();
                 loop {
-                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, blocks_per_cycle as i32, ENDORSEMENT_USE_STRING, level as i32, endorser_slot as i32, *cycle_data.last_roll())?;
+                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, blocks_per_cycle, ENDORSEMENT_USE_STRING, level, endorser_slot as i32, *cycle_data.last_roll())?;
 
                     if let Some(delegate) = context_rollers.get(&random_num) {
                         // collect all slots for each delegate
@@ -820,10 +820,11 @@ mod fns {
     }
 
     #[inline]
-    fn get_cycle_data(requested_level: i64, cycle: i64, constants: ContextConstants, list: ContextList) -> Result<CycleData, failure::Error> {
+    fn get_cycle_data(requested_level: i32, cycle: i32, constants: ContextConstants, list: ContextList) -> Result<CycleData, failure::Error> {
         // prepare constants
-        let blocks_per_cycle = *constants.blocks_per_cycle();
-        let preserved_cycles = *constants.preserved_cycles();
+        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
+        let preserved_cycles = *constants.preserved_cycles() as i32;
+        let blocks_per_roll_snapshot = *constants.blocks_per_roll_snapshot() as i32;
         
         let mut level_to_get_snapshot_and_seed = requested_level; // this variable will be removed after ctx is fixed
         // the seed and the rolls for the first preserved_cycles listed from 0 are pregenerated and won't change until preserved_cycles + 2
@@ -866,7 +867,7 @@ mod fns {
         } else {
             let cycle_of_rolls = cycle - preserved_cycles - 2;
             // last_roll is set in last block of snapshot
-            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + ((roll_snapshot as i64) * constants.blocks_per_roll_snapshot());
+            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + ((roll_snapshot as i32) * blocks_per_roll_snapshot);
         };
         // Snapshots of last_roll are listed from 0 and in roll_snapshot is stored order of snapshot.
         // So x last_roll in row have index of roll_snapshot-1
@@ -974,11 +975,11 @@ mod fns {
 
         // tezos PRNG
     //TODO: should create a module for this
-    pub(crate) fn get_random_number(state: Vec<u8>, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32, bound: i32) -> Result<(i64, Vec<u8>), failure::Error> {
+    pub(crate) fn get_random_number(state: Vec<u8>, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32, bound: i32) -> Result<(i32, Vec<u8>), failure::Error> {
         // nonce_size == nonce_hash_size == 32 in the current protocol
         let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
-        let cycle_position = level_position(level as i64, blocks_per_cycle as i64) as i32;
+        let cycle_position = level_position(level, blocks_per_cycle);
 
         // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
         let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();

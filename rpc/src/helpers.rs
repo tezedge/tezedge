@@ -115,7 +115,7 @@ pub enum RpcResponseData {
 // endorsing rights structure, final response look like Vec<EndorsingRight>
 #[derive(Serialize, Debug, Clone)]
 pub struct EndorsingRight {
-    level: i64,
+    level: i32,
     delegate: String,
     slots: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,7 +123,7 @@ pub struct EndorsingRight {
 }
 
 impl EndorsingRight {
-    pub fn new(level: i64, delegate: String, slots: Vec<u8>, estimated_time: Option<String>) -> Self {
+    pub fn new(level: i32, delegate: String, slots: Vec<u8>, estimated_time: Option<String>) -> Self {
         Self {
             level,
             delegate: delegate.to_string(),
@@ -139,7 +139,7 @@ pub struct RpcErrorMsg {
     kind: String, // "permanent"
     id: String, // "proto.005-PsBabyM1.seed.unknown_seed"
     #[serde(skip_serializing_if = "Option::is_none")]
-    missing_key: Option<Vec<Value>>,
+    missing_key: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     function: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,7 +154,7 @@ impl RpcErrorMsg {
     pub fn new(
         kind: String, 
         id: String, 
-        missing_key: Option<Vec<Value>>,
+        missing_key: Option<Value>,
         function: Option<String>,
         oldest: Option<String>,
         requested: Option<String>,
@@ -179,11 +179,11 @@ pub struct CycleData {
     #[get = "pub(crate)"]
     last_roll: i32,
     #[get = "pub(crate)"]
-    rollers: HashMap<i64, String>,
+    rollers: HashMap<i32, String>,
 }
 
 impl CycleData {
-    pub fn new(random_seed: Vec<u8>, last_roll: i32, rollers: HashMap<i64, String>) -> Self {
+    pub fn new(random_seed: Vec<u8>, last_roll: i32, rollers: HashMap<i32, String>) -> Self {
         Self {
             random_seed,
             last_roll,
@@ -194,13 +194,13 @@ impl CycleData {
 
 // cycle in which is given level
 // level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> i64 {
+pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> i32 {
     (level - 1) / blocks_per_cycle
 }
 
 // the position of the block in its cycle
 // level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-pub fn level_position(level:i64, blocks_per_cycle:i64) -> i64 {
+pub fn level_position(level:i32, blocks_per_cycle:i32) -> i32 {
     let cycle_position = (level % blocks_per_cycle) - 1;
     if cycle_position < 0 { //for last block
         blocks_per_cycle - 1
