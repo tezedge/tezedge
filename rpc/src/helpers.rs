@@ -119,6 +119,11 @@ impl<C> PagedResult<C>
 }
 
 // Enum defining possible response structures for RPC calls
+// there is reason to have this structure because of format of error responses from ocaml node:
+// [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
+// [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":9,"requested":20,"latest":15}]
+// if there have to be same response format then RpcErrorMsg is covering it
+// this enum can be removed if errors are generated from error context directly in result_to_json_response function
 #[derive(Serialize, Debug, Clone)]
 pub enum RpcResponseData {
     EndorsingRights(Vec<EndorsingRight>),
