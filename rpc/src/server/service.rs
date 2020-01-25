@@ -408,7 +408,7 @@ mod fns {
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
     use storage::num_from_slice;
-    use tezos_baking::helpers::{cycle_from_level, get_random_number};
+    use tezos_baking::helpers::{cycle_from_level, get_pseudo_random_number};
     use tezos_context::channel::ContextAction;
     
     use crate::ContextList;
@@ -778,7 +778,7 @@ mod fns {
                 // if roll number is not found then reroll with new state till roll nuber is found in context_rollers
                 let mut state = random_seed.clone();
                 loop {
-                    let (random_num, sequence) = get_random_number(state, *constants.nonce_length() as usize, blocks_per_cycle, ENDORSEMENT_USE_STRING, level, endorser_slot as i32, *cycle_data.last_roll())?;
+                    let (random_num, sequence) = get_pseudo_random_number(state, *constants.nonce_length() as usize, blocks_per_cycle, ENDORSEMENT_USE_STRING, level, endorser_slot as i32, *cycle_data.last_roll())?;
 
                     if let Some(delegate) = context_rollers.get(&random_num) {
                         // collect all slots for each delegate

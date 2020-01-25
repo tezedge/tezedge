@@ -3,6 +3,7 @@
 
 use storage::num_from_slice;
 use crypto::blake2b;
+use failure::Fail;
 
 macro_rules! merge_slices {
     ( $($x:expr),* ) => {{
@@ -42,11 +43,35 @@ pub fn level_position(level:i32, blocks_per_cycle:i32) -> i32 {
     }
 }
 
+#[derive(Debug, Fail)]
+pub enum TezosPRNGError {
+    #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
+    BoundNotCorrect {
+        bound: i32
+    },
+}
+
+type RandomSeedState = Vec<u8>;
+pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
+
 // tezos PRNG
-pub fn get_random_number(state: Vec<u8>, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32, bound: i32) -> Result<(i32, Vec<u8>), failure::Error> {
+// input: 
+// state: RandomSeedState, initially the random seed
+// nonce_size: nonce_length from current protocol constants
+// blocks_per_cycle: blocks_per_cycle from current protocol constants
+// use_string_bytes: string converted to bytes, i.e. endorsing rights use b"level endorsement:"
+// level: block level
+// offset: for baking priority, for endorsing slot
+// bound: last possible roll nuber that have meaning to be generated (last_roll from context list)
+// output: pseudo random generated roll number and RandomSeedState for next roll generation if the roll provided is missing from the roll list
+pub fn get_pseudo_random_number(state: RandomSeedState, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32, bound: i32) -> TezosPRNGResult {
+    if bound < 1 {
+        return Err(TezosPRNGError::BoundNotCorrect{bound: bound})
+    }
     // nonce_size == nonce_hash_size == 32 in the current protocol
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
+    // the position of the block in its cycle
     let cycle_position = level_position(level, blocks_per_cycle);
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
