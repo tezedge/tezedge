@@ -23,8 +23,9 @@ async fn integration_test_full() {
 #[tokio::test]
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
-    // start development tests from 12600th block
-    integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await
+    // start development tests from block:
+    //integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
+    integration_tests_rpc("BMdwdpjSwFsY55YtxGAXqQdiNdVTfDBgtynMXHzRTgqUoXoEiT8").await // level=25000
 }
 
 async fn integration_tests_rpc(start_block: &str) {

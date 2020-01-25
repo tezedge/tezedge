@@ -191,20 +191,3 @@ impl CycleData {
         }
     }
 }
-
-// cycle in which is given level
-// level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> i32 {
-    (level - 1) / blocks_per_cycle
-}
-
-// the position of the block in its cycle
-// level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-pub fn level_position(level:i32, blocks_per_cycle:i32) -> i32 {
-    let cycle_position = (level % blocks_per_cycle) - 1;
-    if cycle_position < 0 { //for last block
-        blocks_per_cycle - 1
-    } else {
-        cycle_position
-    }
-}

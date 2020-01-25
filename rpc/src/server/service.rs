@@ -399,7 +399,7 @@ mod fns {
     use serde_json::json;
 
     use crypto::hash::{BlockHash, ChainId, HashType};
-    use crypto::blake2b;
+    
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
     use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
@@ -408,23 +408,14 @@ mod fns {
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
     use storage::num_from_slice;
+    use tezos_baking::helpers::{cycle_from_level, get_random_number};
     use tezos_context::channel::ContextAction;
     
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, level_position};
+    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
-
-    macro_rules! merge_slices {
-        ( $($x:expr),* ) => {{
-            let mut res = vec![];
-            $(
-                res.extend_from_slice($x);
-            )*
-            res
-        }}
-    }
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -705,7 +696,7 @@ mod fns {
         //assign level iterator and assign requested level to correct cycle
         let mut is_cycle = false;
         let cycle_of_requested_level;
-        let blocks_per_cycle: i32 = *constants.blocks_per_cycle() as i32;
+        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
         let level_iterator = if let Some(c) = cycle {
             is_cycle = true;
             is_requested_level = true;
@@ -819,6 +810,8 @@ mod fns {
         Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
     }
 
+    // get cycle data roll_snapshot, random_seed, last_roll and rollers from context list
+    // for now there are computed levels to get these data for each key, when ctx list will be fixed these keys should be available in requested_level
     #[inline]
     fn get_cycle_data(requested_level: i32, cycle: i32, constants: ContextConstants, list: ContextList) -> Result<CycleData, failure::Error> {
         // prepare constants
@@ -971,47 +964,6 @@ mod fns {
         };
 
         Ok(contract_address)
-    }
-
-        // tezos PRNG
-    //TODO: should create a module for this
-    pub(crate) fn get_random_number(state: Vec<u8>, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32, bound: i32) -> Result<(i32, Vec<u8>), failure::Error> {
-        // nonce_size == nonce_hash_size == 32 in the current protocol
-        let zero_bytes: Vec<u8> = vec![0; nonce_size];
-
-        let cycle_position = level_position(level, blocks_per_cycle);
-
-        // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
-        let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();
-
-        // take the 4 highest bytes and xor them with the priority/slot (offset)
-        let higher = num_from_slice!(rd, 0, i32) ^ offset;
-
-        // set the 4 highest bytes to the result of the xor operation
-        let mut sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..])).to_vec();
-        let v: i32;
-        // Note: this part aims to be similar 
-        // hash once again and take the 4 highest bytes and we got our random number
-        loop {
-            let hashed = blake2b::digest_256(&sequence).to_vec();
-
-            // computation for overflow check
-            let drop_if_over = i32::max_value() - (i32::max_value() % bound);
-
-            // 4 highest bytes
-            let r = num_from_slice!(hashed, 0, i32).abs();
-
-            // potentional overflow, keep the state of the generator and do one more iteration
-            sequence = hashed;
-            if r >= drop_if_over {
-                continue;
-            // use the remainder(mod) operation to get a number from a desired interval
-            } else {
-                v = r % bound;
-                break;
-            };
-        }
-        Ok((v.into(), sequence))
     }
 
     #[inline]
