@@ -54,11 +54,11 @@ run_node() {
   # Default light-node commandline arguments:
   #
   # -d | --tezos-data-dir
-  TEZOS_DIR=/tmp/tezedge/tezos-node
+  TEZOS_DIR=/tmp/tezedge_dev/tezos-node
   # -c | --config-file-path
   CONFIG_FILE=./light_node/etc/tezedge/tezedge.config
   # -B | --bootstrap-db-path
-  BOOTSTRAP_DIR=/tmp/tezedge/light-node
+  BOOTSTRAP_DIR=/tmp/tezedge_dev/light-node
   # -i | --identity
   IDENTITY_FILE=./light_node/etc/tezedge/identity.json
   # -n | --network

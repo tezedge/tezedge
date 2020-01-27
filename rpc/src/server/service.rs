@@ -384,6 +384,7 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 /// This submodule contains service functions implementation.
 mod fns {
     use std::collections::HashMap;
+    use serde::{Deserialize, Serialize};
 
     use failure::bail;
     use hex::FromHex;
@@ -404,6 +405,20 @@ mod fns {
     use crate::helpers::{FullBlockInfo, PagedResult, EndorsingRight};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
+
+    // Serialize, Deserialize,
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Cycle
+    {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        last_roll: Option<HashMap<String,String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nonces: Option<HashMap<String,String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        random_seed: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        roll_snapshot: Option<String>,
+    }
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -435,10 +450,11 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+   
+    pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
 
         let ctxt_level: usize = level.parse().unwrap();
-        
+
         let context_data = {
             let reader = list.read().expect("mutex poisoning");
             if let Ok(Some(c)) = reader.get(ctxt_level) {
@@ -448,31 +464,85 @@ mod fns {
             }
         };
 
+        // get cylce list from context storage
         let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
             .filter(|(k, _)| k.contains("cycle"))
+            .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
             .collect();
+        
+        // transform cycle list     
+        let mut cycles: HashMap<String,Cycle> = HashMap::new();
 
-        // display all keys
-        // let mut map = HashMap::new();
-        // for cycle_key in cycle_lists.keys() {
+        // process every key value pair
+        for (key, bucket) in cycle_lists.iter() {
+            
+            // create vector from path
+            let path:Vec<&str> = key.split('/').collect();
+            
+            // get string 
+            let value = match bucket { 
+                Bucket::Exists(value) => value.into_iter().map(|i| i.to_string()).collect::<String>(),
+                _ => "".to_string() 
+            };
+            // println!("{:?} {:?} ", path , value ) ;
 
-        //     // println!("[cycle] level: {:?} cycle: {:?}", ctxt_level, cycle_key);
+            // create new cycles 
+            // TODO: !!! check path and move to match 
+            cycles.entry(path[2].to_string())
+            .or_insert(Cycle {
+                    last_roll: None,
+                    nonces: None,
+                    random_seed: None,
+                    roll_snapshot: None,
+                });
 
-        //     let value;
-        //     if let Some(Bucket::Exists(c)) = cycle_lists.get(cycle_key) {
-        //         value = c;
-        //     } else {
-        //         bail!("No data in cycle")
-        //     }
-
-        //     map.insert( 
-        //         cycle_key.to_string(),
-        //         Bucket::Exists(value)
-        //     );
-
-        // }
-
-        Ok(Some(cycle_lists))
+            // process cycle key value pairs     
+            match path.as_slice() {
+                ["data", "cycle", cycle, "random_seed"] => {
+                    // println!("cycle: {:?} random_seed: {:?}", cycle, value);
+                    cycles.entry(cycle.to_string())
+                        .and_modify(|cycle| {
+                            cycle.random_seed = Some(value);
+                        });
+                },
+                ["data", "cycle", cycle, "roll_snapshot"] => {
+                    // println!("cycle: {:?} roll_snapshot: {:?}", cycle, value);
+                    cycles.entry(cycle.to_string())
+                        .and_modify(|cycle| {
+                            cycle.roll_snapshot = Some(value);
+                        });
+                },
+                ["data", "cycle", cycle, "nonces", nonces] => {
+                    // println!("cycle: {:?} nonces: {:?}/{:?}", cycle, nonces, value)
+                    cycles.entry(cycle.to_string())
+                        .and_modify(|cycle| {
+                            match cycle.nonces.as_mut() {
+                                Some(entry) => entry.insert(nonces.to_string(),value),
+                                None => { 
+                                    cycle.nonces = Some(HashMap::new());
+                                    cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),value)
+                                }
+                            };                    
+                        });
+                },
+                ["data", "cycle", cycle, "last_roll", last_roll] => {
+                    // println!("cycle: {:?} last_roll: {:?}/{:?}", cycle, last_roll, value)
+                    cycles.entry(cycle.to_string())
+                        .and_modify(|cycle| {
+                            match cycle.last_roll.as_mut() {
+                                Some(entry) => entry.insert(last_roll.to_string(),value),
+                                None => { 
+                                    cycle.last_roll = Some(HashMap::new());
+                                    cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(),value)
+                                }
+                            };                    
+                        });
+                },
+                _ => bail!("Unknow key {} value {} cyclep pair", key, value)
+            };
+        }
+       
+        Ok(Some(cycles))
     }
 
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< Vec::<EndorsingRight> >, failure::Error> {
