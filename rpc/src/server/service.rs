@@ -498,8 +498,8 @@ mod fns {
     pub(crate) fn get_rolls(cycle: i64, snapshot: i16, context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i64, String>>, failure::Error> {
         // get all the relevant data
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
-            .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
-            // .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // REMOVE THIS
+            // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
+            .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // REMOVE THIS
             .collect();
             
         let mut roll_owners: HashMap<i64, String> = HashMap::new();
@@ -527,12 +527,17 @@ mod fns {
         let block_level = if block_id == "head" {
             head_level
         } else {
-            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
-            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
-            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                block_meta.level()
-            } else {
-                bail!("Block level not found")
+            match block_id.parse() {
+                Ok(val) => val,
+                Err(_e) => {
+                    let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+                    let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+                    if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                        block_meta.level()
+                    } else {
+                        bail!("Block level not found")
+                    }
+                }
             }
         };
 
@@ -732,12 +737,17 @@ mod fns {
             let reader = list.read().expect("mutex poisoning");
             reader.len() - 1
         } else {
-            let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
-            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
-            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                block_meta.level() as usize
-            } else {
-                return Ok(None);
+            match block_id.parse() {
+                Ok(val) => val,
+                Err(_e) => {
+                    let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+                    let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+                    if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                        block_meta.level() as usize
+                    } else {
+                        return Ok(None);
+                    }
+                }
             }
         };
 
