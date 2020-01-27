@@ -242,7 +242,7 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
-async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &String, max_priority: String, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, _log: &Logger) -> ServiceResult {
+async fn baking_rights(chain_id: &str, block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, _log: &Logger) -> ServiceResult {
     let state_read = state.read().unwrap();
 
     let baking_rights_info = match state_read.current_head().as_ref() {
@@ -250,8 +250,7 @@ async fn baking_rights(block_id: &str, delegate: Option<String>, level: &Option<
             let current_head: BlockApplied = current_head.clone();
             let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
             let head_level = current_head.header().header.level();
-            fns::check_baking_rights(block_id, level, head_level, delegate, cycle, max_priority, has_all, timestamp, list, persistent_storage).unwrap().unwrap()
-            //fns::get_baking_rights(block_id, delegate, level, cycle, max_priority, has_all, head_level.into(), timestamp, list, persistent_storage).unwrap().unwrap()
+            fns::check_baking_rights(chain_id, block_id, level, head_level, delegate, cycle, max_priority, has_all, timestamp, list, persistent_storage).unwrap().unwrap()
         }
         None => vec![BakingRights::new(0, String::new().into(), 0, String::new().into())]
     };
@@ -338,16 +337,17 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
         }
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
+            let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
             let max_priority = find_query_value_as_string(&query, "max_priority").unwrap_or("64".to_string());
             let level = find_query_value_as_string(&query, "level");
             let delegate = find_query_value_as_string(&query, "delegate");
-            let cycle = find_query_value_as_string(&query, "cycle").unwrap_or("".to_string());
+            let cycle = find_query_value_as_string(&query, "cycle");
             let has_all = query.contains_key("all");
 
             //warn!(log, "Args = Block Id: {:?} max_priority: {:?} level: {:?} delegate: {:?} cycle {:?}", &block_id, &max_priority, level.clone().unwrap_or("".to_string()), delegate.clone().unwrap_or("".to_string()), &cycle);
 
-            baking_rights(block_id, delegate, &level, &cycle, max_priority, has_all, state, &persistent_storage, context_storage, &log).await
+            baking_rights(chain_id, block_id, delegate, &level, &cycle, max_priority, has_all, state, &persistent_storage, context_storage, &log).await
         }
         _ => not_found()
     }
@@ -520,7 +520,7 @@ mod fns {
         Ok(Some(roll_owners))
     }
 
-    pub(crate) fn check_baking_rights(block_id: &str, level: &Option<String>, head_level: i32, delegate: Option<String>, cycle: &String, max_priority: String, has_all: bool, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
+    pub(crate) fn check_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, head_level: i32, delegate: Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<Vec<BakingRights>>, failure::Error> {
         const NO_CYCLE_FLAG: i64 = -1;
 
         // level of the block specified in the url params
@@ -536,7 +536,7 @@ mod fns {
             }
         };
 
-        let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage)? {
+        let constants = match get_context_constants(chain_id, block_id, list.clone(), persistent_storage)? {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
@@ -544,26 +544,31 @@ mod fns {
         let context = get_context_as_hashmap(block_level as usize, list)?;
         let context_data: StakingRightsContextData = get_staking_context_data(block_level as usize, head_level, &context, *constants.blocks_per_cycle(), *constants.preserved_cycles(), constants.time_between_blocks().to_vec(), *constants.nonce_length())?;
 
-        // TODO: refactor this
-        let requested_cycle: i64 = match cycle.parse() {
-            // cycle requested from query
-            Ok(cycle) => {
-                // check whether the cycle is reachable
-                // the storage stores cycle up to: current_cycle + perserved_cycles(5) + 2
-                // e.g. if head is in cycle 66, we can get the rights for up to cycle 73
-                if ((cycle as i64 - (block_level as i64 / context_data.blocks_per_cycle())).abs() as i64) <= context_data.preserved_cycles() + 2 {
-                    cycle
+        let requested_cycle: i64 = match cycle {
+            Some(cycle) => {
+                let cycle_num = cycle.parse()?;
+                if ((cycle_num as i64 - ((block_level as i64 - 1) / context_data.blocks_per_cycle())).abs() as i64) <= *context_data.preserved_cycles() {
+                    cycle_num
                 } else {
-                    bail!("Cycle not found in block: {}", block_id)
+                    bail!("Cycle data not found in block: {}", block_id)
                 }
             },
-            // no cycle requested
-            Err(_e) => NO_CYCLE_FLAG
+            None => NO_CYCLE_FLAG,
         };
 
         // If no level is specified, we return the next block to be baked
         let mut requested_level: i64 = match level {
-            Some(level) => level.parse()?,
+            // Some(level) => level.parse()?,
+            Some(level) => {
+                let level_num = level.parse()?;
+                // check the bounds for the requested level (if it is in the previous/next preserved cycles)
+                let cycle_of_requested_level = (level_num as i64 - 1) / context_data.blocks_per_cycle();
+                if ((cycle_of_requested_level as i64 - ((block_level as i64 - 1) / context_data.blocks_per_cycle())).abs() as i64) <= *context_data.preserved_cycles() {
+                    level_num
+                } else {
+                    bail!("Cycle data for level {} not found in block: {}", level_num, block_id)
+                }
+            },
             None => block_level as i64 + 1,
         };
 
@@ -867,28 +872,31 @@ mod fns {
 
     #[inline]
     fn address_to_contract_id(address: &str) -> Result<String, failure::Error> {
-
-        let contract_id = match &address[0..2] {
-            "00" => {
-                match &address[2..4] {
-                    "00" => {
-                        HashType::ContractTz1Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+        if address.len() == 45 {
+            let contract_id = match &address[0..2] {
+                "00" => {
+                    match &address[2..4] {
+                        "00" => {
+                            HashType::ContractTz1Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                        }
+                        "01" => {
+                            HashType::ContractTz2Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                        }
+                        "02" => {
+                            HashType::ContractTz3Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
+                        }
+                        _ => bail!("Invalid contract id")
                     }
-                    "01" => {
-                        HashType::ContractTz2Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
-                    }
-                    "02" => {
-                        HashType::ContractTz3Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
-                    }
-                    _ => bail!("Invalid contract id")
                 }
-            }
-            "01" => {
-                HashType::ContractKt1Hash.bytes_to_string(&<[u8; 22]>::from_hex(&address[2..42])?)
-            }
-            _ => bail!("Invalid contract id")
-        };
-        Ok(contract_id)
+                "01" => {
+                    HashType::ContractKt1Hash.bytes_to_string(&<[u8; 22]>::from_hex(&address[2..42])?)
+                }
+                _ => bail!("Invalid contract id")
+            };
+            Ok(contract_id)
+        } else {
+            bail!("Invalid contract id");
+        }
     }
 
     // Gets the contract_id from the public_key 
@@ -936,8 +944,6 @@ mod fns {
         use serde::Deserialize;
         use std::fs::File;
         use std::io::BufReader;
-        use std::path::Path;
-        use std::env;
 
         #[derive(Deserialize, Debug)]
         struct User {

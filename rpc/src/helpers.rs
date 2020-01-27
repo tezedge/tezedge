@@ -194,3 +194,4 @@ impl StakingRightsContextData {
         }
     }
 }
+
