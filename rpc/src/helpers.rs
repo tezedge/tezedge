@@ -127,6 +127,7 @@ impl<C> PagedResult<C>
 #[derive(Serialize, Debug, Clone)]
 pub enum RpcResponseData {
     EndorsingRights(Vec<EndorsingRight>),
+    BakingRights(Vec<BakingRights>),
     ErrorMsg(RpcErrorMsg),
 }
 
@@ -146,6 +147,31 @@ impl EndorsingRight {
             level,
             delegate: delegate.to_string(),
             slots,
+            estimated_time,
+        }
+    }
+}
+
+/// Object containing information about the baking rights 
+#[derive(Serialize, Debug, Clone, Getters)]
+pub struct BakingRights {
+    #[get = "pub(crate)"]
+    level: i32,
+    #[get = "pub(crate)"]
+    delegate: String,
+    #[get = "pub(crate)"]
+    priority: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[get = "pub(crate)"]
+    estimated_time: Option<String>,
+}
+
+impl BakingRights {
+    pub fn new(level: i32, delegate: String, priority: i32, estimated_time: Option<String>) -> Self{
+        Self {
+            level,
+            delegate: delegate.to_string(),
+            priority,
             estimated_time,
         }
     }
@@ -259,13 +285,7 @@ pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
 // use_string_bytes: string converted to bytes, i.e. endorsing rights use b"level endorsement:"
 // level: block level
 // offset: for baking priority, for endorsing slot
-// bound: last possible roll nuber that have meaning to be generated (last_roll from context list)
-// output: pseudo random generated roll number and RandomSeedState for next roll generation if the roll provided is missing from the roll list
-pub fn get_pseudo_random_number(state: RandomSeedState, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32, bound: i32) -> TezosPRNGResult {
-    if bound < 1 {
-        return Err(TezosPRNGError::BoundNotCorrect{bound: bound})
-    }
-    // nonce_size == nonce_hash_size == 32 in the current protocol
+pub(crate) fn init_prng(state: RandomSeedState, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32) -> Result<RandomSeedState, failure::Error> {
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
     // the position of the block in its cycle
@@ -273,33 +293,47 @@ pub fn get_pseudo_random_number(state: RandomSeedState, nonce_size: usize, block
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
     let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();
-
+    
     // take the 4 highest bytes and xor them with the priority/slot (offset)
     let higher = num_from_slice!(rd, 0, i32) ^ offset;
-
+    
     // set the 4 highest bytes to the result of the xor operation
-    let mut sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..])).to_vec();
-    let v: i32;
-    // Note: this part aims to be similar 
-    // hash once again and take the 4 highest bytes and we got our random number
-    loop {
-        let hashed = blake2b::digest_256(&sequence).to_vec();
+    let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..])).to_vec();
 
-        // computation for overflow check
-        let drop_if_over = i32::max_value() - (i32::max_value() % bound);
+    Ok(sequence)
+}
 
-        // 4 highest bytes
-        let r = num_from_slice!(hashed, 0, i32).abs();
-
-        // potentional overflow, keep the state of the generator and do one more iteration
-        sequence = hashed;
-        if r >= drop_if_over {
-            continue;
-        // use the remainder(mod) operation to get a number from a desired interval
-        } else {
-            v = r % bound;
-            break;
-        };
+// tezos PRNG get number
+// input: 
+// state: RandomSeedState, initially the random seed
+// bound: last possible roll nuber that have meaning to be generated (last_roll from context list)
+// output: pseudo random generated roll number and RandomSeedState for next roll generation if the roll provided is missing from the roll list
+pub fn get_pseudo_random_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
+    if bound < 1 {
+        return Err(TezosPRNGError::BoundNotCorrect{bound: bound})
     }
-    Ok((v.into(), sequence))
+    let v: i32;
+        // Note: this part aims to be similar 
+        // hash once again and take the 4 highest bytes and we got our random number
+        let mut sequence = state;
+        loop {
+            let hashed = blake2b::digest_256(&sequence).to_vec();
+
+            // computation for overflow check
+            let drop_if_over = i32::max_value() - (i32::max_value() % bound);
+
+            // 4 highest bytes
+            let r = num_from_slice!(hashed, 0, i32).abs();
+
+            // potentional overflow, keep the state of the generator and do one more iteration
+            sequence = hashed;
+            if r >= drop_if_over {
+                continue;
+            // use the remainder(mod) operation to get a number from a desired interval
+            } else {
+                v = r % bound;
+                break;
+            };
+        }
+        Ok((v.into(), sequence))
 }
