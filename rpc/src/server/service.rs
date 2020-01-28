@@ -499,8 +499,6 @@ mod fns {
     pub(crate) fn check_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, head_level: i32, delegate: Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option< RpcResponseData >, failure::Error> {
         const NO_CYCLE_FLAG: i32 = -1;
 
-        // TODO: move this 
-        // level of the block specified in the url params
         let block_level = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
             Some(val) => val,
             None => bail!("Block level not found")
@@ -511,8 +509,10 @@ mod fns {
             None => bail!("Cannot get protocol constants")
         };
 
-        let context = get_context_as_hashmap(block_level as usize, list)?;
-        let cycle_data: CycleData = get_staking_cycle_data(block_level as usize, head_level, &context, constants.clone())?;
+        let context = get_context_as_hashmap(block_level as usize, list.clone())?;
+        
+        // TODO: for the fixed ctxt DB
+        // let cycle_data: CycleData = get_staking_cycle_data(block_level as usize, head_level, &context, constants.clone())?;
 
         let preserved_cycles = *constants.preserved_cycles() as i32;
         let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
@@ -582,9 +582,13 @@ mod fns {
             None => "all".to_string() // all
         };
 
-        get_baking_rights(cycle_data, head_level, timestamp, requested_level, &requested_delegate, level_to_itarate_to, max_priority.parse()?, has_all, constants)
+        let cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
+        let cycle_data: CycleData = get_cycle_data(requested_level, cycle_of_requested_level, constants.clone(), list)?;
+
+        get_baking_rights(cycle_data, block_level as i32, timestamp, requested_level, &requested_delegate, level_to_itarate_to, max_priority.parse()?, has_all, constants)
     }
 
+    // TODO: rename head_level to block_level
     pub(crate) fn get_baking_rights(cycle_data: CycleData, head_level: i32, timestamp: String, requested_level: i32, requested_delegate: &str, level_to_itarate_to: i32, max_priority: i32, has_all: bool, constants: ContextConstants) -> Result<Option< RpcResponseData >, failure::Error> {
         const BAKING_USE_STRING: &[u8] = b"level baking:";
 
@@ -620,7 +624,7 @@ mod fns {
                     let (random_num, sequence) = get_pseudo_random_number(state, *cycle_data.last_roll())?;
 
                     if let Some(d) = cycle_data.rollers().get(&random_num) {
-                        delegate_to_assign = d;
+                        delegate_to_assign = address_to_contract_id(d)?;
                         break;
                     } else {
                         println!("[baking-rights] no delegate assigned to roll {} | ROLLED ON PRIO: {}", random_num, priority);
@@ -629,7 +633,7 @@ mod fns {
                 }
                 
                 // if the delegate was assgined and the the has_all flag is not set skip this priority
-                if assigned.contains(delegate_to_assign) && !has_all {
+                if assigned.contains(&delegate_to_assign) && !has_all {
                     continue;
                 }
 
@@ -651,6 +655,7 @@ mod fns {
         }
     }
 
+    // TODO: for the fixed ctxt DB (Copy bug)
     pub(crate) fn get_staking_cycle_data(requested_level: usize, head_level: i32, context: &HashMap<String, Bucket<Vec<u8>>>, constants: ContextConstants) -> Result<CycleData, failure::Error> {
         // get the protocol constants from the context
         let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
@@ -872,10 +877,20 @@ mod fns {
             }
         } else {
             let block_storage = BlockStorage::new(persistent_storage);
-            let block_hash = block_id_to_block_hash(block_id)?;
-            match block_storage.get(&block_hash)? {
-                Some(current_head) => current_head.header.timestamp(),
-                None => bail!("block not found in db {}", block_id)
+            match block_id.parse() {
+                Ok(val) => {
+                    match block_storage.get_by_block_level(val)? {
+                        Some(current_head) => current_head.header.timestamp(),
+                        None => bail!("block not found in db {}", block_id)
+                    }
+                }
+                Err(_e) => {
+                    let block_hash = block_id_to_block_hash(block_id)?;
+                    match block_storage.get(&block_hash)? {
+                        Some(current_head) => current_head.header.timestamp(),
+                        None => bail!("block not found in db {}", block_id)
+                    }
+                }
             }
         };
         Ok(timestamp)
