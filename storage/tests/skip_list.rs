@@ -138,7 +138,32 @@ pub fn list_check_get_key() {
 }
 
 #[test]
-pub fn simulate_ledger() {
+pub fn flat_list_restore_state() {
+    let tmp_storage = TmpStorage::create("__flat_list:flat_list_restore_state").expect("Storage error");
+    {
+        let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create flat list"));
+        let mut map = HashMap::new();
+        map.insert(0, 0);
+        let expected = map.clone();
+        list.push(OrderedValue::new(map)).expect("failed to store value into flat list");
+        let val = list.get(0).expect("error during storage operation").expect("Expected value in storage");
+        assert_eq!(val, OrderedValue::new(expected));
+    }
+    // drop the list reference, and hope it will hydrate correctly
+    {
+        let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create flat list"));
+        let mut map = HashMap::new();
+        map.insert(1, 1);
+        let mut expected = map.clone();
+        expected.insert(0, 0);
+        list.push(OrderedValue::new(map)).expect("failed to store value into flat list");
+        let val = list.get(1).expect("error during storage operation").expect("Expected value in storage");
+        assert_eq!(val, OrderedValue::new(expected));
+    }
+}
+
+#[test]
+pub fn flat_list_simulate_ledger() {
     use rand::{
         distributions::{Distribution, Standard},
         seq::SliceRandom,
@@ -170,7 +195,7 @@ pub fn simulate_ledger() {
 
     let mut rng = rand::thread_rng();
 
-    let tmp_storage = TmpStorage::create("__skip_list:simulate_ledger").expect("Storage error");
+    let tmp_storage = TmpStorage::create("__flat_list:flat_list_simulate_ledger").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
     let mut context: Ctx = Default::default();
     let mut contexts: Vec<Ctx> = Default::default();
