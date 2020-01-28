@@ -481,9 +481,21 @@ mod fns {
             
             // get string 
             let value = match bucket { 
-                Bucket::Exists(value) => value.into_iter().map(|i| i.to_string()).collect::<String>(),
+                Bucket::Exists(value) => {
+                    // TODO: !!! fix encoding 
+                    let zeros: String = "00".to_string();
+                    let value_string: String = value.into_iter().map(|i| i.to_string()).collect::<String>();
+                    [zeros, value_string].concat()
+                },
                 _ => "".to_string() 
             };
+
+            let empty = &vec![];
+            let value_bytes = match bucket { 
+                Bucket::Exists(value) => value,
+                _ => &empty
+            };
+
             // println!("{:?} {:?} ", path , value ) ;
 
             // create new cycles 
@@ -499,10 +511,10 @@ mod fns {
             // process cycle key value pairs     
             match path.as_slice() {
                 ["data", "cycle", cycle, "random_seed"] => {
-                    // println!("cycle: {:?} random_seed: {:?}", cycle, value);
+                    // println!("cycle: {:?} random_seed: {:?}", cycle, hex::encode(&value_bytes) );
                     cycles.entry(cycle.to_string())
                         .and_modify(|cycle| {
-                            cycle.random_seed = Some(value);
+                            cycle.random_seed = Some(hex::encode(&value_bytes));
                         });
                 },
                 ["data", "cycle", cycle, "roll_snapshot"] => {
@@ -517,10 +529,10 @@ mod fns {
                     cycles.entry(cycle.to_string())
                         .and_modify(|cycle| {
                             match cycle.nonces.as_mut() {
-                                Some(entry) => entry.insert(nonces.to_string(),value),
+                                Some(entry) => entry.insert(nonces.to_string(),hex::encode(&value_bytes)),
                                 None => { 
                                     cycle.nonces = Some(HashMap::new());
-                                    cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),value)
+                                    cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),hex::encode(&value_bytes))
                                 }
                             };                    
                         });
