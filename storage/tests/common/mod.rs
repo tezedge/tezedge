@@ -38,8 +38,8 @@ impl ListValue<u64, u64> for Value {
 
 impl BincodeEncoded for Value {}
 
-#[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct OrderedValue(HashMap<u64, u64>);
+#[derive(Default, PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+pub struct OrderedValue(pub HashMap<u64, u64>);
 
 impl OrderedValue {
     #[allow(dead_code)]

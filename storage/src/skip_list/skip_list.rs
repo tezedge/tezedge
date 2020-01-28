@@ -283,7 +283,7 @@ impl<C> KeyValueSchema for DatabaseBackedFlatList<C> {
     }
 }
 
-impl<C: Default> DatabaseBackedFlatList<C> {
+impl<C: BincodeEncoded + Default> DatabaseBackedFlatList<C> {
     pub fn new(list_id: SkipListId, db: Arc<rocksdb::DB>) -> Result<Self, SkipListError> {
         let list_db: Arc<SkipListDatabase> = db.clone();
         let state = list_db.get(&list_id)?
@@ -291,7 +291,21 @@ impl<C: Default> DatabaseBackedFlatList<C> {
                 levels: 1,
                 len: 0,
             });
-        Ok(Self { lane_db: db, list_db, list_id, state, curr_context: Default::default() })
+
+        let curr_context = if state.len > 0 {
+            // Restore correct current context
+            let lane = Lane::new(list_id, 0, db.clone());
+            let curr_context = lane.get(state.len - 1)?;
+            if let Some(curr_context) = curr_context {
+                curr_context
+            } else {
+                Default::default()
+            }
+        } else {
+            Default::default()
+        };
+
+        Ok(Self { lane_db: db, list_db, list_id, state, curr_context })
     }
 }
 
