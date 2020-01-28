@@ -575,7 +575,7 @@ mod fns {
         let block_timestamp = get_block_header_timestamp(block_id, persistent_storage, state)?;
 
         let cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
-        let cycle_data: CycleData = get_cycle_data(requested_level, cycle_of_requested_level, constants.clone(), list)?;
+        let cycle_data: CycleData = get_cycle_data(block_level as i32, requested_level, cycle_of_requested_level, constants.clone(), list)?;
 
         get_baking_rights(cycle_data, block_level as i32, block_timestamp, requested_level, &requested_delegate, level_to_itarate_to, max_priority.parse()?, has_all, constants)
     }
@@ -615,6 +615,7 @@ mod fns {
 
                     if let Some(d) = cycle_data.rollers().get(&random_num) {
                         delegate_to_assign = address_to_contract_id(d)?;
+                        println!("[baking-rights] rolled {} for prio {} - assigning: {}", &random_num, &priority, &delegate_to_assign);
                         break;
                     } else {
                         println!("[baking-rights] no delegate assigned to roll {} | ROLLED ON PRIO: {}", random_num, priority);
@@ -948,6 +949,8 @@ mod fns {
             .filter(|(k, _)| k.contains("/successor"))
             .collect();
 
+        // println!("{:?}", roll_lists);
+
         for roll_key in roll_lists.keys() {
             // get public key address hash from key string
             let public_key: String = match roll_key.split('/').collect::<Vec<_>>().get(9) {
@@ -957,9 +960,11 @@ mod fns {
 
             // get first roll_key
             let mut roll = if let Some(Bucket::Exists(r)) = roll_lists.get(roll_key) {
+                println!("Found key: {}", address_to_contract_id(&public_key)?);
                 r
             } else {
-                bail!("empty roll_key")
+                // bail!("empty roll_key")
+                continue;
             };
 
             // fill roll data and get all successors rolls
@@ -970,7 +975,7 @@ mod fns {
                 if let Some(Bucket::Exists(_r)) = owner_data.get(&owner_key) {
                     context_rollers.insert( roll_num.into(), public_key.clone() );
                 } else {
-                    break;
+                    // do nothing, still needs to check the successor
                 }
                 
                 // get next roll_key
@@ -1025,7 +1030,7 @@ mod fns {
         };
         println!("begin: block_id:{} level:{} cycle:{} is_cycle:{} requested_level:{}", block_id, requested_level, cycle_of_requested_level, is_cycle, is_requested_level);
         
-        let cycle_data = match get_cycle_data(requested_level, cycle_of_requested_level, constants.clone(), list) {
+        let cycle_data = match get_cycle_data(block_level, requested_level, cycle_of_requested_level, constants.clone(), list) {
             Ok(d) => d,
             Err(e) => {
                 // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
@@ -1101,7 +1106,7 @@ mod fns {
                         break;
                     } else {
                         state = sequence;
-                        continue;
+                        // continue;
                     }
                 }
             }
@@ -1127,7 +1132,7 @@ mod fns {
     // get cycle data roll_snapshot, random_seed, last_roll and rollers from context list
     // for now there are computed levels to get these data for each key, when ctx list will be fixed these keys should be available in requested_level
     #[inline]
-    fn get_cycle_data(requested_level: i32, cycle: i32, constants: ContextConstants, list: ContextList) -> Result<CycleData, failure::Error> {
+    fn get_cycle_data(block_level: i32, requested_level: i32, cycle: i32, constants: ContextConstants, list: ContextList) -> Result<CycleData, failure::Error> {
         // prepare constants
         let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
         let preserved_cycles = *constants.preserved_cycles() as i32;
@@ -1141,9 +1146,9 @@ mod fns {
             // roll snapshot and random seed is set in last block of requested - preserved_cycles cycle
             // TODO use requested_level after ctx is fixed
             level_to_get_snapshot_and_seed = (cycle - preserved_cycles) * blocks_per_cycle;
-            println!("get snapshot_key: level:{} ctx key:{}", level_to_get_snapshot_and_seed, snapshot_key);
+            println!("get snapshot_key: level:{} ctx key:{}", block_level, snapshot_key);
             let reader = list.read().expect("mutex poisoning");
-            if let Some(Bucket::Exists(data)) = reader.get_key(level_to_get_snapshot_and_seed as usize, &snapshot_key)? {
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &snapshot_key)? {
                 roll_snapshot = num_from_slice!(data, 0, i16);
             } else { // key not found
                 return Err(format_err!("roll_snapshot"))
@@ -1157,28 +1162,17 @@ mod fns {
             roll_snapshot += 1;
         }
 
-        let random_seed_key = format!("data/cycle/{}/random_seed", cycle);
-        println!("get random_seed: level:{} ctx key:{}", level_to_get_snapshot_and_seed, random_seed_key);
-        let random_seed = {
-            let reader = list.read().expect("mutex poisoning");
-            if let Some(Bucket::Exists(data)) = reader.get_key(level_to_get_snapshot_and_seed as usize, &random_seed_key)? {
-                data
-            } else { // key not found
-                return Err(format_err!("random_seed"))
-            }
-        };
-
         let snapshot_level;
         if cycle < preserved_cycles+2 {
             snapshot_level = requested_level;
         } else {
             let cycle_of_rolls = cycle - preserved_cycles - 2;
             // last_roll is set in last block of snapshot
-            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + ((roll_snapshot as i32) * blocks_per_roll_snapshot);
+            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i32) * blocks_per_roll_snapshot);
         };
         // Snapshots of last_roll are listed from 0 and in roll_snapshot is stored order of snapshot.
         // So x last_roll in row have index of roll_snapshot-1
-        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle, roll_snapshot-1);
+        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle, roll_snapshot);
         println!("get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
         let last_roll = {
             let reader = list.read().expect("mutex poisoning");
@@ -1186,6 +1180,17 @@ mod fns {
                 num_from_slice!(data, 0, i32)
             } else { // key not found
                 return Err(format_err!("last_roll"))
+            }
+        };
+
+        let random_seed_key = format!("data/cycle/{}/random_seed", cycle);
+        println!("get random_seed: level:{} ctx key:{}", block_level, random_seed_key);
+        let random_seed = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &random_seed_key)? {
+                data
+            } else { // key not found
+                return Err(format_err!("random_seed"))
             }
         };
         
