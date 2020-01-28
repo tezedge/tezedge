@@ -245,28 +245,18 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
 async fn baking_rights(chain_id: &str, block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
-    let state_read = state.read().unwrap();
-
-    match state_read.current_head().as_ref() {
-        Some(current_head) => {
-            let current_head: BlockApplied = current_head.clone();
-            let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
-            let head_level = current_head.header().header.level();
-            match fns::check_baking_rights(chain_id, block_id, level, head_level, delegate, cycle, max_priority, has_all, timestamp, list, persistent_storage) {
-                Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
-                Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
-                Err(e) => { //pass error to response parser
-                    let res: Result<Option<String>, failure::Error> = Err(e);
-                    result_to_json_response(res, &log)
-                }
-                _ => { //ignore other options from enum
-                    warn!(&log, "Wrong RpcResponseData format");
-                    let res: Result<Option<String>, failure::Error> = Ok(None);
-                    result_to_json_response(res, &log)
-                }
-            }
+    match fns::check_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, list, persistent_storage, state) {
+        Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
+        Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
+        Err(e) => { //pass error to response parser
+            let res: Result<Option<String>, failure::Error> = Err(e);
+            result_to_json_response(res, &log)
         }
-        None => result_to_json_response(Ok(Some(vec![BakingRights::new(0, String::new().into(), 0, String::new().into())])), &log)
+        _ => { //ignore other options from enum
+            warn!(&log, "Wrong RpcResponseData format");
+            let res: Result<Option<String>, failure::Error> = Ok(None);
+            result_to_json_response(res, &log)
+        }
     }
 }
 
@@ -496,7 +486,7 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-    pub(crate) fn check_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, head_level: i32, delegate: Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, timestamp: String, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option< RpcResponseData >, failure::Error> {
+    pub(crate) fn check_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         const NO_CYCLE_FLAG: i32 = -1;
 
         let block_level = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
@@ -512,7 +502,7 @@ mod fns {
         let context = get_context_as_hashmap(block_level as usize, list.clone())?;
         
         // TODO: for the fixed ctxt DB
-        // let cycle_data: CycleData = get_staking_cycle_data(block_level as usize, head_level, &context, constants.clone())?;
+        // let cycle_data: CycleData = get_staking_cycle_data(block_level as usize, block_level, &context, constants.clone())?;
 
         let preserved_cycles = *constants.preserved_cycles() as i32;
         let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
@@ -582,14 +572,15 @@ mod fns {
             None => "all".to_string() // all
         };
 
+        let block_timestamp = get_block_header_timestamp(block_id, persistent_storage, state)?;
+
         let cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
         let cycle_data: CycleData = get_cycle_data(requested_level, cycle_of_requested_level, constants.clone(), list)?;
 
-        get_baking_rights(cycle_data, block_level as i32, timestamp, requested_level, &requested_delegate, level_to_itarate_to, max_priority.parse()?, has_all, constants)
+        get_baking_rights(cycle_data, block_level as i32, block_timestamp, requested_level, &requested_delegate, level_to_itarate_to, max_priority.parse()?, has_all, constants)
     }
 
-    // TODO: rename head_level to block_level
-    pub(crate) fn get_baking_rights(cycle_data: CycleData, head_level: i32, timestamp: String, requested_level: i32, requested_delegate: &str, level_to_itarate_to: i32, max_priority: i32, has_all: bool, constants: ContextConstants) -> Result<Option< RpcResponseData >, failure::Error> {
+    pub(crate) fn get_baking_rights(cycle_data: CycleData, block_level: i32, timestamp: i64, requested_level: i32, requested_delegate: &str, level_to_itarate_to: i32, max_priority: i32, has_all: bool, constants: ContextConstants) -> Result<Option< RpcResponseData >, failure::Error> {
         const BAKING_USE_STRING: &[u8] = b"level baking:";
 
         let mut baking_rights = Vec::<BakingRights>::new();
@@ -607,9 +598,8 @@ mod fns {
         // iterate through the whole cycle if necessery
         for level in requested_level..(level_to_itarate_to + 1) {
             // 30 is from the protocol constants
-            let seconds_to_add = (level - head_level).abs() * (time_between_blocks[0] as i32);
-            let estimated_timestamp: Option<DateTime<_>>;
-            estimated_timestamp = Some(DateTime::parse_from_rfc3339(&timestamp).unwrap().checked_add_signed(Duration::seconds(seconds_to_add.into())).unwrap());
+            let seconds_to_add = (level - block_level).abs() * (time_between_blocks[0] as i32);
+            let estimated_timestamp = timestamp + seconds_to_add as i64;
             
             // as we assign the roles, the default behavior is to include only the top priority for the delegate
             // we define a hashset to keep track of the delegates with priorities allready assigned
@@ -638,9 +628,10 @@ mod fns {
                 }
 
                 // we omit the estimated_time field if the block on the requested level is allready baked
-                if head_level <= level {
-                    let priority_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(priority as i64 * time_between_blocks[1])).unwrap());
-                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(priority_timestamp.unwrap().to_rfc3339_opts(SecondsFormat::Secs, true))));
+                if block_level <= level {
+                    // let priority_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(priority as i64 * time_between_blocks[1])).unwrap());
+                    let priority_timestamp = estimated_timestamp + (priority as i64 * time_between_blocks[1]);
+                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(ts_to_rfc3339(priority_timestamp))));
                 } else {
                     baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), None))
                 }
@@ -656,7 +647,7 @@ mod fns {
     }
 
     // TODO: for the fixed ctxt DB (Copy bug)
-    pub(crate) fn get_staking_cycle_data(requested_level: usize, head_level: i32, context: &HashMap<String, Bucket<Vec<u8>>>, constants: ContextConstants) -> Result<CycleData, failure::Error> {
+    pub(crate) fn get_staking_cycle_data(requested_level: usize, block_level: i32, context: &HashMap<String, Bucket<Vec<u8>>>, constants: ContextConstants) -> Result<CycleData, failure::Error> {
         // get the protocol constants from the context
         let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
         let preserved_cycles = *constants.preserved_cycles() as i32;
@@ -707,7 +698,7 @@ mod fns {
             None => bail!("Error getting rolls")
         };
 
-        // Ok(StakingRightsContextData::new(head_level, requested_level as i32, roll_snapshot, last_roll, blocks_per_cycle, preserved_cycles, nonce_length, time_between_blocks, random_seed.to_vec(), roll_owners))
+        // Ok(StakingRightsContextData::new(block_level, requested_level as i32, roll_snapshot, last_roll, blocks_per_cycle, preserved_cycles, nonce_length, time_between_blocks, random_seed.to_vec(), roll_owners))
         Ok(CycleData::new(
             random_seed.to_vec(),
             last_roll,
