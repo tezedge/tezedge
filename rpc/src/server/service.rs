@@ -498,10 +498,9 @@ mod fns {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
-
-        let context = get_context_as_hashmap(block_level as usize, list.clone())?;
         
         // TODO: for the fixed ctxt DB
+        // let context = get_context_as_hashmap(block_level as usize, list.clone())?;
         // let cycle_data: CycleData = get_staking_cycle_data(block_level as usize, block_level, &context, constants.clone())?;
 
         let preserved_cycles = *constants.preserved_cycles() as i32;
@@ -1138,29 +1137,18 @@ mod fns {
         let preserved_cycles = *constants.preserved_cycles() as i32;
         let blocks_per_roll_snapshot = *constants.blocks_per_roll_snapshot() as i32;
         
-        let mut level_to_get_snapshot_and_seed = requested_level; // this variable will be removed after ctx is fixed
-        // the seed and the rolls for the first preserved_cycles listed from 0 are pregenerated and won't change until preserved_cycles + 2
-        let mut roll_snapshot: i16 = 0;
-        if cycle >= preserved_cycles+2 { //TODO remove condition after ctx is fixed
+        // get index of roll snapshot
+        let roll_snapshot: i16 = {
             let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle);
             // roll snapshot and random seed is set in last block of requested - preserved_cycles cycle
-            // TODO use requested_level after ctx is fixed
-            level_to_get_snapshot_and_seed = (cycle - preserved_cycles) * blocks_per_cycle;
             println!("get snapshot_key: level:{} ctx key:{}", block_level, snapshot_key);
             let reader = list.read().expect("mutex poisoning");
             if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &snapshot_key)? {
-                roll_snapshot = num_from_slice!(data, 0, i16);
+                num_from_slice!(data, 0, i16)
             } else { // key not found
                 return Err(format_err!("roll_snapshot"))
             }
         };
-        if cycle < preserved_cycles+2 {
-            level_to_get_snapshot_and_seed = requested_level;
-            println!("setting roll_snapshot to 1 for preserved_cycles+2");
-            // for preserved_cycles+2 is snapshot set to 0, this mean that it is index(listed from 0) not order of snapshot(listed from 1) 
-            // order of snapshot is needed for algorithm below
-            roll_snapshot += 1;
-        }
 
         let snapshot_level;
         if cycle < preserved_cycles+2 {
@@ -1168,10 +1156,10 @@ mod fns {
         } else {
             let cycle_of_rolls = cycle - preserved_cycles - 2;
             // last_roll is set in last block of snapshot
+            // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
             snapshot_level = (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i32) * blocks_per_roll_snapshot);
         };
-        // Snapshots of last_roll are listed from 0 and in roll_snapshot is stored order of snapshot.
-        // So x last_roll in row have index of roll_snapshot-1
+        // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle, roll_snapshot);
         println!("get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
         let last_roll = {
