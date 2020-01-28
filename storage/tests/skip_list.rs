@@ -203,14 +203,15 @@ pub fn flat_list_simulate_ledger() {
     for _ in 0..LEDGER_SIZE {
         let mut state: Ctx = Default::default();
         let op_count = rng.gen_range(1, OPERATION_COUNT);
-        let primary_key = rng.gen_range(0, KEY_COUNT);
-        let secondary_key = state.0.keys()
-            .map(|v| v.clone())
-            .collect::<Vec<u64>>()
-            .choose(&mut rng)
-            .map(|v| v.clone());
 
         for _ in 0..op_count {
+            let primary_key = rng.gen_range(0, KEY_COUNT);
+            let secondary_key = state.0.keys()
+                .map(|v| v.clone())
+                .collect::<Vec<u64>>()
+                .choose(&mut rng)
+                .map(|v| v.clone());
+
             match rng.gen() {
                 Operation::Set => {
                     state.0.insert(primary_key, rng.gen());
@@ -223,6 +224,7 @@ pub fn flat_list_simulate_ledger() {
                 }
             }
         }
+
         list.push(state.clone()).expect("Failed storing the context");
         context.0.extend(state.0);
         contexts.push(context.clone())
