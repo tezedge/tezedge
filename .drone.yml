@@ -35,7 +35,7 @@ steps:
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive 
 
 - name: bootstrapping
-  image: adonagy/tezos-node-bootstrap:latest
+  image: simplestakingcom/tezos-node-bootstrap:latest
 
 - name: test
   image: adonagy/tezedge-ci-builder:latest
