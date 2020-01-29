@@ -452,8 +452,6 @@ mod fns {
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
-    use chrono::{DateTime, Duration};
-    use chrono::prelude::*;
     use crate::helpers::BakingRights;
 
     /// Retrieve blocks from database.
@@ -584,7 +582,7 @@ mod fns {
 
         let mut baking_rights = Vec::<BakingRights>::new();
 
-        let preserved_cycles = *constants.preserved_cycles() as i32;
+        // let preserved_cycles = *constants.preserved_cycles() as i32;
         let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
         let nonce_length = *constants.nonce_length() as i32;
 
@@ -647,64 +645,64 @@ mod fns {
     }
 
     // TODO: for the fixed ctxt DB (Copy bug)
-    pub(crate) fn get_staking_cycle_data(requested_level: usize, block_level: i32, context: &HashMap<String, Bucket<Vec<u8>>>, constants: ContextConstants) -> Result<CycleData, failure::Error> {
-        // get the protocol constants from the context
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-        let preserved_cycles = *constants.preserved_cycles() as i32;
-        let time_between_blocks = constants.time_between_blocks();
+    // pub(crate) fn get_staking_cycle_data(requested_level: usize, block_level: i32, context: &HashMap<String, Bucket<Vec<u8>>>, constants: ContextConstants) -> Result<CycleData, failure::Error> {
+    //     // get the protocol constants from the context
+    //     let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
+    //     let preserved_cycles = *constants.preserved_cycles() as i32;
+    //     let time_between_blocks = constants.time_between_blocks();
 
-        let cycle_of_requested_level = cycle_from_level(requested_level as i32, blocks_per_cycle);
+    //     let cycle_of_requested_level = cycle_from_level(requested_level as i32, blocks_per_cycle);
 
-        let roll_snapshot;
-        {
-            let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
-            println!("{}", snapshot_key);
+    //     let roll_snapshot;
+    //     {
+    //         let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
+    //         println!("{}", snapshot_key);
 
-            if let Some(Bucket::Exists(data)) = context.get(&snapshot_key) {
-                println!("Got snapshot!");
-                roll_snapshot = num_from_slice!(data, 0, i16);
-            } else {
-                println!("Not found, setting default snapshot!");
-                roll_snapshot = Default::default();
-            }
-        };
+    //         if let Some(Bucket::Exists(data)) = context.get(&snapshot_key) {
+    //             println!("Got snapshot!");
+    //             roll_snapshot = num_from_slice!(data, 0, i16);
+    //         } else {
+    //             println!("Not found, setting default snapshot!");
+    //             roll_snapshot = Default::default();
+    //         }
+    //     };
 
-        let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
-        let random_seed;
-        {
-            if let Some(Bucket::Exists(data)) = context.get(&random_seed_key) {
-                random_seed = data;
-            } else {
-                bail!("Seed not found, setting to default");
-            }
-        }
+    //     let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
+    //     let random_seed;
+    //     {
+    //         if let Some(Bucket::Exists(data)) = context.get(&random_seed_key) {
+    //             random_seed = data;
+    //         } else {
+    //             bail!("Seed not found, setting to default");
+    //         }
+    //     }
 
-        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_requested_level, roll_snapshot); 
-        let last_roll;
-        {
-            if let Some(Bucket::Exists(data)) = context.get(&last_roll_key) {
-                last_roll = num_from_slice!(data, 0, i32);
-            } else {
-                println!("Last roll not found, setting default");
-                last_roll = Default::default();
-            }
-        }
-        println!("Last roll: {}", last_roll);
+    //     let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_requested_level, roll_snapshot); 
+    //     let last_roll;
+    //     {
+    //         if let Some(Bucket::Exists(data)) = context.get(&last_roll_key) {
+    //             last_roll = num_from_slice!(data, 0, i32);
+    //         } else {
+    //             println!("Last roll not found, setting default");
+    //             last_roll = Default::default();
+    //         }
+    //     }
+    //     println!("Last roll: {}", last_roll);
 
-        // get the rolls from the context storage
-        let rolls = get_context_snapshotted_rolls(cycle_of_requested_level, roll_snapshot, context.clone())?;
-        let roll_owners = match rolls {
-            Some(r) => r,
-            None => bail!("Error getting rolls")
-        };
+    //     // get the rolls from the context storage
+    //     let rolls = get_context_snapshotted_rolls(cycle_of_requested_level, roll_snapshot, context.clone())?;
+    //     let roll_owners = match rolls {
+    //         Some(r) => r,
+    //         None => bail!("Error getting rolls")
+    //     };
 
-        // Ok(StakingRightsContextData::new(block_level, requested_level as i32, roll_snapshot, last_roll, blocks_per_cycle, preserved_cycles, nonce_length, time_between_blocks, random_seed.to_vec(), roll_owners))
-        Ok(CycleData::new(
-            random_seed.to_vec(),
-            last_roll,
-            roll_owners
-        ))
-    }
+    //     // Ok(StakingRightsContextData::new(block_level, requested_level as i32, roll_snapshot, last_roll, blocks_per_cycle, preserved_cycles, nonce_length, time_between_blocks, random_seed.to_vec(), roll_owners))
+    //     Ok(CycleData::new(
+    //         random_seed.to_vec(),
+    //         last_roll,
+    //         roll_owners
+    //     ))
+    // }
 
 
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
@@ -887,43 +885,45 @@ mod fns {
         Ok(timestamp)
     }
 
-    pub(crate) fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<HashMap<String, Bucket<Vec<u8>>>, failure::Error> {
-        // get the whole context
-        let context = {
-            let reader = list.read().unwrap();
-            if let Ok(Some(ctx)) = reader.get(level) {
-                ctx
-            } else {
-                bail!("Context not found")
-            }
-        };
-        Ok(context)
-    }
+    // TODO: for the fixed ctxt DB
+    // pub(crate) fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<HashMap<String, Bucket<Vec<u8>>>, failure::Error> {
+    //     // get the whole context
+    //     let context = {
+    //         let reader = list.read().unwrap();
+    //         if let Ok(Some(ctx)) = reader.get(level) {
+    //             ctx
+    //         } else {
+    //             bail!("Context not found")
+    //         }
+    //     };
+    //     Ok(context)
+    // }
 
-    pub(crate) fn get_context_snapshotted_rolls(cycle: i32, snapshot: i16, context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        // get all the relevant data
-        let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
-            // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
-            .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // REMOVE THIS
-            .collect();
+    // TODO: for fixed ctxt DB
+    // pub(crate) fn get_context_snapshotted_rolls(cycle: i32, snapshot: i16, context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+    //     // get all the relevant data
+    //     let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
+    //         // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
+    //         .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // REMOVE THIS
+    //         .collect();
             
-        let mut roll_owners: HashMap<i32, String> = HashMap::new();
+    //     let mut roll_owners: HashMap<i32, String> = HashMap::new();
 
-        // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the pkh address (tz1...)
-        for (key, value) in data.into_iter() {
-            let key_split = key.split('/').collect::<Vec<_>>();
-            let roll_num = key_split[key_split.len() - 1];
+    //     // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the pkh address (tz1...)
+    //     for (key, value) in data.into_iter() {
+    //         let key_split = key.split('/').collect::<Vec<_>>();
+    //         let roll_num = key_split[key_split.len() - 1];
 
-            // the values are public keys
-            if let Bucket::Exists(pk) = value {
-                let delegate = public_key_to_contract_id(pk)?;
-                roll_owners.insert(roll_num.parse().unwrap(), delegate);
-            } else {
-                continue;  // If the val is Deleted, we just skip it and go to the next iteration
-            }
-        }
-        Ok(Some(roll_owners))
-    }
+    //         // the values are public keys
+    //         if let Bucket::Exists(pk) = value {
+    //             let delegate = public_key_to_contract_id(pk)?;
+    //             roll_owners.insert(roll_num.parse().unwrap(), delegate);
+    //         } else {
+    //             continue;  // If the val is Deleted, we just skip it and go to the next iteration
+    //         }
+    //     }
+    //     Ok(Some(roll_owners))
+    // }
 
     // remove this after the ctxt DB is fixed, replace with get_context_snapshotted_rolls
     #[inline]
@@ -1273,32 +1273,33 @@ mod fns {
         Ok(contract_address)
     }
 
+    // TODO: for the fixed ctxt DB
     // Gets the contract_id from the public_key 
-    #[inline]
-    fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
-        // 1 byte tag and - 32 bytes for ed25519 (tz1)
-        //                - 33 bytes for secp256k1 (tz2) and p256 (tz3)
-        if pk.len() == 33 || pk.len() == 34 {
-            let tag = pk[0];
-            let hash = blake2b::digest_160(&pk[1..]);
+    // #[inline]
+    // fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
+    //     // 1 byte tag and - 32 bytes for ed25519 (tz1)
+    //     //                - 33 bytes for secp256k1 (tz2) and p256 (tz3)
+    //     if pk.len() == 33 || pk.len() == 34 {
+    //         let tag = pk[0];
+    //         let hash = blake2b::digest_160(&pk[1..]);
 
-            let contract_id = match tag {
-                0 => {
-                    HashType::ContractTz1Hash.bytes_to_string(&hash)
-                }
-                1 => {
-                    HashType::ContractTz2Hash.bytes_to_string(&hash)
-                }
-                2 => {
-                    HashType::ContractTz3Hash.bytes_to_string(&hash)
-                }
-                _ => bail!("Invalid public key")
-            };
-            Ok(contract_id)
-        } else {
-            bail!("Invalid public key")
-        }
-    }
+    //         let contract_id = match tag {
+    //             0 => {
+    //                 HashType::ContractTz1Hash.bytes_to_string(&hash)
+    //             }
+    //             1 => {
+    //                 HashType::ContractTz2Hash.bytes_to_string(&hash)
+    //             }
+    //             2 => {
+    //                 HashType::ContractTz3Hash.bytes_to_string(&hash)
+    //             }
+    //             _ => bail!("Invalid public key")
+    //         };
+    //         Ok(contract_id)
+    //     } else {
+    //         bail!("Invalid public key")
+    //     }
+    // }
 
     #[inline]
     fn chain_id_to_string(chain_id: &ChainId) -> String {
