@@ -24,7 +24,7 @@ async fn integration_test_full() {
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
     // start development tests from 1000th block
-    integration_tests_rpc(25000).await
+    integration_tests_rpc(30000).await
 
 }
 
@@ -38,20 +38,21 @@ async fn integration_tests_rpc(start_block: usize) {
     let mut last_cycle = 0;
 
     // alocate vector for RPC tests 
-    let mut tasks = Vec::with_capacity(start_block);
+    //let mut tasks = Vec::with_capacity(start_block);
 
     for block_level in (1..=start_block).rev() {
         
-        tasks.push(
-             tokio::spawn(async move {
+        //tasks.push(
+             //tokio::spawn(async move {
                 let context_raw_bytes_cycle_url = &format!("{}/{}/{}", "chains/main/blocks", block_level, "context/raw/bytes/cycle");
-                test_rpc_compare_json(&context_raw_bytes_cycle_url).await;
-            })
-        );
+                let context_raw_bytes_rolls_owner_current_url = &format!("{}/{}/{}", "chains/main/blocks", block_level, "context/raw/bytes/rolls/owner/current");                
+                test_rpc_compare_json(&context_raw_bytes_rolls_owner_current_url).await;
+            //})
+        //);
     
     }
 
-    futures::future::join_all(tasks).await;
+    //futures::future::try_join_all(tasks).await;
 
         // let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", &prev_block)).await
         //     .expect("Failed to get block from ocaml");
@@ -125,26 +126,26 @@ async fn integration_tests_rpc(start_block: usize) {
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
-    println!("Checking: {}", rpc_path);
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     let ocaml_json = get_rpc_as_json(NodeType::Ocaml, rpc_path).await.unwrap();
     let tezedge_json = get_rpc_as_json(NodeType::Tezedge, rpc_path).await.unwrap();
+    println!("Checking: {}", rpc_path);
     assert_json_eq!(tezedge_json, ocaml_json);
 }
 
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
     let url = match node {
         NodeType::Ocaml => format!(
-            "http://ocaml-node-run:8732/{}",
+            //"http://ocaml-node-run:8732/{}",
             //"http://127.0.0.1:8732/{}", //switch for local testing
-            //"http://alphanet.simplestaking.com:8732/{}",
+            "http://alphanet.simplestaking.com:8732/{}",
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            "http://tezedge-node-run:38732/{}",
-            //"http://babylon.tezedge.com:38732/{}",
+            //"http://tezedge-node-run:38732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
             //"http://127.0.0.1:18732/{}", //swith for local testing
+            "http://babylon.tezedge.com:38732/{}",
             rpc_path
         ), // Tezedge node
     }.parse().expect("Invalid URL");

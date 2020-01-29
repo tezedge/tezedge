@@ -36,6 +36,7 @@ enum Route {
     ChainsBlockId,
     ContextConstants,
     ContextCycle,
+    ContextRollsOwnerCurrent,
     DevGetBlockEndorsingRights,
     // -------------------------- //
     DevGetBlocks,
@@ -255,6 +256,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", Route::ContextCycle);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", Route::ContextRollsOwnerCurrent);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
@@ -323,6 +325,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ContextCycle, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
             result_to_json_response(fns::get_cycle_from_context(block_id, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ContextRollsOwnerCurrent, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_rolls_owner_current_from_context(block_id, context_storage), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -554,6 +560,80 @@ mod fns {
         }
        
         Ok(Some(cycles))
+    }
+
+    pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String,HashMap<String,HashMap<String,String>>>>, failure::Error> {
+
+        let ctxt_level: usize = level.parse().unwrap();
+        // println!("level: {:?}", ctxt_level);
+
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(ctxt_level) {
+                c
+            } else {
+                bail!("Context data not found")
+            }
+        };
+
+        // get rolls list from context storage
+        let rolls_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("rolls/owner/current"))
+            .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+            .collect();
+
+        // create rolls list     
+        let mut rolls: HashMap<String,HashMap<String,HashMap<String,String>>> = HashMap::new();
+
+        // process every key value pair
+        for (key, bucket) in rolls_lists.iter() {
+            
+            // create vector from path
+            let path:Vec<&str> = key.split('/').collect();
+
+            // convert value from bytes to hex 
+            let value = match bucket { 
+                Bucket::Exists(value) => hex::encode(value).to_string(),
+                _ => "".to_string()
+            };
+
+            // process roll key value pairs     
+            match path.as_slice() {
+                ["data", "rolls","owner","current", path1, path2, path3 ] => {
+                    // println!("rolls: {:?}/{:?}/{:?} value: {:?}", path1, path2, path3, value );
+
+                    rolls.entry(path1.to_string())
+                        .and_modify(|roll| {
+                            roll.entry(path2.to_string())
+                                .and_modify(|index2| { 
+                                    index2.insert(path3.to_string(),value.to_string());
+                                })
+                                .or_insert({
+                                    let mut index3 = HashMap::new();
+                                    index3.insert(path3.to_string(),value.to_string());
+                                    index3
+                                });
+                        })
+                        .or_insert({
+                            let mut index2 = HashMap::new();
+                            index2.entry(path2.to_string())
+                                .or_insert({
+                                    let mut index3 = HashMap::new();
+                                    index3.insert(path3.to_string(),value.to_string());
+                                    index3  
+                                });
+                            index2
+                        });    
+            
+                },
+                _ => bail!("Unknown key {} value {} rolls pair", key, value)
+            }
+
+        }
+        
+    
+        Ok(Some(rolls))
+
     }
 
     pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
