@@ -496,78 +496,60 @@ mod fns {
             // create vector from path
             let path:Vec<&str> = key.split('/').collect();
             
-            // get string 
+            // convert value from bytes to hex 
             let value = match bucket { 
-                Bucket::Exists(value) => {
-                    // TODO: !!! fix encoding 
-                    let zeros: String = "00".to_string();
-                    let value_string: String = value.into_iter().map(|i| i.to_string()).collect::<String>();
-                    [zeros, value_string].concat()
-                },
-                _ => "".to_string() 
+                Bucket::Exists(value) => hex::encode(value).to_string(),
+                _ => "".to_string()
             };
 
-            let empty = &vec![];
-            let value_bytes = match bucket { 
-                Bucket::Exists(value) => value,
-                _ => &empty
-            };
-
-            // println!("{:?} {:?} ", path , value ) ;
-
-            // create new cycles 
+            // create new cycle
             // TODO: !!! check path and move to match 
-            cycles.entry(path[2].to_string())
-            .or_insert(Cycle {
-                    last_roll: None,
-                    nonces: None,
-                    random_seed: None,
-                    roll_snapshot: None,
-                });
+            cycles.entry(path[2].to_string()).or_insert(Cycle {
+                last_roll: None,
+                nonces: None,
+                random_seed: None,
+                roll_snapshot: None,
+            });
 
             // process cycle key value pairs     
             match path.as_slice() {
                 ["data", "cycle", cycle, "random_seed"] => {
-                    // println!("cycle: {:?} random_seed: {:?}", cycle, hex::encode(&value_bytes) );
-                    cycles.entry(cycle.to_string())
-                        .and_modify(|cycle| {
-                            cycle.random_seed = Some(hex::encode(&value_bytes));
-                        });
+                    // println!("cycle: {:?} random_seed: {:?}", cycle, value );
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        cycle.random_seed = Some(value);
+                    });
                 },
                 ["data", "cycle", cycle, "roll_snapshot"] => {
                     // println!("cycle: {:?} roll_snapshot: {:?}", cycle, value);
-                    cycles.entry(cycle.to_string())
-                        .and_modify(|cycle| {
-                            cycle.roll_snapshot = Some(value);
-                        });
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        cycle.roll_snapshot = Some(value);
+                    });
                 },
                 ["data", "cycle", cycle, "nonces", nonces] => {
                     // println!("cycle: {:?} nonces: {:?}/{:?}", cycle, nonces, value)
-                    cycles.entry(cycle.to_string())
-                        .and_modify(|cycle| {
-                            match cycle.nonces.as_mut() {
-                                Some(entry) => entry.insert(nonces.to_string(),hex::encode(&value_bytes)),
-                                None => { 
-                                    cycle.nonces = Some(HashMap::new());
-                                    cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),hex::encode(&value_bytes))
-                                }
-                            };                    
-                        });
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        match cycle.nonces.as_mut() {
+                            Some(entry) => entry.insert(nonces.to_string(),value),
+                            None => { 
+                                cycle.nonces = Some(HashMap::new());
+                                cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),value)
+                            }
+                        };
+                    });
                 },
                 ["data", "cycle", cycle, "last_roll", last_roll] => {
                     // println!("cycle: {:?} last_roll: {:?}/{:?}", cycle, last_roll, value)
-                    cycles.entry(cycle.to_string())
-                        .and_modify(|cycle| {
-                            match cycle.last_roll.as_mut() {
-                                Some(entry) => entry.insert(last_roll.to_string(),value),
-                                None => { 
-                                    cycle.last_roll = Some(HashMap::new());
-                                    cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(),value)
-                                }
-                            };                    
-                        });
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        match cycle.last_roll.as_mut() {
+                            Some(entry) => entry.insert(last_roll.to_string(),value),
+                            None => { 
+                                cycle.last_roll = Some(HashMap::new());
+                                cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(),value)
+                            }
+                        };                    
+                    });
                 },
-                _ => bail!("Unknow key {} value {} cyclep pair", key, value)
+                _ => bail!("Unknown key {} value {} cycle pair", key, value)
             };
         }
        
