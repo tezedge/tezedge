@@ -24,9 +24,11 @@ async fn integration_test_full() {
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
     // start development tests from block:
-    integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
+    //integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
     //integration_tests_rpc("BLYr7qUkCK8ZNNQZqn9opBP3giFU1wA4zb8LSn5PxDBi6v3Rd2Y").await // level=19000
     //integration_tests_rpc("BMdwdpjSwFsY55YtxGAXqQdiNdVTfDBgtynMXHzRTgqUoXoEiT8").await // level=25000
+    integration_tests_rpc("BKp3e6n8NhVp7NavCq3GsqRb2hbq5ah2wSTPzezteoJqEzYsp99").await // level=34000
+
 }
 
 async fn integration_tests_rpc(start_block: &str) {
@@ -71,6 +73,15 @@ async fn integration_tests_rpc(start_block: &str) {
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", level+1000 )).await;
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", level+3000 )).await;
 
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-1) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-10) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-1000) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-3000) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+1 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+10 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+1000 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+3000 )).await;
+
             // ----------------- End of tests for each snapshot of the cycle ------------------
         }
 
@@ -83,6 +94,10 @@ async fn integration_tests_rpc(start_block: &str) {
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle+PERSERVED_CYCLES)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, cycle-2) )).await;
+
+            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", cycle)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", cycle+PERSERVED_CYCLES)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
             //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
 
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "context/constants")).await;
@@ -111,6 +126,7 @@ async fn integration_tests_rpc(start_block: &str) {
 
         // test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", &prev_block)).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
         //test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
 
         // --------------------------------- End of tests --------------------------------
@@ -130,14 +146,14 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
     let url = match node {
         NodeType::Ocaml => format!(
-            "http://ocaml-node-run:8732/{}",
-            //"http://127.0.0.1:8732/{}", //switch for local testing
+            //"http://ocaml-node-run:8732/{}",
+            "http://127.0.0.1:8732/{}", //switch for local testing
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            "http://tezedge-node-run:18732/{}",
+            //"http://tezedge-node-run:18732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
-            //"http://127.0.0.1:18732/{}", //swith for local testing
+            "http://127.0.0.1:18732/{}", //swith for local testing
             rpc_path
         ), // Tezedge node
     }.parse().expect("Invalid URL");
