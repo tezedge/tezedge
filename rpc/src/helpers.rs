@@ -131,7 +131,7 @@ impl<C> PagedResult<C>
 pub enum RpcResponseData {
     EndorsingRights(Vec<EndorsingRight>),
     BakingRights(Vec<BakingRights>),
-    ErrorMsg(RpcErrorMsg),
+    // ErrorMsg(RpcErrorMsg),
 }
 
 // endorsing rights structure, final response look like Vec<EndorsingRight>
@@ -197,27 +197,27 @@ pub struct RpcErrorMsg {
     latest: Option<String>,
 }
 
-impl RpcErrorMsg {
-    pub fn new(
-        kind: String, 
-        id: String, 
-        missing_key: Option<Value>,
-        function: Option<String>,
-        oldest: Option<String>,
-        requested: Option<String>,
-        latest: Option<String>) -> Self {
+// impl RpcErrorMsg {
+//     pub fn new(
+//         kind: String, 
+//         id: String, 
+//         missing_key: Option<Value>,
+//         function: Option<String>,
+//         oldest: Option<String>,
+//         requested: Option<String>,
+//         latest: Option<String>) -> Self {
 
-        Self {
-            kind: kind.to_string(),
-            id: id.to_string(),
-            missing_key,
-            function,
-            oldest,
-            requested,
-            latest,
-        }
-    }
-}
+//         Self {
+//             kind: kind.to_string(),
+//             id: id.to_string(),
+//             missing_key,
+//             function,
+//             oldest,
+//             requested,
+//             latest,
+//         }
+//     }
+// }
 
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct CycleData {
@@ -226,7 +226,6 @@ pub struct CycleData {
     #[get = "pub(crate)"]
     last_roll: i32,
     #[get = "pub(crate)"]
-    // rename to rolls
     // type alias
     rolls: HashMap<i32, String>,
 }
@@ -243,7 +242,6 @@ impl CycleData {
 
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct RightsParams {
-    // chain_id, block_id, level, delegate, cycle, max_priority, has_all
     #[get = "pub(crate)"]
     chain_id: String,
 

@@ -24,7 +24,6 @@ use crate::{
 };
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::helpers::RpcResponseData;
-use crate::helpers::BakingRights;
 use crate::ContextList;
 
 
@@ -248,7 +247,7 @@ async fn baking_rights(chain_id: &str, block_id: &str, delegate: &Option<String>
     // list -> context, persistent, state odizolovat
     match fns::check_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, list, persistent_storage, state) {
         Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
-        Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
+        // Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
             result_to_json_response(res, &log)
@@ -267,7 +266,7 @@ async fn endorsing_rights(chain_id: &str, block_id: &str, delegate: &Option<Stri
     //match fns::check_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, list, persistent_storage, state) {
     match fns::check_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, list, persistent_storage, state) {
         Ok(Some(RpcResponseData::EndorsingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
-        Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
+        // Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
             result_to_json_response(res, &log)
@@ -442,8 +441,6 @@ mod fns {
     use itertools::Itertools;
 
     use failure::{bail, format_err};
-    use hex::FromHex;
-    use serde_json::json;
 
     use crypto::hash::{BlockHash, ChainId, HashType};
     use crypto::blake2b;
@@ -461,7 +458,7 @@ mod fns {
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
     use crate::merge_slices;
-    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, RightsParams, RightsConstants, EndorserSlots};
+    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, RightsParams, RightsConstants, EndorserSlots};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -519,7 +516,6 @@ mod fns {
         // TODO fix casting!
         // let preserved_cycles = *constants.preserved_cycles() as i32;
         let blocks_per_cycle = *constants.blocks_per_cycle();
-        let nonce_length = *constants.nonce_length();
         let time_between_blocks = constants.time_between_blocks();
 
         let timestamp = parameters.block_timestamp();
@@ -543,7 +539,7 @@ mod fns {
             let level = *parameters.requested_level();
             let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
             let estimated_timestamp = timestamp + seconds_to_add;
-            println!("No cycle requested, getting rights for level {}", level);
+            // println!("No cycle requested, getting rights for level {}", level);
             // assign rolls goes here
             baking_rights = baking_rights_assign_rolls(&parameters, &constants, &cycle_data, level, estimated_timestamp)?;
         }
@@ -564,7 +560,6 @@ mod fns {
         let mut baking_rights = Vec::<BakingRights>::new();
         let mut assigned = HashSet::new();
 
-        let nonce_length = *constants.nonce_length();
         let time_between_blocks = constants.time_between_blocks();
 
         let max_priority = *parameters.max_priority();
@@ -574,7 +569,6 @@ mod fns {
         for priority in 0..max_priority {
             // draw the rolls for the requested parameters
             let delegate_to_assign;
-            let seed = cycle_data.random_seed().to_vec();
             // TODO: priority can overflow in the ocaml code, do a    priority % i32::max_value()
             let mut state = init_prng(&cycle_data, &constants, BAKING_USE_STRING, level.try_into()?, priority.try_into()?)?;
 
@@ -705,16 +699,6 @@ mod fns {
         if (requested_cycle - current_cycle).abs() <= preserved_cycles {
             Ok(requested_cycle)
         } else {
-            // let error_msg = RpcErrorMsg::new(
-            //     "permanent".to_string(),
-            //     "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
-            //     None,
-            //     None,
-            //     Some((  std::cmp::max(0, current_cycle - preserved_cycles) ).to_string()),
-            //     Some(requested_cycle.to_string()),
-            //     Some((current_cycle + preserved_cycles).to_string()),
-            // );
-            // return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
             bail!("Requested cycle out of bounds")
         }
     }
@@ -734,67 +718,6 @@ mod fns {
             *constants.endorsers_per_block(),
         ))
     }
-
-    // TODO: for the fixed ctxt DB (Copy bug)
-    // pub(crate) fn get_staking_cycle_data(requested_level: usize, block_level: i32, context: &HashMap<String, Bucket<Vec<u8>>>, constants: ContextConstants) -> Result<CycleData, failure::Error> {
-    //     // get the protocol constants from the context
-    //     let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-    //     let preserved_cycles = *constants.preserved_cycles() as i32;
-    //     let time_between_blocks = constants.time_between_blocks();
-
-    //     let cycle_of_requested_level = cycle_from_level(requested_level as i32, blocks_per_cycle);
-
-    //     let roll_snapshot;
-    //     {
-    //         let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle_of_requested_level);
-    //         println!("{}", snapshot_key);
-
-    //         if let Some(Bucket::Exists(data)) = context.get(&snapshot_key) {
-    //             println!("Got snapshot!");
-    //             roll_snapshot = num_from_slice!(data, 0, i16);
-    //         } else {
-    //             println!("Not found, setting default snapshot!");
-    //             roll_snapshot = Default::default();
-    //         }
-    //     };
-
-    //     let random_seed_key = format!("data/cycle/{}/random_seed", cycle_of_requested_level);
-    //     let random_seed;
-    //     {
-    //         if let Some(Bucket::Exists(data)) = context.get(&random_seed_key) {
-    //             random_seed = data;
-    //         } else {
-    //             bail!("Seed not found, setting to default");
-    //         }
-    //     }
-
-    //     let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle_of_requested_level, roll_snapshot); 
-    //     let last_roll;
-    //     {
-    //         if let Some(Bucket::Exists(data)) = context.get(&last_roll_key) {
-    //             last_roll = num_from_slice!(data, 0, i32);
-    //         } else {
-    //             println!("Last roll not found, setting default");
-    //             last_roll = Default::default();
-    //         }
-    //     }
-    //     println!("Last roll: {}", last_roll);
-
-    //     // get the rolls from the context storage
-    //     let rolls = get_context_snapshotted_rolls(cycle_of_requested_level, roll_snapshot, context.clone())?;
-    //     let roll_owners = match rolls {
-    //         Some(r) => r,
-    //         None => bail!("Error getting rolls")
-    //     };
-
-    //     // Ok(StakingRightsContextData::new(block_level, requested_level as i32, roll_snapshot, last_roll, blocks_per_cycle, preserved_cycles, nonce_length, time_between_blocks, random_seed.to_vec(), roll_owners))
-    //     Ok(CycleData::new(
-    //         random_seed.to_vec(),
-    //         last_roll,
-    //         roll_owners
-    //     ))
-    // }
-
 
     pub(crate) fn check_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
@@ -1045,33 +968,6 @@ mod fns {
         Ok(context)
     }
 
-    // TODO: for fixed ctxt DB
-    // pub(crate) fn get_context_snapshotted_rolls(cycle: i32, snapshot: i16, context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-    //     // get all the relevant data
-    //     let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
-    //         // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
-    //         .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // REMOVE THIS
-    //         .collect();
-            
-    //     let mut roll_owners: HashMap<i32, String> = HashMap::new();
-
-    //     // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the pkh address (tz1...)
-    //     for (key, value) in data.into_iter() {
-    //         let key_split = key.split('/').collect::<Vec<_>>();
-    //         let roll_num = key_split[key_split.len() - 1];
-
-    //         // the values are public keys
-    //         if let Bucket::Exists(pk) = value {
-    //             let delegate = public_key_to_contract_id(pk)?;
-    //             roll_owners.insert(roll_num.parse().unwrap(), delegate);
-    //         } else {
-    //             continue;  // If the val is Deleted, we just skip it and go to the next iteration
-    //         }
-    //     }
-    //     Ok(Some(roll_owners))
-    // }
-
-    // remove this after the ctxt DB is fixed, replace with get_context_snapshotted_rolls
     #[inline]
     fn get_context_rolls(context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
@@ -1125,7 +1021,7 @@ mod fns {
         // get index of roll snapshot
         let roll_snapshot: i16 = {
             let snapshot_key = format!("data/cycle/{}/roll_snapshot", requested_cycle);
-            println!("get snapshot_key: level:{} ctx key:{}", block_level, snapshot_key);
+            // println!("get snapshot_key: level:{} ctx key:{}", block_level, snapshot_key);
             if let Some(Bucket::Exists(data)) = current_context.get(&snapshot_key) {
                 num_from_slice!(data, 0, i16)
             } else { // key not found
@@ -1134,7 +1030,7 @@ mod fns {
         };
 
         let random_seed_key = format!("data/cycle/{}/random_seed", requested_cycle);
-        println!("get random_seed: level:{} ctx key:{}", block_level, random_seed_key);
+        // println!("get random_seed: level:{} ctx key:{}", block_level, random_seed_key);
         let random_seed = {
             if let Some(Bucket::Exists(data)) = current_context.get(&random_seed_key) {
                 data
@@ -1149,14 +1045,12 @@ mod fns {
         } else {
             let cycle_of_rolls = requested_cycle - preserved_cycles - 2;
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
-            snapshot_level = ((cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot) - 1);
+            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot) - 1;
         };
-
-        // let snapshot_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
 
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
-        println!("get last_roll: level:{} ctx key:{}", block_level, last_roll_key);
+        // println!("get last_roll: level:{} ctx key:{}", block_level, last_roll_key);
         let last_roll = {
             if let Some(Bucket::Exists(data)) = current_context.get(&last_roll_key) {
                 num_from_slice!(data, 0, i32)
@@ -1168,7 +1062,7 @@ mod fns {
         let roll_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
 
         // get list of rolls from context list
-        println!("get_context_rolls: level:{}", snapshot_level);
+        // println!("get_context_rolls: level:{}", snapshot_level);
         let context_rolls = if let Some(rolls) = get_context_rolls(roll_context)? {
             rolls
         } else {
@@ -1181,41 +1075,6 @@ mod fns {
             context_rolls
         ))
     }
-
-    // convert public key hash to contract id
-    // #[inline]
-    // fn address_to_contract_id(address: &str) -> Result<String, failure::Error> {
-    //     if address.len() < 4 {
-    //         bail!("short hash address of contract: {}", address)
-    //     }
-    //     let contract_id = match &address[0..2] {
-    //         "00" => {
-    //             if address.len() < 44 {
-    //                 bail!("short hash address of contract: {}", address)
-    //             }
-    //             match &address[2..4] {
-    //                 "00" => {
-    //                     HashType::ContractTz1Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
-    //                 }
-    //                 "01" => {
-    //                     HashType::ContractTz2Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
-    //                 }
-    //                 "02" => {
-    //                     HashType::ContractTz3Hash.bytes_to_string(&<[u8; 20]>::from_hex(&address[4..44])?)
-    //                 }
-    //                 _ => bail!("Invalid contract id")
-    //             }
-    //         }
-    //         "01" => {
-    //             if address.len() < 42 {
-    //                 bail!("short hash address of contract: {}", address)
-    //             }
-    //             HashType::ContractKt1Hash.bytes_to_string(&<[u8; 22]>::from_hex(&address[2..42])?)
-    //         }
-    //         _ => bail!("Invalid contract id")
-    //     };
-    //     Ok(contract_id)
-    // }
 
     #[inline]
     fn block_id_to_block_hash(block_id: &str) -> Result<BlockHash, failure::Error> {
