@@ -46,6 +46,8 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
+    fn get_by_block_level(&self, level: i32) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
@@ -163,6 +165,13 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_by_block_level(&self, level: i32) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+        self.by_level_index.get(&level)?
+            .map(|location| self.get_block_header_by_location(&location))
+            .transpose()
+    }
+
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.primary_index.contains(block_hash)
     }
@@ -257,6 +266,10 @@ impl BlockByLevelIndex {
             .map_err(StorageError::from)
     }
 
+    fn get(&self, level: &BlockLevel) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
+        self.kv.get(level).map_err(StorageError::from)
+    }
+    
     fn get_blocks(&self, from_level: BlockLevel, limit: usize) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
         self.kv.iterator(IteratorMode::From(&from_level, Direction::Reverse))?
             .take(limit)

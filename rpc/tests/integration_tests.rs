@@ -24,7 +24,7 @@ async fn integration_test_full() {
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
     // start development tests from 1000th block
-    integration_tests_rpc(30000).await
+    integration_tests_rpc(20600).await
 
 }
 
@@ -37,6 +37,11 @@ async fn integration_tests_rpc(start_block: usize) {
     const MAX_CYCLE_LOOPS: i32 = 20;
     let mut last_cycle = 0;
 
+    test_rpc_compare_json("chains/main/blocks/1/helpers/endorsing_rights?cycle=0").await;
+    test_rpc_compare_json("chains/main/blocks/1/helpers/endorsing_rights?cycle=1").await;
+    test_rpc_compare_json("chains/main/blocks/1/helpers/endorsing_rights?cycle=2").await;
+    test_rpc_compare_json("chains/main/blocks/1/helpers/endorsing_rights?cycle=3").await;
+
     // alocate vector for RPC tests 
     //let mut tasks = Vec::with_capacity(start_block);
 
@@ -44,9 +49,18 @@ async fn integration_tests_rpc(start_block: usize) {
         
         //tasks.push(
              //tokio::spawn(async move {
+                let block_url = &format!("{}/{}", "chains/main/blocks", block_level);
+                test_rpc_compare_json(&block_url).await;
+        
                 let context_raw_bytes_cycle_url = &format!("{}/{}/{}", "chains/main/blocks", block_level, "context/raw/bytes/cycle");
+                test_rpc_compare_json(&context_raw_bytes_cycle_url).await;
+                
                 let context_raw_bytes_rolls_owner_current_url = &format!("{}/{}/{}", "chains/main/blocks", block_level, "context/raw/bytes/rolls/owner/current");                
                 test_rpc_compare_json(&context_raw_bytes_rolls_owner_current_url).await;
+
+                let helpers_endorsing_rights_url = &format!("{}/{}/{}", "chains/main/blocks", block_level, "chelpers/endorsing_rights");
+                test_rpc_compare_json(&helpers_endorsing_rights_url).await;
+
             //})
         //);
     
@@ -126,10 +140,10 @@ async fn integration_tests_rpc(start_block: usize) {
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
+    println!("Checking: {}", rpc_path);
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     let ocaml_json = get_rpc_as_json(NodeType::Ocaml, rpc_path).await.unwrap();
     let tezedge_json = get_rpc_as_json(NodeType::Tezedge, rpc_path).await.unwrap();
-    println!("Checking: {}", rpc_path);
     assert_json_eq!(tezedge_json, ocaml_json);
 }
 
