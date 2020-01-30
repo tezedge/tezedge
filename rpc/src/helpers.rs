@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use storage::num_from_slice;
 
 use serde::Serialize;
@@ -16,6 +18,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::ts_to_rfc3339;
 
+#[macro_export]
 macro_rules! merge_slices {
     ( $($x:expr),* ) => {{
         let mut res = vec![];
@@ -156,18 +159,18 @@ impl EndorsingRight {
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct BakingRights {
     #[get = "pub(crate)"]
-    level: i32,
+    level: i64,
     #[get = "pub(crate)"]
     delegate: String,
     #[get = "pub(crate)"]
-    priority: i32,
+    priority: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[get = "pub(crate)"]
     estimated_time: Option<String>,
 }
 
 impl BakingRights {
-    pub fn new(level: i32, delegate: String, priority: i32, estimated_time: Option<String>) -> Self{
+    pub fn new(level: i64, delegate: String, priority: i64, estimated_time: Option<String>) -> Self{
         Self {
             level,
             delegate: delegate.to_string(),
@@ -223,24 +226,112 @@ pub struct CycleData {
     #[get = "pub(crate)"]
     last_roll: i32,
     #[get = "pub(crate)"]
-    rollers: HashMap<i32, String>,
+    // rename to rolls
+    // type alias
+    rolls: HashMap<i32, String>,
 }
 
 impl CycleData {
-    pub fn new(random_seed: Vec<u8>, last_roll: i32, rollers: HashMap<i32, String>) -> Self {
+    pub fn new(random_seed: Vec<u8>, last_roll: i32, rolls: HashMap<i32, String>) -> Self {
         Self {
             random_seed,
             last_roll,
-            rollers,
+            rolls,
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, Getters)]
+pub struct BakingRightsParams {
+    // chain_id, block_id, level, delegate, cycle, max_priority, has_all
+    #[get = "pub(crate)"]
+    chain_id: String,
+
+    #[get = "pub(crate)"]
+    block_level: i64,
+
+    #[get = "pub(crate)"]
+    block_timestamp: i64,
+
+    #[get = "pub(crate)"]
+    requested_delegate: Option<String>,
+
+    #[get = "pub(crate)"]
+    requested_cycle: Option<i64>,
+
+    #[get = "pub(crate)"]
+    requested_level: i64,
+
+    #[get = "pub(crate)"]
+    max_priority: i64,
+
+    #[get = "pub(crate)"]
+    has_all: bool,
+}
+
+impl BakingRightsParams {
+    pub fn new(
+        chain_id: String, 
+        block_level: i64, 
+        block_timestamp: i64,
+        requested_delegate: Option<String>,
+        requested_cycle: Option<i64>,
+        requested_level: i64,
+        max_priority: String,
+        has_all: bool) -> Self {
+
+        Self {
+            chain_id,
+            block_level,
+            block_timestamp,
+            requested_delegate,
+            requested_cycle,
+            requested_level,
+            max_priority: max_priority.parse().unwrap(),
+            has_all,
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, Getters)]
+pub struct RightsConstants {
+    #[get = "pub(crate)"]
+    blocks_per_cycle: i64,
+    #[get = "pub(crate)"]
+    preserved_cycles: i64,
+    #[get = "pub(crate)"]
+    nonce_length: i64,
+    #[get = "pub(crate)"]
+    time_between_blocks: Vec<i64>,
+    #[get = "pub(crate)"]
+    blocks_per_roll_snapshot: i64,
+}
+
+impl RightsConstants {
+    pub fn new(
+        blocks_per_cycle: i64,
+        preserved_cycles: i64,
+        nonce_length: i64,
+        time_between_blocks: Vec<String>,
+        blocks_per_roll_snapshot: i64
+    ) -> Self {
+
+        Self {
+            blocks_per_cycle,
+            preserved_cycles,
+            nonce_length,
+            time_between_blocks: time_between_blocks.into_iter().map(|x| x.parse().unwrap()).collect(),
+            blocks_per_roll_snapshot,
         }
     }
 }
 
 
-
 // cycle in which is given level
 // level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> i32 {
+pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> i64 {
+    // bad practice magic
+    // FIXME
     if blocks_per_cycle == 0 {
         (level - 1) / 2048
     } else {
@@ -251,7 +342,7 @@ pub fn cycle_from_level(level: i32, blocks_per_cycle: i32) -> i32 {
 // the position of the block in its cycle
 // level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1)
 // hence the blocks_per_cycle - 1 for last cycle block
-pub fn level_position(level:i32, blocks_per_cycle:i32) -> i32 {
+pub fn level_position(level:i64, blocks_per_cycle:i64) -> i64 {
     // set defaut blocks_per_cycle in case that 0 is given as parameter
     let blocks_per_cycle = if blocks_per_cycle == 0 {
         2048
@@ -285,11 +376,18 @@ pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
 // use_string_bytes: string converted to bytes, i.e. endorsing rights use b"level endorsement:"
 // level: block level
 // offset: for baking priority, for endorsing slot
-pub(crate) fn init_prng(state: RandomSeedState, nonce_size: usize, blocks_per_cycle: i32, use_string_bytes: &[u8], level: i32, offset: i32) -> Result<RandomSeedState, failure::Error> {
+pub(crate) fn init_prng(cycle_data: &CycleData, constants: &RightsConstants, use_string_bytes: &[u8], level: i32, offset: i32) -> Result<RandomSeedState, failure::Error> {
+    // a safe way to convert betwwen types is to use try_from
+    let nonce_size = usize::try_from(*constants.nonce_length())?;
+    let blocks_per_cycle = *constants.blocks_per_cycle();
+    let state = cycle_data.random_seed(); 
+    //println!("Random seed: {:?}", &state);
+    // println!("Constants: {:?}", constants);
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
-    // the position of the block in its cycle
-    let cycle_position = level_position(level, blocks_per_cycle);
+    // the position of the block in its cycle; has to be i32
+    let cycle_position: i32 = level_position(level.into(), blocks_per_cycle).try_into()?;
+    // println!("[PRNG] Cycle position: {} | Requested level: {} | Offset: {}", &cycle_position, &level, &offset);
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
     let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();

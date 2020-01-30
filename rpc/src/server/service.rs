@@ -39,7 +39,7 @@ enum Route {
     ChainsBlockId,
     ContextConstants,
     ChainsBlockIdBakingRights,
-    DevGetBlockEndorsingRights,
+    // DevGetBlockEndorsingRights,
     // -------------------------- //
     DevGetBlocks,
     DevGetBlockActions,
@@ -245,6 +245,7 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
 async fn baking_rights(chain_id: &str, block_id: &str, delegate: Option<String>, level: &Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
+    // list -> context, persistent, state odizolovat
     match fns::check_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, list, persistent_storage, state) {
         Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
         Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
@@ -275,7 +276,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", Route::ChainsBlockIdBakingRights);
-    routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
+    // routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
     routes.insert("/dev/chains/main/actions/contracts/:contract_id", Route::DevGetContractActions);
@@ -340,27 +341,27 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let context_level = find_param_value(&params, "id").unwrap();
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
         }
-        (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
-            let block_id = find_param_value(&params, "block_id").unwrap();
-            let level = find_query_value_as_string(&query, "level");
-            let cycle = find_query_value_as_string(&query, "cycle");
-            let delegate = find_query_value_as_string(&query, "delegate");
+        // (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
+        //     let block_id = find_param_value(&params, "block_id").unwrap();
+        //     let level = find_query_value_as_string(&query, "level");
+        //     let cycle = find_query_value_as_string(&query, "cycle");
+        //     let delegate = find_query_value_as_string(&query, "delegate");
 
-            // get RPC response and unpack it from RpcResponseData enum
-            match fns::check_and_get_endorsing_rights(block_id, level, cycle, delegate, context_storage, &persistent_storage, state) {
-                Ok(Some(RpcResponseData::EndorsingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
-                Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
-                Err(e) => { //pass error to response parser
-                    let res: Result<Option<String>, failure::Error> = Err(e);
-                    result_to_json_response(res, &log)
-                }
-                _ => { //ignore other options from enum
-                    warn!(&log, "Wrong RpcResponseData format");
-                    let res: Result<Option<String>, failure::Error> = Ok(None);
-                    result_to_json_response(res, &log)
-                }
-            }
-        }
+        //     // get RPC response and unpack it from RpcResponseData enum
+        //     match fns::check_and_get_endorsing_rights(block_id, level, cycle, delegate, context_storage, &persistent_storage, state) {
+        //         Ok(Some(RpcResponseData::EndorsingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
+        //         Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
+        //         Err(e) => { //pass error to response parser
+        //             let res: Result<Option<String>, failure::Error> = Err(e);
+        //             result_to_json_response(res, &log)
+        //         }
+        //         _ => { //ignore other options from enum
+        //             warn!(&log, "Wrong RpcResponseData format");
+        //             let res: Result<Option<String>, failure::Error> = Ok(None);
+        //             result_to_json_response(res, &log)
+        //         }
+        //     }
+        // }
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -427,6 +428,7 @@ fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, gene
 /// This submodule contains service functions implementation.
 mod fns {
     use std::collections::{HashMap, HashSet};
+    use std::convert::TryInto;
     use itertools::Itertools;
 
     use failure::{bail, format_err};
@@ -448,11 +450,14 @@ mod fns {
     
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
-    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng};
+    use crate::merge_slices;
+    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, BakingRightsParams, RightsConstants};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
     use crate::helpers::BakingRights;
+
+    type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -484,164 +489,226 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
+
     pub(crate) fn check_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: Option<String>, cycle: &Option<String>, max_priority: String, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         const NO_CYCLE_FLAG: i32 = -1;
 
-        let block_level = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+        // get the constants first!
+        let constants = get_and_parse_baking_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
+
+        let params: BakingRightsParams = parse_baking_url_params_and_arguments(chain_id, block_id, level, &delegate, &cycle, max_priority, has_all, &constants, list.clone(), persistent_storage, state)?;
+        
+        let cycle_data: CycleData = get_context_data_for_rights(params.clone(), constants.clone(), list)?;
+
+        get_baking_rights(&cycle_data, &params, &constants)
+    }
+
+    pub(crate) fn get_baking_rights(cycle_data: &CycleData, parameters: &BakingRightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
+        let mut baking_rights = Vec::<BakingRights>::new();
+
+        // TODO fix casting!
+        // let preserved_cycles = *constants.preserved_cycles() as i32;
+        let blocks_per_cycle = *constants.blocks_per_cycle();
+        let nonce_length = *constants.nonce_length();
+        let time_between_blocks = constants.time_between_blocks();
+
+        let timestamp = parameters.block_timestamp();
+        let block_level = parameters.block_level();
+
+        // iterate through the whole cycle if necessery
+        if let Some(cycle) = parameters.requested_cycle() {
+            let first_block = cycle * blocks_per_cycle + 1;
+            let last_block = first_block + blocks_per_cycle;
+            
+            for level in first_block..(last_block + 1) {
+                let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
+                let estimated_timestamp = timestamp + seconds_to_add;
+
+                // assign rolls goes here
+                let level_baking_rights = baking_rights_assign_rolls(&parameters, &constants, &cycle_data, level, estimated_timestamp)?;
+
+                baking_rights = merge_slices!(&baking_rights, &level_baking_rights);
+            }
+        } else {
+            let estimated_timestamp = timestamp + time_between_blocks[0];
+            let level = *parameters.requested_level();
+            println!("No cycle requested, getting rights for level {}", level);
+            // assign rolls goes here
+            baking_rights = baking_rights_assign_rolls(&parameters, &constants, &cycle_data, level, estimated_timestamp)?;
+        }
+
+        // if there is some delegate specified, retrive his priorities
+        if let Some(delegate) = parameters.requested_delegate() {
+            Ok(Some(RpcResponseData::BakingRights(baking_rights.into_iter().filter(|val| val.delegate().contains(delegate)).collect::<Vec<BakingRights>>())))
+        } else {
+            Ok(Some(RpcResponseData::BakingRights(baking_rights)))
+        }
+    }
+
+    pub(crate) fn baking_rights_assign_rolls(parameters: &BakingRightsParams, constants: &RightsConstants, cycle_data: &CycleData, level: i64, estimated_head_timestamp: i64) -> Result<Vec<BakingRights>, failure::Error>{
+        const BAKING_USE_STRING: &[u8] = b"level baking:";
+        
+        // as we assign the roles, the default behavior is to include only the top priority for the delegate
+        // we define a hashset to keep track of the delegates with priorities allready assigned
+        let mut baking_rights = Vec::<BakingRights>::new();
+        let mut assigned = HashSet::new();
+
+        let nonce_length = *constants.nonce_length();
+        let time_between_blocks = constants.time_between_blocks();
+
+        let max_priority = *parameters.max_priority();
+        let has_all = parameters.has_all();
+        let block_level = *parameters.block_level();
+
+        for priority in 0..max_priority {
+            // draw the rolls for the requested parameters
+            let delegate_to_assign;
+            let seed = cycle_data.random_seed().to_vec();
+            // TODO: priority can overflow in the ocaml code, do a    priority % i32::max_value()
+            let mut state = init_prng(&cycle_data, &constants, BAKING_USE_STRING, level.try_into()?, priority.try_into()?)?;
+
+            loop {
+                let (random_num, sequence) = get_pseudo_random_number(state, *cycle_data.last_roll())?;
+
+                if let Some(d) = cycle_data.rolls().get(&random_num) {
+                    delegate_to_assign = d;
+                    // println!("[baking-rights] rolled {} for prio {} - assigning: {}", &random_num, &priority, &delegate_to_assign);
+                    break;
+                } else {
+                    // println!("[baking-rights] no delegate assigned to roll {} | ROLLED ON PRIO: {}", random_num, priority);
+                    state = sequence;
+                }
+            }
+            
+            // if the delegate was assgined and the the has_all flag is not set skip this priority
+            if assigned.contains(&delegate_to_assign) && !has_all {
+                continue;
+            }
+
+            // we omit the estimated_time field if the block on the requested level is allready baked
+            if block_level <= level {
+                // let priority_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(priority as i64 * time_between_blocks[1])).unwrap());
+                let priority_timestamp = estimated_head_timestamp + (priority as i64 * time_between_blocks[1]);
+                baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(ts_to_rfc3339(priority_timestamp))));
+            } else {
+                baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), None))
+            }
+            assigned.insert(delegate_to_assign);
+        }
+        Ok(baking_rights)
+    }
+
+    pub(crate) fn parse_baking_url_params_and_arguments(
+        param_chain_id: &str,
+        param_block_id: &str,
+        param_level: &Option<String>,
+        param_delegate: &Option<String>,
+        param_cycle: &Option<String>,
+        param_max_priority: String,
+        param_has_all: bool,
+        rights_constants: &RightsConstants,
+        context_list: ContextList,
+        persistent_storage: &PersistentStorage,
+        state: RpcCollectedStateRef
+    ) -> Result<BakingRightsParams, failure::Error> {
+        // do the parsing here and return a struct
+
+        let block_level_usize = match get_level_by_block_id(param_block_id, context_list.clone(), persistent_storage)? {
             Some(val) => val,
             None => bail!("Block level not found")
         };
 
-        let constants = match get_context_constants(chain_id, block_id, list.clone(), persistent_storage)? {
-            Some(v) => v,
-            None => bail!("Cannot get protocol constants")
-        };
-        
-        // TODO: for the fixed ctxt DB
-        // let context = get_context_as_hashmap(block_level as usize, list.clone())?;
-        // let cycle_data: CycleData = get_staking_cycle_data(block_level as usize, block_level, &context, constants.clone())?;
+        // trying to maintain the consistent i64 in the baking rights
+        let block_level: i64 = block_level_usize.try_into()?;
 
-        let preserved_cycles = *constants.preserved_cycles() as i32;
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-        let current_cycle = cycle_from_level(block_level as i32, blocks_per_cycle);
 
-        let requested_cycle: i32 = match cycle {
-            Some(cycle) => {
-                let cycle_num: i32 = cycle.parse()?;
-                if (cycle_num - current_cycle).abs() <= preserved_cycles {
-                    cycle_num
-                } else {
-                    // TODO: return error
-                    // bail!("Cycle data not found in block: {}", block_id)
-                    let error_msg = RpcErrorMsg::new(
-                        "permanent".to_string(),
-                        "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
-                        None,
-                        None,
-                        Some((  std::cmp::max(0, current_cycle - preserved_cycles) ).to_string()),
-                        Some(cycle_num.to_string()),
-                        Some((current_cycle + preserved_cycles).to_string()),
-                    );
-                    return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
-                }
-            },
-            None => NO_CYCLE_FLAG,
-        };
+        let preserved_cycles = *rights_constants.preserved_cycles();
+        let blocks_per_cycle = *rights_constants.blocks_per_cycle();
+        // maybe refactor the whole blok_level as usize
+        let current_cycle = cycle_from_level(block_level, blocks_per_cycle);
 
-        // If no level is specified, we return the next block to be baked
-        let mut requested_level: i32 = match level {
-            // Some(level) => level.parse()?,
+        // Check the param_level, if there is a level specified validate it, if no set it to the next level to be baked
+        let mut requested_level: i64 = match param_level {
             Some(level) => {
                 let level_num = level.parse()?;
                 // check the bounds for the requested level (if it is in the previous/next preserved cycles)
-                let cycle_of_requested_level = cycle_from_level(level_num, blocks_per_cycle);
-                if ((cycle_of_requested_level - current_cycle).abs()) <= preserved_cycles {
-                    level_num
-                } else {
-                    // TODO: rework to return Error according the error
-                    // bail!("Cycle data for level {} not found in block: {}", level_num, block_id)
-                    let error_msg = RpcErrorMsg::new(
-                        "permanent".to_string(),
-                        "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
-                        None,
-                        None,
-                        Some(( std::cmp::max(0, current_cycle - preserved_cycles) ).to_string()),
-                        Some(cycle_of_requested_level.to_string()),
-                        Some((current_cycle + preserved_cycles).to_string()),
-                    );
-                    return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
-                }
+                validate_level(level_num, current_cycle, blocks_per_cycle, preserved_cycles)?
             },
-            None => block_level as i32 + 1,
+            None => i64::try_into(block_level + 1)?,
         };
 
-        // if a cycle is specified, we need to iterate through all of the levels in the cycle
-        let level_to_itarate_to = if requested_cycle >= 0 {
-            requested_level = requested_cycle * blocks_per_cycle + 1; // first block of the cycle
-            requested_level + blocks_per_cycle
-        } else {
-            requested_level
+        // if we have a requested cycle validate the cycle bounds, return error message if fails
+        let requested_cycle = match param_cycle {
+            Some(val) => Some(validate_cycle(val.parse()?, current_cycle, preserved_cycles)?),
+            None => None
         };
 
-        // get the requested delegate from the query, set to all if not specified
-        let requested_delegate = match delegate {
-            Some(delegate) => delegate,
-            None => "all".to_string() // all
-        };
+        let block_timestamp = get_block_header_timestamp(param_block_id, persistent_storage, state)?;
 
-        let block_timestamp = get_block_header_timestamp(block_id, persistent_storage, state)?;
-
-        let cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
-        let cycle_data: CycleData = get_cycle_data(block_level as i32, requested_level, cycle_of_requested_level, constants.clone(), list)?;
-
-        get_baking_rights(cycle_data, block_level as i32, block_timestamp, requested_level, &requested_delegate, level_to_itarate_to, max_priority.parse()?, has_all, constants)
+        Ok(BakingRightsParams::new(
+            param_chain_id.to_string(),
+            block_level,
+            block_timestamp,
+            param_delegate.clone(),
+            requested_cycle,
+            requested_level,
+            param_max_priority.parse()?,
+            param_has_all
+        ))
     }
 
-    pub(crate) fn get_baking_rights(cycle_data: CycleData, block_level: i32, timestamp: i64, requested_level: i32, requested_delegate: &str, level_to_itarate_to: i32, max_priority: i32, has_all: bool, constants: ContextConstants) -> Result<Option< RpcResponseData >, failure::Error> {
-        const BAKING_USE_STRING: &[u8] = b"level baking:";
-
-        let mut baking_rights = Vec::<BakingRights>::new();
-
-        // let preserved_cycles = *constants.preserved_cycles() as i32;
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-        let nonce_length = *constants.nonce_length() as i32;
-
-        // time between blocks values. String -> i64
-        let time_between_blocks: Vec<i64> = constants.time_between_blocks()
-            .into_iter()
-            .map(|x| x.parse().unwrap())
-            .collect();
-
-        // iterate through the whole cycle if necessery
-        for level in requested_level..(level_to_itarate_to + 1) {
-            // 30 is from the protocol constants
-            let seconds_to_add = (level - block_level).abs() * (time_between_blocks[0] as i32);
-            let estimated_timestamp = timestamp + seconds_to_add as i64;
-            
-            // as we assign the roles, the default behavior is to include only the top priority for the delegate
-            // we define a hashset to keep track of the delegates with priorities allready assigned
-            let mut assigned = HashSet::new();
-            for priority in 0..max_priority {
-                // draw the rolls for the requested parameters
-                let delegate_to_assign;
-                let seed = cycle_data.random_seed().to_vec();
-                let mut state = init_prng(seed, nonce_length as usize, blocks_per_cycle as i32, BAKING_USE_STRING, level, priority)?;
-
-                loop {
-                    let (random_num, sequence) = get_pseudo_random_number(state, *cycle_data.last_roll())?;
-
-                    if let Some(d) = cycle_data.rollers().get(&random_num) {
-                        delegate_to_assign = address_to_contract_id(d)?;
-                        println!("[baking-rights] rolled {} for prio {} - assigning: {}", &random_num, &priority, &delegate_to_assign);
-                        break;
-                    } else {
-                        println!("[baking-rights] no delegate assigned to roll {} | ROLLED ON PRIO: {}", random_num, priority);
-                        state = sequence;
-                    }
-                }
-                
-                // if the delegate was assgined and the the has_all flag is not set skip this priority
-                if assigned.contains(&delegate_to_assign) && !has_all {
-                    continue;
-                }
-
-                // we omit the estimated_time field if the block on the requested level is allready baked
-                if block_level <= level {
-                    // let priority_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(priority as i64 * time_between_blocks[1])).unwrap());
-                    let priority_timestamp = estimated_timestamp + (priority as i64 * time_between_blocks[1]);
-                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(ts_to_rfc3339(priority_timestamp))));
-                } else {
-                    baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), None))
-                }
-                assigned.insert(delegate_to_assign);
-            }
-        }
-        // if there is no delegate specified, retrive all the delegates 
-        if requested_delegate == "all" {
-            Ok(Some(RpcResponseData::BakingRights(baking_rights)))
+    pub(crate) fn validate_level(requested_level: i64, current_cycle: i64, blocks_per_cycle: i64, preserved_cycles: i64) -> Result<i64, failure::Error> {
+        let cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
+        if ((cycle_of_requested_level - current_cycle).abs()) <= preserved_cycles {
+            Ok(requested_level)
         } else {
-            Ok(Some(RpcResponseData::BakingRights(baking_rights.into_iter().filter(|val| val.delegate().contains(&requested_delegate)).collect::<Vec<BakingRights>>())))
+            // let error_msg = RpcErrorMsg::new(
+            //     "permanent".to_string(),
+            //     "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
+            //     None,
+            //     None,
+            //     Some(( std::cmp::max(0, current_cycle - preserved_cycles) ).to_string()),
+            //     Some(cycle_of_requested_level.to_string()),
+            //     Some((current_cycle + preserved_cycles).to_string()),
+            // );
+            // return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
+
+            // bail for now
+            bail!("Requested level out of bounds")
         }
+    }
+
+    pub(crate) fn validate_cycle(requested_cycle: i64, current_cycle: i64, preserved_cycles: i64) -> Result<i64, failure::Error> {
+        if (requested_cycle - current_cycle).abs() <= preserved_cycles {
+            Ok(requested_cycle)
+        } else {
+            // let error_msg = RpcErrorMsg::new(
+            //     "permanent".to_string(),
+            //     "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
+            //     None,
+            //     None,
+            //     Some((  std::cmp::max(0, current_cycle - preserved_cycles) ).to_string()),
+            //     Some(requested_cycle.to_string()),
+            //     Some((current_cycle + preserved_cycles).to_string()),
+            // );
+            // return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
+            bail!("Requested cycle out of bounds")
+        }
+    }
+
+    pub(crate) fn get_and_parse_baking_constants(chain_id: &str, block_id: &str, context_list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
+        let constants = match get_context_constants(chain_id, block_id, context_list.clone(), persistent_storage)? {
+            Some(v) => v,
+            None => bail!("Cannot get protocol constants")
+        };
+
+        Ok(RightsConstants::new(
+            *constants.blocks_per_cycle(),
+            *constants.preserved_cycles(),
+            *constants.nonce_length(),
+            constants.time_between_blocks().to_vec(),
+            *constants.blocks_per_roll_snapshot(),
+        ))
     }
 
     // TODO: for the fixed ctxt DB (Copy bug)
@@ -705,71 +772,71 @@ mod fns {
     // }
 
 
-    pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
-        // get level from block id
-        let block_level = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
-            l as i32
-        } else {
-            bail!("Level not found for block_id {}", block_id)
-        };
+    // pub(crate) fn check_and_get_endorsing_rights(block_id: &str, input_level: Option<String>, input_cycle: Option<String>, input_delegate: Option<String>, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+    //     // get level from block id
+    //     let block_level = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+    //         l as i32
+    //     } else {
+    //         bail!("Level not found for block_id {}", block_id)
+    //     };
 
-        // get the protocol constants from the context
-        // TODO: optimalization after merge: input block_level as optional parameter
-        let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage)? {
-            Some(v) => v,
-            None => bail!("Cannot get protocol constants")
-        };
-        let preserved_cycles = *constants.preserved_cycles() as i32;
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-        let current_cycle = cycle_from_level(block_level, blocks_per_cycle);
+    //     // get the protocol constants from the context
+    //     // TODO: optimalization after merge: input block_level as optional parameter
+    //     let constants = match get_context_constants("main", block_id, list.clone(), persistent_storage)? {
+    //         Some(v) => v,
+    //         None => bail!("Cannot get protocol constants")
+    //     };
+    //     let preserved_cycles = *constants.preserved_cycles() as i32;
+    //     let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
+    //     let current_cycle = cycle_from_level(block_level, blocks_per_cycle);
 
-        //check input cycle
-        let cycle: Option<i32> = if let Some(c) = input_cycle {
-            let requested_cycle:i32 = c.parse().expect("wrong format of cycle query parameter");
-            //check cycle interval
-            if (requested_cycle - current_cycle).abs() <= preserved_cycles {
-                Some(requested_cycle)
-            } else {
-                let error_msg = RpcErrorMsg::new(
-                    "permanent".to_string(),
-                    "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
-                    None,
-                    None,
-                    Some((  std::cmp::max(0, current_cycle-preserved_cycles) ).to_string()),
-                    Some(requested_cycle.to_string()),
-                    Some((current_cycle+preserved_cycles).to_string()),
-                );
-                return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
-            }
-        } else {
-            None
-        };
+    //     //check input cycle
+    //     let cycle: Option<i32> = if let Some(c) = input_cycle {
+    //         let requested_cycle:i32 = c.parse().expect("wrong format of cycle query parameter");
+    //         //check cycle interval
+    //         if (requested_cycle - current_cycle).abs() <= preserved_cycles {
+    //             Some(requested_cycle)
+    //         } else {
+    //             let error_msg = RpcErrorMsg::new(
+    //                 "permanent".to_string(),
+    //                 "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
+    //                 None,
+    //                 None,
+    //                 Some((  std::cmp::max(0, current_cycle-preserved_cycles) ).to_string()),
+    //                 Some(requested_cycle.to_string()),
+    //                 Some((current_cycle+preserved_cycles).to_string()),
+    //             );
+    //             return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
+    //         }
+    //     } else {
+    //         None
+    //     };
 
-        // check if level is in aloved cycle interval
-        let level: Option<i32> = if let Some(c) = input_level {
-            let requested_level:i32 = c.parse().expect("wrong format of cycle query parameter");
-            //check cycle interval
-            let requested_cycle = cycle_from_level(requested_level, blocks_per_cycle);
-            if (requested_cycle - current_cycle).abs() <= preserved_cycles {
-                Some(requested_level)
-            } else {
-                let error_msg = RpcErrorMsg::new(
-                    "permanent".to_string(),
-                    "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
-                    None,
-                    None,
-                    Some(( std::cmp::max(0, current_cycle-preserved_cycles) ).to_string()),
-                    Some(requested_cycle.to_string()),
-                    Some((current_cycle+preserved_cycles).to_string()),
-                );
-                return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
-            }
-        } else {
-            None
-        };
+    //     // check if level is in aloved cycle interval
+    //     let level: Option<i32> = if let Some(c) = input_level {
+    //         let requested_level:i32 = c.parse().expect("wrong format of cycle query parameter");
+    //         //check cycle interval
+    //         let requested_cycle = cycle_from_level(requested_level, blocks_per_cycle);
+    //         if (requested_cycle - current_cycle).abs() <= preserved_cycles {
+    //             Some(requested_level)
+    //         } else {
+    //             let error_msg = RpcErrorMsg::new(
+    //                 "permanent".to_string(),
+    //                 "proto.005-PsBabyM1.seed.unknown_seed".to_string(), //TODO generate key according protocol
+    //                 None,
+    //                 None,
+    //                 Some(( std::cmp::max(0, current_cycle-preserved_cycles) ).to_string()),
+    //                 Some(requested_cycle.to_string()),
+    //                 Some((current_cycle+preserved_cycles).to_string()),
+    //             );
+    //             return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
+    //         }
+    //     } else {
+    //         None
+    //     };
 
-        get_endorsing_rights(block_id, block_level, level, cycle, input_delegate, constants, list, persistent_storage, state)
-    }
+    //     get_endorsing_rights(block_id, block_level, level, cycle, input_delegate, constants, list, persistent_storage, state)
+    // }
 
     /// Get information about current head
     pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
@@ -886,18 +953,18 @@ mod fns {
     }
 
     // TODO: for the fixed ctxt DB
-    // pub(crate) fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<HashMap<String, Bucket<Vec<u8>>>, failure::Error> {
-    //     // get the whole context
-    //     let context = {
-    //         let reader = list.read().unwrap();
-    //         if let Ok(Some(ctx)) = reader.get(level) {
-    //             ctx
-    //         } else {
-    //             bail!("Context not found")
-    //         }
-    //     };
-    //     Ok(context)
-    // }
+    pub(crate) fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<ContextMap, failure::Error> {
+        // get the whole context
+        let context = {
+            let reader = list.read().unwrap();
+            if let Ok(Some(ctx)) = reader.get(level) {
+                ctx
+            } else {
+                bail!("Context not found")
+            }
+        };
+        Ok(context)
+    }
 
     // TODO: for fixed ctxt DB
     // pub(crate) fn get_context_snapshotted_rolls(cycle: i32, snapshot: i16, context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
@@ -927,273 +994,249 @@ mod fns {
 
     // remove this after the ctxt DB is fixed, replace with get_context_snapshotted_rolls
     #[inline]
-    fn get_context_rollers(level: usize, list: ContextList) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        let mut context_rollers: HashMap<i32, String> = HashMap::new();
-        let context_data = {
-            let reader = list.read().expect("mutex poisoning");
-            if let Ok(Some(c)) = reader.get(level) {
-                c
+    fn get_context_rolls(context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+        let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
+            // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
+            .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // REMOVE THIS
+            .collect();
+            
+        let mut roll_owners: HashMap<i32, String> = HashMap::new();
+
+        // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the pkh address (tz1...)
+        for (key, value) in data.into_iter() {
+            let key_split = key.split('/').collect::<Vec<_>>();
+            let roll_num = key_split[key_split.len() - 1];
+
+            // the values are public keys
+            if let Bucket::Exists(pk) = value {
+                let delegate = public_key_to_contract_id(pk)?;
+                //let delegate = hex::encode(pk);
+                roll_owners.insert(roll_num.parse().unwrap(), delegate);
             } else {
-                bail!("Context data not found")
-            }
-        };
-        let roll_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
-            .filter(|(k, _)| k.contains("roll_list"))
-            .collect();
-        // take smaller chunks of context data to optimalize key searching
-        let owner_data: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
-            .filter(|(k, _)| k.contains("data/rolls/owner"))
-            .collect();
-        let successor_data: HashMap<String, Bucket<Vec<u8>>> = context_data.into_iter()
-            .filter(|(k, _)| k.contains("/successor"))
-            .collect();
-
-        // println!("{:?}", roll_lists);
-
-        for roll_key in roll_lists.keys() {
-            // get public key address hash from key string
-            let public_key: String = match roll_key.split('/').collect::<Vec<_>>().get(9) {
-                Some(v) => v.to_string(),
-                None => bail!("public key not found in roll list key")
-            };
-
-            // get first roll_key
-            let mut roll = if let Some(Bucket::Exists(r)) = roll_lists.get(roll_key) {
-                println!("Found key: {}", address_to_contract_id(&public_key)?);
-                r
-            } else {
-                // bail!("empty roll_key")
-                continue;
-            };
-
-            // fill roll data and get all successors rolls
-            loop {
-                let roll_num = num_from_slice!(roll, 0, i32);
-                let owner_key = format!("data/rolls/owner/current/{}/{}/{}", roll[3], roll[2], roll_num);
-
-                if let Some(Bucket::Exists(_r)) = owner_data.get(&owner_key) {
-                    context_rollers.insert( roll_num.into(), public_key.clone() );
-                } else {
-                    // do nothing, still needs to check the successor
-                }
-                
-                // get next roll_key
-                let successor_key = format!("data/rolls/index/{}/{}/{}/successor", roll[3], roll[2], roll_num);
-                if let Some(Bucket::Exists(r)) = successor_data.get(&successor_key) {
-                    roll = r
-                } else {
-                    break;
-                }
+                continue;  // If the val is Deleted, we just skip it and go to the next iteration
             }
         }
-        Ok(Some(context_rollers))
+        Ok(Some(roll_owners))
     }
 
-    #[inline]
-    fn get_endorsing_rights(block_id: &str, block_level: i32, input_level: Option<i32>, cycle: Option<i32>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+    // #[inline]
+    // fn get_endorsing_rights(block_id: &str, block_level: i32, input_level: Option<i32>, cycle: Option<i32>, input_delegate: Option<String>, constants: ContextConstants, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
-        // get requested level or use block head level+1
-        let mut is_requested_level = false;
-        // output_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
-        // this level is inserted to final endorsing rights
-        let mut output_level: i32;
-        // first check if level was in query
-        let mut requested_level: i32 = if let Some(level) = input_level { 
-            is_requested_level=true;
-            output_level = level;
-            if level < 1 {
-                1
-            } else {
-                level
-            }
-        } else { //if level not specified the get it by block
-            output_level = block_level;
-            block_level
-        };
+    //     // get requested level or use block head level+1
+    //     let mut is_requested_level = false;
+    //     // output_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
+    //     // this level is inserted to final endorsing rights
+    //     let mut output_level: i32;
+    //     // first check if level was in query
+    //     let mut requested_level: i32 = if let Some(level) = input_level { 
+    //         is_requested_level=true;
+    //         output_level = level;
+    //         if level < 1 {
+    //             1
+    //         } else {
+    //             level
+    //         }
+    //     } else { //if level not specified the get it by block
+    //         output_level = block_level;
+    //         block_level
+    //     };
 
-        //assign level iterator and assign requested level to correct cycle
-        let mut is_cycle = false;
-        let cycle_of_requested_level;
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-        let level_iterator = if let Some(c) = cycle {
-            is_cycle = true;
-            is_requested_level = true;
-            //first and last level of cycle
-            //asign requested level to first level of the cycle to correctly compute snapshot
-            requested_level = c * blocks_per_cycle + 1;
-            cycle_of_requested_level = c;
-            requested_level .. requested_level + blocks_per_cycle
-        } else {
-            cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
-            requested_level .. requested_level+1
-        };
-        println!("begin: block_id:{} level:{} cycle:{} is_cycle:{} requested_level:{}", block_id, requested_level, cycle_of_requested_level, is_cycle, is_requested_level);
+    //     //assign level iterator and assign requested level to correct cycle
+    //     let mut is_cycle = false;
+    //     let cycle_of_requested_level;
+    //     let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
+    //     let level_iterator = if let Some(c) = cycle {
+    //         is_cycle = true;
+    //         is_requested_level = true;
+    //         //first and last level of cycle
+    //         //asign requested level to first level of the cycle to correctly compute snapshot
+    //         requested_level = c * blocks_per_cycle + 1;
+    //         cycle_of_requested_level = c;
+    //         requested_level .. requested_level + blocks_per_cycle
+    //     } else {
+    //         cycle_of_requested_level = cycle_from_level(requested_level, blocks_per_cycle);
+    //         requested_level .. requested_level+1
+    //     };
+    //     println!("begin: block_id:{} level:{} cycle:{} is_cycle:{} requested_level:{}", block_id, requested_level, cycle_of_requested_level, is_cycle, is_requested_level);
         
-        let cycle_data = match get_cycle_data(block_level, requested_level, cycle_of_requested_level, constants.clone(), list) {
-            Ok(d) => d,
-            Err(e) => {
-                // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
-                let missing_key = json!(["cycle",format!("{}", cycle_of_requested_level),format!("{}", e)]);
-                let error_msg = RpcErrorMsg::new(
-                    "permanent".to_string(),
-                    "proto.005-PsBabyM1.context.storage_error".to_string(), //TODO generate key according protocol
-                    Some(missing_key),
-                    Some("get".to_string()),
-                    None,
-                    None,
-                    None
-                );
-                return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
-            }
-        };
+    //     let cycle_data = match get_context_data_for_rights(block_level, requested_level, cycle_of_requested_level, constants.clone(), list) {
+    //         Ok(d) => d,
+    //         Err(e) => {
+    //             // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
+    //             let missing_key = json!(["cycle",format!("{}", cycle_of_requested_level),format!("{}", e)]);
+    //             let error_msg = RpcErrorMsg::new(
+    //                 "permanent".to_string(),
+    //                 "proto.005-PsBabyM1.context.storage_error".to_string(), //TODO generate key according protocol
+    //                 Some(missing_key),
+    //                 Some("get".to_string()),
+    //                 None,
+    //                 None,
+    //                 None
+    //             );
+    //             return Ok(Some(RpcResponseData::ErrorMsg(error_msg)))
+    //         }
+    //     };
 
-        // prepare timestamp computations
-        let time_between_blocks: Vec<i64> = constants.time_between_blocks()
-            .into_iter()
-            .map(|x| x.parse().unwrap())
-            .collect();
-        // optimalization: if do not need get block header timestamp then do not get it
-        let block_timestamp: i64 = if is_cycle || block_level <= requested_level {
-            //get block timestamp by block_id un raw epoch format
-            get_block_header_timestamp(block_id, &persistent_storage, state)?
-        } else {
-            0 //dummy value, never used
-        };
+    //     // prepare timestamp computations
+    //     let time_between_blocks: Vec<i64> = constants.time_between_blocks()
+    //         .into_iter()
+    //         .map(|x| x.parse().unwrap())
+    //         .collect();
+    //     // optimalization: if do not need get block header timestamp then do not get it
+    //     let block_timestamp: i64 = if is_cycle || block_level <= requested_level {
+    //         //get block timestamp by block_id un raw epoch format
+    //         get_block_header_timestamp(block_id, &persistent_storage, state)?
+    //     } else {
+    //         0 //dummy value, never used
+    //     };
 
-        // prepare filter by delegate
-        let mut check_delegates = false;
-        let delegate_filter = if let Some(d) = input_delegate {
-            check_delegates = true;
-            d
-        } else {
-            "".to_string() //dummy value, never used
-        };
+    //     // prepare filter by delegate
+    //     let mut check_delegates = false;
+    //     let delegate_filter = if let Some(d) = input_delegate {
+    //         check_delegates = true;
+    //         d
+    //     } else {
+    //         "".to_string() //dummy value, never used
+    //     };
 
-        // byte string for PRNG
-        const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
-        let mut endorsing_rights = Vec::<EndorsingRight>::new();
-        // when query param cycle is specified then iterate over all cycle levels, else only given level
-        for level in level_iterator {
-            let timestamp_level = if is_requested_level {
-                level - 1
-            } else {
-                level
-            };
-            //check if estimated time is computed and convert from raw epoch time to rfc3339 format
-            let estimated_time: Option<String> = if block_level <= timestamp_level {
-                let est_timestamp = ((timestamp_level - block_level).abs() as i64 * time_between_blocks[0]) + block_timestamp;
-                Some(ts_to_rfc3339(est_timestamp))
-            } else {
-                None
-            };
+    //     // byte string for PRNG
+    //     const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
+    //     let mut endorsing_rights = Vec::<EndorsingRight>::new();
+    //     // when query param cycle is specified then iterate over all cycle levels, else only given level
+    //     for level in level_iterator {
+    //         let timestamp_level = if is_requested_level {
+    //             level - 1
+    //         } else {
+    //             level
+    //         };
+    //         //check if estimated time is computed and convert from raw epoch time to rfc3339 format
+    //         let estimated_time: Option<String> = if block_level <= timestamp_level {
+    //             let est_timestamp = ((timestamp_level - block_level).abs() as i64 * time_between_blocks[0]) + block_timestamp;
+    //             Some(ts_to_rfc3339(est_timestamp))
+    //         } else {
+    //             None
+    //         };
 
-            // endorsement_hash is needed to group all slots by delegate
-            let mut endorsement_hash: HashMap<String, Vec<u8>> = HashMap::new();
-            let context_rollers = cycle_data.rollers();
-            let random_seed = cycle_data.random_seed().to_vec();
-            for endorser_slot in (0 .. *constants.endorsers_per_block() as u8).rev() {
-                // generate PRNG per endorsement slot and take delegates by roll number from context_rollers
-                // if roll number is not found then reroll with new state till roll nuber is found in context_rollers
-                let mut state = init_prng(random_seed.clone(), *constants.nonce_length() as usize, blocks_per_cycle, ENDORSEMENT_USE_STRING, level, endorser_slot as i32)?;
-                loop {
-                    let (random_num, sequence) = get_pseudo_random_number(state, *cycle_data.last_roll())?;
+    //         // endorsement_hash is needed to group all slots by delegate
+    //         let mut endorsement_hash: HashMap<String, Vec<u8>> = HashMap::new();
+    //         let context_rolls = cycle_data.rolls();
+    //         let random_seed = cycle_data.random_seed().to_vec();
+    //         for endorser_slot in (0 .. *constants.endorsers_per_block() as u8).rev() {
+    //             // generate PRNG per endorsement slot and take delegates by roll number from context_rolls
+    //             // if roll number is not found then reroll with new state till roll nuber is found in context_rolls
+    //             let mut state = init_prng(random_seed.clone(), *constants.nonce_length() as usize, blocks_per_cycle, ENDORSEMENT_USE_STRING, level, endorser_slot as i32)?;
+    //             loop {
+    //                 let (random_num, sequence) = get_pseudo_random_number(state, *cycle_data.last_roll())?;
 
-                    if let Some(delegate) = context_rollers.get(&random_num) {
-                        // collect all slots for each delegate
-                        let slots = endorsement_hash.entry(delegate.clone()).or_insert( Vec::new() );
-                        slots.push(endorser_slot);
-                        break;
-                    } else {
-                        state = sequence;
-                        // continue;
-                    }
-                }
-            }
+    //                 if let Some(delegate) = context_rolls.get(&random_num) {
+    //                     // collect all slots for each delegate
+    //                     let slots = endorsement_hash.entry(delegate.clone()).or_insert( Vec::new() );
+    //                     slots.push(endorser_slot);
+    //                     break;
+    //                 } else {
+    //                     state = sequence;
+    //                     // continue;
+    //                 }
+    //             }
+    //         }
 
-            if is_cycle {
-                output_level = level;
-            }
-            // order descending by delegate address hex byte string
-            for delegate in endorsement_hash.keys().sorted().rev() {
-                // now is the time to convert delegate address to contract it so we do not convert all addresses only these we need to
-                let delegate_contract_id  = address_to_contract_id(delegate)?;
-                // filter delegates
-                if check_delegates && delegate_contract_id != delegate_filter {
-                    continue
-                }
-                endorsing_rights.push(EndorsingRight::new(output_level, delegate_contract_id, endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
-            }
-        }
+    //         if is_cycle {
+    //             output_level = level;
+    //         }
+    //         // order descending by delegate address hex byte string
+    //         for delegate in endorsement_hash.keys().sorted().rev() {
+    //             // now is the time to convert delegate address to contract it so we do not convert all addresses only these we need to
+    //             let delegate_contract_id  = address_to_contract_id(delegate)?;
+    //             // filter delegates
+    //             if check_delegates && delegate_contract_id != delegate_filter {
+    //                 continue
+    //             }
+    //             endorsing_rights.push(EndorsingRight::new(output_level, delegate_contract_id, endorsement_hash.get(delegate).unwrap().clone(), estimated_time.clone()))
+    //         }
+    //     }
 
-        Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
-    }
+    //     Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
+    // }
 
-    // get cycle data roll_snapshot, random_seed, last_roll and rollers from context list
+    // TODO-FIRST-THING: pass the 2 hashmaps instead of the ContextList
+    // get cycle data roll_snapshot, random_seed, last_roll and rolls from context list
     // for now there are computed levels to get these data for each key, when ctx list will be fixed these keys should be available in requested_level
     #[inline]
-    fn get_cycle_data(block_level: i32, requested_level: i32, cycle: i32, constants: ContextConstants, list: ContextList) -> Result<CycleData, failure::Error> {
+    fn get_context_data_for_rights(parameters: BakingRightsParams, constants: RightsConstants, list: ContextList) -> Result<CycleData, failure::Error> {
         // prepare constants
-        let blocks_per_cycle = *constants.blocks_per_cycle() as i32;
-        let preserved_cycles = *constants.preserved_cycles() as i32;
-        let blocks_per_roll_snapshot = *constants.blocks_per_roll_snapshot() as i32;
+        let blocks_per_cycle = *constants.blocks_per_cycle();
+        let preserved_cycles = *constants.preserved_cycles();
+        let blocks_per_roll_snapshot = *constants.blocks_per_roll_snapshot();
+        
+        let block_level = *parameters.block_level();
+        let requested_level = *parameters.requested_level();
+
+        // let cycle = cycle_from_level(requested_level, blocks_per_cycle);
+        // TODO: refactor this
+        let requested_cycle;
+        if let Some(cycle) = *parameters.requested_cycle() {
+            requested_cycle = cycle;
+        } else {
+            requested_cycle = cycle_from_level(requested_level, blocks_per_cycle);
+        };
+
+        let current_context = get_context_as_hashmap(block_level as usize, list.clone())?;
         
         // get index of roll snapshot
         let roll_snapshot: i16 = {
-            let snapshot_key = format!("data/cycle/{}/roll_snapshot", cycle);
-            // roll snapshot and random seed is set in last block of requested - preserved_cycles cycle
+            let snapshot_key = format!("data/cycle/{}/roll_snapshot", requested_cycle);
             println!("get snapshot_key: level:{} ctx key:{}", block_level, snapshot_key);
-            let reader = list.read().expect("mutex poisoning");
-            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &snapshot_key)? {
+            if let Some(Bucket::Exists(data)) = current_context.get(&snapshot_key) {
                 num_from_slice!(data, 0, i16)
             } else { // key not found
                 return Err(format_err!("roll_snapshot"))
             }
         };
 
-        let snapshot_level;
-        if cycle < preserved_cycles+2 {
-            snapshot_level = requested_level;
-        } else {
-            let cycle_of_rolls = cycle - preserved_cycles - 2;
-            // last_roll is set in last block of snapshot
-            // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
-            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i32) * blocks_per_roll_snapshot);
-        };
-        // Snapshots of last_roll are listed from 0 same as roll_snapshot.
-        let last_roll_key = format!("data/cycle/{}/last_roll/{}", cycle, roll_snapshot);
-        println!("get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
-        let last_roll = {
-            let reader = list.read().expect("mutex poisoning");
-            if let Some(Bucket::Exists(data)) = reader.get_key(snapshot_level as usize, &last_roll_key)? {
-                num_from_slice!(data, 0, i32)
-            } else { // key not found
-                return Err(format_err!("last_roll"))
-            }
-        };
-
-        let random_seed_key = format!("data/cycle/{}/random_seed", cycle);
+        let random_seed_key = format!("data/cycle/{}/random_seed", requested_cycle);
         println!("get random_seed: level:{} ctx key:{}", block_level, random_seed_key);
         let random_seed = {
-            let reader = list.read().expect("mutex poisoning");
-            if let Some(Bucket::Exists(data)) = reader.get_key(block_level as usize, &random_seed_key)? {
+            if let Some(Bucket::Exists(data)) = current_context.get(&random_seed_key) {
                 data
             } else { // key not found
                 return Err(format_err!("random_seed"))
             }
         };
-        
-        // get list of rollers from context list
-        println!("get_context_rollers: level:{}", snapshot_level);
-        let context_rollers = if let Some(rollers) = get_context_rollers(snapshot_level as usize, list.clone())? {
-            rollers
+
+        let snapshot_level;
+        if requested_cycle < preserved_cycles+2 {
+            snapshot_level = requested_level;
         } else {
-            return Err(format_err!("rollers"))
+            let cycle_of_rolls = requested_cycle - preserved_cycles - 2;
+            // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
+            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot);
+        };
+
+        let snapshot_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
+
+        // Snapshots of last_roll are listed from 0 same as roll_snapshot.
+        let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
+        println!("get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
+        let last_roll = {
+            if let Some(Bucket::Exists(data)) = snapshot_context.get(&last_roll_key) {
+                num_from_slice!(data, 0, i32)
+            } else { // key not found
+                return Err(format_err!("last_roll"))
+            }
+        };
+        
+        // get list of rolls from context list
+        println!("get_context_rolls: level:{}", snapshot_level);
+        let context_rolls = if let Some(rolls) = get_context_rolls(snapshot_context)? {
+            rolls
+        } else {
+            return Err(format_err!("rolls"))
         };
 
         Ok(CycleData::new(
-            random_seed,
+            random_seed.to_vec(),
             last_roll,
-            context_rollers
+            context_rolls
         ))
     }
 
@@ -1273,33 +1316,32 @@ mod fns {
         Ok(contract_address)
     }
 
-    // TODO: for the fixed ctxt DB
-    // Gets the contract_id from the public_key 
-    // #[inline]
-    // fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
-    //     // 1 byte tag and - 32 bytes for ed25519 (tz1)
-    //     //                - 33 bytes for secp256k1 (tz2) and p256 (tz3)
-    //     if pk.len() == 33 || pk.len() == 34 {
-    //         let tag = pk[0];
-    //         let hash = blake2b::digest_160(&pk[1..]);
+    // returns the contract_id from the public_key 
+    #[inline]
+    fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
+        // 1 byte tag and - 32 bytes for ed25519 (tz1)
+        //                - 33 bytes for secp256k1 (tz2) and p256 (tz3)
+        if pk.len() == 33 || pk.len() == 34 {
+            let tag = pk[0];
+            let hash = blake2b::digest_160(&pk[1..]);
 
-    //         let contract_id = match tag {
-    //             0 => {
-    //                 HashType::ContractTz1Hash.bytes_to_string(&hash)
-    //             }
-    //             1 => {
-    //                 HashType::ContractTz2Hash.bytes_to_string(&hash)
-    //             }
-    //             2 => {
-    //                 HashType::ContractTz3Hash.bytes_to_string(&hash)
-    //             }
-    //             _ => bail!("Invalid public key")
-    //         };
-    //         Ok(contract_id)
-    //     } else {
-    //         bail!("Invalid public key")
-    //     }
-    // }
+            let contract_id = match tag {
+                0 => {
+                    HashType::ContractTz1Hash.bytes_to_string(&hash)
+                }
+                1 => {
+                    HashType::ContractTz2Hash.bytes_to_string(&hash)
+                }
+                2 => {
+                    HashType::ContractTz3Hash.bytes_to_string(&hash)
+                }
+                _ => bail!("Invalid public key")
+            };
+            Ok(contract_id)
+        } else {
+            bail!("Invalid public key")
+        }
+    }
 
     #[inline]
     fn chain_id_to_string(chain_id: &ChainId) -> String {
