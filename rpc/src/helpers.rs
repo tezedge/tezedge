@@ -37,6 +37,27 @@ pub struct FullBlockInfo {
 }
 
 #[derive(Serialize, Debug, Clone)]
+/// Object containing information to recreate the block header information
+pub struct BlockHeaderInfo {
+    pub hash: String,
+    pub chain_id: String,
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: String,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: String,
+    pub fitness: Vec<String>,
+    pub context: String,
+    pub protocol: String,
+    pub signature: String,
+    pub priority: i64,
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // pub seed_nonce_hash: Option<String>,
+    pub proof_of_work_nonce: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
 /// Object containing all block header information
 pub struct InnerBlockHeader {
     pub level: i32,
@@ -78,6 +99,46 @@ impl FullBlockInfo {
             metadata: serde_json::from_str(json_data.block_header_proto_metadata_json()).unwrap_or_default(),
             operations: serde_json::from_str(json_data.operations_proto_metadata_json()).unwrap_or_default(),
         }
+    }
+}
+
+impl BlockHeaderInfo {
+    pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
+        let header: &BlockHeader = &val.header().header;
+        let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
+        let timestamp = ts_to_rfc3339(header.timestamp());
+        let operations_hash = HashType::OperationListListHash.bytes_to_string(header.operations_hash());
+        let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
+        let context = HashType::ContextHash.bytes_to_string(header.context());
+        let hash = HashType::BlockHash.bytes_to_string(&val.header().hash);
+        let header_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_json()).unwrap_or_default();
+        let signature = header_data.get("signature").unwrap();
+        let priority = header_data.get("priority").unwrap();
+        let proof_of_work_nonce = header_data.get("proof_of_work_nonce").unwrap();
+        // let seed_nonce_hash = header_data.get("seed_nonce_hash").unwrap().as_str();
+        let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
+        let protocol = proto_data.get("protocol").unwrap();
+
+        println!("{:?}", val );
+
+        Self {
+            hash,
+            chain_id: chain_id.into(),
+            level: header.level(),
+            proto: header.proto(),
+            predecessor,
+            timestamp,
+            validation_pass: header.validation_pass(),
+            operations_hash,
+            fitness,
+            context,
+            protocol: protocol.as_str().unwrap().to_string(),
+            signature: signature.as_str().unwrap().to_string(),
+            priority: priority.as_i64().unwrap(),
+            //seed_nonce_hash,
+            proof_of_work_nonce: proof_of_work_nonce.as_str().unwrap().to_string(),
+        }
+
     }
 }
 
