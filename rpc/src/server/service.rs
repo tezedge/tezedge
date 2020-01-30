@@ -520,7 +520,7 @@ mod fns {
             let first_block = cycle * blocks_per_cycle + 1;
             let last_block = first_block + blocks_per_cycle;
             
-            for level in first_block..(last_block + 1) {
+            for level in first_block..last_block {
                 let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
                 let estimated_timestamp = timestamp + seconds_to_add;
 
@@ -530,8 +530,9 @@ mod fns {
                 baking_rights = merge_slices!(&baking_rights, &level_baking_rights);
             }
         } else {
-            let estimated_timestamp = timestamp + time_between_blocks[0];
             let level = *parameters.requested_level();
+            let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
+            let estimated_timestamp = timestamp + seconds_to_add;
             println!("No cycle requested, getting rights for level {}", level);
             // assign rolls goes here
             baking_rights = baking_rights_assign_rolls(&parameters, &constants, &cycle_data, level, estimated_timestamp)?;
@@ -586,7 +587,7 @@ mod fns {
             }
 
             // we omit the estimated_time field if the block on the requested level is allready baked
-            if block_level <= level {
+            if block_level < level {
                 // let priority_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(priority as i64 * time_between_blocks[1])).unwrap());
                 let priority_timestamp = estimated_head_timestamp + (priority as i64 * time_between_blocks[1]);
                 baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(ts_to_rfc3339(priority_timestamp))));
@@ -1209,25 +1210,27 @@ mod fns {
         } else {
             let cycle_of_rolls = requested_cycle - preserved_cycles - 2;
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
-            snapshot_level = (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot);
+            snapshot_level = ((cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot) - 1);
         };
 
-        let snapshot_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
+        // let snapshot_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
 
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
-        println!("get last_roll: level:{} ctx key:{}", snapshot_level, last_roll_key);
+        println!("get last_roll: level:{} ctx key:{}", block_level, last_roll_key);
         let last_roll = {
-            if let Some(Bucket::Exists(data)) = snapshot_context.get(&last_roll_key) {
+            if let Some(Bucket::Exists(data)) = current_context.get(&last_roll_key) {
                 num_from_slice!(data, 0, i32)
             } else { // key not found
                 return Err(format_err!("last_roll"))
             }
         };
         
+        let roll_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
+
         // get list of rolls from context list
         println!("get_context_rolls: level:{}", snapshot_level);
-        let context_rolls = if let Some(rolls) = get_context_rolls(snapshot_context)? {
+        let context_rolls = if let Some(rolls) = get_context_rolls(roll_context)? {
             rolls
         } else {
             return Err(format_err!("rolls"))
