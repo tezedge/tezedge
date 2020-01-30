@@ -461,7 +461,7 @@ mod fns {
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
     use crate::merge_slices;
-    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, BakingRightsParams, RightsConstants, EndorserSlots};
+    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, RpcErrorMsg, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, RightsParams, RightsConstants, EndorserSlots};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -506,14 +506,14 @@ mod fns {
         // get the constants first!
         let constants = get_and_parse_baking_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
 
-        let params: BakingRightsParams = parse_baking_url_params_and_arguments(chain_id, block_id, level, delegate, cycle, max_priority, has_all, &constants, list.clone(), persistent_storage, state)?;
+        let params: RightsParams = parse_rights_url_params_and_arguments(chain_id, block_id, level, delegate, cycle, max_priority, has_all, &constants, list.clone(), persistent_storage, state, true)?;
         
         let cycle_data: CycleData = get_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
         get_baking_rights(&cycle_data, &params, &constants)
     }
 
-    pub(crate) fn get_baking_rights(cycle_data: &CycleData, parameters: &BakingRightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
+    pub(crate) fn get_baking_rights(cycle_data: &CycleData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
         let mut baking_rights = Vec::<BakingRights>::new();
 
         // TODO fix casting!
@@ -555,7 +555,7 @@ mod fns {
         }
     }
 
-    pub(crate) fn baking_rights_assign_rolls(parameters: &BakingRightsParams, constants: &RightsConstants, cycle_data: &CycleData, level: i64, estimated_head_timestamp: i64) -> Result<Vec<BakingRights>, failure::Error>{
+    pub(crate) fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, cycle_data: &CycleData, level: i64, estimated_head_timestamp: i64) -> Result<Vec<BakingRights>, failure::Error>{
         const BAKING_USE_STRING: &[u8] = b"level baking:";
         
         // as we assign the roles, the default behavior is to include only the top priority for the delegate
@@ -608,7 +608,7 @@ mod fns {
         Ok(baking_rights)
     }
 
-    pub(crate) fn parse_baking_url_params_and_arguments(
+    pub(crate) fn parse_rights_url_params_and_arguments(
         param_chain_id: &str,
         param_block_id: &str,
         param_level: &Option<String>,
@@ -619,8 +619,9 @@ mod fns {
         rights_constants: &RightsConstants,
         context_list: ContextList,
         persistent_storage: &PersistentStorage,
-        state: RpcCollectedStateRef
-    ) -> Result<BakingRightsParams, failure::Error> {
+        state: RpcCollectedStateRef,
+        is_baking_rights: bool
+    ) -> Result<RightsParams, failure::Error> {
         // do the parsing here and return a struct
 
         let block_level_usize = match get_level_by_block_id(param_block_id, context_list.clone(), persistent_storage)? {
@@ -641,6 +642,8 @@ mod fns {
         // and also when block_level is used for enndorsing rights
         // this level is used in final endorsing rights output
         let mut display_level: i64 = block_level;
+        // level for timestamp computation, endorsing rights only
+        let mut timestamp_level:i64 = block_level;
         // Check the param_level, if there is a level specified validate it, if no set it to the next level to be baked
         let requested_level: i64 = match param_level {
             Some(level) => {
@@ -648,9 +651,14 @@ mod fns {
                 // check the bounds for the requested level (if it is in the previous/next preserved cycles)
                 validate_cycle(cycle_from_level(level, blocks_per_cycle), current_cycle, preserved_cycles)?;
                 display_level = level;
+                timestamp_level = level-1;
                 get_valid_level(level)
             },
-            None => i64::try_into(block_level + 1)?
+            None => if is_baking_rights {
+                    block_level + 1
+                } else {
+                    block_level
+                }
         };
 
 
@@ -668,14 +676,15 @@ mod fns {
 
         let block_timestamp = get_block_header_timestamp(param_block_id, persistent_storage, state)?;
 
-        Ok(BakingRightsParams::new(
+        Ok(RightsParams::new(
             param_chain_id.to_string(),
             block_level,
             block_timestamp,
             param_delegate.clone(),
             requested_cycle,
             requested_level,
-            display_level,
+            display_level, // endorsing rights only
+            timestamp_level, // endorsing rights only
             max_priority,
             param_has_all
         ))
@@ -791,7 +800,7 @@ mod fns {
         // get the constants first!
         let constants = get_and_parse_baking_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
 
-        let params: BakingRightsParams = parse_baking_url_params_and_arguments(chain_id, block_id, level, delegate, cycle, &None, has_all, &constants, list.clone(), persistent_storage, state)?;
+        let params: RightsParams = parse_rights_url_params_and_arguments(chain_id, block_id, level, delegate, cycle, &None, has_all, &constants, list.clone(), persistent_storage, state, false)?;
         
         let cycle_data: CycleData = get_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
@@ -799,7 +808,7 @@ mod fns {
     }
 
     #[inline]
-    fn get_endorsing_rights(cycle_data: &CycleData, parameters: &BakingRightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
+    fn get_endorsing_rights(cycle_data: &CycleData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
         
          // prepare filter by delegate
         let mut check_delegates = false;
@@ -815,10 +824,11 @@ mod fns {
         let blocks_per_cycle = *constants.blocks_per_cycle();
 
         // define parameters
-        let requested_level = parameters.requested_level();
+        let requested_level = *parameters.requested_level();
         let display_level = *parameters.display_level();
-        let block_level = parameters.block_level();
-        let block_timestamp = parameters.block_timestamp();
+        let block_level = *parameters.block_level();
+        let timestamp_level = *parameters.timestamp_level();
+        let block_timestamp = *parameters.block_timestamp();
 
         // define helper and output variables
         let mut endorsing_rights = Vec::<EndorsingRight>::new();
@@ -831,29 +841,29 @@ mod fns {
             let last_block_level = first_block_level + blocks_per_cycle;
             first_block_level..last_block_level
         } else {
-            *parameters.requested_level()..*parameters.requested_level()+1
+            requested_level..requested_level+1
         };
 
         for level in level_iterator {
             //check if estimated time is computed and convert from raw epoch time to rfc3339 format
-            let estimated_time: Option<String> = if block_level < requested_level {
-                let est_timestamp = ((requested_level - block_level).abs() as i64 * time_between_blocks[0]) + block_timestamp;
+            let timestamp_level = if is_cycle {
+                level-1
+            } else {
+                timestamp_level
+            };
+
+            let estimated_time: Option<String> = if block_level <= timestamp_level {
+                let est_timestamp = ((timestamp_level - block_level).abs() as i64 * time_between_blocks[0]) + block_timestamp;
                 Some(ts_to_rfc3339(est_timestamp))
             } else {
                 None
             };
 
-            let prng_level = if is_cycle {
-                level
-            } else {
-                get_valid_level(display_level)
-            };
-
             // endorsers_slots is needed to group all slots by delegate
-            let endorsers_slots = get_endorsers_slots(&constants, &cycle_data, prng_level)?;
+            let endorsers_slots = get_endorsers_slots(&constants, &cycle_data, level)?;
 
             // define display level for EndorsingRight structure
-            let output_level = if is_cycle {
+            let display_level = if is_cycle {
                 level
             } else {
                 display_level
@@ -867,10 +877,11 @@ mod fns {
                     continue
                 }
                 endorsing_rights.push(EndorsingRight::new(
-                        output_level, 
-                        delegate_contract_id, 
-                        endorsers_slots.get(delegate).unwrap().slots().clone(), 
-                        estimated_time.clone()))
+                    display_level, 
+                    delegate_contract_id, 
+                    endorsers_slots.get(delegate).unwrap().slots().clone(), 
+                    estimated_time.clone())
+                )
             }
         }
 
@@ -902,7 +913,6 @@ mod fns {
                 }
             }
         }
-        println!("endorsers_slots{:?}",endorsers_slots);
         Ok(endorsers_slots)
     }
 
@@ -1091,7 +1101,7 @@ mod fns {
     // get cycle data roll_snapshot, random_seed, last_roll and rolls from context list
     // for now there are computed levels to get these data for each key, when ctx list will be fixed these keys should be available in requested_level
     #[inline]
-    fn get_context_data_for_rights(parameters: BakingRightsParams, constants: RightsConstants, list: ContextList) -> Result<CycleData, failure::Error> {
+    fn get_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, list: ContextList) -> Result<CycleData, failure::Error> {
         // prepare constants
         let blocks_per_cycle = *constants.blocks_per_cycle();
         let preserved_cycles = *constants.preserved_cycles();

@@ -242,7 +242,7 @@ impl CycleData {
 }
 
 #[derive(Serialize, Debug, Clone, Getters)]
-pub struct BakingRightsParams {
+pub struct RightsParams {
     // chain_id, block_id, level, delegate, cycle, max_priority, has_all
     #[get = "pub(crate)"]
     chain_id: String,
@@ -264,6 +264,9 @@ pub struct BakingRightsParams {
     
     #[get = "pub(crate)"]
     display_level: i64,
+    
+    #[get = "pub(crate)"]
+    timestamp_level: i64,
 
     #[get = "pub(crate)"]
     max_priority: i64,
@@ -272,7 +275,7 @@ pub struct BakingRightsParams {
     has_all: bool,
 }
 
-impl BakingRightsParams {
+impl RightsParams {
     pub fn new(
         chain_id: String, 
         block_level: i64, 
@@ -281,6 +284,7 @@ impl BakingRightsParams {
         requested_cycle: Option<i64>,
         requested_level: i64,
         display_level: i64,
+        timestamp_level: i64,
         max_priority: i64,
         has_all: bool) -> Self {
 
@@ -292,6 +296,7 @@ impl BakingRightsParams {
             requested_cycle,
             requested_level,
             display_level,
+            timestamp_level,
             max_priority,
             has_all,
         }
