@@ -24,10 +24,10 @@ async fn integration_test_full() {
 async fn integration_test_dev() {
     // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
     // start development tests from block:
-    //integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
+    integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
     //integration_tests_rpc("BLYr7qUkCK8ZNNQZqn9opBP3giFU1wA4zb8LSn5PxDBi6v3Rd2Y").await // level=19000
     //integration_tests_rpc("BMdwdpjSwFsY55YtxGAXqQdiNdVTfDBgtynMXHzRTgqUoXoEiT8").await // level=25000
-    integration_tests_rpc("BKp3e6n8NhVp7NavCq3GsqRb2hbq5ah2wSTPzezteoJqEzYsp99").await // level=34000
+    //integration_tests_rpc("BKp3e6n8NhVp7NavCq3GsqRb2hbq5ah2wSTPzezteoJqEzYsp99").await // level=34000
 
 }
 
@@ -146,14 +146,14 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
     let url = match node {
         NodeType::Ocaml => format!(
-            //"http://ocaml-node-run:8732/{}",
-            "http://127.0.0.1:8732/{}", //switch for local testing
+            "http://ocaml-node-run:8732/{}",
+            //"http://127.0.0.1:8732/{}", //switch for local testing
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            //"http://tezedge-node-run:18732/{}",
+            "http://tezedge-node-run:18732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
-            "http://127.0.0.1:18732/{}", //swith for local testing
+            //"http://127.0.0.1:18732/{}", //swith for local testing
             rpc_path
         ), // Tezedge node
     }.parse().expect("Invalid URL");
