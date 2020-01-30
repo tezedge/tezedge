@@ -137,7 +137,7 @@ pub enum RpcResponseData {
 // endorsing rights structure, final response look like Vec<EndorsingRight>
 #[derive(Serialize, Debug, Clone)]
 pub struct EndorsingRight {
-    level: i32,
+    level: i64,
     delegate: String,
     slots: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -145,7 +145,7 @@ pub struct EndorsingRight {
 }
 
 impl EndorsingRight {
-    pub fn new(level: i32, delegate: String, slots: Vec<u8>, estimated_time: Option<String>) -> Self {
+    pub fn new(level: i64, delegate: String, slots: Vec<u8>, estimated_time: Option<String>) -> Self {
         Self {
             level,
             delegate: delegate.to_string(),
@@ -242,7 +242,7 @@ impl CycleData {
 }
 
 #[derive(Serialize, Debug, Clone, Getters)]
-pub struct BakingRightsParams {
+pub struct RightsParams {
     // chain_id, block_id, level, delegate, cycle, max_priority, has_all
     #[get = "pub(crate)"]
     chain_id: String,
@@ -261,6 +261,12 @@ pub struct BakingRightsParams {
 
     #[get = "pub(crate)"]
     requested_level: i64,
+    
+    #[get = "pub(crate)"]
+    display_level: i64,
+    
+    #[get = "pub(crate)"]
+    timestamp_level: i64,
 
     #[get = "pub(crate)"]
     max_priority: i64,
@@ -269,7 +275,7 @@ pub struct BakingRightsParams {
     has_all: bool,
 }
 
-impl BakingRightsParams {
+impl RightsParams {
     pub fn new(
         chain_id: String, 
         block_level: i64, 
@@ -277,7 +283,9 @@ impl BakingRightsParams {
         requested_delegate: Option<String>,
         requested_cycle: Option<i64>,
         requested_level: i64,
-        max_priority: String,
+        display_level: i64,
+        timestamp_level: i64,
+        max_priority: i64,
         has_all: bool) -> Self {
 
         Self {
@@ -287,7 +295,9 @@ impl BakingRightsParams {
             requested_delegate,
             requested_cycle,
             requested_level,
-            max_priority: max_priority.parse().unwrap(),
+            display_level,
+            timestamp_level,
+            max_priority,
             has_all,
         }
     }
@@ -305,6 +315,8 @@ pub struct RightsConstants {
     time_between_blocks: Vec<i64>,
     #[get = "pub(crate)"]
     blocks_per_roll_snapshot: i64,
+    #[get = "pub(crate)"]
+    endorsers_per_block: i64,
 }
 
 impl RightsConstants {
@@ -313,7 +325,8 @@ impl RightsConstants {
         preserved_cycles: i64,
         nonce_length: i64,
         time_between_blocks: Vec<String>,
-        blocks_per_roll_snapshot: i64
+        blocks_per_roll_snapshot: i64,
+        endorsers_per_block: i64
     ) -> Self {
 
         Self {
@@ -322,7 +335,28 @@ impl RightsConstants {
             nonce_length,
             time_between_blocks: time_between_blocks.into_iter().map(|x| x.parse().unwrap()).collect(),
             blocks_per_roll_snapshot,
+            endorsers_per_block,
         }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, Getters)]
+pub struct EndorserSlots {
+    #[get = "pub(crate)"]
+    contract_id: String,
+    #[get = "pub(crate)"]
+    slots: Vec<u8>
+}
+
+impl EndorserSlots {
+    pub fn new(contract_id: String, slots: Vec<u8>) -> Self {
+        Self {
+            contract_id,
+            slots
+        }
+    }
+    pub fn push_to_slot(&mut self, slot: u8) {
+        self.slots.push(slot);
     }
 }
 
