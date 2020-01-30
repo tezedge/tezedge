@@ -1205,7 +1205,7 @@ mod fns {
 
         let snapshot_level;
         if requested_cycle < preserved_cycles+2 {
-            snapshot_level = requested_level;
+            snapshot_level = block_level;
         } else {
             let cycle_of_rolls = requested_cycle - preserved_cycles - 2;
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
