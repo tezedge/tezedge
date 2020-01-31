@@ -36,7 +36,7 @@ enum Route {
     ValidBlocks,
     HeadChain,
     ChainsBlockId,
-    //ChainsBlockIdHeader,
+    ChainsBlockIdHeader,
     ContextConstants,
     ContextCycle,
     ContextRollsOwnerCurrent,
@@ -235,6 +235,19 @@ fn chains_block_id(chain_id: &str, block_id: &str, persistent_storage: &Persiste
     }
 }
 
+/// GET /chains/<chain_id>/blocks/<block_id>/header endpoint handler
+fn chains_block_id_header(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+    if chain_id == "main" {
+        if block_id == "head" {
+            result_option_to_json_response(fns::get_current_head_header(state).map(|res| res), log)
+        } else {
+            result_option_to_json_response(fns::get_block_header(block_id, persistent_storage, state).map(|res| res), log)
+        }
+    } else {
+        empty()
+    }
+}
+
 /// GET /stats/memory endpoint handler
 async fn stats_memory(log: &Logger) -> ServiceResult {
     match fns::get_stats_memory() {
@@ -296,7 +309,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/valid_blocks", Route::ValidBlocks);
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
-    // routes.insert("/chains/:chain_id/blocks/:block_id/header", Route::ChainsBlockIdHeader);
+    routes.insert("/chains/:chain_id/blocks/:block_id/header", Route::ChainsBlockIdHeader);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", Route::ContextCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", Route::ContextRollsOwnerCurrent);
@@ -341,6 +354,11 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
             chains_block_id(chain_id, block_id, &persistent_storage, state, &log)
+        }
+        (&Method::GET, Some((Route::ChainsBlockIdHeader, params, _))) => {
+            let chain_id = find_param_value(&params, "chain_id").unwrap();
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            chains_block_id_header(chain_id, block_id, &persistent_storage, state, &log)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
             let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state.clone(), genesis_hash);
@@ -479,7 +497,7 @@ mod fns {
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
     use crate::merge_slices;
-    use crate::helpers::{FullBlockInfo, PagedResult, RpcResponseData, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, RightsParams, RightsConstants, EndorserSlots};
+    use crate::helpers::{FullBlockInfo, BlockHeaderInfo, PagedResult, RpcResponseData, EndorsingRight, CycleData, cycle_from_level, get_pseudo_random_number, init_prng, RightsParams, RightsConstants, EndorserSlots};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -886,11 +904,31 @@ mod fns {
         Ok(current_head)
     }
 
+    /// Get information about current head header
+    pub(crate) fn get_current_head_header(state: RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
+        let state = state.read().unwrap();
+        let current_head = state.current_head().as_ref().map(|current_head| {
+            let chain_id = chain_id_to_string(state.chain_id());
+            BlockHeaderInfo::new(current_head, &chain_id)
+        });
+
+        Ok(current_head)
+    }
+
     /// Get information about block
     pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
         let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
         let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+
+        Ok(block)
+    }
+
+    /// Get information about block header
+    pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
+        let block_storage = BlockStorage::new(persistent_storage);
+        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+        let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, &state));
 
         Ok(block)
     }
@@ -1417,6 +1455,12 @@ mod fns {
         FullBlockInfo::new(&BlockApplied::new(header, json_data), &chain_id)
     }
 
+    #[inline]
+    fn map_header_and_json_to_block_header_info(header: BlockHeaderWithHash, json_data: BlockJsonData, state: &RpcCollectedStateRef) -> BlockHeaderInfo {
+        let state = state.read().unwrap();
+        let chain_id = chain_id_to_string(state.chain_id());
+        BlockHeaderInfo::new(&BlockApplied::new(header, json_data), &chain_id)
+    }
 
     #[cfg(test)]
     mod tests {
