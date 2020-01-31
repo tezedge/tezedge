@@ -45,7 +45,7 @@ async fn integration_tests_rpc(start_block: usize) {
     // // alocate vector for RPC tests 
     // //let mut tasks = Vec::with_capacity(start_block);
 
-    for block_level in (1..=start_block).rev() {
+    for block_level in (1..=start_block) {
         
         //tasks.push(
              //tokio::spawn(async move {

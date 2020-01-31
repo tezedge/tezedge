@@ -38,6 +38,7 @@ enum Route {
     ContextConstants,
     ContextCycle,
     ContextRollsOwnerCurrent,
+    ContextJsonCycle,
     DevGetBlockEndorsingRights,
     // -------------------------- //
     DevGetBlocks,
@@ -272,6 +273,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", Route::ContextCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", Route::ContextRollsOwnerCurrent);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle", Route::ContextJsonCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::DevGetBlockEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
     routes.insert("/dev/chains/main/blocks/:block_id/actions", Route::DevGetBlockActions);
@@ -349,6 +351,10 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ContextRollsOwnerCurrent, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
             result_to_json_response(fns::get_rolls_owner_current_from_context(block_id, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ContextJsonCycle, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_cycle_from_context_as_json(block_id, context_storage), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockEndorsingRights, params, query))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
@@ -577,6 +583,59 @@ mod fns {
                 },
                 _ => bail!("Unknown key {} value {} cycle pair", key, value)
             };
+        }
+       
+        Ok(Some(cycles))
+    }
+
+    pub(crate) fn get_cycle_from_context_as_json(level: &str, list: ContextList) -> Result<Option<Vec<usize>>, failure::Error> {
+
+        let ctxt_level: usize = level.parse().unwrap();
+
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(ctxt_level) {
+                c
+            } else {
+                bail!("Context data not found")
+            }
+        };
+
+        // get cylce list from context storage
+        let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("cycle"))
+            .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+            .collect();
+        
+        // transform cycle list     
+        let mut cycles: Vec<usize> = vec![];
+
+        // process every key value pair
+        for (key, _) in cycle_lists.iter() {
+            
+            // create vector from path
+            let path:Vec<&str> = key.split('/').collect();
+            
+            
+            match path.as_slice() {
+                ["data", "cycle", cycle, _] |
+                ["data", "cycle", cycle, _, _ ] => {
+    
+                    let cycle_number: usize = cycle.parse().unwrap();
+                    match cycles.iter().position(|&r| r == cycle_number) {
+                        Some(_) => &cycles,
+                        None => {
+                            cycles.push(cycle_number);
+                            // TODO: change sort order after initail bootstrap
+                            cycles.sort(); 
+                            &cycles
+                        }
+                    };
+    
+                },
+                _ => (),
+             }
+
         }
        
         Ok(Some(cycles))
