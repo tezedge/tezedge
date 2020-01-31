@@ -36,7 +36,11 @@ enum Route {
     ValidBlocks,
     HeadChain,
     ChainsBlockId,
+    //ChainsBlockIdHeader,
     ContextConstants,
+    ContextCycle,
+    ContextRollsOwnerCurrent,
+    ContextJsonCycle,
     ChainsBlockIdBakingRights,
     ChainsBlockIdEndorsingRights,
     // -------------------------- //
@@ -292,7 +296,11 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/monitor/valid_blocks", Route::ValidBlocks);
     routes.insert("/monitor/heads/:chain_id", Route::HeadChain);
     routes.insert("/chains/:chain_id/blocks/:block_id", Route::ChainsBlockId);
+    // routes.insert("/chains/:chain_id/blocks/:block_id/header", Route::ChainsBlockIdHeader);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", Route::ContextCycle);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", Route::ContextRollsOwnerCurrent);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle", Route::ContextJsonCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", Route::ChainsBlockIdBakingRights);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::ChainsBlockIdEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
@@ -358,6 +366,18 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             // TODO: Add parameter checks
             let context_level = find_param_value(&params, "id").unwrap();
             result_to_json_response(fns::get_context(context_level, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ContextCycle, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_cycle_from_context(block_id, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ContextRollsOwnerCurrent, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_rolls_owner_current_from_context(block_id, context_storage), &log)
+        }
+        (&Method::GET, Some((Route::ContextJsonCycle, params, _))) => {
+            let block_id = find_param_value(&params, "block_id").unwrap();
+            result_to_json_response(fns::get_cycle_from_context_as_json(block_id, context_storage), &log)
         }
         (&Method::GET, Some((Route::ChainsBlockIdEndorsingRights, params, query))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
@@ -439,6 +459,7 @@ mod fns {
     use std::collections::{HashMap, HashSet};
     use std::convert::TryInto;
     use itertools::Itertools;
+    use serde::{Deserialize, Serialize};
 
     use failure::{bail, format_err};
 
@@ -464,6 +485,20 @@ mod fns {
 
     use crate::helpers::BakingRights;
 
+    // Serialize, Deserialize,
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Cycle
+    {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        last_roll: Option<HashMap<String,String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nonces: Option<HashMap<String,String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        random_seed: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        roll_snapshot: Option<String>,
+    }
+    
     type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
     /// Retrieve blocks from database.
@@ -885,6 +920,222 @@ mod fns {
         };
 
         Ok(Some(ContextConstants::transpile_context_bytes(&constants, protocol_hash)?))
+    }
+
+
+    pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
+
+        let ctxt_level: usize = level.parse().unwrap();
+
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(ctxt_level) {
+                c
+            } else {
+                bail!("Context data not found")
+            }
+        };
+
+        // get cylce list from context storage
+        let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("cycle"))
+            .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+            .collect();
+        
+        // transform cycle list     
+        let mut cycles: HashMap<String,Cycle> = HashMap::new();
+
+        // process every key value pair
+        for (key, bucket) in cycle_lists.iter() {
+            
+            // create vector from path
+            let path:Vec<&str> = key.split('/').collect();
+            
+            // convert value from bytes to hex 
+            let value = match bucket { 
+                Bucket::Exists(value) => hex::encode(value).to_string(),
+                _ => "".to_string()
+            };
+
+            // create new cycle
+            // TODO: !!! check path and move to match 
+            cycles.entry(path[2].to_string()).or_insert(Cycle {
+                last_roll: None,
+                nonces: None,
+                random_seed: None,
+                roll_snapshot: None,
+            });
+
+            // process cycle key value pairs     
+            match path.as_slice() {
+                ["data", "cycle", cycle, "random_seed"] => {
+                    // println!("cycle: {:?} random_seed: {:?}", cycle, value );
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        cycle.random_seed = Some(value);
+                    });
+                },
+                ["data", "cycle", cycle, "roll_snapshot"] => {
+                    // println!("cycle: {:?} roll_snapshot: {:?}", cycle, value);
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        cycle.roll_snapshot = Some(value);
+                    });
+                },
+                ["data", "cycle", cycle, "nonces", nonces] => {
+                    // println!("cycle: {:?} nonces: {:?}/{:?}", cycle, nonces, value)
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        match cycle.nonces.as_mut() {
+                            Some(entry) => entry.insert(nonces.to_string(),value),
+                            None => { 
+                                cycle.nonces = Some(HashMap::new());
+                                cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),value)
+                            }
+                        };
+                    });
+                },
+                ["data", "cycle", cycle, "last_roll", last_roll] => {
+                    // println!("cycle: {:?} last_roll: {:?}/{:?}", cycle, last_roll, value)
+                    cycles.entry(cycle.to_string()).and_modify(|cycle| {
+                        match cycle.last_roll.as_mut() {
+                            Some(entry) => entry.insert(last_roll.to_string(),value),
+                            None => { 
+                                cycle.last_roll = Some(HashMap::new());
+                                cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(),value)
+                            }
+                        };                    
+                    });
+                },
+                _ => bail!("Unknown key {} value {} cycle pair", key, value)
+            };
+        }
+       
+        Ok(Some(cycles))
+    }
+
+    pub(crate) fn get_cycle_from_context_as_json(level: &str, list: ContextList) -> Result<Option<Vec<usize>>, failure::Error> {
+
+        let ctxt_level: usize = level.parse().unwrap();
+
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(ctxt_level) {
+                c
+            } else {
+                bail!("Context data not found")
+            }
+        };
+
+        // get cylce list from context storage
+        let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("cycle"))
+            .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+            .collect();
+        
+        // transform cycle list     
+        let mut cycles: Vec<usize> = vec![];
+
+        // process every key value pair
+        for (key, _) in cycle_lists.iter() {
+            
+            // create vector from path
+            let path:Vec<&str> = key.split('/').collect();
+            
+            
+            match path.as_slice() {
+                ["data", "cycle", cycle, _] |
+                ["data", "cycle", cycle, _, _ ] => {
+    
+                    let cycle_number: usize = cycle.parse().unwrap();
+                    match cycles.iter().position(|&r| r == cycle_number) {
+                        Some(_) => &cycles,
+                        None => {
+                            cycles.push(cycle_number);
+                            // TODO: change sort order after initail bootstrap
+                            cycles.sort(); 
+                            &cycles
+                        }
+                    };
+    
+                },
+                _ => (),
+             }
+
+        }
+       
+        Ok(Some(cycles))
+    }
+
+    pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String,HashMap<String,HashMap<String,String>>>>, failure::Error> {
+
+        let ctxt_level: usize = level.parse().unwrap();
+        // println!("level: {:?}", ctxt_level);
+
+        let context_data = {
+            let reader = list.read().expect("mutex poisoning");
+            if let Ok(Some(c)) = reader.get(ctxt_level) {
+                c
+            } else {
+                bail!("Context data not found")
+            }
+        };
+
+        // get rolls list from context storage
+        let rolls_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
+            .filter(|(k, _)| k.contains("rolls/owner/current"))
+            .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+            .collect();
+
+        // create rolls list     
+        let mut rolls: HashMap<String,HashMap<String,HashMap<String,String>>> = HashMap::new();
+
+        // process every key value pair
+        for (key, bucket) in rolls_lists.iter() {
+            
+            // create vector from path
+            let path:Vec<&str> = key.split('/').collect();
+
+            // convert value from bytes to hex 
+            let value = match bucket { 
+                Bucket::Exists(value) => hex::encode(value).to_string(),
+                _ => "".to_string()
+            };
+
+            // process roll key value pairs     
+            match path.as_slice() {
+                ["data", "rolls","owner","current", path1, path2, path3 ] => {
+                    // println!("rolls: {:?}/{:?}/{:?} value: {:?}", path1, path2, path3, value );
+
+                    rolls.entry(path1.to_string())
+                        .and_modify(|roll| {
+                            roll.entry(path2.to_string())
+                                .and_modify(|index2| { 
+                                    index2.insert(path3.to_string(),value.to_string());
+                                })
+                                .or_insert({
+                                    let mut index3 = HashMap::new();
+                                    index3.insert(path3.to_string(),value.to_string());
+                                    index3
+                                });
+                        })
+                        .or_insert({
+                            let mut index2 = HashMap::new();
+                            index2.entry(path2.to_string())
+                                .or_insert({
+                                    let mut index3 = HashMap::new();
+                                    index3.insert(path3.to_string(),value.to_string());
+                                    index3  
+                                });
+                            index2
+                        });    
+            
+                },
+                _ => bail!("Unknown key {} value {} rolls pair", key, value)
+            }
+
+        }
+        
+    
+        Ok(Some(rolls))
+
     }
 
     pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
