@@ -504,7 +504,7 @@ mod fns {
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id)?;
+        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
         let blocks = match every_nth_level {
             Some(every_nth_level) => block_storage.get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
             None => block_storage.get_multiple_with_json_data(&block_hash, limit),
@@ -515,7 +515,7 @@ mod fns {
     /// Get actions for a specific block in ascending order.
     pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
         let context_storage = ContextStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id)?;
+        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
         context_storage.get_by_block_hash(&block_hash)
             .map(|values| values.into_iter().map(|v| v.into_action()).collect())
             .map_err(|e| e.into())
@@ -889,7 +889,7 @@ mod fns {
     /// Get information about block
     pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id)?;
+        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
         let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
 
         Ok(block)
@@ -1161,7 +1161,7 @@ mod fns {
             match block_id.parse() {
                 Ok(val) => Some(val),
                 Err(_e) => {
-                    let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+                    let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
                     let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
                     if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
                         Some(block_meta.level() as usize)
@@ -1194,7 +1194,7 @@ mod fns {
                     }
                 }
                 Err(_e) => {
-                    let block_hash = block_id_to_block_hash(block_id)?;
+                    let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
                     match block_storage.get(&block_hash)? {
                         Some(current_head) => current_head.header.timestamp(),
                         None => bail!("block not found in db {}", block_id)
@@ -1327,9 +1327,18 @@ mod fns {
         ))
     }
 
-    #[inline]
-    fn block_id_to_block_hash(block_id: &str) -> Result<BlockHash, failure::Error> {
-        let block_hash = HashType::BlockHash.string_to_bytes(block_id)?;
+    /// Get block has bytes from block hash or block level
+    fn block_id_to_block_hash(block_id: &str, persistent_storage: &PersistentStorage) -> Result<BlockHash, failure::Error> {
+        
+        let block_storage = BlockStorage::new(persistent_storage);
+        let block_hash = match block_id.parse() {
+            Ok(value) =>  match block_storage.get_by_block_level(value)? {
+                Some(current_head) => current_head.hash,
+                None => vec![]
+            },
+            Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?   
+        };
+
         Ok(block_hash)
     }
 
