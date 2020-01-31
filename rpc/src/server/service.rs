@@ -313,7 +313,7 @@ fn create_routes() -> PathTree<Route> {
     routes.insert("/chains/:chain_id/blocks/:block_id/context/constants", Route::ContextConstants);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", Route::ContextCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", Route::ContextRollsOwnerCurrent);
-    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle", Route::ContextJsonCycle);
+    routes.insert("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle/:cycle_id", Route::ContextJsonCycle);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", Route::ChainsBlockIdBakingRights);
     routes.insert("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", Route::ChainsBlockIdEndorsingRights);
     routes.insert("/dev/chains/main/blocks", Route::DevGetBlocks);
@@ -395,7 +395,8 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         }
         (&Method::GET, Some((Route::ContextJsonCycle, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
-            result_to_json_response(fns::get_cycle_from_context_as_json(block_id, context_storage), &log)
+            let cycle_id = find_param_value(&params, "cycle_id").unwrap();
+            result_to_json_response(fns::get_cycle_from_context_as_json(block_id, cycle_id, context_storage), &log)
         }
         (&Method::GET, Some((Route::ChainsBlockIdEndorsingRights, params, query))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
@@ -516,7 +517,13 @@ mod fns {
         #[serde(skip_serializing_if = "Option::is_none")]
         roll_snapshot: Option<String>,
     }
-    
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct CycleJson { 
+        roll_snapshot: Option<usize>,
+        random_seed: Option<String>,
+    }
+
     type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
     /// Retrieve blocks from database.
@@ -1042,14 +1049,14 @@ mod fns {
                         };                    
                     });
                 },
-                _ => bail!("Unknown key {} value {} cycle pair", key, value)
+                _ => ()
             };
         }
        
         Ok(Some(cycles))
-    }
+    } 
 
-    pub(crate) fn get_cycle_from_context_as_json(level: &str, list: ContextList) -> Result<Option<Vec<usize>>, failure::Error> {
+    pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: ContextList) -> Result<Option<CycleJson>, failure::Error> {
 
         let ctxt_level: usize = level.parse().unwrap();
 
@@ -1062,44 +1069,44 @@ mod fns {
             }
         };
 
+        let patch_cycle = format!("cycle/{}", &cycle_id );
         // get cylce list from context storage
         let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
-            .filter(|(k, _)| k.contains("cycle"))
+            .filter(|(k, _)| k.contains(&patch_cycle))
             .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
             .collect();
-        
-        // transform cycle list     
-        let mut cycles: Vec<usize> = vec![];
+
+       
+        let mut cycle = CycleJson {
+            roll_snapshot: None,
+            random_seed: None,
+        };
 
         // process every key value pair
-        for (key, _) in cycle_lists.iter() {
+        for (key, bucket) in cycle_lists.iter() {
             
             // create vector from path
             let path:Vec<&str> = key.split('/').collect();
             
+            // convert value from bytes to hex 
+            let value = match bucket { 
+                Bucket::Exists(value) => hex::encode(value).to_string(),
+                _ => "".to_string()
+            };
             
+            // process cycle key value pairs     
             match path.as_slice() {
-                ["data", "cycle", cycle, _] |
-                ["data", "cycle", cycle, _, _ ] => {
-    
-                    let cycle_number: usize = cycle.parse().unwrap();
-                    match cycles.iter().position(|&r| r == cycle_number) {
-                        Some(_) => &cycles,
-                        None => {
-                            cycles.push(cycle_number);
-                            // TODO: change sort order after initail bootstrap
-                            cycles.sort(); 
-                            &cycles
-                        }
-                    };
-    
+                ["data", "cycle", _, "random_seed"] => {
+                    cycle.random_seed = Some(value);
                 },
-                _ => (),
-             }
-
+                ["data", "cycle", _, "roll_snapshot"] => {
+                    cycle.roll_snapshot = Some(value.parse().unwrap());
+                },
+                _ => ()
+            };
         }
        
-        Ok(Some(cycles))
+        Ok(Some(cycle))
     }
 
     pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String,HashMap<String,HashMap<String,String>>>>, failure::Error> {
@@ -1166,7 +1173,7 @@ mod fns {
                         });    
             
                 },
-                _ => bail!("Unknown key {} value {} rolls pair", key, value)
+                _ => ()
             }
 
         }
