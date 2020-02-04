@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::error::Error;
-
 use ocaml::{Array1, List, Str, Tuple, Value};
 use serde_json;
 
@@ -233,7 +231,7 @@ pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGene
                 let identity = Str::from(identity).as_str().to_string();
 
                 Ok(serde_json::from_str::<Identity>(&identity)
-                    .map_err(|err| TezosGenerateIdentityError::InvalidJsonError { message: err.description().to_string() })?
+                    .map_err(|err| TezosGenerateIdentityError::InvalidJsonError { message: err.to_string() })?
                 )
             }
             Err(e) => {
