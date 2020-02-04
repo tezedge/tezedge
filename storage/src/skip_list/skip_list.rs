@@ -120,21 +120,20 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
                        lane.level(), pos.index(), pos.base_index());
             }
 
-            if (pos.base_index() == index) && (lane.level() == 0) {
+            if pos.base_index() == index {
                 return Ok(current_state);
-            } else if pos.next().base_index() > index {
-                // We cannot move horizontally anymore, so we need to descent to lower level.
-                if lane.level() == 0 {
-                    // We hit bottom and we cannot move horizontally. Yet it is not requested index
-                    // Something gone wrong.
-                    panic!("Correct value was skipped");
-                } else {
-                    // Make a descend
-                    lane = lane.lower_lane();
-                    pos = pos.lower();
-                }
             } else {
-                // We can still move horizontally on current lane.
+                while pos.next().base_index() > index {
+                    // We cannot move horizontally anymore, so we need to descent to lower level.
+                    if lane.level() == 0 {
+                        panic!("Correct value was skipped");
+                    } else {
+                        // Make descend
+                        lane = lane.lower_lane();
+                        pos = pos.lower();
+                    }
+                }
+
                 pos = pos.next();
             }
         }
@@ -185,22 +184,23 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
 
         // Start building upper lanes
         while index != 0 && (index + 1) % LEVEL_BASE == 0 {
-            let lane_value = lane.base_iterator(index)?
-                .take(LEVEL_BASE)
+            let lane_value = lane.rev_base_iterator(index, LEVEL_BASE)?
                 .map(|(_, val)| {
                     match val {
                         Ok(val) => val,
                         Err(err) => panic!("Skip list database failure: {}", err)
                     }
                 })
-                .fold(None, |state: Option<C>, value| {
+                .fold(None, |state: Option<C>, value: C| {
                     if let Some(mut state) = state {
-                        state.diff(&value);
+                        state.merge(&value);
                         Some(state)
                     } else {
                         Some(value)
                     }
-                }).unwrap();
+                })
+                .unwrap();
+
             value = lane_value;
             index = ((index + 1) / LEVEL_BASE) - 1;
             lane = lane.higher_lane();
@@ -263,6 +263,99 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
                 }
             }
         }
+    }
+}
+
+pub struct DatabaseBackedFlatList<C> {
+    lane_db: Arc<LaneDatabase>,
+    list_db: Arc<SkipListDatabase>,
+    list_id: SkipListId,
+    state: SkipListState,
+    curr_context: C,
+}
+
+impl<C> KeyValueSchema for DatabaseBackedFlatList<C> {
+    type Key = SkipListId;
+    type Value = SkipListState;
+
+    fn name() -> &'static str {
+        "flat_skip_list"
+    }
+}
+
+impl<C: BincodeEncoded + Default> DatabaseBackedFlatList<C> {
+    pub fn new(list_id: SkipListId, db: Arc<rocksdb::DB>) -> Result<Self, SkipListError> {
+        let list_db: Arc<SkipListDatabase> = db.clone();
+        let state = list_db.get(&list_id)?
+            .unwrap_or_else(|| SkipListState {
+                levels: 1,
+                len: 0,
+            });
+
+        let curr_context = if state.len > 0 {
+            // Restore correct current context
+            let lane = Lane::new(list_id, 0, db.clone());
+            let curr_context = lane.get(state.len - 1)?;
+            if let Some(curr_context) = curr_context {
+                curr_context
+            } else {
+                Default::default()
+            }
+        } else {
+            Default::default()
+        };
+
+        Ok(Self { lane_db: db, list_db, list_id, state, curr_context })
+    }
+}
+
+impl<C> SkipList for DatabaseBackedFlatList<C> {
+    /// Get number of elements stored in this node
+    #[inline]
+    fn len(&self) -> usize {
+        self.state.len
+    }
+
+    #[inline]
+    fn levels(&self) -> usize {
+        1
+    }
+
+    /// Check, that given index is stored in structure
+    #[inline]
+    fn contains(&self, index: usize) -> bool {
+        self.state.len > index
+    }
+}
+
+impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for DatabaseBackedFlatList<C> {
+    fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
+        if self.contains(index) {
+            let lane = Lane::new(self.list_id, 0, self.lane_db.clone());
+            lane.get(index)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
+        Ok(self.get(index)?.and_then(|c| c.get(key)))
+    }
+
+    fn push(&mut self, value: C) -> Result<(), SkipListError> {
+        let lane = Lane::new(self.list_id, 0, self.lane_db.clone());
+        let index = self.state.len;
+        self.curr_context.merge(&value);
+
+        lane.put(index, &self.curr_context)?;
+        self.state.len += 1;
+
+        self.list_db.put(&self.list_id, &self.state)
+            .map_err(SkipListError::from)
+    }
+
+    fn diff(&self, _from: usize, _to: usize) -> Result<Option<C>, SkipListError> {
+        unimplemented!()
     }
 }
 
