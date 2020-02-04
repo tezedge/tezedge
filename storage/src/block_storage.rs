@@ -48,6 +48,8 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_by_block_level(&self, level: i32) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
+    fn get_by_block_level_with_json_data(&self, level: BlockLevel) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
@@ -165,10 +167,20 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn get_by_block_level(&self, level: i32) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+    fn get_by_block_level(&self, level: BlockLevel) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.by_level_index.get(&level)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
+    }
+
+    #[inline]
+    fn get_by_block_level_with_json_data(&self, level: BlockLevel) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
+        match self.by_level_index.get(&level)? {
+            Some(location) => self.get_block_json_data_by_location(&location)?
+                .map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data)))
+                .transpose(),
+            None => Ok(None)
+        }
     }
 
     #[inline]

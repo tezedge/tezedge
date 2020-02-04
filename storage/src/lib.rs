@@ -133,6 +133,17 @@ pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: 
     if block_storage.get(&genesis_with_hash.hash)?.is_none() {
         info!(log, "Initializing storage with genesis block");
         block_storage.put_block_header(&genesis_with_hash)?;
+        // TODO: include the data for the other chains as well (mainet, zeronet, etc.)
+        // just for babylonnet for now
+        let genesis_meta_string = "{\"protocol\":\"PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i\",\"next_protocol\":\"PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV\",\"test_chain_status\":{\"status\":\"not_running\"},\"max_operations_ttl\":0,\"max_operation_data_length\":0,\"max_block_header_length\":115,\"max_operation_list_length\":[]}".to_string();
+        let genesis_op_string = "{\"operations\":[]}".to_string();
+        let genesis_prot_string = "".to_string();
+        let block_json_data = BlockJsonDataBuilder::default()
+            .block_header_proto_json(genesis_prot_string)
+            .block_header_proto_metadata_json(genesis_meta_string)
+            .operations_proto_metadata_json(genesis_op_string)
+            .build().unwrap();
+        block_storage.put_block_json_data(&genesis_with_hash.hash, block_json_data)?;
         let mut block_meta_storage = BlockMetaStorage::new(persistent_storage);
         block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash, genesis_chain_id))?;
         let mut operations_meta_storage = OperationsMetaStorage::new(persistent_storage);
