@@ -1,18 +1,18 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use nix;
-use page_size;
-use serde::Serialize;
-use lazy_static::lazy_static;
-use regex::Regex;
-use failure::Fail;
-
-use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
+
+use failure::Fail;
+use nix;
+use page_size;
+use regex::Regex;
+use serde::Serialize;
+
+use lazy_static::lazy_static;
 
 pub type MemoryStatsResult<T> = std::result::Result<T, MemoryStatsError>;
 
@@ -144,14 +144,14 @@ impl Memory {
 
         let mut file = match File::open(&path) {
             // `io::Error`
-            Err(e) => return Err(MemoryStatsError::IOError( format!("couldn't open {}: {}", display, e.description()) )),
+            Err(e) => return Err(MemoryStatsError::IOError( format!("couldn't open {}: {}", display, e) )),
             Ok(file) => file,
         };
 
         let mut s = String::new();
         match file.read_to_string(&mut s) {
             // `io::Error`
-            Err(e) => Err(MemoryStatsError::IOError( format!("couldn't read {}: {}", display, e.description()) )),
+            Err(e) => Err(MemoryStatsError::IOError( format!("couldn't read {}: {}", display, e) )),
             Ok(_) => self.parse_linux_statm(s),
         }
     }

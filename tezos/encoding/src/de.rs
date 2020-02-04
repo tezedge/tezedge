@@ -1,9 +1,9 @@
-use std::error::{self, Error as StdError};
+use std::error::Error as StdError;
 use std::fmt;
 use std::io;
 use std::slice::Iter;
 
-use serde::de::{self, Deserialize, DeserializeSeed, Error as SerdeError, IntoDeserializer, Visitor};
+use serde::de::{self, Deserialize, DeserializeSeed, Error as _, IntoDeserializer, Visitor};
 use serde::forward_to_deserialize_any;
 
 use crate::binary_reader::BinaryReaderError;
@@ -28,7 +28,7 @@ impl Error {
     }
 }
 
-impl SerdeError for Error {
+impl de::Error for Error {
     fn custom<T: fmt::Display>(msg: T) -> Self {
         Error {
             message: msg.to_string(),
@@ -38,7 +38,7 @@ impl SerdeError for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str(error::Error::description(self))
+        formatter.write_fmt(format_args!("{}", self))
     }
 }
 
@@ -146,7 +146,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         match *self.input {
             Value::String(ref s) => visitor.visit_str(s),
             Value::Bytes(ref bytes) => ::std::str::from_utf8(bytes)
-                .map_err(|e| Error::custom(e.description()))
+                .map_err(|e| Error::custom(e.to_string()))
                 .and_then(|s| visitor.visit_str(s)),
             _ => Err(Error::custom(format!("not a string|bytes|fixed but a {:?}", self.input))),
         }
@@ -160,7 +160,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             Value::String(ref s) => visitor.visit_string(s.to_owned()),
             Value::Bytes(ref bytes) => {
                 String::from_utf8(bytes.to_owned())
-                    .map_err(|e| Error::custom(e.description()))
+                    .map_err(|e| Error::custom(e.to_string()))
                     .and_then(|s| visitor.visit_string(s))
             },
             _ => Err(Error::custom(format!("not a string|bytes|fixed but a {:?}", self.input))),

@@ -23,7 +23,7 @@ use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
-use storage::skip_list::{Lane, DatabaseBackedSkipList};
+use storage::skip_list::{DatabaseBackedSkipList, Lane};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -85,7 +85,7 @@ fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runti
     builder.threaded_scheduler().enable_all();
     // set number of threads in a thread pool
     if env.tokio_threads > 0 {
-        builder.num_threads(env.tokio_threads);
+        builder.core_threads(env.tokio_threads);
     }
     // build runtime
     builder.build().expect("Failed to create tokio runtime")

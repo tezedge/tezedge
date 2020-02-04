@@ -1,6 +1,6 @@
 language: rust
 rust:
-  - nightly-2019-12-05
+  - nightly-2020-02-04
 
 os:
   - linux
