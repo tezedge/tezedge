@@ -11,15 +11,45 @@ use crate::encoding::{Encoding, Field, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
+/// Converts rust types into Tezos binary form.
 pub struct BinaryWriter {
     data: Vec<u8>
 }
-
 impl BinaryWriter {
+
+    /// Construct new instance of the [BinaryWriter].
     pub fn new() -> BinaryWriter {
         BinaryWriter { data: Vec::with_capacity(512) }
     }
 
+    /// Convert rust type into Tezos binary form. Binary form is defined by [`encoding`](Encoding).
+    ///
+    /// # Examples:
+    ///
+    /// ```
+    /// use serde::Serialize;
+    /// use tezos_encoding::binary_writer::BinaryWriter;
+    /// use tezos_encoding::encoding::{Field, Encoding};
+    ///
+    /// #[derive(Serialize, Debug)]
+    /// struct Version {
+    ///    name: String,
+    ///    major: u16,
+    ///    minor: u16,
+    /// }
+    /// let version = Version { name: "v1.0".into(), major: 1, minor: 0 };
+    ///
+    /// let version_schema = Encoding::Obj(vec![
+    ///     Field::new("name", Encoding::String),
+    ///     Field::new("major", Encoding::Uint16),
+    ///     Field::new("minor", Encoding::Uint16)
+    /// ]);
+    ///
+    /// let mut writer = BinaryWriter::new();
+    /// let binary = writer.write(&version, &version_schema).unwrap();
+    ///
+    /// assert_eq!(binary, hex::decode("0000000476312e3000010000").unwrap());
+    /// ```
     pub fn write<T>(&mut self, data: &T, encoding: &Encoding) -> Result<Vec<u8>, Error>
         where
             T: ?Sized + Serialize
@@ -421,6 +451,7 @@ mod tests {
 
     use crate::encoding::{Tag, TagMap};
     use crate::types::BigInt;
+
     use super::*;
 
     #[test]

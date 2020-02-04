@@ -1,3 +1,7 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+/// This is a wrapper for [num_bigint::BigInt] type.
 #[derive(PartialEq, Debug, Clone)]
 pub struct BigInt(pub num_bigint::BigInt);
 
@@ -25,14 +29,45 @@ impl From<&BigInt> for num_bigint::BigInt {
     }
 }
 
+/// Represents `true` value in binary format.
 pub const BYTE_VAL_TRUE: u8 = 0xFF;
+/// Represents `false` value in binary format.
 pub const BYTE_VAL_FALSE: u8 = 0;
+/// Represents `Some(x)` value in binary format.
 pub const BYTE_VAL_SOME: u8 = 0xFF;
+/// Represents `None` value in binary format.
 pub const BYTE_VAL_NONE: u8 = 0;
 
+/// Represents data in the intermediate form.
+///
+/// Rust struct is first converted to this intermediate form is then used for produce binary or json output.
+/// Also this intermediate form is used when rust type is being created from a binary or json input.
+///
+/// # How it works:
+///
+/// Imagine we have struct `MyStruct` we want to serialize.
+/// ```rust
+/// struct MyStruct {
+///   count: i32,
+///   diameter: f32
+/// }
+/// let my_struct = MyStruct { count: 1, diameter: 102.95 };
+/// ```
+///
+/// First we need to convert it to intermediate form represented by the [Value] type.
+/// Structure will be converted to:
+/// ```rust
+/// use crate::tezos_encoding::types::Value;
+/// let intermediate = Value::Record(vec![
+///     ("count".into(), Value::Int32(1)),
+///     ("diameter".into(), Value::Float(102.95))
+/// ]);
+/// ```
+///
+/// After that the intermediate form can be converted to binary by passing it to [crate::binary_writer::BinaryWriter].
 #[derive(PartialEq, Debug)]
 pub enum Value {
-    // Nothing, data is omitted from binary.
+    /// Nothing: data is omitted from binary.
     Unit,
     /// Signed 8 bit integer (data is encoded as a byte in binary and an integer in JSON).
     Int8(i8),
@@ -67,26 +102,10 @@ pub enum Value {
     /// (represented as a 1-byte tag followed by the data (or nothing) in binary
     ///  and either the raw value or an empty object in JSON).
     Option(Option<Box<Value>>),
-    /// Combinator to make a {!result} value
-    /// (represented as a 1-byte tag followed by the data of either type in binary,
-    /// and either unwrapped value in JSON (the caller must ensure that both
-    /// encodings do not collide)).
-    Result,
-    /// Array combinator.
-    /// - encoded as an array in JSON
-    /// - encoded as the concatenation of all the element in binary
-    /// prefixed its length in bytes
-    /// If [max_length] is passed and the encoding of elements has fixed
-    /// size, a {!check_size} is automatically added for earlier rejection.
-    /// @raise [Invalid_argument] if the inner encoding is variable.
-//    Array(Vec<Value>),
     /// List combinator.
     /// - encoded as an array in JSON
     /// - encoded as the concatenation of all the element in binary
-    /// prefixed its length in bytes
-    /// If [max_length] is passed and the encoding of elements has fixed
-    /// size, a {!check_size} is automatically added for earlier rejection.
-    /// @raise [Invalid_argument] if the inner encoding is also variable.
+    /// in binary prefixed by its length in bytes
     List(Vec<Value>),
     // Enum value with name and/or ordinal number
     Enum(Option<String>, Option<u32>),

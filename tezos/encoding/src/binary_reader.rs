@@ -9,20 +9,26 @@ use crate::de;
 use crate::encoding::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
 
+/// Error produced by a [BinaryReader].
 #[derive(Debug, Fail)]
 pub enum BinaryReaderError {
+    /// More bytes were expected than there were available in input buffer.
     #[fail(display = "Input underflow, missing {} bytes", bytes)]
     Underflow {
         bytes: usize
     },
+    /// Writer tried to write too many bytes to output buffer.
     #[fail(display = "Input overflow, excess of {} bytes", bytes)]
     Overflow {
         bytes: usize
     },
+    /// Generic deserialization error.
     #[fail(display = "Message de-serialization error")]
     DeserializationError {
         error: crate::de::Error
     },
+    /// No tag with the corresponding id was found. This might not be an error of the binary data but
+    /// may simply mean that we have not yet defined tag in encoding.
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag {
         tag: u16
@@ -41,7 +47,7 @@ impl From<std::string::FromUtf8Error> for BinaryReaderError {
     }
 }
 
-
+/// Safely read from input buffer. If input buffer does not contain enough bytes to construct desired error is returned.
 macro_rules! safe {
     ($buf:ident, $foo:ident, $sz:ident) => {{
         use std::mem::size_of;
@@ -61,13 +67,49 @@ macro_rules! safe {
 
 }
 
+/// Converts Tezos binary form into rust types.
 pub struct BinaryReader;
 
 impl BinaryReader {
+
+    /// Construct new instance of the [BinaryReader].
     pub fn new() -> Self {
         Self
     }
 
+    /// Convert Tezos binary data into [intermadiate form](Value). Input binary is parsed according to [`encoding`](Encoding).
+    ///
+    /// # Examples:
+    ///
+    /// ```
+    /// use serde::Deserialize;
+    /// use tezos_encoding::binary_reader::BinaryReader;
+    /// use tezos_encoding::de;
+    /// use tezos_encoding::encoding::{Field, Encoding};
+    ///
+    /// #[derive(Deserialize, Debug, PartialEq)]
+    /// struct Version {
+    ///    name: String,
+    ///    major: u16,
+    ///    minor: u16,
+    /// }
+    ///
+    /// let version_schema = Encoding::Obj(vec![
+    ///     Field::new("name", Encoding::String),
+    ///     Field::new("major", Encoding::Uint16),
+    ///     Field::new("minor", Encoding::Uint16)
+    /// ]);
+    ///
+    /// let reader = BinaryReader::new();
+    /// // create intermediate form
+    /// let intermediate = reader.read(hex::decode("0000000476312e3000010000").unwrap(), &version_schema).unwrap();
+    /// // deserialize from intermediate form
+    /// let version = de::from_value::<Version>(&intermediate).unwrap();
+    ///
+    /// let version_expected = Version { name: "v1.0".into(), major: 1, minor: 0 };
+    ///
+    /// assert_eq!(version, version_expected);
+    /// ```
     pub fn read(&self, buf: Vec<u8>, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
         let mut buf = &buf[..];
 
