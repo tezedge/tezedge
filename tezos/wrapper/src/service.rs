@@ -214,6 +214,7 @@ impl IpcCmdServer {
     }
 }
 
+/// IPC event server is listening for incoming IPC connections.
 pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
 
 impl IpcEvtServer {
@@ -221,6 +222,7 @@ impl IpcEvtServer {
         IpcEvtServer(IpcServer::bind_path(&temp_sock()).unwrap())
     }
 
+    /// Synchronously wait for new incoming IPC connection.
     pub fn accept(&mut self) -> Result<IpcReceiver<ContextAction>, IpcError> {
         let (rx, _) = self.0.accept()?;
         Ok(rx)
