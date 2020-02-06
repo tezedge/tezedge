@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Provides definitions of p2p messages.
+
 pub mod advertise;
 pub mod operation;
 pub mod version;
@@ -20,7 +22,7 @@ pub mod prelude {
     pub use super::advertise::AdvertiseMessage;
     pub use super::block_header::{BlockHeader, BlockHeaderBuilder, BlockHeaderMessage, GetBlockHeadersMessage};
     pub use super::connection::ConnectionMessage;
-    pub use super::current_branch::{CurrentBranchMessage, CurrentBranch, GetCurrentBranchMessage};
+    pub use super::current_branch::{CurrentBranch, CurrentBranchMessage, GetCurrentBranchMessage};
     pub use super::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
     pub use super::mempool::Mempool;
     pub use super::metadata::MetadataMessage;
