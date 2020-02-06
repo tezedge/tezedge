@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Defines types of the intermediate data format.
+
 /// This is a wrapper for [num_bigint::BigInt] type.
 #[derive(PartialEq, Debug, Clone)]
 pub struct BigInt(pub num_bigint::BigInt);

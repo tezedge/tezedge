@@ -1,3 +1,8 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Tezos binary data writer.
+
 use std::cmp;
 use std::mem::size_of;
 

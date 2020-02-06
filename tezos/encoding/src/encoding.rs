@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Schema used for serialization and deserialization.
+
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;

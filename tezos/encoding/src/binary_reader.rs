@@ -1,3 +1,8 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Tezos binary data reader.
+
 use bitvec::{Bits, BitVec};
 use bytes::Buf;
 use bytes::buf::ext::BufExt;
