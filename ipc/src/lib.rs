@@ -1,6 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Provides IPC communication.
+//!
+//! The IPC is implemented as unix domain sockets. Functionality is similar to how network sockets work.
+
 use std::env;
 use std::fs;
 use std::io;
@@ -18,6 +22,7 @@ use rand::distributions::Alphanumeric;
 use serde::{Deserialize, Serialize};
 use timeout_io::Acceptor;
 
+/// IPC communication errors
 #[derive(Debug, Fail)]
 pub enum IpcError {
     #[fail(display = "Receive error: {}", reason)]
@@ -52,9 +57,13 @@ pub enum IpcError {
     },
 }
 
+/// Represents sending end of the IPC channel.
 pub struct IpcSender<S>(UnixStream, PhantomData<S>);
 
 impl<S> IpcSender<S> {
+    /// Close IPC channel and release associated resources.
+    ///
+    /// This closes only the sending part of the IPC channel.
     pub fn shutdown(&self) -> Result<(), io::Error> {
         self.0.shutdown(Shutdown::Write)
     }
@@ -65,6 +74,9 @@ impl<S> IpcSender<S> {
 }
 
 impl<S: Serialize> IpcSender<S> {
+    /// Serialize and sent `value` through IPC channel.
+    ///
+    /// This is a blocking operation,
     pub fn send(&mut self, value: &S) -> Result<(), IpcError> {
         let msg_buf = bincode::serialize(value).map_err(|err| IpcError::SerializationError { reason: format!("{:?}", err) })?;
         let msg_len_buf = msg_buf.len().to_be_bytes();
@@ -83,13 +95,18 @@ impl<S> Drop for IpcSender<S> {
     }
 }
 
+/// Represents receiving end of the IPC channel.
 pub struct IpcReceiver<R>(UnixStream, PhantomData<R>);
 
 impl<R> IpcReceiver<R> {
+    /// Close IPC channel and release associated resources.
+    ///
+    /// This closes only the receiving part of the IPC channel.
     pub fn shutdown(&self) -> Result<(), io::Error> {
         self.0.shutdown(Shutdown::Read)
     }
 
+    /// Set read timeout
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.0.set_read_timeout(timeout)
     }
@@ -99,6 +116,7 @@ impl<R> IpcReceiver<R>
 where
     R: for<'de> Deserialize<'de>
 {
+    /// Read bytes from established IPC channel and deserialize into a rust type.
     pub fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 8];
         self.0.read_exact(&mut msg_len_buf)
@@ -121,6 +139,7 @@ impl<R> Drop for IpcReceiver<R> {
     }
 }
 
+/// Listens for incoming IPC connections.
 pub struct IpcServer<R, S> {
     listener: UnixListener,
     path: PathBuf,
@@ -178,6 +197,7 @@ where
     }
 }
 
+/// Connects to a listening IPC endpoint.
 #[derive(Debug)]
 pub struct IpcClient<R, S> {
     path: PathBuf,
@@ -196,6 +216,10 @@ impl<R, S> IpcClient<R, S>
         R: for<'de> Deserialize<'de>,
         S: Serialize
 {
+    /// Create new client instance.
+    ///
+    /// # Arguments
+    /// * `path` - path to existing unix socket
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         IpcClient {
             path: path.as_ref().into(),
@@ -204,12 +228,14 @@ impl<R, S> IpcClient<R, S>
         }
     }
 
+    /// Try to open new connection.
     pub fn connect(&self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = UnixStream::connect(&self.path).map_err(|err| IpcError::ConnectionError { reason: err })?;
         split(stream).map_err(|err| IpcError::SplitError { reason: err })
     }
 }
 
+/// Crate new randomly named unix domain socket file in temp directory.
 pub fn temp_sock() -> PathBuf {
     let mut rng = thread_rng();
     let temp_dir = env::temp_dir();
