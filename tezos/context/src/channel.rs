@@ -12,9 +12,11 @@ static CHANNEL_ENABLED: AtomicBool = AtomicBool::new(false);
 const CHANNEL_BUFFER_LEN: usize = 1_048_576;
 
 lazy_static! {
+    /// This channel is shared by both OCaml and Rust
     static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(CHANNEL_BUFFER_LEN);
 }
 
+/// Send message into the shared channel.
 pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction>> {
     if CHANNEL_ENABLED.load(Ordering::Acquire) {
         CHANNEL.0.send(action)
@@ -23,11 +25,14 @@ pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction
     }
 }
 
+/// Receive message from the shared channel.
 pub fn context_receive() -> Result<ContextAction, RecvError> {
     CHANNEL.1.recv()
 }
 
 /// By default channel is disabled.
+///
+/// This is needed to prevent unit tests from overflowing the shared channel.
 pub fn enable_context_channel() {
     CHANNEL_ENABLED.store(true, Ordering::Release)
 }

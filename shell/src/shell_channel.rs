@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Shell channel is used to transmit high level shell messages.
+
 use getset::Getters;
 use riker::actors::*;
 

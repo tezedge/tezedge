@@ -1,3 +1,8 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Serde Serializer
+
 use std::error;
 use std::fmt;
 use std::io;

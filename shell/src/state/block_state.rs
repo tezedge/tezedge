@@ -12,9 +12,18 @@ use storage::persistent::PersistentStorage;
 
 use crate::collections::{BlockData, UniqueBlockData};
 
+/// Holds state of all known blocks
 pub struct BlockState {
+    /// persistent block storage
     block_storage: BlockStorage,
+    ///persistent block metadata storage
     block_meta_storage: BlockMetaStorage,
+    /// Current missing blocks.
+    /// This represents a set of missing block we will try to retrieve in the future.
+    /// Before we try to fetch missing block it is removed from this queue.
+    /// Block is then sent to [`chain_manager`](crate::chain_manager::ChainManager) actor whose responsibility is to
+    /// retrieve the block data. If the block data cannot be fetched it's the responsibility
+    /// of the [`chain_manager`](crate::chain_manager::ChainManager) to return the block to this queue.
     missing_blocks: UniqueBlockData<MissingBlock>,
     chain_id: ChainId,
 }

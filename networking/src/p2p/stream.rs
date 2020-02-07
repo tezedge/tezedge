@@ -1,6 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This module encapsulates p2p communication between peers.
+//!
+//! It provides message packaging from/to binary format, encryption, message nonce handling.
+
 use std::convert::TryInto;
 use std::io;
 
