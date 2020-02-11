@@ -20,8 +20,8 @@ use crate::types::{self, Value};
 pub struct BinaryWriter {
     data: Vec<u8>
 }
-impl BinaryWriter {
 
+impl BinaryWriter {
     /// Construct new instance of the [BinaryWriter].
     pub fn new() -> BinaryWriter {
         BinaryWriter { data: Vec::with_capacity(512) }
@@ -62,12 +62,19 @@ impl BinaryWriter {
         let mut serializer = Serializer::default();
         let value = data.serialize(&mut serializer)?;
 
-        match encoding {
-            Encoding::Obj(schema) => self.encode_record(&value, schema),
-            _ => self.encode_value(&value, encoding)
-        }?;
+        self.encode_any(&value, encoding)?;
 
         Ok(self.data.clone())
+    }
+
+    fn encode_any(&mut self, value: &Value, encoding: &Encoding) -> Result<usize, Error> {
+        if let Encoding::Obj(ref schema) = encoding {
+            self.encode_record(value, schema)
+        } else if let Encoding::Tup(ref encodings) = encoding {
+            self.encode_tuple(value, encodings)
+        } else {
+            self.encode_value(value, encoding)
+        }
     }
 
     fn encode_record(&mut self, value: &Value, schema: &[Field]) -> Result<usize, Error> {
@@ -79,16 +86,28 @@ impl BinaryWriter {
                     let value = self.find_value_in_record_values(name, values).unwrap_or_else(|| panic!("No values found for {}", name));
                     let encoding = field.get_encoding();
 
-                    bytes_sz += if let Encoding::Obj(ref schema) = encoding {
-                        self.encode_record(value, schema)?
-                    } else {
-                        self.encode_value(value, encoding)?
-                    }
+                    bytes_sz += self.encode_any(value, encoding)?;
                 }
 
                 Ok(bytes_sz)
             }
             _ => Err(Error::encoding_mismatch(&Encoding::Obj(schema.to_vec()), value))
+        }
+    }
+
+    fn encode_tuple(&mut self, value: &Value, encodings: &[Encoding]) -> Result<usize, Error> {
+        if let Value::Tuple(ref values) = value {
+            let mut bytes_sz: usize = 0;
+            for (index, encoding) in encodings.into_iter().enumerate() {
+                if let Some(value) = values.get(index) {
+                    bytes_sz += self.encode_any(value, encoding)?;
+                } else {
+                    return Err(Error::encoding_mismatch(&Encoding::Tup(encodings.to_vec()), value));
+                }
+            }
+            Ok(bytes_sz)
+        } else {
+            Err(Error::encoding_mismatch(&Encoding::Tup(encodings.to_vec()), value))
         }
     }
 
@@ -328,9 +347,6 @@ impl BinaryWriter {
             Encoding::Greedy(un_sized_encoding) => {
                 self.encode_value(value, un_sized_encoding)
             }
-            Encoding::Obj(obj_schema) => {
-                self.encode_record(value, obj_schema)
-            }
             Encoding::Tags(tag_sz, tag_map) => {
                 match value {
                     Value::Tag(ref tag_variant, ref tag_value) => {
@@ -370,6 +386,12 @@ impl BinaryWriter {
             Encoding::Lazy(fn_encoding) => {
                 let inner_encoding = fn_encoding();
                 self.encode_value(value, &inner_encoding)
+            }
+            Encoding::Obj(obj_schema) => {
+                self.encode_record(value, obj_schema)
+            }
+            Encoding::Tup(tup_encodings) => {
+                self.encode_tuple(value, tup_encodings)
             }
         }
     }

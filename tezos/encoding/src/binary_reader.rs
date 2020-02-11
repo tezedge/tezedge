@@ -76,7 +76,6 @@ macro_rules! safe {
 pub struct BinaryReader;
 
 impl BinaryReader {
-
     /// Construct new instance of the [BinaryReader].
     pub fn new() -> Self {
         Self
@@ -120,6 +119,7 @@ impl BinaryReader {
 
         let result = match encoding {
             Encoding::Obj(schema) => self.decode_record(&mut buf, schema),
+            Encoding::Tup(encodings) => self.decode_tuple(&mut buf, encodings),
             _ => self.decode_value(&mut buf, encoding)
         }?;
 
@@ -131,13 +131,21 @@ impl BinaryReader {
     }
 
     fn decode_record(&self, buf: &mut dyn Buf, schema: &[Field]) -> Result<Value, BinaryReaderError> {
-        let mut values = vec![];
+        let mut values = Vec::with_capacity(schema.len());
         for field in schema {
             let name = field.get_name();
             let encoding = field.get_encoding();
             values.push((name.clone(), self.decode_value(buf, encoding)?))
         }
         Ok(Value::Record(values))
+    }
+
+    fn decode_tuple(&self, buf: &mut dyn Buf, encodings: &[Encoding]) -> Result<Value, BinaryReaderError> {
+        let mut values = Vec::with_capacity(encodings.len());
+        for encoding in encodings {
+            values.push(self.decode_value(buf, encoding)?)
+        }
+        Ok(Value::Tuple(values))
     }
 
     fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
@@ -222,6 +230,9 @@ impl BinaryReader {
             }
             Encoding::Obj(schema_inner) => {
                 Ok(self.decode_record(buf, schema_inner)?)
+            }
+            Encoding::Tup(encodings_inner) => {
+                Ok(self.decode_tuple(buf, encodings_inner)?)
             }
             Encoding::Z => {
                 // read first byte

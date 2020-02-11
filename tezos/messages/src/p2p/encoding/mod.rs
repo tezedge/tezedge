@@ -16,6 +16,9 @@ pub mod block_header;
 pub mod protocol;
 pub mod operations_for_blocks;
 pub mod peer;
+pub mod swap;
+pub mod deactivate;
+pub mod operation_hashes_for_blocks;
 
 pub mod prelude {
     pub use super::ack::AckMessage;
@@ -31,4 +34,7 @@ pub mod prelude {
     pub use super::peer::{PeerMessage, PeerMessageResponse};
     pub use super::protocol::{Component, GetProtocolsMessage, Protocol, ProtocolMessage};
     pub use super::version::Version;
+    pub use super::swap::SwapMessage;
+    pub use super::deactivate::DeactivateMessage;
+    pub use super::operation_hashes_for_blocks::{GetOperationHashesForBlocksMessage, OperationHashesForBlocksMessage};
 }

@@ -174,7 +174,7 @@ pub enum Path {
     Op
 }
 
-fn path_encoding() -> Encoding {
+pub fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(&[

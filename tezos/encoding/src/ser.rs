@@ -23,6 +23,12 @@ impl Error {
             message: format!("Unsupported encoding {:?} for value: {:?}", encoding, value)
         }
     }
+
+    pub fn unsupported_operation(encoding: &Encoding, value: &Value) -> Self {
+        Error {
+            message: format!("Unsupported encoding operation {:?} for value: {:?}", encoding, value)
+        }
+    }
 }
 
 impl ser::Error for Error {
@@ -62,7 +68,6 @@ impl From<hex::FromHexError> for Error {
 }
 
 
-
 #[derive(Clone, Default)]
 pub struct Serializer {}
 
@@ -70,8 +75,7 @@ pub struct SeqSerializer {
     items: Vec<Value>,
 }
 
-pub struct MapSerializer {
-}
+pub struct MapSerializer {}
 
 pub struct StructSerializer {
     fields: Vec<(String, Value)>,
@@ -95,8 +99,6 @@ impl StructSerializer {
         }
     }
 }
-
-
 
 
 impl<'b> ser::Serializer for &'b mut Serializer {
@@ -439,7 +441,7 @@ mod tests {
         a: i32,
         b: Option<bool>,
         c: Option<u64>,
-        d: f64
+        d: f64,
     }
 
     #[derive(Serialize, Debug)]
@@ -456,8 +458,8 @@ mod tests {
                 a: 6,
                 b: Some(false),
                 c: Some(4_752_163_899),
-                d: 123.4
-            }
+                d: 123.4,
+            },
         };
 
         let mut serializer = Serializer::default();
@@ -476,7 +478,7 @@ mod tests {
                     Value::Record(ref v) => assert_eq!(4, v.len()),
                     _ => panic!("Was expecting &Value::Record(v)")
                 }
-            },
+            }
             _ => panic!("Invalid  type returned from serialization. Was expecting Value::Record")
         }
     }

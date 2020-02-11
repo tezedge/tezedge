@@ -180,6 +180,10 @@ pub enum Encoding {
     /// Is the collection of fields.
     /// not prefixed by anything in binary, encoded as the concatenation of all the element in binary
     Obj(Schema),
+    /// Heterogeneous collection of values.
+    /// Similar to [Encoding::Obj], but schema can be any types, not just fields.
+    /// Encoded as continuous binary representation.
+    Tup(Vec<Encoding>),
     /// Is the collection of fields.
     /// prefixed its length in bytes (4 Bytes), encoded as the concatenation of all the element in binary
     Dynamic(Box<Encoding>),
