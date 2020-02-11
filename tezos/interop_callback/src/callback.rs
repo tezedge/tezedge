@@ -52,7 +52,7 @@ fn to_string(value: Str) -> Option<String> {
     }
 }
 
-/// External callback function for set value to context
+// External callback function for set value to context
 caml!(ml_context_set(context_hash, block_hash, operation_hash, key, value_and_json) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -71,7 +71,7 @@ caml!(ml_context_set(context_hash, block_hash, operation_hash, key, value_and_js
     return Value::unit();
 });
 
-/// External callback function for delete key from context
+// External callback function for delete key from context
 caml!(ml_context_delete(context_hash, block_hash, operation_hash, key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -86,7 +86,7 @@ caml!(ml_context_delete(context_hash, block_hash, operation_hash, key, time_peri
     return Value::unit();
 });
 
-/// External callback function for remove_rec key from context
+// External callback function for remove_rec key from context
 caml!(ml_context_remove_rec(context_hash, block_hash, operation_hash, key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -101,7 +101,7 @@ caml!(ml_context_remove_rec(context_hash, block_hash, operation_hash, key, time_
     return Value::unit();
 });
 
-/// External callback function for copy keys from context
+// External callback function for copy keys from context
 caml!(ml_context_copy(context_hash, block_hash, operation_hash, from_to_key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -119,7 +119,7 @@ caml!(ml_context_copy(context_hash, block_hash, operation_hash, from_to_key, tim
     return Value::unit();
 });
 
-/// External callback function for checkout context
+// External callback function for checkout context
 caml!(ml_context_checkout(context_hash, time_period) {
     let context_hash: ContextHash = to_hash(context_hash.into()).unwrap();
 
@@ -131,7 +131,7 @@ caml!(ml_context_checkout(context_hash, time_period) {
     return Value::unit();
 });
 
-/// External callback function for checkout context
+// External callback function for checkout context
 caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_period) {
     let parent_context_hash: Option<ContextHash> = to_hash(parent_context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -145,7 +145,7 @@ caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_
     return Value::unit();
 });
 
-/// External callback function for mem key from context
+// External callback function for mem key from context
 caml!(ml_context_mem(context_hash, block_hash, operation_hash, key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -160,7 +160,7 @@ caml!(ml_context_mem(context_hash, block_hash, operation_hash, key, time_period)
     return Value::unit();
 });
 
-/// External callback function for dir_mem key from context
+// External callback function for dir_mem key from context
 caml!(ml_context_dir_mem(context_hash, block_hash, operation_hash, key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -175,7 +175,7 @@ caml!(ml_context_dir_mem(context_hash, block_hash, operation_hash, key, time_per
     return Value::unit();
 });
 
-/// External callback function for raw_get key from context
+// External callback function for raw_get key from context
 caml!(ml_context_raw_get(context_hash, block_hash, operation_hash, key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
@@ -190,7 +190,7 @@ caml!(ml_context_raw_get(context_hash, block_hash, operation_hash, key, time_per
     return Value::unit();
 });
 
-/// External callback function for fold key from context
+// External callback function for fold key from context
 caml!(ml_context_fold(context_hash, block_hash, operation_hash, key, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
