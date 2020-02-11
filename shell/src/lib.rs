@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
+
 mod collections;
 mod state;
 
@@ -50,11 +52,11 @@ pub(crate) mod subscription {
             M: Message,
             E: Message + Into<M>
     {
-    shell_channel.tell(
-        Subscribe {
-            actor: Box::new(myself.clone()),
-            topic: ShellChannelTopic::ShellEvents.into(),
-        }, None);
+        shell_channel.tell(
+            Subscribe {
+                actor: Box::new(myself.clone()),
+                topic: ShellChannelTopic::ShellEvents.into(),
+            }, None);
 
         shell_channel.tell(
             Subscribe {

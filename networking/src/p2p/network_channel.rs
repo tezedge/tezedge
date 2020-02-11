@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This channel is used to transmit p2p networking messages between actors.
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 

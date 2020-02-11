@@ -1,6 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(wait_until, const_fn, const_if_match)]
+#![feature(const_fn, const_if_match)]
 
 use std::sync::Arc;
 
@@ -153,7 +153,7 @@ pub mod tests_common {
     use crate::block_storage;
     use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
-    use crate::skip_list::{Lane, DatabaseBackedSkipList};
+    use crate::skip_list::{DatabaseBackedSkipList, Lane};
 
     use super::*;
 

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This module provides all the FFI callback functions.
+
 use ocaml::{Array1, caml, List, Str, Tuple, Value};
 
 use tezos_context::channel::*;

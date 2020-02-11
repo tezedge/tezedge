@@ -1,3 +1,8 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Tezos json data writer.
+
 use chrono::{TimeZone, Utc};
 use num_traits::Num;
 use serde::ser::{Error as SerdeError, Serialize};
@@ -308,6 +313,7 @@ mod tests {
     use serde::Serialize;
 
     use crypto::hash::HashType;
+
     use crate::types::BigInt;
 
     use super::*;

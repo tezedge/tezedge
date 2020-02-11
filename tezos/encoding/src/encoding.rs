@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Schema used for serialization and deserialization.
+
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
@@ -109,7 +111,7 @@ impl fmt::Debug for dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync {
     }
 }
 
-
+/// Represents schema used for encoding a data into a json or a binary form.
 #[derive(Debug, Clone)]
 pub enum Encoding {
     /// Encoded as nothing in binary or null in json

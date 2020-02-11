@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Sends blocks to the `protocol_runner`.
+
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -37,9 +39,19 @@ pub struct ChainFeeder {
     block_applier_thread: SharedJoinHandle,
 }
 
+/// Reference to [chain feeder](ChainFeeder) actor
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
+
+    /// Create new actor instance.
+    ///
+    /// If the actor is successfully created then reference to the actor is returned.
+    /// Commands to the tezos protocol are transmitted via IPC channel provided by [`ipc_server`](IpcCmdServer).
+    ///
+    /// This actor spawns a new thread in which it will periodically monitor [`persistent_storage`](PersistentStorage).
+    /// Purpose of the monitoring thread is to detect whether it is possible to apply blocks received by the p2p layer.
+    /// If the block can be applied, it is sent via IPC to the `protocol_runner`, where it is then applied by calling a tezos ffi.
     pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
@@ -158,7 +170,6 @@ impl Receive<FeedChainToProtocol> for ChainFeeder {
         }
     }
 }
-
 
 fn feed_chain_to_protocol(
     chain_id: &ChainId,

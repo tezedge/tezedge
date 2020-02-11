@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::helpers::{FullBlockInfo, InnerBlockHeader};
+use crate::helpers::FullBlockInfo;
 
 use super::base_types::*;
 
@@ -21,18 +21,27 @@ pub struct BlockInfo {
     protocol: Option<UniString>,
     chain_id: Option<UniString>,
     hash: Option<UniString>,
-    header: InnerBlockHeader,
+    header: HashMap<String, Value>,
     metadata: HashMap<String, Value>,
     operations: Vec<Vec<HashMap<String, Value>>>,
 }
 
 impl From<FullBlockInfo> for BlockInfo {
     fn from(val: FullBlockInfo) -> Self {
+
+        let protocol: Option<UniString> = match val.metadata.get("protocol") {
+            Some(value) => match value.as_str() {
+                Some(proto) => Some(proto.to_string().into()),
+                None => None
+            },
+            None => None
+        };
+
         Self {
-            protocol: None,
+            protocol,
             chain_id: Some(val.chain_id.into()),
             hash: Some(val.hash.into()),
-            header: val.header,
+            header: val.header.into(),
             operations: val.operations,
             metadata: val.metadata,
         }

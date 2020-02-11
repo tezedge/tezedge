@@ -1,8 +1,13 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Serde Serializer
+
 use std::error;
 use std::fmt;
 use std::io;
 
-use serde::ser::{self, Error as SerdeError, Serialize};
+use serde::ser::{self, Error as _, Serialize};
 
 use crate::encoding::Encoding;
 use crate::types::{BigInt, Value};
@@ -30,7 +35,7 @@ impl ser::Error for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str(error::Error::description(self))
+        formatter.write_fmt(format_args!("{}", self))
     }
 }
 
