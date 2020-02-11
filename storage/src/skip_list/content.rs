@@ -29,6 +29,7 @@ impl NodeHeader {
         }
     }
 
+    /// Get next node on this lane
     pub fn next(&self) -> Self {
         Self {
             list_id: self.list_id,
@@ -37,6 +38,7 @@ impl NodeHeader {
         }
     }
 
+    /// Get previous node on this lane, if node is first, do nothing
     pub fn prev(&self) -> Self {
         if self.node_index == 0 {
             self.clone()
@@ -49,6 +51,7 @@ impl NodeHeader {
         }
     }
 
+    /// Move to the lower lane adapting the node index
     pub fn lower(&self) -> Self {
         if self.lane_level == 0 {
             self.clone()
@@ -61,6 +64,7 @@ impl NodeHeader {
         }
     }
 
+    /// Move to the higher lane adapting the node index
     pub fn higher(&self) -> Self {
         Self {
             list_id: self.list_id,
@@ -69,6 +73,7 @@ impl NodeHeader {
         }
     }
 
+    /// Get index representing the current index from base(0.) lane
     pub fn base_index(&self) -> usize {
         if self.lane_level == 0 {
             self.node_index
@@ -77,6 +82,7 @@ impl NodeHeader {
         }
     }
 
+    /// Calculate the index of the node on the lower lane
     pub fn lower_index(&self) -> usize {
         if self.lane_level == 0 {
             self.node_index
@@ -85,6 +91,7 @@ impl NodeHeader {
         }
     }
 
+    /// Calculate the index of the node on the higher lane
     pub fn higher_index(&self) -> usize {
         if self.node_index < LEVEL_BASE {
             0
@@ -145,10 +152,14 @@ pub type SkipListId = u16;
 pub enum SkipListError {
     #[fail(display = "Persistent storage error: {}", error)]
     PersistentStorageError {
-        error: DBError
+        error: DBError,
+    },
+    #[fail(display = "Internal error occured during skip list operation: {}", description)]
+    InternalError {
+        description: String,
     },
     #[fail(display = "Index is out of skip list bounds")]
-    OutOfBoundsError
+    OutOfBoundsError,
 }
 
 impl From<DBError> for SkipListError {
