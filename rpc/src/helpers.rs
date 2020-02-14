@@ -1,27 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::convert::TryInto;
-use storage::num_from_slice;
-
-use serde::Serialize;
-use serde_json::Value;
-use getset::Getters;
-use failure::Fail;
-
-use crypto::blake2b;
-use crypto::hash::HashType;
-use shell::shell_channel::BlockApplied;
-use tezos_messages::p2p::encoding::prelude::*;
-
-use crate::encoding::conversions::{
-    block_id_to_block_hash,
-    public_key_to_contract_id
-};
-use crate::ts_to_rfc3339;
-
 #[macro_export]
 macro_rules! merge_slices {
     ( $($x:expr),* ) => {{
@@ -33,8 +12,36 @@ macro_rules! merge_slices {
     }}
 }
 
-#[derive(Serialize, Debug, Clone)]
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::convert::TryInto;
+use storage::num_from_slice;
+
+use serde::Serialize;
+use serde_json::Value;
+use getset::Getters;
+use failure::{Fail, bail, format_err};
+
+use crypto::blake2b;
+use crypto::hash::HashType;
+use shell::shell_channel::BlockApplied;
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
+use storage::persistent::PersistentStorage;
+use storage::skip_list::Bucket;
+use tezos_messages::p2p::encoding::prelude::*;
+
+use crate::ContextList;
+use crate::encoding::conversions::{
+    block_id_to_block_hash,
+    public_key_to_contract_id
+};
+use crate::rpc_actor::RpcCollectedStateRef;
+use crate::ts_to_rfc3339;
+
+type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
+
 /// Object containing information to recreate the full block information
+#[derive(Serialize, Debug, Clone)]
 pub struct FullBlockInfo {
     pub hash: String,
     pub chain_id: String,
@@ -43,8 +50,8 @@ pub struct FullBlockInfo {
     pub operations: Vec<Vec<HashMap<String, Value>>>,
 }
 
-#[derive(Serialize, Debug, Clone)]
 /// Object containing all block header information
+#[derive(Serialize, Debug, Clone)]
 pub struct InnerBlockHeader {
     pub level: i32,
     pub proto: u8,
@@ -57,8 +64,8 @@ pub struct InnerBlockHeader {
     pub protocol_data: HashMap<String, Value>,
 }
 
-#[derive(Serialize, Debug, Clone)]
 /// Object containing information to recreate the block header information
+#[derive(Serialize, Debug, Clone)]
 pub struct BlockHeaderInfo {
     pub hash: String,
     pub chain_id: String,
@@ -305,7 +312,7 @@ impl RightsContextData {
     }
 
     // get context data roll_snapshot, random_seed, last_roll and rolls from context list
-    pub fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, list: ContextList) -> Result<Self, failure::Error> {
+    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, list: ContextList) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
         let preserved_cycles = *constants.preserved_cycles();
@@ -323,7 +330,7 @@ impl RightsContextData {
         };
 
         // get context list of block_id level as ContextMap
-        let current_context = get_context_as_hashmap(block_level as usize, list.clone())?;
+        let current_context = Self::get_context_as_hashmap(block_level as usize, list.clone())?;
         
         // get index of roll snapshot
         let roll_snapshot: i16 = {
@@ -365,10 +372,10 @@ impl RightsContextData {
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
             (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot) - 1
         };
-        let roll_context = get_context_as_hashmap(snapshot_level as usize, list.clone())?;
+        let roll_context = Self::get_context_as_hashmap(snapshot_level as usize, list.clone())?;
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = get_context_rolls(roll_context)? {
+        let context_rolls = if let Some(rolls) = Self::get_context_rolls(roll_context)? {
             rolls
         } else {
             return Err(format_err!("rolls"))
@@ -480,7 +487,7 @@ impl RightsParams {
         }
     }
 
-    pub fn parse_rights_parameters(
+    pub(crate) fn parse_rights_parameters(
         param_chain_id: &str,
         param_block_id: &str,
         param_level: &Option<String>,
@@ -517,13 +524,13 @@ impl RightsParams {
             Some(level) => {
                 let level = level.parse()?;
                 // check the bounds for the requested level (if it is in the previous/next preserved cycles)
-                validate_cycle(cycle_from_level(level, blocks_per_cycle), current_cycle, preserved_cycles)?;
+                Self::validate_cycle(cycle_from_level(level, blocks_per_cycle), current_cycle, preserved_cycles)?;
                 // endorsing rights: display level is always same as level requested
                 display_level = level;
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
                 timestamp_level = level-1;
                 // there can be requested also negative level, this is not an error but it is handled same as level 1 would be requested
-                get_valid_level(level)
+                Self::get_valid_level(level)
             },
             // here is the main difference between endorsing and baking rights which data are loaded from context list based on level
             None => if is_baking_rights {
@@ -535,7 +542,7 @@ impl RightsParams {
 
         // validate requested cycle
         let requested_cycle = match param_cycle {
-            Some(val) => Some(validate_cycle(val.parse()?, current_cycle, preserved_cycles)?),
+            Some(val) => Some(Self::validate_cycle(val.parse()?, current_cycle, preserved_cycles)?),
             None => None
         };
 
@@ -564,14 +571,14 @@ impl RightsParams {
 
     
     #[inline]
-    fn get_estimated_time(&self, constants: &RightsConstants, level: Option<i64>) -> Option<String> {
+    pub fn get_estimated_time(&self, constants: &RightsConstants, level: Option<i64>) -> Option<String> {
         // if is cycle then level is provided as parameter else use prepared timestamp_level
         let timestamp_level = if let Some(l) = level {
             l
         } else {
             self.timestamp_level
         };
-        
+
         //check if estimated time is computed and convert from raw epoch time to rfc3339 format
         if self.block_level <= timestamp_level {
             let est_timestamp = ((timestamp_level - self.block_level).abs() as i64 * constants.time_between_blocks()[0]) + self.block_timestamp;
@@ -636,23 +643,6 @@ impl RightsConstants {
             endorsers_per_block,
         }
     }
-
-    pub(crate) fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, context_list: ContextList, persistent_storage: &PersistentStorage) -> Result<Self, failure::Error> {
-        let constants = match get_context_constants(chain_id, block_id, context_list.clone(), persistent_storage)? {
-            Some(v) => v,
-            None => bail!("Cannot get protocol constants")
-        };
-
-        Ok(Self::new(
-            *constants.blocks_per_cycle(),
-            *constants.preserved_cycles(),
-            *constants.nonce_length(),
-            constants.time_between_blocks().into_iter().map(|x| x.parse()?).collect().to_vec(),
-            *constants.blocks_per_roll_snapshot(),
-            *constants.endorsers_per_block(),
-        ))
-    }
-
 }
 
 #[derive(Serialize, Debug, Clone, Getters)]
@@ -785,7 +775,7 @@ pub fn get_pseudo_random_number(state: RandomSeedState, bound: i32) -> TezosPRNG
         Ok((v.into(), sequence))
 }
 
-pub fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<usize>, failure::Error> {
+pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<usize>, failure::Error> {
     let level = if block_id == "head" {
         let reader = list.read().expect("mutex poisoning");
         Some(reader.len() - 1)
@@ -807,7 +797,7 @@ pub fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_stora
     Ok(level)
 }
 
-pub fn get_block_header_timestamp(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<i64, failure::Error> {
+pub(crate) fn get_block_header_timestamp(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<i64, failure::Error> {
     let timestamp: i64 = if block_id == "head" {
         let state_read = state.read().unwrap();
         match state_read.current_head().as_ref() {

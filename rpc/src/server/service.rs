@@ -479,13 +479,12 @@ mod fns {
     use itertools::Itertools;
     use serde::{Deserialize, Serialize};
 
-    use failure::{bail, format_err};
+    use failure::{bail};
     
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-    use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
+    use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
     use storage::block_storage::BlockJsonData;
-    use storage::context_storage::ContractAddress;
     use storage::persistent::PersistentStorage;
     use storage::skip_list::Bucket;
     use tezos_context::channel::ContextAction;
@@ -499,7 +498,7 @@ mod fns {
     };
     use crate::merge_slices;
     use crate::helpers::{FullBlockInfo, BlockHeaderInfo, PagedResult, RpcResponseData, EndorsingRight, RightsContextData, RightsParams, RightsConstants, EndorserSlots,
-        cycle_from_level, get_pseudo_random_number, init_prng, get_level_by_block_id, get_block_header_timestamp};
+        get_pseudo_random_number, init_prng, get_level_by_block_id};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -525,7 +524,7 @@ mod fns {
         random_seed: Option<String>,
     }
 
-    type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
+    
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -560,7 +559,7 @@ mod fns {
 
     pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         // get the constants first!
-        let constants: RightsConstants = RightsConstants::get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
+        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
         
         let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, max_priority, has_all, &constants, list.clone(), persistent_storage, state, true)?;
         
@@ -665,7 +664,7 @@ mod fns {
     pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
         // get the constants first!
-        let constants: RightsConstants = RightsConstants::get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
+        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
 
         let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, &None, has_all, &constants, list.clone(), persistent_storage, state, false)?;
         
@@ -687,22 +686,22 @@ mod fns {
             for level in first_cycle_level..last_cycle_level {
                 // get estimated time first because is equal for all endorsers in given level
                 // the base level for estimated time computation is level of previous block
-                let estimated_time: Option<String> = parameters.get_estimated_time(constants, level-1);
+                let estimated_time: Option<String> = parameters.get_estimated_time(constants, Some(level-1));
 
-                let level_endorsing_rights = complete_endorsing_rights_for_level(&constants, &context_data, level, level, estimated_time)?;
+                let level_endorsing_rights = complete_endorsing_rights_for_level(context_data, parameters, constants, level, level, estimated_time)?;
                 endorsing_rights = merge_slices!(&endorsing_rights, &level_endorsing_rights);
             }
         } else {
             // use level prepared during parameter parsing to compute estimated time
             let estimated_time: Option<String> = parameters.get_estimated_time(constants, None);
 
-            endorsing_rights = complete_endorsing_rights_for_level(&constants, &context_data, *parameters.requested_level(), *parameters.display_level(), estimated_time);
+            endorsing_rights = complete_endorsing_rights_for_level(context_data, parameters, constants, *parameters.requested_level(), *parameters.display_level(), estimated_time)?;
         };
 
         Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
     }
     
-    fn complete_endorsing_rights_for_level(constants: &RightsConstants, context_data: &RightsContextData, parameters: &RightsParams, level: i64, display_level: i64, estimated_time: String) -> Result<Vec::<EndorsingRight>, failure::Error> {
+    fn complete_endorsing_rights_for_level(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants, level: i64, display_level: i64, estimated_time: Option<String>) -> Result<Vec::<EndorsingRight>, failure::Error> {
         let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
         // endorsers_slots is needed to group all slots by delegate
@@ -710,8 +709,10 @@ mod fns {
 
         // order descending by delegate public key hash address hex byte string
         for delegate in endorsers_slots.keys().sorted().rev() {
+            let delegate_data = endorsers_slots.get(delegate).unwrap();
+
             // prepare delegate contract id
-            let delegate_contract_id = endorsers_slots.get(delegate)?.contract_id().to_string();
+            let delegate_contract_id = delegate_data.contract_id().to_string();
 
             // filter delegates
             if let Some(d) = parameters.requested_delegate() {
@@ -723,7 +724,7 @@ mod fns {
             endorsing_rights.push(EndorsingRight::new(
                 display_level,
                 delegate_contract_id,
-                endorsers_slots.get(delegate)?.slots().clone(),
+                delegate_data.slots().clone(),
                 estimated_time.clone())
             )
         }
@@ -1053,6 +1054,24 @@ mod fns {
             let storage = list.read().expect("poisoned storage lock");
             storage.get(level).map_err(|e| e.into())
         }
+    }
+
+    #[inline]
+    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, context_list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
+        let constants = match get_context_constants(chain_id, block_id, context_list.clone(), persistent_storage)? {
+            Some(v) => v,
+            None => bail!("Cannot get protocol constants")
+        };
+
+        Ok(RightsConstants::new(
+            *constants.blocks_per_cycle(),
+            *constants.preserved_cycles(),
+            *constants.nonce_length(),
+            //time_between_blocks: time_between_blocks.into_iter().map(|x| x.parse().unwrap()).collect(),
+            constants.time_between_blocks().to_vec().into_iter().map(|x| x.parse().unwrap()).collect(),
+            *constants.blocks_per_roll_snapshot(),
+            *constants.endorsers_per_block(),
+        ))
     }
 
     #[inline]
