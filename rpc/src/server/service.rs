@@ -343,7 +343,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ContextConstants, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            result_to_json_response(fns::get_context_constants(chain_id, block_id, context_storage, &persistent_storage), &log)
+            result_to_json_response(fns::get_context_constants(chain_id, block_id, None, context_storage, &persistent_storage), &log)
         }
         (&Method::GET, Some((Route::HeadChain, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
@@ -555,7 +555,7 @@ mod fns {
     /// # Arguments
     /// 
     /// * `chain_id` - Url path parameter 'chain_id'.
-    /// * `block_id` - Url path parameter 'block_id'.
+    /// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
     /// * `level` - Url query parameter 'level'.
     /// * `delegate` - Url query parameter 'delegate'.
     /// * `cycle` - Url query parameter 'cycle'.
@@ -567,10 +567,16 @@ mod fns {
     /// 
     /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
     pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
-        // get the constants first!
-        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
+
+        // get block level first
+        let block_level: i64 = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+            Some(val) => val.try_into()?,
+            None => bail!("Block level not found")
+        };
+
+        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage)?;
         
-        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, max_priority, has_all, &constants, list.clone(), persistent_storage, state, true)?;
+        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, state, true)?;
         
         let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
@@ -686,7 +692,7 @@ mod fns {
     /// # Arguments
     /// 
     /// * `chain_id` - Url path parameter 'chain_id'.
-    /// * `block_id` - Url path parameter 'block_id'.
+    /// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
     /// * `level` - Url query parameter 'level'.
     /// * `delegate` - Url query parameter 'delegate'.
     /// * `cycle` - Url query parameter 'cycle'.
@@ -698,9 +704,14 @@ mod fns {
     /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
     pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
-        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
+        let block_level: i64 = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+            Some(val) => val.try_into()?,
+            None => bail!("Block level not found")
+        };
 
-        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, &None, has_all, &constants, list.clone(), persistent_storage, state, false)?;
+        let constants: RightsConstants = get_and_parse_rights_constants(chain_id, block_id, block_level, list.clone(), persistent_storage)?;
+
+        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, &None, has_all, block_level, &constants, persistent_storage, state, false)?;
         
         let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
@@ -859,12 +870,26 @@ mod fns {
         Ok(block)
     }
 
-    /// Get ptocol context constants from context list
-    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
-        let level: usize = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
-            l
+    /// Get protocol context constants from context list
+    /// 
+    /// # Arguments
+    /// 
+    /// * `chain_id` - id of chain, not used
+    /// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
+    /// * `opt_level` - Optionaly input block level from block_id if is already known to prevent double code execution.
+    /// * `list` - Context list handler.
+    /// * `persistent_storage` - Persistent storage handler.
+    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: Option<i64>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
+        // first check if level is already known
+        let level: usize = if let Some(l) = opt_level {
+            l as usize
         } else {
-            bail!("Level not found for block_id {}", block_id)
+            // get level level by block_id
+            if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+                l
+            } else {
+                bail!("Level not found for block_id {}", block_id)
+            }
         };
 
         let protocol_hash: Vec<u8>;
@@ -1122,11 +1147,11 @@ mod fns {
     /// 
     /// * `chain_id` - Url path parameter 'chain_id'.
     /// * `block_id` - Url path parameter 'block_id'.
+    /// * `block_level` - Provide level of block_id that is already known to prevent double code execution.
     /// * `persistent_storage` - Persistent storage handler.
-    /// * `level` - Optional provide level of block_id if is already known to prevent double code execution.
     #[inline]
-    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
-        let constants = match get_context_constants(chain_id, block_id, list.clone(), persistent_storage)? {
+    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, block_level: i64, list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
+        let constants = match get_context_constants(chain_id, block_id, Some(block_level), list.clone(), persistent_storage)? {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };

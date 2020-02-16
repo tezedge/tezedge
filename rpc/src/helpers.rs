@@ -243,6 +243,7 @@ pub struct BakingRights {
     level: i64,
 
     /// baker contract id
+    #[get = "pub(crate)"]
     delegate: String,
 
     /// baker priority to bake block
@@ -550,6 +551,7 @@ impl RightsParams {
     /// * `param_cycle` - Url query parameter 'cycle'.
     /// * `param_max_priority` - Url query parameter 'max_priority'.
     /// * `param_has_all` - Url query parameter 'all'.
+    /// * `block_level` - Block level from block_id.
     /// * `rights_constants` - Context constants used in baking and endorsing rights.
     /// * `context_list` - Context list handler.
     /// * `persistent_storage` - Persistent storage handler.
@@ -565,22 +567,15 @@ impl RightsParams {
         param_cycle: &Option<String>,
         param_max_priority: &Option<String>,
         param_has_all: bool,
+        block_level: i64,
         rights_constants: &RightsConstants,
-        context_list: ContextList,
         persistent_storage: &PersistentStorage,
         state: RpcCollectedStateRef,
         is_baking_rights: bool
     ) -> Result<Self, failure::Error> {
-
-        let block_level_usize = match get_level_by_block_id(param_block_id, context_list.clone(), persistent_storage)? {
-            Some(val) => val,
-            None => bail!("Block level not found")
-        };
         let preserved_cycles = *rights_constants.preserved_cycles();
         let blocks_per_cycle = *rights_constants.blocks_per_cycle();
 
-        // trying to maintain the consistent i64 in the baking rights
-        let block_level: i64 = block_level_usize.try_into()?;
         // this is the cycle of block_id level
         let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
@@ -783,14 +778,14 @@ pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> Result<i64, failur
 /// hence the blocks_per_cycle - 1 for last cycle block.
 pub fn level_position(level:i64, blocks_per_cycle:i64) -> Result<i64, failure::Error> {
     // check if blocks_per_cycle is not 0 to prevent panic
-    if blocks_per_cycle =< 0 {
+    if blocks_per_cycle <= 0 {
         bail!("wrong value blocks_per_cycle={}", blocks_per_cycle);
     }
     let cycle_position = (level % blocks_per_cycle) - 1;
     if cycle_position < 0 { //for last block
-        blocks_per_cycle - 1
+        Ok(blocks_per_cycle - 1)
     } else {
-        cycle_position
+        Ok(cycle_position)
     }
 }
 
