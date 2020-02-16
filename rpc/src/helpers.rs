@@ -193,6 +193,7 @@ impl<C> PagedResult<C>
     }
 }
 
+// TODO: refactor errors so this will be removed
 // Enum defining possible response structures for RPC calls
 // there is reason to have this structure because of format of error responses from ocaml node:
 // [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
@@ -206,17 +207,25 @@ pub enum RpcResponseData {
     // ErrorMsg(RpcErrorMsg),
 }
 
-// endorsing rights structure, final response look like Vec<EndorsingRight>
+/// Endorsing rights structure, final response look like Vec<EndorsingRight>
 #[derive(Serialize, Debug, Clone)]
 pub struct EndorsingRight {
+    /// block level for which endorsing rights are generated
     level: i64,
+
+    /// endorser contract id
     delegate: String,
+
+    /// list of endorsement slots
     slots: Vec<u8>,
+
+    /// estimated time of endorsement, is set to None if in past relative to block_id
     #[serde(skip_serializing_if = "Option::is_none")]
     estimated_time: Option<String>
 }
 
 impl EndorsingRight {
+    /// Simple constructor to construct EndorsingRight
     pub fn new(level: i64, delegate: String, slots: Vec<u8>, estimated_time: Option<String>) -> Self {
         Self {
             level,
@@ -230,18 +239,22 @@ impl EndorsingRight {
 /// Object containing information about the baking rights 
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct BakingRights {
-    #[get = "pub(crate)"]
+    /// block level for which baking rights are generated
     level: i64,
-    #[get = "pub(crate)"]
+
+    /// baker contract id
     delegate: String,
-    #[get = "pub(crate)"]
+
+    /// baker priority to bake block
     priority: i64,
+
+    /// estimated time of baking based on baking priority, is set to None if in past relative to block_id
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[get = "pub(crate)"]
     estimated_time: Option<String>,
 }
 
 impl BakingRights {
+    /// Simple constructor to construct BakingRights
     pub fn new(level: i64, delegate: String, priority: i64, estimated_time: Option<String>) -> Self{
         Self {
             level,
@@ -252,7 +265,8 @@ impl BakingRights {
     }
 }
 
-// struct is defining Error message response, thre are different keys is these messages so only needed one are defined for each message
+// TODO: refactor errors
+/// Struct is defining Error message response, there are different keys is these messages so only needed one are defined for each message
 #[derive(Serialize, Debug, Clone)]
 pub struct RpcErrorMsg {
     kind: String, // "permanent"
@@ -291,18 +305,24 @@ pub struct RpcErrorMsg {
 //     }
 // }
 
+/// Data from context DB for completing baking and endorsing rights
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct RightsContextData {
+    /// Random seed for Tezos PRNG
     #[get = "pub(crate)"]
     random_seed: Vec<u8>,
+
+    /// Number of last roll so Tezos PRNG will not overflow
     #[get = "pub(crate)"]
     last_roll: i32,
+
+    /// List of rolls mapped to rollers contract id
     #[get = "pub(crate)"]
-    // type alias
     rolls: HashMap<i32, String>,
 }
 
 impl RightsContextData {
+    /// Simple constructor to create RightsContextData
     pub fn new(random_seed: Vec<u8>, last_roll: i32, rolls: HashMap<i32, String>) -> Self {
         Self {
             random_seed,
@@ -311,7 +331,15 @@ impl RightsContextData {
         }
     }
 
-    // get context data roll_snapshot, random_seed, last_roll and rolls from context list
+    /// Get context data roll_snapshot, random_seed, last_roll and rolls from context list
+    /// 
+    /// # Arguments
+    /// 
+    /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
+    /// * `constants` - Context constants used in baking and endorsing rights.
+    /// * `list` - Context list handler.
+    /// 
+    /// Return RightsContextData.
     pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, list: ContextList) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
@@ -326,7 +354,7 @@ impl RightsContextData {
         let requested_cycle = if let Some(cycle) = *parameters.requested_cycle() {
             cycle
         } else {
-            cycle_from_level(requested_level, blocks_per_cycle)
+            cycle_from_level(requested_level, blocks_per_cycle)?
         };
 
         // get context list of block_id level as ContextMap
@@ -335,10 +363,9 @@ impl RightsContextData {
         // get index of roll snapshot
         let roll_snapshot: i16 = {
             let snapshot_key = format!("data/cycle/{}/roll_snapshot", requested_cycle);
-            // println!("get snapshot_key: level:{} ctx key:{}", block_level, snapshot_key);
             if let Some(Bucket::Exists(data)) = current_context.get(&snapshot_key) {
                 num_from_slice!(data, 0, i16)
-            } else { // key not found
+            } else { // key not found - prepare error for later processing
                 return Err(format_err!("roll_snapshot"))
             }
         };
@@ -354,11 +381,10 @@ impl RightsContextData {
 
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
-        // println!("get last_roll: level:{} ctx key:{}", block_level, last_roll_key);
         let last_roll = {
             if let Some(Bucket::Exists(data)) = current_context.get(&last_roll_key) {
                 num_from_slice!(data, 0, i32)
-            } else { // key not found
+            } else { // key not found - prepare error for later processing
                 return Err(format_err!("last_roll"))
             }
         };
@@ -388,6 +414,13 @@ impl RightsContextData {
         ))
     }
 
+    /// get list of rollers from context list selected by snapshot level
+    /// 
+    /// # Arguments
+    /// 
+    /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
+    /// 
+    /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
     fn get_context_rolls(context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
             // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
@@ -413,6 +446,14 @@ impl RightsContextData {
         Ok(Some(roll_owners))
     }
 
+    /// Get list of rollers from context list selected by snapshot level
+    /// 
+    /// # Arguments
+    /// 
+    /// * `level` - level to select from context list
+    /// * `list` - context list handler
+    /// 
+    /// Return context list for given level as HashMap
     fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<ContextMap, failure::Error> {
         // get the whole context
         let context = {
@@ -426,41 +467,52 @@ impl RightsContextData {
         Ok(context)
     }
 }
-
+/// Set of parameters used to complete baking and endorsing rights
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct RightsParams {
+    /// Id of a chain. Url path parameter 'chain_id'.
     #[get = "pub(crate)"]
     chain_id: String,
 
+    /// Level (height) of block. Parsed from url path parameter 'block_id'.
     #[get = "pub(crate)"]
     block_level: i64,
 
+    /// Header timestamp of block. Parsed from url path parameter 'block_id'.
     #[get = "pub(crate)"]
     block_timestamp: i64,
 
+    /// Contract id to filter output by delegate. Url query parameter 'delegate'.
     #[get = "pub(crate)"]
     requested_delegate: Option<String>,
 
+    /// Cycle for whitch all rights will be listed. Url query parameter 'cycle'.
     #[get = "pub(crate)"]
     requested_cycle: Option<i64>,
 
+    /// Level (height) of block for whitch all rights will be listed. Url query parameter 'level'.
     #[get = "pub(crate)"]
     requested_level: i64,
     
+    /// Level to be displayed in output. Endorsing rights only.
     #[get = "pub(crate)"]
     display_level: i64,
     
+    /// Level for estimated_time computation. Endorsing rights only.
     #[get = "pub(crate)"]
     timestamp_level: i64,
 
+    /// Max priority to which baking rights are listed. Url query parameter 'max_priority'.
     #[get = "pub(crate)"]
     max_priority: i64,
 
+    /// Indicate that baking rights for maximum priority should be listed. Url query parameter 'all'.
     #[get = "pub(crate)"]
     has_all: bool,
 }
 
 impl RightsParams {
+    /// Simple constructor to create RightsParams
     pub fn new(
         chain_id: String, 
         block_level: i64, 
@@ -487,6 +539,24 @@ impl RightsParams {
         }
     }
 
+    /// Prepare baking and endorsing rights parameters
+    /// 
+    /// # Arguments
+    /// 
+    /// * `param_chain_id` - Url path parameter 'chain_id'.
+    /// * `param_block_id` - Url path parameter 'block_id'.
+    /// * `param_level` - Url query parameter 'level'.
+    /// * `param_delegate` - Url query parameter 'delegate'.
+    /// * `param_cycle` - Url query parameter 'cycle'.
+    /// * `param_max_priority` - Url query parameter 'max_priority'.
+    /// * `param_has_all` - Url query parameter 'all'.
+    /// * `rights_constants` - Context constants used in baking and endorsing rights.
+    /// * `context_list` - Context list handler.
+    /// * `persistent_storage` - Persistent storage handler.
+    /// * `state` - Current RPC state (head).
+    /// * `is_baking_rights` - flag to identify if are parsed baking or endorsing rights
+    /// 
+    /// Return RightsParams
     pub(crate) fn parse_rights_parameters(
         param_chain_id: &str,
         param_block_id: &str,
@@ -512,7 +582,7 @@ impl RightsParams {
         // trying to maintain the consistent i64 in the baking rights
         let block_level: i64 = block_level_usize.try_into()?;
         // this is the cycle of block_id level
-        let current_cycle = cycle_from_level(block_level, blocks_per_cycle);
+        let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
         // endorsing rights only: display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i64 = block_level;
@@ -524,7 +594,7 @@ impl RightsParams {
             Some(level) => {
                 let level = level.parse()?;
                 // check the bounds for the requested level (if it is in the previous/next preserved cycles)
-                Self::validate_cycle(cycle_from_level(level, blocks_per_cycle), current_cycle, preserved_cycles)?;
+                Self::validate_cycle(cycle_from_level(level, blocks_per_cycle)?, current_cycle, preserved_cycles)?;
                 // endorsing rights: display level is always same as level requested
                 display_level = level;
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
@@ -569,7 +639,14 @@ impl RightsParams {
         ))
     }
 
-    
+    /// Compute estimated time for endorsing rights
+    /// 
+    /// # Arguments
+    /// 
+    /// * `constants` - Context constants used in baking and endorsing rights.
+    /// * `level` - Optional level for which is timestamp computed.
+    /// 
+    /// If level is not provided [timestamp_level](`RightsParams.timestamp_level`) is used fro computation
     #[inline]
     pub fn get_estimated_time(&self, constants: &RightsConstants, level: Option<i64>) -> Option<String> {
         // if is cycle then level is provided as parameter else use prepared timestamp_level
@@ -588,6 +665,7 @@ impl RightsParams {
         }
     }
 
+    /// In Ocaml Tezos node there can be negative level provided as query parameter, it is not handled as error but it will instead return endorsing rights for level 1
     #[inline]
     fn get_valid_level(level: i64) -> i64 {
         // for all reuqested negative levels use level 1
@@ -598,6 +676,7 @@ impl RightsParams {
         }
     }
 
+    /// Validate if cycle requested as url query parameter (cycle or level) is available in context list by checking preserved_cycles constant
     #[inline]
     fn validate_cycle(requested_cycle: i64, current_cycle: i64, preserved_cycles: i64) -> Result<i64, failure::Error> {
         if (requested_cycle - current_cycle).abs() <= preserved_cycles {
@@ -608,6 +687,7 @@ impl RightsParams {
     }
 }
 
+/// Context constants used in baking and endorsing rights
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct RightsConstants {
     #[get = "pub(crate)"]
@@ -625,6 +705,7 @@ pub struct RightsConstants {
 }
 
 impl RightsConstants {
+    /// simple constructor to create RightsConstants
     pub fn new(
         blocks_per_cycle: i64,
         preserved_cycles: i64,
@@ -645,49 +726,66 @@ impl RightsConstants {
     }
 }
 
+/// Struct used in endorsing rights to map endorsers to endorsement slots before they can be ordered and completed
 #[derive(Serialize, Debug, Clone, Getters)]
 pub struct EndorserSlots {
+    /// endorser contract id
     #[get = "pub(crate)"]
     contract_id: String,
+
+    /// Orderer vector of endorsement slots
     #[get = "pub(crate)"]
     slots: Vec<u8>
 }
 
 impl EndorserSlots {
+    /// Simple constructor that return EndorserSlots
     pub fn new(contract_id: String, slots: Vec<u8>) -> Self {
         Self {
             contract_id,
             slots
         }
     }
+
+    /// Push endorsing slot to slots
     pub fn push_to_slot(&mut self, slot: u8) {
         self.slots.push(slot);
     }
 }
 
 
-// cycle in which is given level
-// level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1), hence the -1
-pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> i64 {
-    // bad practice magic
-    // FIXME
-    if blocks_per_cycle == 0 {
-        (level - 1) / 2048
+/// Return cycle in which is given level
+/// 
+/// # Arguments
+/// 
+/// * `level` - level to specify cycle for
+/// * `blocks_per_cycle` - context constant
+/// 
+/// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
+/// hence the blocks_per_cycle - 1 for last cycle block.
+pub fn cycle_from_level(level: i64, blocks_per_cycle: i64) -> Result<i64, failure::Error> {
+    // check if blocks_per_cycle is not 0 to prevent panic
+    if blocks_per_cycle > 0 {
+        Ok((level - 1) / blocks_per_cycle)
     } else {
-        (level - 1) / blocks_per_cycle
+        bail!("wrong value blocks_per_cycle={}", blocks_per_cycle)
     }
 }
 
-// the position of the block in its cycle
-// level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1)
-// hence the blocks_per_cycle - 1 for last cycle block
-pub fn level_position(level:i64, blocks_per_cycle:i64) -> i64 {
-    // set defaut blocks_per_cycle in case that 0 is given as parameter
-    let blocks_per_cycle = if blocks_per_cycle == 0 {
-        2048
-    } else {
-        blocks_per_cycle
-    };
+/// Return the position of the block in its cycle
+/// 
+/// # Arguments
+/// 
+/// * `level` - level to specify cycle for
+/// * `blocks_per_cycle` - context constant
+/// 
+/// Level 0 (genesis block) is not part of any cycle (cycle 0 starts at level 1),
+/// hence the blocks_per_cycle - 1 for last cycle block.
+pub fn level_position(level:i64, blocks_per_cycle:i64) -> Result<i64, failure::Error> {
+    // check if blocks_per_cycle is not 0 to prevent panic
+    if blocks_per_cycle =< 0 {
+        bail!("wrong value blocks_per_cycle={}", blocks_per_cycle);
+    }
     let cycle_position = (level % blocks_per_cycle) - 1;
     if cycle_position < 0 { //for last block
         blocks_per_cycle - 1
@@ -696,6 +794,7 @@ pub fn level_position(level:i64, blocks_per_cycle:i64) -> i64 {
     }
 }
 
+/// Enum defining Tezos PRNG possible error
 #[derive(Debug, Fail)]
 pub enum TezosPRNGError {
     #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
@@ -707,26 +806,27 @@ pub enum TezosPRNGError {
 type RandomSeedState = Vec<u8>;
 pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
 
-// tezos PRNG
-// input: 
-// state: RandomSeedState, initially the random seed
-// nonce_size: nonce_length from current protocol constants
-// blocks_per_cycle: blocks_per_cycle from current protocol constants
-// use_string_bytes: string converted to bytes, i.e. endorsing rights use b"level endorsement:"
-// level: block level
-// offset: for baking priority, for endorsing slot
+/// Initialize Tezos PRNG
+/// 
+/// # Arguments
+/// 
+/// * `state` - RandomSeedState, initially the random seed.
+/// * `nonce_size` - Nonce_length from current protocol constants.
+/// * `blocks_per_cycle` - Blocks_per_cycle from current protocol context constants
+/// * `use_string_bytes` - String converted to bytes, i.e. endorsing rights use b"level endorsement:".
+/// * `level` - block level
+/// * `offset` - For baking priority, for endorsing slot
+/// 
+/// Return first random sequence state to use in [get_prng_number](`get_prng_number`)
 pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, use_string_bytes: &[u8], level: i32, offset: i32) -> Result<RandomSeedState, failure::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
     let blocks_per_cycle = *constants.blocks_per_cycle();
     let state = cycle_data.random_seed(); 
-    //println!("Random seed: {:?}", &state);
-    // println!("Constants: {:?}", constants);
     let zero_bytes: Vec<u8> = vec![0; nonce_size];
 
     // the position of the block in its cycle; has to be i32
-    let cycle_position: i32 = level_position(level.into(), blocks_per_cycle).try_into()?;
-    // println!("[PRNG] Cycle position: {} | Requested level: {} | Offset: {}", &cycle_position, &level, &offset);
+    let cycle_position: i32 = level_position(level.into(), blocks_per_cycle)?.try_into()?;
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
     let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();
@@ -740,12 +840,15 @@ pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, us
     Ok(sequence)
 }
 
-// tezos PRNG get number
-// input: 
-// state: RandomSeedState, initially the random seed
-// bound: last possible roll nuber that have meaning to be generated (last_roll from context list)
-// output: pseudo random generated roll number and RandomSeedState for next roll generation if the roll provided is missing from the roll list
-pub fn get_pseudo_random_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
+/// Get pseudo random nuber using Tezos PRNG
+/// 
+/// # Arguments
+/// 
+/// * `state` - RandomSeedState, initially the random seed.
+/// * `bound` - Last possible roll nuber that have meaning to be generated taken from [RightsContextData.last_roll](`RightsContextData.last_roll`).
+/// 
+/// Return pseudo random generated roll number and RandomSeedState for next roll generation if the roll provided is missing from the roll list
+pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
     if bound < 1 {
         return Err(TezosPRNGError::BoundNotCorrect{bound: bound})
     }
@@ -775,14 +878,27 @@ pub fn get_pseudo_random_number(state: RandomSeedState, bound: i32) -> TezosPRNG
         Ok((v.into(), sequence))
 }
 
+/// Return block level based on block_id url parameter
+/// 
+/// # Arguments
+/// 
+/// * `block_id` - Url parameter block_id.
+/// * `context_list` - Context list handler.
+/// * `persistent_storage` - Persistent storage handler.
+/// 
+/// If block_id is head return current head level
+/// If block_id is level then return level as i64
+/// if block_id is contract id return level from BlockMetaStorage by contract id
 pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<usize>, failure::Error> {
     let level = if block_id == "head" {
         let reader = list.read().expect("mutex poisoning");
         Some(reader.len() - 1)
     } else {
-        // check if the block_id is defined as a number
+        // try to parse level as number
         match block_id.parse() {
+            // block level was passed as parameter to block_id
             Ok(val) => Some(val),
+            // block hash (contract id) was passed as parameter to block_id
             Err(_e) => {
                 let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
                 let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
@@ -797,6 +913,17 @@ pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persisten
     Ok(level)
 }
 
+/// Return block level based on block_id url parameter
+/// 
+/// # Arguments
+/// 
+/// * `block_id` - Url parameter block_id.
+/// * `persistent_storage` - Persistent storage handler.
+/// * `state` - Current RPC state (head).
+/// 
+/// If block_id is head return current head timestamp
+/// If block_id is level then return timestamp from BlockStorage by level
+/// if block_id is contract id return timestamp from BlockStorage by contract id
 pub(crate) fn get_block_header_timestamp(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<i64, failure::Error> {
     let timestamp: i64 = if block_id == "head" {
         let state_read = state.read().unwrap();
@@ -808,13 +935,16 @@ pub(crate) fn get_block_header_timestamp(block_id: &str, persistent_storage: &Pe
         }
     } else {
         let block_storage = BlockStorage::new(persistent_storage);
+        // try to parse level as number
         match block_id.parse() {
-            Ok(val) => {
+            // block level was passed as parameter to block_id
+            Ok(val) => { 
                 match block_storage.get_by_block_level(val)? {
                     Some(current_head) => current_head.header.timestamp(),
                     None => bail!("block not found in db {}", block_id)
                 }
             }
+            // block hash (contract id) was passed as parameter to block_id
             Err(_e) => {
                 let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
                 match block_storage.get(&block_hash)? {

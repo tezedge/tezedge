@@ -406,8 +406,6 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let has_all = query.contains_key("all");
 
             endorsing_rights(chain_id, block_id, &delegate, &level, &cycle, has_all, state, &persistent_storage, context_storage, &log).await
-            
-
         }
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
@@ -417,8 +415,6 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let delegate = find_query_value_as_string(&query, "delegate");
             let cycle = find_query_value_as_string(&query, "cycle");
             let has_all = query.contains_key("all");
-
-            //warn!(log, "Args = Block Id: {:?} max_priority: {:?} level: {:?} delegate: {:?} cycle {:?}", &block_id, &max_priority, level.clone().unwrap_or("".to_string()), delegate.clone().unwrap_or("".to_string()), &cycle);
 
             baking_rights(chain_id, block_id, &delegate, &level, &cycle, &max_priority, has_all, state, &persistent_storage, context_storage, &log).await
         }
@@ -498,7 +494,7 @@ mod fns {
     };
     use crate::merge_slices;
     use crate::helpers::{FullBlockInfo, BlockHeaderInfo, PagedResult, RpcResponseData, EndorsingRight, RightsContextData, RightsParams, RightsConstants, EndorserSlots,
-        get_pseudo_random_number, init_prng, get_level_by_block_id};
+        get_prng_number, init_prng, get_level_by_block_id};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -523,8 +519,6 @@ mod fns {
         roll_snapshot: Option<usize>,
         random_seed: Option<String>,
     }
-
-    
 
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -556,7 +550,22 @@ mod fns {
         Ok(PagedResult::new(context_records, next_id, limit))
     }
 
-
+    /// Return generated baking rights.
+    ///
+    /// # Arguments
+    /// 
+    /// * `chain_id` - Url path parameter 'chain_id'.
+    /// * `block_id` - Url path parameter 'block_id'.
+    /// * `level` - Url query parameter 'level'.
+    /// * `delegate` - Url query parameter 'delegate'.
+    /// * `cycle` - Url query parameter 'cycle'.
+    /// * `max_priority` - Url query parameter 'max_priority'.
+    /// * `has_all` - Url query parameter 'all'.
+    /// * `list` - Context list handler.
+    /// * `persistent_storage` - Persistent storage handler.
+    /// * `state` - Current RPC state (head).
+    /// 
+    /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
     pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         // get the constants first!
         let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
@@ -568,11 +577,16 @@ mod fns {
         get_baking_rights(&context_data, &params, &constants)
     }
 
+    /// Use prepared data to generate baking rights
+    /// 
+    /// # Arguments
+    /// 
+    /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+    /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
+    /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
     pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
         let mut baking_rights = Vec::<BakingRights>::new();
 
-        // TODO fix casting!
-        // let preserved_cycles = *constants.preserved_cycles() as i32;
         let blocks_per_cycle = *constants.blocks_per_cycle();
         let time_between_blocks = constants.time_between_blocks();
 
@@ -597,7 +611,6 @@ mod fns {
             let level = *parameters.requested_level();
             let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
             let estimated_timestamp = timestamp + seconds_to_add;
-            // println!("No cycle requested, getting rights for level {}", level);
             // assign rolls goes here
             baking_rights = baking_rights_assign_rolls(&parameters, &constants, &context_data, level, estimated_timestamp)?;
         }
@@ -610,11 +623,21 @@ mod fns {
         }
     }
 
-    pub(crate) fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i64, estimated_head_timestamp: i64) -> Result<Vec<BakingRights>, failure::Error>{
+    /// Use prepared data to generate baking rights
+    /// 
+    /// # Arguments
+    /// 
+    /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
+    /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
+    /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+    /// * `level` - Level to feed Tezos PRNG.
+    /// * `estimated_head_timestamp` - Estimated time of baking, is set to None if in past relative to block_id.
+    /// 
+    /// Baking priorities are are assigned to Roles, the default behavior is to include only the top priority for the delegate
+    fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i64, estimated_head_timestamp: i64) -> Result<Vec<BakingRights>, failure::Error>{
         const BAKING_USE_STRING: &[u8] = b"level baking:";
         
-        // as we assign the roles, the default behavior is to include only the top priority for the delegate
-        // we define a hashset to keep track of the delegates with priorities allready assigned
+        // hashset is defined to keep track of the delegates with priorities allready assigned
         let mut baking_rights = Vec::<BakingRights>::new();
         let mut assigned = HashSet::new();
 
@@ -627,18 +650,16 @@ mod fns {
         for priority in 0..max_priority {
             // draw the rolls for the requested parameters
             let delegate_to_assign;
-            // TODO: priority can overflow in the ocaml code, do a    priority % i32::max_value()
+            // TODO: priority can overflow in the ocaml code, do a priority % i32::max_value()
             let mut state = init_prng(&context_data, &constants, BAKING_USE_STRING, level.try_into()?, priority.try_into()?)?;
 
             loop {
-                let (random_num, sequence) = get_pseudo_random_number(state, *context_data.last_roll())?;
+                let (random_num, sequence) = get_prng_number(state, *context_data.last_roll())?;
 
                 if let Some(d) = context_data.rolls().get(&random_num) {
                     delegate_to_assign = d;
-                    // println!("[baking-rights] rolled {} for prio {} - assigning: {}", &random_num, &priority, &delegate_to_assign);
                     break;
                 } else {
-                    // println!("[baking-rights] no delegate assigned to roll {} | ROLLED ON PRIO: {}", random_num, priority);
                     state = sequence;
                 }
             }
@@ -650,7 +671,6 @@ mod fns {
 
             // we omit the estimated_time field if the block on the requested level is allready baked
             if block_level < level {
-                // let priority_timestamp = Some(estimated_timestamp.unwrap().checked_add_signed(Duration::seconds(priority as i64 * time_between_blocks[1])).unwrap());
                 let priority_timestamp = estimated_head_timestamp + (priority as i64 * time_between_blocks[1]);
                 baking_rights.push(BakingRights::new(level, delegate_to_assign.to_string(), priority.into(), Some(ts_to_rfc3339(priority_timestamp))));
             } else {
@@ -661,9 +681,23 @@ mod fns {
         Ok(baking_rights)
     }
 
+    /// Return generated endorsing rights.
+    ///
+    /// # Arguments
+    /// 
+    /// * `chain_id` - Url path parameter 'chain_id'.
+    /// * `block_id` - Url path parameter 'block_id'.
+    /// * `level` - Url query parameter 'level'.
+    /// * `delegate` - Url query parameter 'delegate'.
+    /// * `cycle` - Url query parameter 'cycle'.
+    /// * `has_all` - Url query parameter 'all'.
+    /// * `list` - Context list handler.
+    /// * `persistent_storage` - Persistent storage handler.
+    /// * `state` - Current RPC state (head).
+    /// 
+    /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
     pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
-        // get the constants first!
         let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, list.clone(), persistent_storage)?;
 
         let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, &None, has_all, &constants, list.clone(), persistent_storage, state, false)?;
@@ -673,6 +707,13 @@ mod fns {
         get_endorsing_rights(&context_data, &params, &constants)
     }
 
+    /// Use prepared data to generate endosring rights
+    /// 
+    /// # Arguments
+    /// 
+    /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+    /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
+    /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
     fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
         
         // define helper and output variables
@@ -701,6 +742,17 @@ mod fns {
         Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
     }
     
+    /// Use prepared data to generate endosring rights
+    /// 
+    /// # Arguments
+    /// 
+    /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+    /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
+    /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
+    /// * `level` - Level to feed Tezos PRNG.
+    /// * `display_level` - Level to be displayed in output.
+    /// * `estimated_time` - Estimated time of endorsement, is set to None if in past relative to block_id.
+    #[inline]
     fn complete_endorsing_rights_for_level(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants, level: i64, display_level: i64, estimated_time: Option<String>) -> Result<Vec::<EndorsingRight>, failure::Error> {
         let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
@@ -731,7 +783,14 @@ mod fns {
         Ok(endorsing_rights)
     }
 
-    /// collect all slots for each endorser and for later ordering of endorsers by public key hash
+    /// Use tezos PRNG to collect all slots for each endorser by public key hash (for later ordering of endorsers)
+    ///
+    /// # Arguments
+    /// 
+    /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
+    /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
+    /// * `level` - Level to feed Tezos PRNG.
+    #[inline]
     fn get_endorsers_slots(constants: &RightsConstants, context_data: &RightsContextData, level: i64) -> Result<HashMap<String, EndorserSlots>, failure::Error> {
         // special byte string used in Tezos PRNG
         const ENDORSEMENT_USE_STRING: &[u8] = b"level endorsement:";
@@ -743,7 +802,7 @@ mod fns {
             // if roll number is not found then reroll with new state till roll nuber is found in context_rolls
             let mut state = init_prng(&context_data, &constants, ENDORSEMENT_USE_STRING, level.try_into()?, endorser_slot.try_into()?)?;
             loop {
-                let (random_num, sequence) = get_pseudo_random_number(state, *context_data.last_roll())?;
+                let (random_num, sequence) = get_prng_number(state, *context_data.last_roll())?;
 
                 if let Some(delegate) = context_data.rolls().get(&random_num) {
                     // collect all slots for each delegate
@@ -800,6 +859,7 @@ mod fns {
         Ok(block)
     }
 
+    /// Get ptocol context constants from context list
     pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
         let level: usize = if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
             l
@@ -1056,9 +1116,17 @@ mod fns {
         }
     }
 
+    /// Get all context constants which are used in endorsing and baking rights generation
+    /// 
+    /// # Arguments
+    /// 
+    /// * `chain_id` - Url path parameter 'chain_id'.
+    /// * `block_id` - Url path parameter 'block_id'.
+    /// * `persistent_storage` - Persistent storage handler.
+    /// * `level` - Optional provide level of block_id if is already known to prevent double code execution.
     #[inline]
-    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, context_list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
-        let constants = match get_context_constants(chain_id, block_id, context_list.clone(), persistent_storage)? {
+    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
+        let constants = match get_context_constants(chain_id, block_id, list.clone(), persistent_storage)? {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
@@ -1067,7 +1135,6 @@ mod fns {
             *constants.blocks_per_cycle(),
             *constants.preserved_cycles(),
             *constants.nonce_length(),
-            //time_between_blocks: time_between_blocks.into_iter().map(|x| x.parse().unwrap()).collect(),
             constants.time_between_blocks().to_vec().into_iter().map(|x| x.parse().unwrap()).collect(),
             *constants.blocks_per_roll_snapshot(),
             *constants.endorsers_per_block(),
