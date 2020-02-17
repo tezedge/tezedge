@@ -3,12 +3,42 @@
 
 use std::collections::HashMap;
 
-use storage::skip_list::{DatabaseBackedSkipList, DatabaseBackedFlatList, TypedSkipList};
+use storage::skip_list::{DatabaseBackedSkipList, DatabaseBackedFlatList, TypedSkipList, ListValue};
 use storage::tests_common::TmpStorage;
 
 use crate::common::{OrderedValue, Value};
 
 mod common;
+
+use rand::{
+    distributions::{Distribution, Standard},
+    seq::SliceRandom,
+    Rng,
+};
+
+#[derive(Debug)]
+enum Operation {
+    Set,
+    Copy,
+    Delete,
+}
+
+impl Distribution<Operation> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Operation {
+        use Operation::*;
+        match rng.gen_range(0, 3) {
+            0 => Set,
+            1 => Copy,
+            _ => Delete,
+        }
+    }
+}
+
+const LEDGER_SIZE: usize = 5000;
+const OPERATION_COUNT: usize = 100;
+const KEY_COUNT: u64 = 10000;
+
+type Ctx = OrderedValue;
 
 #[test]
 fn list_new() {
@@ -164,41 +194,89 @@ pub fn flat_list_restore_state() {
 
 #[test]
 pub fn flat_list_simulate_ledger() {
-    use rand::{
-        distributions::{Distribution, Standard},
-        seq::SliceRandom,
-        Rng,
-    };
+    let tmp_storage = TmpStorage::create("__flat_list:flat_list_simulate_ledger").expect("Storage error");
+    let list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create flat list"));
+    simulate_ledger(list);
+}
 
-    #[derive(Debug)]
-    enum Operation {
-        Set,
-        Copy,
-        Delete,
-    }
+#[test]
+pub fn skip_list_simulate_ledger() {
+    let tmp_storage = TmpStorage::create("__skip_list:skip_list_simulate_ledger").expect("Storage error");
+    let list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    simulate_ledger(list);
+}
 
-    impl Distribution<Operation> for Standard {
-        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Operation {
-            use Operation::*;
-            match rng.gen_range(0, 3) {
-                0 => Set,
-                1 => Copy,
-                _ => Delete,
-            }
-        }
-    }
-
-    const LEDGER_SIZE: usize = 5000;
-    const OPERATION_COUNT: usize = 100;
-    const KEY_COUNT: u64 = 10000;
-    type Ctx = OrderedValue;
+#[test]
+pub fn skip_list_check_raw_data() {
+    let tmp_storage = TmpStorage::create("__skip_list:skip_list_check_raw_data").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
 
     let mut rng = rand::thread_rng();
 
-    let tmp_storage = TmpStorage::create("__flat_list:flat_list_simulate_ledger").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let mut ops: Vec<Ctx> = Default::default();
+
+    for _ in 0..LEDGER_SIZE {
+        let op_count = rng.gen_range(1, OPERATION_COUNT);
+        let mut state: Ctx = Default::default();
+
+        for _ in 0..op_count {
+            let primary_key = rng.gen_range(0, KEY_COUNT);
+            let secondary_key = state.0.keys()
+                .map(|v| v.clone())
+                .collect::<Vec<u64>>()
+                .choose(&mut rng)
+                .map(|v| v.clone());
+
+            match rng.gen() {
+                Operation::Set => {
+                    state.0.insert(primary_key, rng.gen());
+                }
+                Operation::Copy => if let Some(secondary_key) = secondary_key {
+                    state.0.insert(primary_key, state.0.get(&secondary_key).unwrap().clone());
+                }
+                Operation::Delete => if let Some(secondary_key) = secondary_key {
+                    state.0.remove(&secondary_key);
+                }
+            }
+        }
+
+        list.push(state.clone()).expect("Failed storing the context");
+        ops.push(state);
+    }
+
+    let mut prev_lanes: HashMap<usize, Vec<Ctx>> = Default::default();
+    for lane_level in 0..=DatabaseBackedSkipList::index_level(LEDGER_SIZE) {
+        let node_count = (LEDGER_SIZE / 8_usize.pow(lane_level as u32)) as usize;
+        prev_lanes.insert(lane_level, Default::default());
+        for node_index in 0..node_count {
+            if lane_level == 0 {
+                let expected = ops.get(node_index).unwrap();
+                let provided = list.get_raw(lane_level, node_index).unwrap().unwrap();
+                assert_eq!(expected, &provided, "Failed at {}-{}", lane_level, node_index);
+                prev_lanes.get_mut(&lane_level).unwrap().push(provided);
+            } else {
+                let provided = list.get_raw(lane_level, node_index).unwrap().unwrap();
+                let mut expected = OrderedValue::new(Default::default());
+                let prev_lane = prev_lanes.get(&(lane_level - 1)).unwrap();
+                let end = ((node_index + 1) * 8) - 1;
+                let start = end + 1 - 8;
+                for val in prev_lane.iter().skip(start).take(8) {
+                    expected.merge(val);
+                }
+                assert_eq!(expected, provided, "Failed at {}-{}", lane_level, node_index);
+                prev_lanes.get_mut(&lane_level).unwrap().push(provided);
+            }
+        }
+    }
+}
+
+
+pub fn simulate_ledger(mut list: Box<dyn TypedSkipList<u64, u64, OrderedValue>>) {
+    let mut rng = rand::thread_rng();
+
     let mut context: Ctx = Default::default();
     let mut contexts: Vec<Ctx> = Default::default();
+    let mut changes: Vec<Ctx> = Default::default();
 
     for _ in 0..LEDGER_SIZE {
         let mut state: Ctx = Default::default();
@@ -226,13 +304,15 @@ pub fn flat_list_simulate_ledger() {
         }
 
         list.push(state.clone()).expect("Failed storing the context");
+        changes.push(context.clone());
         context.0.extend(state.0);
+
         contexts.push(context.clone())
     }
 
     for index in 0..LEDGER_SIZE {
         let expected = contexts.get(index).expect("Unable to retrieve stored context");
         let provided = list.get(index).expect(&format!("expected list to contain index {}", index)).expect(&format!("expected correct value on index {}", index));
-        assert_eq!(expected, &provided, "Failed at index {}", index);
+        assert_eq!(&provided, expected, "Failed at index {}", index);
     }
 }

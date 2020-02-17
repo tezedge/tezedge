@@ -88,6 +88,8 @@ pub trait TypedSkipList<K: Codec, V: Codec, C: ListValue<K, V>>: SkipList {
 
     fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError>;
 
+    fn get_raw(&self, lane_level: usize, index: usize) -> Result<Option<C>, SkipListError>;
+
     fn push(&mut self, value: C) -> Result<(), SkipListError>;
 
     fn diff(&self, from: usize, to: usize) -> Result<Option<C>, SkipListError>;
@@ -115,26 +117,35 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
                     current_state = Some(value);
                 }
             } else {
-                panic!("Value not found in lanes, even thou it should: \
-                current_level: {} | current_lane_index: {} | current_index: {}",
-                       lane.level(), pos.index(), pos.base_index());
+                return Err(SkipListError::InternalError {
+                    description: format!("Value not found in lanes, even thou it should: \
+                                         current_level: {} | current_lane_index: {} | \
+                                         current_index: {}",
+                                         lane.level(), pos.index(), pos.base_index()),
+                });
             }
 
             if pos.base_index() == index {
                 return Ok(current_state);
             } else {
+                let mut desc = false;
                 while pos.next().base_index() > index {
                     // We cannot move horizontally anymore, so we need to descent to lower level.
                     if lane.level() == 0 {
-                        panic!("Correct value was skipped");
+                        return Err(SkipListError::InternalError {
+                            description: format!("Correct value was skipped"),
+                        });
                     } else {
                         // Make descend
                         lane = lane.lower_lane();
                         pos = pos.lower();
+                        desc = true;
                     }
                 }
 
-                pos = pos.next();
+                if !desc {
+                    pos = pos.next();
+                }
             }
         }
     }
@@ -173,38 +184,41 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
         }
     }
 
+    /// Get raw value as was stored. Partially rebuild context only
+    /// with given block applied operations
+    fn get_raw(&self, lane_level: usize, index: usize) -> Result<Option<C>, SkipListError> {
+        if index >= self.state.len || lane_level > Self::index_level(self.state.len - 1) {
+            return Ok(None);
+        }
+
+        Lane::new(self.list_id, lane_level, self.lane_db.clone()).get(index)
+    }
+
     /// Push new value into the end of the list. Beware, this is operation is
     /// not thread safe and should be handled with care !!!
-    fn push(&mut self, mut value: C) -> Result<(), SkipListError> {
+    fn push(&mut self, value: C) -> Result<(), SkipListError> {
         let mut lane = Lane::new(self.list_id, 0, self.lane_db.clone());
-        let mut index = self.state.len;
+        let mut pos = NodeHeader::new(self.list_id, lane.level(), self.state.len);
 
         // Insert value into lowest level, as is.
-        lane.put(index, &value)?;
+        lane.put(pos.index(), &value)?;
 
         // Start building upper lanes
-        while index != 0 && (index + 1) % LEVEL_BASE == 0 {
-            let lane_value = lane.rev_base_iterator(index, LEVEL_BASE)?
-                .map(|(_, val)| {
-                    match val {
-                        Ok(val) => val,
-                        Err(err) => panic!("Skip list database failure: {}", err)
-                    }
-                })
-                .fold(None, |state: Option<C>, value: C| {
-                    if let Some(mut state) = state {
-                        state.merge(&value);
-                        Some(state)
-                    } else {
-                        Some(value)
-                    }
-                })
-                .unwrap();
+        while pos.is_edge_node() {
+            let start = pos.index() + 1 - LEVEL_BASE;
+            let mut lane_value: Option<C> = None;
+            for index in start..=pos.index() {
+                let value: C = lane.get(index)?.expect("expected valid value");
+                if let Some(ref mut lane_value) = lane_value {
+                    lane_value.merge(&value);
+                } else {
+                    lane_value = Some(value);
+                }
+            }
 
-            value = lane_value;
-            index = ((index + 1) / LEVEL_BASE) - 1;
+            pos = pos.higher();
             lane = lane.higher_lane();
-            lane.put(index, &value)?;
+            lane.put(pos.index(), &lane_value.unwrap())?;
         }
 
         self.state.levels = max(lane.level() + 1, self.state.levels);
@@ -340,6 +354,14 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
 
     fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
         Ok(self.get(index)?.and_then(|c| c.get(key)))
+    }
+
+    fn get_raw(&self, lane_level: usize, index: usize) -> Result<Option<C>, SkipListError> {
+        if lane_level == 0 {
+            self.get(index)
+        } else {
+            Ok(None)
+        }
     }
 
     fn push(&mut self, value: C) -> Result<(), SkipListError> {
