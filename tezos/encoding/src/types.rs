@@ -118,5 +118,7 @@ pub enum Value {
     ///
     /// See [Record](types.Record) for a more user-friendly support.
     Record(Vec<(String, Value)>),
+    /// Tuple is heterogeneous collection of values, it should have fixed amount of elements
+    Tuple(Vec<Value>),
 }
 

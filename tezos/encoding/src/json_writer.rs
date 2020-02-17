@@ -62,6 +62,10 @@ impl JsonWriter {
         }
     }
 
+    fn encode_tuple(&mut self, value: &Value, encodings: &[Encoding]) -> Result<(), Error> {
+        Err(Error::unsupported_operation(&Encoding::Tup(encodings.to_vec()), value))
+    }
+
     fn push_key(&mut self, key: &str) {
         self.data.push('"');
         self.data.push_str(&key);
@@ -153,7 +157,7 @@ impl JsonWriter {
                         } else {
                             Err(Error::custom("Value is outside of Int31 range"))
                         }
-                    },
+                    }
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
@@ -278,6 +282,9 @@ impl JsonWriter {
             Encoding::Obj(obj_schema) => {
                 self.encode_record(value, obj_schema)
             }
+            Encoding::Tup(tup_encodings) => {
+                self.encode_tuple(value, tup_encodings)
+            }
             Encoding::Dynamic(dynamic_encoding) => {
                 self.encode_value(value, dynamic_encoding)
             }
@@ -287,7 +294,7 @@ impl JsonWriter {
             Encoding::Greedy(un_sized_encoding) => {
                 self.encode_value(value, un_sized_encoding)
             }
-            Encoding::Tags(_,_) => {
+            Encoding::Tags(_, _) => {
                 unimplemented!("Encoding::Tags encoding is not supported for JSON format")
             }
             Encoding::Split(fn_encoding) => {
@@ -370,7 +377,7 @@ mod tests {
             },
             h: hex::decode("8eceda2f").unwrap(),
             p: hex::decode("6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a").unwrap(),
-            t: 1_553_127_011
+            t: 1_553_127_011,
         };
 
         let version_schema = vec![
@@ -396,7 +403,6 @@ mod tests {
             Field::new("e", Encoding::Enum),
             Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema)))),
             Field::new("h", Encoding::Hash(HashType::ChainId))
-
         ];
 
         let mut writer = JsonWriter::new();
@@ -406,6 +412,5 @@ mod tests {
         let expected_writer_result = r#"{ "a": 32, "b": true, "t": "2019-03-21T00:10:11+00:00", "s": { "x": 5, "y": 32, "v": [12, 34] }, "p": "6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a", "c": "5c4d4aa1", "d": 12.34, "e": "Disconnected", "f": [{ "name": "A", "major": 1, "minor": 1 }, { "name": "B", "major": 2, "minor": 0 }], "h": "NetXgtSLGNJvNye" }"#;
         assert_eq!(expected_writer_result, writer_result.unwrap());
     }
-
 }
 

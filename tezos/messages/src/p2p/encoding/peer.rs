@@ -10,24 +10,18 @@ use lazy_static::lazy_static;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
-use crate::p2p::encoding::advertise::AdvertiseMessage;
-use crate::p2p::encoding::block_header::{BlockHeaderMessage, GetBlockHeadersMessage};
-use crate::p2p::encoding::current_branch::{CurrentBranchMessage, GetCurrentBranchMessage};
-use crate::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
-use crate::p2p::encoding::operation::{GetOperationsMessage, OperationMessage};
-use crate::p2p::encoding::operations_for_blocks::{GetOperationsForBlocksMessage, OperationsForBlocksMessage};
-use crate::p2p::encoding::protocol::{GetProtocolsMessage, ProtocolMessage};
+use crate::p2p::encoding::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PeerMessage {
     Disconnect,
     Advertise(AdvertiseMessage),
-//    SwapRequest,    // TODO
-//    SwapAck,        // TODO
+    SwapRequest(SwapMessage),
+    SwapAck(SwapMessage),
     Bootstrap,
     GetCurrentBranch(GetCurrentBranchMessage),
     CurrentBranch(CurrentBranchMessage),
-//    Deactivate,     // TODO
+    Deactivate(DeactivateMessage),
     GetCurrentHead(GetCurrentHeadMessage),
     CurrentHead(CurrentHeadMessage),
     GetBlockHeaders(GetBlockHeadersMessage),
@@ -36,13 +30,11 @@ pub enum PeerMessage {
     Operation(OperationMessage),
     GetProtocols(GetProtocolsMessage),
     Protocol(ProtocolMessage),
-//    GetOperationHashesForBlocks,    // TODO
-//    OperationHashesForBlock,        // TODO
+    GetOperationHashesForBlocks(GetOperationHashesForBlocksMessage),
+    OperationHashesForBlock(OperationHashesForBlocksMessage),
     GetOperationsForBlocks(GetOperationsForBlocksMessage),
     OperationsForBlocks(OperationsForBlocksMessage),
 }
-
-
 
 
 #[derive(Serialize, Deserialize, Debug, Getters)]
@@ -50,12 +42,12 @@ pub struct PeerMessageResponse {
     #[get = "pub"]
     messages: Vec<PeerMessage>,
     #[serde(skip_serializing)]
-    body: BinaryDataCache
+    body: BinaryDataCache,
 }
 
 impl CachedData for PeerMessageResponse {
     #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
+    fn cache_reader(&self) -> &dyn CacheReader {
         &self.body
     }
 
@@ -74,8 +66,11 @@ lazy_static! {
                             Tag::new(0x01, "Disconnect", Encoding::Unit),
                             Tag::new(0x02, "Bootstrap", Encoding::Unit),
                             Tag::new(0x03, "Advertise", AdvertiseMessage::encoding()),
+                            Tag::new(0x04, "SwapRequest", SwapMessage::encoding()),
+                            Tag::new(0x05, "SwapAck", SwapMessage::encoding()),
                             Tag::new(0x10, "GetCurrentBranch", GetCurrentBranchMessage::encoding()),
                             Tag::new(0x11, "CurrentBranch", CurrentBranchMessage::encoding()),
+                            Tag::new(0x12, "Deactivate", DeactivateMessage::encoding()),
                             Tag::new(0x13, "GetCurrentHead", GetCurrentHeadMessage::encoding()),
                             Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding()),
                             Tag::new(0x20, "GetBlockHeaders", GetBlockHeadersMessage::encoding()),
@@ -84,6 +79,8 @@ lazy_static! {
                             Tag::new(0x31, "Operation", OperationMessage::encoding()),
                             Tag::new(0x40, "GetProtocols", GetProtocolsMessage::encoding()),
                             Tag::new(0x41, "Protocol", ProtocolMessage::encoding()),
+                            Tag::new(0x50, "GetOperationHashesForBlocks", GetOperationHashesForBlocksMessage::encoding()),
+                            Tag::new(0x51, "OperationHashesForBlocks", OperationHashesForBlocksMessage::encoding()),
                             Tag::new(0x60, "GetOperationsForBlocks", GetOperationsForBlocksMessage::encoding()),
                             Tag::new(0x61, "OperationsForBlocks", OperationsForBlocksMessage::encoding()),
                         ])
