@@ -475,7 +475,7 @@ mod fns {
     use itertools::Itertools;
     use serde::{Deserialize, Serialize};
 
-    use failure::{bail};
+    use failure::{bail, format_err};
     
     use shell::shell_channel::BlockApplied;
     use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
@@ -772,7 +772,7 @@ mod fns {
 
         // order descending by delegate public key hash address hex byte string
         for delegate in endorsers_slots.keys().sorted().rev() {
-            let delegate_data = endorsers_slots.get(delegate).unwrap();
+            let delegate_data = endorsers_slots.get(delegate).ok_or(format_err!("missing EndorserSlots"))?;
 
             // prepare delegate contract id
             let delegate_contract_id = delegate_data.contract_id().to_string();

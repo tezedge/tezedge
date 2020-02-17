@@ -429,8 +429,7 @@ impl RightsContextData {
 
         // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
         for (key, value) in data.into_iter() {
-            let key_split = key.split('/').collect::<Vec<_>>();
-            let roll_num = key_split[key_split.len() - 1];
+            let roll_num = key.split('/').last().unwrap();
 
             // the values are public keys
             if let Bucket::Exists(pk) = value {
@@ -612,7 +611,6 @@ impl RightsParams {
 
         // get block header timestamp form block_id
         let block_timestamp = get_block_timestamp_by_level(block_level.try_into()?, persistent_storage)?;
-        //let block_timestamp = get_block_header_timestamp(param_block_id, persistent_storage, state)?;
 
         Ok(Self::new(
             param_chain_id.to_string(),
@@ -639,11 +637,7 @@ impl RightsParams {
     #[inline]
     pub fn get_estimated_time(&self, constants: &RightsConstants, level: Option<i64>) -> Option<String> {
         // if is cycle then level is provided as parameter else use prepared timestamp_level
-        let timestamp_level = if let Some(l) = level {
-            l
-        } else {
-            self.timestamp_level
-        };
+        let timestamp_level = level.unwrap_or(self.timestamp_level);
 
         //check if estimated time is computed and convert from raw epoch time to rfc3339 format
         if self.block_level <= timestamp_level {
