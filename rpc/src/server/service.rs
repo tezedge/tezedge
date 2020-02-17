@@ -488,13 +488,12 @@ mod fns {
     use crate::ContextList;
     use crate::encoding::context::ContextConstants;
     use crate::encoding::conversions::{
-        block_id_to_block_hash,
         contract_id_to_address,
         chain_id_to_string
     };
     use crate::merge_slices;
     use crate::helpers::{FullBlockInfo, BlockHeaderInfo, PagedResult, RpcResponseData, EndorsingRight, RightsContextData, RightsParams, RightsConstants, EndorserSlots,
-        get_prng_number, init_prng, get_level_by_block_id};
+        get_prng_number, init_prng, get_level_by_block_id, get_block_hash_by_block_id};
     use crate::rpc_actor::RpcCollectedStateRef;
     use crate::ts_to_rfc3339;
 
@@ -523,7 +522,7 @@ mod fns {
     /// Retrieve blocks from database.
     pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
         let blocks = match every_nth_level {
             Some(every_nth_level) => block_storage.get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
             None => block_storage.get_multiple_with_json_data(&block_hash, limit),
@@ -534,7 +533,7 @@ mod fns {
     /// Get actions for a specific block in ascending order.
     pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
         let context_storage = ContextStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
         context_storage.get_by_block_hash(&block_hash)
             .map(|values| values.into_iter().map(|v| v.into_action()).collect())
             .map_err(|e| e.into())
@@ -576,7 +575,7 @@ mod fns {
 
         let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage)?;
         
-        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, state, true)?;
+        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
         
         let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
@@ -704,6 +703,7 @@ mod fns {
     /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
     pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
+        // get block level from block_id and from now get all nessesary data by block level
         let block_level: i64 = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
             Some(val) => val.try_into()?,
             None => bail!("Block level not found")
@@ -711,7 +711,7 @@ mod fns {
 
         let constants: RightsConstants = get_and_parse_rights_constants(chain_id, block_id, block_level, list.clone(), persistent_storage)?;
 
-        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, block_id, level, delegate, cycle, &None, has_all, block_level, &constants, persistent_storage, state, false)?;
+        let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, &None, has_all, block_level, &constants, persistent_storage, false)?;
         
         let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
@@ -855,7 +855,7 @@ mod fns {
     /// Get information about block
     pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
         let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
 
         Ok(block)
@@ -864,7 +864,7 @@ mod fns {
     /// Get information about block header
     pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
         let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, &state));
 
         Ok(block)
@@ -882,7 +882,7 @@ mod fns {
     pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: Option<i64>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
         // first check if level is already known
         let level: usize = if let Some(l) = opt_level {
-            l as usize
+            l.try_into()?
         } else {
             // get level level by block_id
             if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
@@ -1146,7 +1146,7 @@ mod fns {
     /// # Arguments
     /// 
     /// * `chain_id` - Url path parameter 'chain_id'.
-    /// * `block_id` - Url path parameter 'block_id'.
+    /// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
     /// * `block_level` - Provide level of block_id that is already known to prevent double code execution.
     /// * `persistent_storage` - Persistent storage handler.
     #[inline]

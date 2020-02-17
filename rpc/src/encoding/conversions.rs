@@ -1,26 +1,8 @@
 use failure::bail;
 
-use crypto::hash::{BlockHash, ChainId, HashType};
+use crypto::hash::{ChainId, HashType};
 use crypto::blake2b;
-use storage::{BlockStorage, BlockStorageReader};
 use storage::context_storage::ContractAddress;
-use storage::persistent::PersistentStorage;
-
-/// Get block has bytes from block hash or block level
-#[inline]
-pub fn block_id_to_block_hash(block_id: &str, persistent_storage: &PersistentStorage) -> Result<BlockHash, failure::Error> {
-    
-    let block_storage = BlockStorage::new(persistent_storage);
-    let block_hash = match block_id.parse() {
-        Ok(value) =>  match block_storage.get_by_block_level(value)? {
-            Some(current_head) => current_head.hash,
-            None => vec![]
-        },
-        Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?   
-    };
-
-    Ok(block_hash)
-}
 
 #[inline]
 pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, failure::Error> {
@@ -89,7 +71,6 @@ pub fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> 
 pub fn chain_id_to_string(chain_id: &ChainId) -> String {
     HashType::ChainId.bytes_to_string(chain_id)
 }
-
 
 #[cfg(test)]
 mod tests {

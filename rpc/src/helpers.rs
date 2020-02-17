@@ -23,7 +23,7 @@ use getset::Getters;
 use failure::{Fail, bail, format_err};
 
 use crypto::blake2b;
-use crypto::hash::HashType;
+use crypto::hash::{HashType, BlockHash};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
 use storage::persistent::PersistentStorage;
@@ -31,10 +31,7 @@ use storage::skip_list::Bucket;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::ContextList;
-use crate::encoding::conversions::{
-    block_id_to_block_hash,
-    public_key_to_contract_id
-};
+use crate::encoding::conversions::public_key_to_contract_id;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
 
@@ -359,7 +356,7 @@ impl RightsContextData {
         };
 
         // get context list of block_id level as ContextMap
-        let current_context = Self::get_context_as_hashmap(block_level as usize, list.clone())?;
+        let current_context = Self::get_context_as_hashmap(block_level.try_into()?, list.clone())?;
         
         // get index of roll snapshot
         let roll_snapshot: i16 = {
@@ -399,7 +396,7 @@ impl RightsContextData {
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
             (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot) - 1
         };
-        let roll_context = Self::get_context_as_hashmap(snapshot_level as usize, list.clone())?;
+        let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
         // get list of rolls from context list
         let context_rolls = if let Some(rolls) = Self::get_context_rolls(roll_context)? {
@@ -422,8 +419,8 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     /// 
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(context: HashMap<String, Bucket<Vec<u8>>>) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        let data: HashMap<String, Bucket<Vec<u8>>> = context.into_iter()
+    fn get_context_rolls(context: ContextMap) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+        let data: ContextMap = context.into_iter()
             // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
             .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
             .collect();
@@ -545,7 +542,6 @@ impl RightsParams {
     /// # Arguments
     /// 
     /// * `param_chain_id` - Url path parameter 'chain_id'.
-    /// * `param_block_id` - Url path parameter 'block_id'.
     /// * `param_level` - Url query parameter 'level'.
     /// * `param_delegate` - Url query parameter 'delegate'.
     /// * `param_cycle` - Url query parameter 'cycle'.
@@ -555,13 +551,11 @@ impl RightsParams {
     /// * `rights_constants` - Context constants used in baking and endorsing rights.
     /// * `context_list` - Context list handler.
     /// * `persistent_storage` - Persistent storage handler.
-    /// * `state` - Current RPC state (head).
     /// * `is_baking_rights` - flag to identify if are parsed baking or endorsing rights
     /// 
     /// Return RightsParams
     pub(crate) fn parse_rights_parameters(
         param_chain_id: &str,
-        param_block_id: &str,
         param_level: &Option<String>,
         param_delegate: &Option<String>,
         param_cycle: &Option<String>,
@@ -570,7 +564,6 @@ impl RightsParams {
         block_level: i64,
         rights_constants: &RightsConstants,
         persistent_storage: &PersistentStorage,
-        state: RpcCollectedStateRef,
         is_baking_rights: bool
     ) -> Result<Self, failure::Error> {
         let preserved_cycles = *rights_constants.preserved_cycles();
@@ -581,7 +574,7 @@ impl RightsParams {
 
         // endorsing rights only: display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i64 = block_level;
-        // endorsing rights only: timestamp_level is the base level for timestamp computation is taken from last known block (param_block_id) timestamp + time_between_blocks[0] 
+        // endorsing rights only: timestamp_level is the base level for timestamp computation is taken from last known block (block_id) timestamp + time_between_blocks[0] 
         let mut timestamp_level:i64 = block_level;
         // Check the param_level, if there is a level specified validate it, if no set it to the block_level
         // requested_level is used to get data from context list
@@ -618,7 +611,8 @@ impl RightsParams {
         };
 
         // get block header timestamp form block_id
-        let block_timestamp = get_block_header_timestamp(param_block_id, persistent_storage, state)?;
+        let block_timestamp = get_block_timestamp_by_level(block_level.try_into()?, persistent_storage)?;
+        //let block_timestamp = get_block_header_timestamp(param_block_id, persistent_storage, state)?;
 
         Ok(Self::new(
             param_chain_id.to_string(),
@@ -883,9 +877,10 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
 /// 
 /// If block_id is head return current head level
 /// If block_id is level then return level as i64
-/// if block_id is contract id return level from BlockMetaStorage by contract id
+/// if block_id is block hash string return level from BlockMetaStorage by block hash string
+#[inline]
 pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<usize>, failure::Error> {
-    let level = if block_id == "head" {
+    let level = if block_id == "head" { //TODO get level from RpcCollectedStateRef because this look like hack
         let reader = list.read().expect("mutex poisoning");
         Some(reader.len() - 1)
     } else {
@@ -893,9 +888,9 @@ pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persisten
         match block_id.parse() {
             // block level was passed as parameter to block_id
             Ok(val) => Some(val),
-            // block hash (contract id) was passed as parameter to block_id
+            // block hash string was passed as parameter to block_id
             Err(_e) => {
-                let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+                let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
                 let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
                 if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
                     Some(block_meta.level() as usize)
@@ -918,36 +913,77 @@ pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persisten
 /// 
 /// If block_id is head return current head timestamp
 /// If block_id is level then return timestamp from BlockStorage by level
-/// if block_id is contract id return timestamp from BlockStorage by contract id
-pub(crate) fn get_block_header_timestamp(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<i64, failure::Error> {
-    let timestamp: i64 = if block_id == "head" {
-        let state_read = state.read().unwrap();
-        match state_read.current_head().as_ref() {
-            Some(current_head) => {
-                current_head.header().header.timestamp()
-            }
-            None => bail!("head not initialized")
-        }
-    } else {
-        let block_storage = BlockStorage::new(persistent_storage);
-        // try to parse level as number
-        match block_id.parse() {
-            // block level was passed as parameter to block_id
-            Ok(val) => { 
-                match block_storage.get_by_block_level(val)? {
-                    Some(current_head) => current_head.header.timestamp(),
-                    None => bail!("block not found in db {}", block_id)
-                }
-            }
-            // block hash (contract id) was passed as parameter to block_id
-            Err(_e) => {
-                let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
-                match block_storage.get(&block_hash)? {
-                    Some(current_head) => current_head.header.timestamp(),
-                    None => bail!("block not found in db {}", block_id)
-                }
-            }
-        }
+/// if block_id is block hash string return timestamp from BlockStorage by block hash string
+// pub(crate) fn get_block_header_timestamp(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<i64, failure::Error> {
+//     let timestamp: i64 = if block_id == "head" {
+//         let state_read = state.read().unwrap();
+//         match state_read.current_head().as_ref() {
+//             Some(current_head) => {
+//                 current_head.header().header.timestamp()
+//             }
+//             None => bail!("head not initialized")
+//         }
+//     } else {
+//         let block_storage = BlockStorage::new(persistent_storage);
+//         // try to parse level as number
+//         match block_id.parse() {
+//             // block level was passed as parameter to block_id
+//             Ok(val) => { 
+//                 match block_storage.get_by_block_level(val)? {
+//                     Some(current_head) => current_head.header.timestamp(),
+//                     None => bail!("block not found in db by level {}", block_id)
+//                 }
+//             }
+//             // block hash string was passed as parameter to block_id
+//             Err(_e) => {
+//                 let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
+//                 match block_storage.get(&block_hash)? {
+//                     Some(current_head) => current_head.header.timestamp(),
+//                     None => bail!("block not found in db by block hash {}", block_id)
+//                 }
+//             }
+//         }
+//     };
+//     Ok(timestamp)
+// }
+
+/// Get block has bytes from block hash or block level
+/// # Arguments
+/// 
+/// * `block_id` - Url parameter block_id.
+/// * `persistent_storage` - Persistent storage handler.
+/// 
+/// TODO: what if block_id is "head"
+/// If block_id is level then return block hash byte string from BlockStorage by level
+/// if block_id is block hash string return block hash byte string from BlockStorage by block hash string
+#[inline]
+pub fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &PersistentStorage) -> Result<BlockHash, failure::Error> {
+    
+    let block_storage = BlockStorage::new(persistent_storage);
+    // try to parse level as number
+    let block_hash = match block_id.parse() {
+        // block level was passed as parameter to block_id
+        Ok(value) =>  match block_storage.get_by_block_level(value)? {
+            Some(current_head) => current_head.hash,
+            None =>  bail!("block not found in db by level {}", block_id)
+        },
+        // block hash string was passed as parameter to block_id
+        Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?   
     };
-    Ok(timestamp)
+
+    Ok(block_hash)
+}
+
+/// Return block timestamp in epoch time format by block level
+/// 
+/// # Arguments
+/// 
+/// * `level` - Level of block.
+/// * `state` - Current RPC state (head).
+pub(crate) fn get_block_timestamp_by_level(level: i32,  persistent_storage: &PersistentStorage) -> Result<i64, failure::Error> {
+    let block_storage = BlockStorage::new(persistent_storage);
+    match block_storage.get_by_block_level(level)? {
+        Some(current_head) => Ok(current_head.header.timestamp()),
+        None => bail!("Block not found in db by level {}", level)
+    }
 }
