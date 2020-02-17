@@ -114,8 +114,8 @@ impl BinaryReader {
     ///
     /// assert_eq!(version, version_expected);
     /// ```
-    pub fn read(&self, buf: Vec<u8>, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
-        let mut buf = &buf[..];
+    pub fn read<Buf: AsRef<[u8]>>(&self, buf: Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
+        let mut buf = buf.as_ref();
 
         let result = match encoding {
             Encoding::Obj(schema) => self.decode_record(&mut buf, schema),

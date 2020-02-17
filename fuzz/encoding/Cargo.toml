@@ -1,0 +1,15 @@
+[package]
+name = "encoding"
+version = "0.0.0"
+authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+honggfuzz = "0.5"
+log = "0.4.8"
+# Local dependencies
+tezos_encoding = { path = "../../tezos/encoding" }
+rand = "0.7.3"
+
+[workspace]
