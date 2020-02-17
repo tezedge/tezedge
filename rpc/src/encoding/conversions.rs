@@ -4,6 +4,11 @@ use crypto::hash::{ChainId, HashType};
 use crypto::blake2b;
 use storage::context_storage::ContractAddress;
 
+/// convert contract id to contract address
+/// 
+/// # Arguments
+/// 
+/// * `contract_id` - contract id (tz... or KT1...)
 #[inline]
 pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, failure::Error> {
     let contract_address = {
@@ -40,7 +45,11 @@ pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, fail
     Ok(contract_address)
 }
 
-// returns the contract_id from the public_key 
+/// convert public key byte string to contract id
+/// 
+/// # Arguments
+/// 
+/// * `pk` - public key in byte string format
 #[inline]
 pub fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
     // 1 byte tag and - 32 bytes for ed25519 (tz1)

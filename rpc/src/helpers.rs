@@ -866,103 +866,66 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
 /// # Arguments
 /// 
 /// * `block_id` - Url parameter block_id.
-/// * `context_list` - Context list handler.
 /// * `persistent_storage` - Persistent storage handler.
+/// * `state` - Current RPC collected state (head).
 /// 
 /// If block_id is head return current head level
 /// If block_id is level then return level as i64
 /// if block_id is block hash string return level from BlockMetaStorage by block hash string
 #[inline]
-pub(crate) fn get_level_by_block_id(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<usize>, failure::Error> {
-    let level = if block_id == "head" { //TODO get level from RpcCollectedStateRef because this look like hack
-        let reader = list.read().expect("mutex poisoning");
-        Some(reader.len() - 1)
-    } else {
-        // try to parse level as number
-        match block_id.parse() {
-            // block level was passed as parameter to block_id
-            Ok(val) => Some(val),
-            // block hash string was passed as parameter to block_id
-            Err(_e) => {
-                let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
-                let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
-                if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                    Some(block_meta.level() as usize)
-                } else {
-                    None
-                }
+pub(crate) fn get_level_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<usize>, failure::Error> {
+    // first try to parse level as number
+    let level = match block_id.parse() {
+        // block level was passed as parameter to block_id
+        Ok(val) => Some(val),
+        // block hash string or 'head' was passed as parameter to block_id
+        Err(_e) => {
+            let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
+            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
+                Some(block_meta.level() as usize)
+            } else {
+                None
             }
         }
     };
+
     Ok(level)
 }
-
-/// Return block level based on block_id url parameter
-/// 
-/// # Arguments
-/// 
-/// * `block_id` - Url parameter block_id.
-/// * `persistent_storage` - Persistent storage handler.
-/// * `state` - Current RPC state (head).
-/// 
-/// If block_id is head return current head timestamp
-/// If block_id is level then return timestamp from BlockStorage by level
-/// if block_id is block hash string return timestamp from BlockStorage by block hash string
-// pub(crate) fn get_block_header_timestamp(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<i64, failure::Error> {
-//     let timestamp: i64 = if block_id == "head" {
-//         let state_read = state.read().unwrap();
-//         match state_read.current_head().as_ref() {
-//             Some(current_head) => {
-//                 current_head.header().header.timestamp()
-//             }
-//             None => bail!("head not initialized")
-//         }
-//     } else {
-//         let block_storage = BlockStorage::new(persistent_storage);
-//         // try to parse level as number
-//         match block_id.parse() {
-//             // block level was passed as parameter to block_id
-//             Ok(val) => { 
-//                 match block_storage.get_by_block_level(val)? {
-//                     Some(current_head) => current_head.header.timestamp(),
-//                     None => bail!("block not found in db by level {}", block_id)
-//                 }
-//             }
-//             // block hash string was passed as parameter to block_id
-//             Err(_e) => {
-//                 let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
-//                 match block_storage.get(&block_hash)? {
-//                     Some(current_head) => current_head.header.timestamp(),
-//                     None => bail!("block not found in db by block hash {}", block_id)
-//                 }
-//             }
-//         }
-//     };
-//     Ok(timestamp)
-// }
 
 /// Get block has bytes from block hash or block level
 /// # Arguments
 /// 
 /// * `block_id` - Url parameter block_id.
 /// * `persistent_storage` - Persistent storage handler.
+/// * `state` - Current RPC collected state (head).
 /// 
-/// TODO: what if block_id is "head"
+/// If block_id is head return block hash byte string from current RpcCollectedStateRef
 /// If block_id is level then return block hash byte string from BlockStorage by level
 /// if block_id is block hash string return block hash byte string from BlockStorage by block hash string
 #[inline]
-pub fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &PersistentStorage) -> Result<BlockHash, failure::Error> {
-    
-    let block_storage = BlockStorage::new(persistent_storage);
-    // try to parse level as number
-    let block_hash = match block_id.parse() {
-        // block level was passed as parameter to block_id
-        Ok(value) =>  match block_storage.get_by_block_level(value)? {
-            Some(current_head) => current_head.hash,
-            None =>  bail!("block not found in db by level {}", block_id)
-        },
-        // block hash string was passed as parameter to block_id
-        Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?   
+pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<BlockHash, failure::Error> {
+    // first check if 'head' string was provided as parameter and take hash from RpcCollectedStateRef
+    let block_hash = if block_id == "head" {
+        let state_read = state.read().unwrap();
+        match state_read.current_head().as_ref() {
+            Some(current_head) => {
+                current_head.header().hash.clone()
+            }
+            None => bail!("head not initialized")
+        }
+    } else {
+        let block_storage = BlockStorage::new(persistent_storage);
+        // try to parse level as number
+        match block_id.parse() {
+            // block level was passed as parameter to block_id
+            Ok(value) =>  match block_storage.get_by_block_level(value)? {
+                Some(current_head) => current_head.hash,
+                None =>  bail!("block not found in db by level {}", block_id)
+            },
+            // block hash string was passed as parameter to block_id
+            Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?   
+        }
     };
 
     Ok(block_hash)

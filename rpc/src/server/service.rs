@@ -173,7 +173,7 @@ fn find_param_value<'a, 'b>(params: &[(&'a str, &'a str)], key_to_find: &'b str)
 }
 
 /// GET /monitor/bootstrapped endpoint handler
-fn bootstrapped(state: RpcCollectedStateRef) -> ServiceResult {
+fn bootstrapped(state: &RpcCollectedStateRef) -> ServiceResult {
     let state_read = state.read().unwrap();
 
     let bootstrap_info = match state_read.current_head().as_ref() {
@@ -207,7 +207,7 @@ async fn valid_blocks(_sys: ActorSystem, _actor: RpcServerRef, _protocols: Vec<S
     empty()
 }
 
-fn head_chain(chain_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
+fn head_chain(chain_id: &str, state: &RpcCollectedStateRef) -> ServiceResult {
     if chain_id == "main" {
         let current_head = fns::get_full_current_head(state);
         if let Ok(Some(_current_head)) = current_head {
@@ -222,7 +222,7 @@ fn head_chain(chain_id: &str, state: RpcCollectedStateRef) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id> endpoint handler
-fn chains_block_id(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+fn chains_block_id(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> ServiceResult {
     use crate::encoding::chain::BlockInfo;
     if chain_id == "main" {
         if block_id == "head" {
@@ -236,7 +236,7 @@ fn chains_block_id(chain_id: &str, block_id: &str, persistent_storage: &Persiste
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/header endpoint handler
-fn chains_block_id_header(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef, log: &Logger) -> ServiceResult {
+fn chains_block_id_header(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> ServiceResult {
     if chain_id == "main" {
         if block_id == "head" {
             result_option_to_json_response(fns::get_current_head_header(state).map(|res| res), log)
@@ -260,7 +260,7 @@ async fn stats_memory(log: &Logger) -> ServiceResult {
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/baking_rights endpoint handler
-async fn baking_rights(chain_id: &str, block_id: &str, delegate: &Option<String>, level: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
+async fn baking_rights(chain_id: &str, block_id: &str, delegate: &Option<String>, level: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, state: &RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
     // list -> context, persistent, state odizolovat
     match fns::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, list, persistent_storage, state) {
         Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
@@ -278,7 +278,7 @@ async fn baking_rights(chain_id: &str, block_id: &str, delegate: &Option<String>
 }
 
 /// GET /chains/<chain_id>/blocks/<block_id>/helpers/endorsing_rights endpoint handler
-async fn endorsing_rights(chain_id: &str, block_id: &str, delegate: &Option<String>, level: &Option<String>, cycle: &Option<String>, has_all: bool, state: RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
+async fn endorsing_rights(chain_id: &str, block_id: &str, delegate: &Option<String>, level: &Option<String>, cycle: &Option<String>, has_all: bool, state: &RpcCollectedStateRef, persistent_storage: &PersistentStorage, list: ContextList, log: &Logger) -> ServiceResult {
     // get RPC response and unpack it from RpcResponseData enum
     match fns::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, list, persistent_storage, state) {
         Ok(Some(RpcResponseData::EndorsingRights(res))) => result_to_json_response(Ok(Some(res)), &log),
@@ -329,7 +329,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
     let context_storage = persistent_storage.context_storage();
 
     match (req.method(), find_route(req.uri())) {
-        (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(state),
+        (&Method::GET, Some((Route::Bootstrapped, _, _))) => bootstrapped(&state),
         (&Method::GET, Some((Route::CommitHash, _, _))) => commit_hash(sys, actor).await,
         (&Method::GET, Some((Route::ActiveChains, _, _))) => active_chains(sys, actor).await,
         (&Method::GET, Some((Route::Protocols, _, _))) => protocols(sys, actor).await,
@@ -343,35 +343,35 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
         (&Method::GET, Some((Route::ContextConstants, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            result_to_json_response(fns::get_context_constants(chain_id, block_id, None, context_storage, &persistent_storage), &log)
+            result_to_json_response(fns::get_context_constants(chain_id, block_id, None, context_storage, &persistent_storage, &state), &log)
         }
         (&Method::GET, Some((Route::HeadChain, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
-            head_chain(chain_id, state)
+            head_chain(chain_id, &state)
         }
         (&Method::GET, Some((Route::ChainsBlockId, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            chains_block_id(chain_id, block_id, &persistent_storage, state, &log)
+            chains_block_id(chain_id, block_id, &persistent_storage, &state, &log)
         }
         (&Method::GET, Some((Route::ChainsBlockIdHeader, params, _))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
             let block_id = find_param_value(&params, "block_id").unwrap();
-            chains_block_id_header(chain_id, block_id, &persistent_storage, state, &log)
+            chains_block_id_header(chain_id, block_id, &persistent_storage, &state, &log)
         }
         (&Method::GET, Some((Route::DevGetBlocks, _, query))) => {
-            let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), state.clone(), genesis_hash);
+            let from_block_id = unwrap_block_hash(find_query_value_as_string(&query, "from_block_id"), &state, genesis_hash);
             let limit = find_query_value_as_usize(&query, "limit").unwrap_or(50);
             let every_nth_level = match find_query_value_as_string(&query, "every_nth").as_ref().map(|x| x.as_str()) {
                 Some("cycle") => Some(4096),
                 Some("voting-period") => Some(4096 * 8),
                 _ => None
             };
-            result_to_json_response(fns::get_blocks(every_nth_level, &from_block_id, limit, &persistent_storage, state), &log)
+            result_to_json_response(fns::get_blocks(every_nth_level, &from_block_id, limit, &persistent_storage, &state), &log)
         }
         (&Method::GET, Some((Route::DevGetBlockActions, params, _))) => {
             let block_id = find_param_value(&params, "block_id").unwrap();
-            result_to_json_response(fns::get_block_actions(block_id, &persistent_storage), &log)
+            result_to_json_response(fns::get_block_actions(block_id, &persistent_storage, &state), &log)
         }
         (&Method::GET, Some((Route::DevGetContractActions, params, query))) => {
             let contract_id = find_param_value(&params, "contract_id").unwrap();
@@ -405,7 +405,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let delegate = find_query_value_as_string(&query, "delegate");
             let has_all = query.contains_key("all");
 
-            endorsing_rights(chain_id, block_id, &delegate, &level, &cycle, has_all, state, &persistent_storage, context_storage, &log).await
+            endorsing_rights(chain_id, block_id, &delegate, &level, &cycle, has_all, &state, &persistent_storage, context_storage, &log).await
         }
         (&Method::GET, Some((Route::ChainsBlockIdBakingRights, params, query))) => {
             let chain_id = find_param_value(&params, "chain_id").unwrap();
@@ -416,7 +416,7 @@ async fn router(req: Request<Body>, env: RpcServiceEnvironment) -> ServiceResult
             let cycle = find_query_value_as_string(&query, "cycle");
             let has_all = query.contains_key("all");
 
-            baking_rights(chain_id, block_id, &delegate, &level, &cycle, &max_priority, has_all, state, &persistent_storage, context_storage, &log).await
+            baking_rights(chain_id, block_id, &delegate, &level, &cycle, &max_priority, has_all, &state, &persistent_storage, context_storage, &log).await
         }
         _ => not_found()
     }
@@ -458,7 +458,7 @@ fn result_option_to_json_response<T: serde::Serialize>(res: Result<Option<T>, fa
 
 /// Unwraps a block hash or provides alternative block hash.
 /// Alternatives are: genesis block or current head
-fn unwrap_block_hash(block_id: Option<String>, state: RpcCollectedStateRef, genesis_hash: String) -> String {
+fn unwrap_block_hash(block_id: Option<String>, state: &RpcCollectedStateRef, genesis_hash: String) -> String {
     block_id.unwrap_or_else(|| {
         let state = state.read().unwrap();
         state.current_head().as_ref()
@@ -520,20 +520,20 @@ mod fns {
     }
 
     /// Retrieve blocks from database.
-    pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
+    pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
         let blocks = match every_nth_level {
             Some(every_nth_level) => block_storage.get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
             None => block_storage.get_multiple_with_json_data(&block_hash, limit),
-        }?.into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)).collect();
+        }?.into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, state)).collect();
         Ok(blocks)
     }
 
     /// Get actions for a specific block in ascending order.
-    pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage) -> Result<Vec<ContextAction>, failure::Error> {
+    pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<ContextAction>, failure::Error> {
         let context_storage = ContextStorage::new(persistent_storage);
-        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
         context_storage.get_by_block_hash(&block_hash)
             .map(|values| values.into_iter().map(|v| v.into_action()).collect())
             .map_err(|e| e.into())
@@ -562,18 +562,18 @@ mod fns {
     /// * `has_all` - Url query parameter 'all'.
     /// * `list` - Context list handler.
     /// * `persistent_storage` - Persistent storage handler.
-    /// * `state` - Current RPC state (head).
+    /// * `state` - Current RPC collected state (head).
     /// 
     /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
-    pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+    pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, max_priority: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
 
         // get block level first
-        let block_level: i64 = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+        let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
             Some(val) => val.try_into()?,
             None => bail!("Block level not found")
         };
 
-        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage)?;
+        let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage, state)?;
         
         let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
         
@@ -698,18 +698,18 @@ mod fns {
     /// * `has_all` - Url query parameter 'all'.
     /// * `list` - Context list handler.
     /// * `persistent_storage` - Persistent storage handler.
-    /// * `state` - Current RPC state (head).
+    /// * `state` - Current RPC collected state (head).
     /// 
     /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
-    pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+    pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: &Option<String>, delegate: &Option<String>, cycle: &Option<String>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
         
         // get block level from block_id and from now get all nessesary data by block level
-        let block_level: i64 = match get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+        let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
             Some(val) => val.try_into()?,
             None => bail!("Block level not found")
         };
 
-        let constants: RightsConstants = get_and_parse_rights_constants(chain_id, block_id, block_level, list.clone(), persistent_storage)?;
+        let constants: RightsConstants = get_and_parse_rights_constants(chain_id, block_id, block_level, list.clone(), persistent_storage, state)?;
 
         let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, &None, has_all, block_level, &constants, persistent_storage, false)?;
         
@@ -831,7 +831,7 @@ mod fns {
     }
 
     /// Get information about current head
-    pub(crate) fn get_full_current_head(state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
+    pub(crate) fn get_full_current_head(state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let state = state.read().unwrap();
         let current_head = state.current_head().as_ref().map(|current_head| {
             let chain_id = chain_id_to_string(state.chain_id());
@@ -842,7 +842,7 @@ mod fns {
     }
 
     /// Get information about current head header
-    pub(crate) fn get_current_head_header(state: RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
+    pub(crate) fn get_current_head_header(state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
         let state = state.read().unwrap();
         let current_head = state.current_head().as_ref().map(|current_head| {
             let chain_id = chain_id_to_string(state.chain_id());
@@ -853,19 +853,19 @@ mod fns {
     }
 
     /// Get information about block
-    pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
+    pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
-        let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+        let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, state));
 
         Ok(block)
     }
 
     /// Get information about block header
-    pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentStorage, state: RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
+    pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
         let block_storage = BlockStorage::new(persistent_storage);
-        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage)?;
-        let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, &state));
+        let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+        let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, state));
 
         Ok(block)
     }
@@ -879,13 +879,14 @@ mod fns {
     /// * `opt_level` - Optionaly input block level from block_id if is already known to prevent double code execution.
     /// * `list` - Context list handler.
     /// * `persistent_storage` - Persistent storage handler.
-    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: Option<i64>, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<ContextConstants>, failure::Error> {
+    /// * `state` - Current RPC collected state (head).
+    pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: Option<i64>, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<ContextConstants>, failure::Error> {
         // first check if level is already known
         let level: usize = if let Some(l) = opt_level {
             l.try_into()?
         } else {
             // get level level by block_id
-            if let Some(l) = get_level_by_block_id(block_id, list.clone(), persistent_storage)? {
+            if let Some(l) = get_level_by_block_id(block_id, persistent_storage, state)? {
                 l
             } else {
                 bail!("Level not found for block_id {}", block_id)
@@ -1149,9 +1150,10 @@ mod fns {
     /// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
     /// * `block_level` - Provide level of block_id that is already known to prevent double code execution.
     /// * `persistent_storage` - Persistent storage handler.
+    /// * `state` - Current RPC collected state (head).
     #[inline]
-    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, block_level: i64, list: ContextList, persistent_storage: &PersistentStorage) -> Result<RightsConstants, failure::Error> {
-        let constants = match get_context_constants(chain_id, block_id, Some(block_level), list.clone(), persistent_storage)? {
+    fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, block_level: i64, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<RightsConstants, failure::Error> {
+        let constants = match get_context_constants(chain_id, block_id, Some(block_level), list.clone(), persistent_storage, state)? {
             Some(v) => v,
             None => bail!("Cannot get protocol constants")
         };
