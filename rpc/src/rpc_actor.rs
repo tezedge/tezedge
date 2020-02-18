@@ -19,12 +19,12 @@ use crate::server::{RpcServiceEnvironment, spawn_server};
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
 /// Thread safe reference to a shared RPC state
-pub(crate) type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
+pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 
 /// Represents various collected information about
 /// internal state of the node.
 #[derive(Getters)]
-pub(crate) struct RpcCollectedState {
+pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<BlockApplied>,
     #[get = "pub(crate)"]

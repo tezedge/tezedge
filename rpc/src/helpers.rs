@@ -1,6 +1,29 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::convert::TryInto;
+
+use failure::{bail, Fail, format_err};
+use getset::Getters;
+use serde::Serialize;
+use serde_json::Value;
+
+use crypto::blake2b;
+use crypto::hash::{BlockHash, HashType};
+use shell::shell_channel::BlockApplied;
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
+use storage::num_from_slice;
+use storage::persistent::PersistentStorage;
+use storage::skip_list::Bucket;
+use tezos_messages::p2p::encoding::prelude::*;
+
+use crate::ContextList;
+use crate::encoding::conversions::public_key_to_contract_id;
+use crate::rpc_actor::RpcCollectedStateRef;
+use crate::ts_to_rfc3339;
+
 #[macro_export]
 macro_rules! merge_slices {
     ( $($x:expr),* ) => {{
@@ -11,29 +34,6 @@ macro_rules! merge_slices {
         res
     }}
 }
-
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::convert::TryInto;
-use storage::num_from_slice;
-
-use serde::Serialize;
-use serde_json::Value;
-use getset::Getters;
-use failure::{Fail, bail, format_err};
-
-use crypto::blake2b;
-use crypto::hash::{HashType, BlockHash};
-use shell::shell_channel::BlockApplied;
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
-use storage::persistent::PersistentStorage;
-use storage::skip_list::Bucket;
-use tezos_messages::p2p::encoding::prelude::*;
-
-use crate::ContextList;
-use crate::encoding::conversions::public_key_to_contract_id;
-use crate::rpc_actor::RpcCollectedStateRef;
-use crate::ts_to_rfc3339;
 
 type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
@@ -555,10 +555,10 @@ impl RightsParams {
     /// Return RightsParams
     pub(crate) fn parse_rights_parameters(
         param_chain_id: &str,
-        param_level: &Option<String>,
-        param_delegate: &Option<String>,
-        param_cycle: &Option<String>,
-        param_max_priority: &Option<String>,
+        param_level: Option<&str>,
+        param_delegate: Option<&str>,
+        param_cycle: Option<&str>,
+        param_max_priority: Option<&str>,
         param_has_all: bool,
         block_level: i64,
         rights_constants: &RightsConstants,
@@ -616,7 +616,7 @@ impl RightsParams {
             param_chain_id.to_string(),
             block_level,
             block_timestamp,
-            param_delegate.clone(),
+            param_delegate.map(String::from),
             requested_cycle,
             requested_level,
             display_level, // endorsing rights only
