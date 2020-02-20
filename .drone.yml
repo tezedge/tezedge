@@ -2,52 +2,120 @@ kind: pipeline
 name: default
 
 steps:
+# uncomment this step when a modification to the storage was done and requires fresh bootstrap
+# - name: cleanup
+#   image: alpine/git
+#   user: root
+#   volumes:
+#     - name: tezedge-node-data
+#       path: /tmp/tezedge_developer
+#   commands:
+#     - rm -rf /tmp/tezedge_developer/light-node
+#     - rm -rf /tmp/tezedge_developer/tezos-node
+
 - name: build-tezedge
   image: adonagy/tezedge-ci-builder:latest
   user: root
   environment:
-    RUST_BACKTRACE: 1
     SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
   commands:
-    - cargo clean && cargo build --release
+    - ls -la
+    - cargo build --release --workspace
 
 - name: tezedge-node-run
   image: adonagy/tezedge-ci-builder:latest
+  pull: if-not-exists
   user: root
   detach: true
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
   environment:
-    RUST_BACKTRACE: 1
     SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   commands: 
-    - mkdir /tmp/tezedge_developer
-    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer
+    - ls -la 
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "babylonnet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
 
 - name: ocaml-node-run
+  user: root
   image: tezos/tezos:babylonnet
   detach: true
+  volumes:
+    - name: ocaml-node-data
+      path: /home/tezos/data
   commands:
-    - mkdir /home/tezos/data
     - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive 
 
 - name: bootstrapping
-  image: adonagy/tezos-node-bootstrap:latest
-
-- name: test
-  image: adonagy/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  image: adonagy/tezos-node-bootstrap:indexer
   commands:
-    - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
+    - tezos-node-bootstrap --bootstrap
+
+- name: tz-indexer-tezedge
+  image: blockwatch/tzindex:latest
+  user: root
+  detach: true
+  volumes:
+    - name: indexer-tezedge-data
+      path: /data
+  environment:
+    TZ_RPC_HOST: tezedge-node-run
+    TZ_RPC_PORT: 18732
+    TZ_SERVER_ADDR: 0.0.0.0
+    TZ_SERVER_PORT: 8002
+    TZ_SERVER_CORS_ENABLE: true
+    TZ_DATABASE_PATH: /data/index
+    TZ_SNAPSHOT_PATH: /data/snapshots
+
+- name: tz-indexer-ocaml
+  image: blockwatch/tzindex:latest
+  user: root
+  detach: true
+  volumes:
+    - name: indexer-ocaml-data
+      path: /data
+  environment:
+    TZ_RPC_HOST: ocaml-node-run
+    TZ_RPC_PORT: 8732
+    TZ_SERVER_ADDR: 0.0.0.0
+    TZ_SERVER_PORT: 8002
+    TZ_SERVER_CORS_ENABLE: true
+    TZ_DATABASE_PATH: /data/index
+    TZ_SNAPSHOT_PATH: /data/snapshots
+
+- name: indexer-test
+  image: adonagy/tezos-node-bootstrap:indexer
+  commands:
+    - tezos-node-bootstrap --indexer-test
+
+# - name: test
+#   image: adonagy/tezedge-ci-builder:latest
+#   pull: if-not-exists
+#   user: root
+#   environment:
+#     RUST_BACKTRACE: 1
+#     SODIUM_USE_PKG_CONFIG: 1
+#     OCAML_BUILD_CHAIN: remote
+#     LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+#   commands:
+#     - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
+
+volumes:
+  - name: ocaml-node-data
+    host:
+      # path: /home/ado/tezos-node-backup
+      path: /etc/ocaml-node
+  - name: tezedge-node-data
+    host:
+      # path: /home/ado/tezedge-node-backup
+      path: /etc/tezedge-node
+      
+  - name: indexer-tezedge-data
+    temp: {}
+  - name: indexer-ocaml-data
+    temp: {}
 
 trigger:
   branch:
