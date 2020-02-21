@@ -864,7 +864,7 @@ mod fns {
                 block = block_storage.get_by_block_level_with_json_data(val)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
             }
             Err(_e) => {
-                let block_hash = block_id_to_block_hash(block_id, persistent_storage)?;
+                let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
                 block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
             }
         }
