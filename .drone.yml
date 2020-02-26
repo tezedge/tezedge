@@ -2,7 +2,7 @@ kind: pipeline
 name: default
 
 steps:
-# uncomment this step when a modification to the storage was done and requires fresh bootstrap
+# uncomment this step when a modification to the storage was done and requires a fresh bootstrap
 # - name: cleanup
 #   image: alpine/git
 #   user: root
@@ -19,7 +19,6 @@ steps:
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
-    - ls -la
     - cargo build --release --workspace
 
 - name: tezedge-node-run
@@ -34,7 +33,6 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   commands: 
-    - ls -la 
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "babylonnet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
 
 - name: ocaml-node-run
@@ -90,26 +88,24 @@ steps:
   commands:
     - tezos-node-bootstrap --indexer-test
 
-# - name: test
-#   image: adonagy/tezedge-ci-builder:latest
-#   pull: if-not-exists
-#   user: root
-#   environment:
-#     RUST_BACKTRACE: 1
-#     SODIUM_USE_PKG_CONFIG: 1
-#     OCAML_BUILD_CHAIN: remote
-#     LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
-#   commands:
-#     - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
+- name: test
+  image: adonagy/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands:
+    - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
 
 volumes:
   - name: ocaml-node-data
     host:
-      # path: /home/ado/tezos-node-backup
       path: /etc/ocaml-node
   - name: tezedge-node-data
     host:
-      # path: /home/ado/tezedge-node-backup
       path: /etc/tezedge-node
       
   - name: indexer-tezedge-data
