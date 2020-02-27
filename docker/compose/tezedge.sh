@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# add rust to path
+PATH=/home/appuser/.cargo/bin:$PATH
+
 # light node config
 NETWORK="babylonnet"
 TEZOS_DIR="/tmp/tezedge/tezos-data"
