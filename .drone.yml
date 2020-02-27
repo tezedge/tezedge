@@ -3,7 +3,7 @@ name: default
 
 steps:
 # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
-- name: cleanup
+- name: cleanup-tezedge-data
   image: alpine/git
   user: root
   volumes:
