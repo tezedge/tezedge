@@ -13,4 +13,3 @@ RUN cd /home/appuser && git clone ${tezedge_git} && cd tezedge && cargo build --
 WORKDIR /home/appuser/tezedge
 RUN mkdir /tmp/tezedge
 RUN chown appuser:appuser /tmp/tezedge
-RUN ls -la /home/appuser/tezedge/docker

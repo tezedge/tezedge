@@ -11,8 +11,8 @@ services:
       - "28732:18732"
     entrypoint: /home/appuser/tezedge/docker/compose/tezedge.sh
 
-  tezedge-node-explorer:
-    image: simplestakingcom/tezedge-node-explorer
-    hostname: tezedge-node-explorer
-    ports:
-      - "8080:8080"
+  # tezedge-node-explorer:
+  #   image: simplestakingcom/tezedge-node-explorer
+  #   hostname: tezedge-node-explorer
+  #   ports:
+  #     - "8080:8080"

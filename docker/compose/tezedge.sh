@@ -19,5 +19,5 @@ cargo run --release --bin light-node -- \
                             --tezos-data-dir "$TEZOS_DIR" \
                             --bootstrap-db-path "$BOOTSTRAP_DIR" \
                             --network "$NETWORK" \
-                            --ocaml-log-enabled "true" \
+                            --ocaml-log-enabled "fasle" \
                             --protocol-runner "./target/release/protocol-runner"
