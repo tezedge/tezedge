@@ -130,7 +130,7 @@ impl BlockHeaderInfo {
         let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
         let protocol = proto_data.get("protocol").unwrap();
 
-        println!("{:?}", val );
+        // println!("{:?}", val );
 
         Self {
             hash,

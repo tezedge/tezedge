@@ -385,9 +385,18 @@ pub(crate) fn get_current_head_header(state: &RpcCollectedStateRef) -> Result<Op
 /// Get information about block
 pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
     let block_storage = BlockStorage::new(persistent_storage);
-    let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
-    let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, state));
-
+    let block;
+    // hotfix
+    // TODO: rework block_id to accept types String and integer for block levels
+    match block_id.parse() {
+        Ok(val) => {
+            block = block_storage.get_by_block_level_with_json_data(val)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+        }
+        Err(_e) => {
+            let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+            block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+        }
+    }
     Ok(block)
 }
 
