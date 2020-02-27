@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # add rust to path
-HOME=/home/appuser
-PATH=/home/appuser/.cargo/bin:$PATH
+export HOME=/home/appuser
+export PATH=/home/appuser/.cargo/bin:$PATH
 
 # light node config
 NETWORK="babylonnet"
@@ -15,7 +15,7 @@ rm -rf $BOOTSTRAP_DIR && mkdir $BOOTSTRAP_DIR
 rm -rf $TEZOS_DIR && mkdir $TEZOS_DIR
 
 # protocol_runner needs 'libtezos.so' to run
-LD_LIBRARY_PATH="/home/appuser/tezedge/tezos/interop/lib_tezos/artifacts:/home/appuser/tezedge/target/release"
+export LD_LIBRARY_PATH="/home/appuser/tezedge/tezos/interop/lib_tezos/artifacts:/home/appuser/tezedge/target/release"
 
 # start node
 cargo run --release --bin light-node -- \
