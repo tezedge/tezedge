@@ -3,14 +3,13 @@ services:
 
   tezedge:
     image: simplestakingcom/tezedge
+    build: ./docker/compose
     hostname: tezedge
     ports:
-      - "4927:4927"
-      - "9732:9732"
-      # - "18732:18732"
-    volumes:
-      - ./tezedge:/tmp/tezedge
-    entrypoint: /tmp/tezedge/tezedge.sh
+      - "24927:4927"
+      - "29732:9732"
+      - "28732:18732"
+    entrypoint: /home/appuser/tezedge/docker/compose/tezedge.sh
 
   tezedge-node-explorer:
     image: simplestakingcom/tezedge-node-explorer
