@@ -3,15 +3,15 @@ name: default
 
 steps:
 # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
-- name: cleanup-tezedge-data
-  image: alpine/git
-  user: root
-  volumes:
-    - name: tezedge-node-data
-      path: /tmp/tezedge_developer
-  commands:
-    - rm -rf /tmp/tezedge_developer/light-node
-    - rm -rf /tmp/tezedge_developer/tezos-node
+# - name: cleanup-tezedge-data
+#   image: alpine/git
+#   user: root
+#   volumes:
+#     - name: tezedge-node-data
+#       path: /tmp/tezedge_developer
+#   commands:
+#     - rm -rf /tmp/tezedge_developer/light-node
+#     - rm -rf /tmp/tezedge_developer/tezos-node
 
 - name: build-tezedge
   image: adonagy/tezedge-ci-builder:latest
