@@ -6,13 +6,13 @@ services:
     build: ./docker/compose
     hostname: tezedge
     ports:
-      - "24927:4927"
-      - "29732:9732"
-      - "28732:18732"
+      - "4927:4927"
+      - "19732:9732"
+      - "18732:18732"
     entrypoint: /home/appuser/tezedge/docker/compose/tezedge.sh
 
-  # tezedge-node-explorer:
-  #   image: simplestakingcom/tezedge-node-explorer
-  #   hostname: tezedge-node-explorer
-  #   ports:
-  #     - "8080:8080"
+  tezedge-node-explorer:
+    image: simplestakingcom/tezedge-node-explorer
+    hostname: tezedge-node-explorer
+    ports:
+      - "8080:8080"
