@@ -1,21 +1,44 @@
-Tezedge
-===========
+# TezEdge
 
-[![Build Status](https://travis-ci.com/simplestaking/tezedge.svg?branch=master)](https://travis-ci.com/simplestaking/tezedge)
-[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Build Status]][Build Link] [![Docs Status]][docs Link] [![MIT licensed]][MIT link]
+
+
+[Build Status]: https://travis-ci.com/simplestaking/tezedge.svg?branch=master
+[Build Link]: https://travis-ci.com/simplestaking/tezedge
+
+[Docs Status]: https://img.shields.io/badge/user--docs-master-informational
+[Docs Link]: http://docs.tezedge.com/
+
+[RustDoc Status]:https://img.shields.io/badge/code--docs-master-orange
+
+[MIT licensed]: https://img.shields.io/badge/license-MIT-blue.svg
+[MIT link]: https://github.com/simplestaking/tezedge/blob/master/LICENSE
 
 The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
 In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
 
+[Documentation][Docs Link]
+
 Quick start
 ------------
+
+**1. Download and install Docker and Docker Compose**
+
+Open shell and type this code into the command line and then press Enter:
 
 ```
 docker-compose pull
 docker-compose up
 ```
 
-Requirements
+**2. Open TezEdge Explorer in browser** 
+
+You can view node status in your browser by entering this address into the URL bar:
+
+http://localhost:8080
+
+
+Building from Source
 ------------
 
 **1. Install rustup command** 
@@ -54,27 +77,16 @@ We are linking rust code with pre-compiled Tezos shared library. For your conven
 for most of the popular linux distributions:
 
 supported linux distributions:
-* Ubuntu
-    * 16.04
-    * 18.04 and 18.10
-    * 19.04
-* Debian
-    * 9
-    * 10
-* OpenSUSE
-    * 15.1
-    * 15.2
-* CentOS
-    * 6
-    * 7
-    * 8
+* Ubuntu (16.04, 18.04, 18.10, 19.04)
+* Debian (9, 10 )
+* OpenSUSE (15.1, 15.2)
+* CentOS (6, 7, 8)
     
 If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
 
-Running the node
-------------
 
-**5. Running Tezedge node manually** 
+Running node manually
+----------------
 
 The node can built through the `cargo build` or `cargo build --release`, be aware, release build can take 
 much longer to compile. environment variable `SODIUM_USE_PKG_CONFIG=1` mus be set. Put together, node can be build, for example, like this:
@@ -98,7 +110,9 @@ Full description of all arguments is in the light_node [README](light_node/READM
 
 
 
-**6. Running Tezedge node using run.sh script** 
+Running node using run.sh script
+----------------
+
 
 On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnent variables, build and run tezedge node. 
 All arguments can be provided to the `run.sh` script in the same manner as described in the previous section - Running Tezedge node manually.
