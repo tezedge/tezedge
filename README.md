@@ -1,10 +1,13 @@
 # TezEdge
 
-[![Build Status]][Build Link] [![Docs Status]][docs Link] [![MIT licensed]][MIT link]
+[![Build Status]][Build Link] [![Drone Status]][Drone Link]   [![Docs Status]][docs Link] [![MIT licensed]][MIT link]
 
 
 [Build Status]: https://travis-ci.com/simplestaking/tezedge.svg?branch=master
 [Build Link]: https://travis-ci.com/simplestaking/tezedge
+
+[Drone Status]: https://img.shields.io/drone/build/simplestaking/tezedge?server=http%3A%2F%2Fci.tezedge.com
+[Drone Link]: http://ci.tezedge.com/simplestaking/tezedge/
 
 [Docs Status]: https://img.shields.io/badge/user--docs-master-informational
 [Docs Link]: http://docs.tezedge.com/
