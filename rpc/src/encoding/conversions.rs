@@ -77,6 +77,27 @@ pub fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> 
 }
 
 #[inline]
+pub fn hash_to_contract_id(hash: &str, curve: &str) -> Result<String, failure::Error>{
+    if hash.len() == 40 {
+        let contract_id = match curve {
+            "ed25519" => {
+                HashType::ContractTz1Hash.bytes_to_string(&hex::decode(&hash)?)
+            }
+            "secp256k1" => {
+                HashType::ContractTz2Hash.bytes_to_string(&hex::decode(&hash)?)
+            }
+            "p256" => {
+                HashType::ContractTz3Hash.bytes_to_string(&hex::decode(&hash)?)
+            }
+            _ => bail!("Invalid curve tag")
+        };
+        Ok(contract_id)
+    } else {
+        bail!("Invalid hash")
+    }
+}
+
+#[inline]
 pub fn chain_id_to_string(chain_id: &ChainId) -> String {
     HashType::ChainId.bytes_to_string(chain_id)
 }
