@@ -7,6 +7,14 @@ Tezedge
 The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
 In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
 
+Quick start
+------------
+
+```
+docker-compose pull
+docker-compose up
+```
+
 Requirements
 ------------
 
