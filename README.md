@@ -36,10 +36,9 @@ docker-compose up
 
 ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/node_bootstrap.gif)
 
+**2. Open the TezEdge Explorer in your browser** 
 
-**2. Open TezEdge Explorer in browser** 
-
-You can view node status in your browser by entering this address into the URL bar:
+You can view the status of the node in your browser by entering this address into your browser's URL bar:
 
 http://localhost:8080
 
