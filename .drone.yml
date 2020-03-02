@@ -14,7 +14,7 @@ steps:
 #     - rm -rf /tmp/tezedge_developer/tezos-node
 
 - name: build-tezedge
-  image: adonagy/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:latest
   user: root
   environment:
     SODIUM_USE_PKG_CONFIG: 1
@@ -22,7 +22,7 @@ steps:
     - cargo build --release --workspace
 
 - name: tezedge-node-run
-  image: adonagy/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -47,7 +47,7 @@ steps:
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive 
 
 - name: bootstrapping
-  image: adonagy/tezos-node-bootstrap:indexer
+  image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --bootstrap
 
@@ -84,12 +84,12 @@ steps:
     TZ_SNAPSHOT_PATH: /data/snapshots
 
 - name: indexer-test
-  image: adonagy/tezos-node-bootstrap:indexer
+  image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --indexer-test
 
 - name: test
-  image: adonagy/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   environment:
