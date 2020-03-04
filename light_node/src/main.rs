@@ -265,7 +265,7 @@ fn main() {
         Lane::descriptor(),
         Sequences::descriptor(),
     ];
-    let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
+    let mut rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
         Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.bootstrap_db_path), actor_system)
     };
@@ -320,7 +320,7 @@ fn main() {
         BlockStorage::descriptor(),
         ContextStorage::descriptor()
     ];
-    let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
+    let mut commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
         Ok(commit_logs) => Arc::new(commit_logs),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
     };
@@ -333,8 +333,23 @@ fn main() {
         }
     }
 
-    commit_logs.flush().expect("Failed to flush commit logs");
-    rocks_db.flush().expect("Failed to flush database");
+    loop {
+        match Arc::try_unwrap(commit_logs) {
+            Ok(commit_logs) => {
+                commit_logs.flush().expect("Failed to flush commit logs");
+                break;
+            }
+            Err(arc) => commit_logs = arc,
+        }
+    }
+
+    loop {
+        match Arc::try_unwrap(rocks_db) {
+            Ok(rocks_db) => {
+                rocks_db.flush().expect("Failed to flush database");
+                break;
+            }
+            Err(arc) => rocks_db = arc,
+        }
+    }
 }
-
-

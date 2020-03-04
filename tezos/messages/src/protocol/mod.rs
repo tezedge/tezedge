@@ -16,6 +16,7 @@ pub mod proto_003;
 pub mod proto_004;
 pub mod proto_005;
 pub mod proto_005_2;
+pub mod proto_006;
 
 #[derive(Debug, Clone)]
 pub enum UniversalValue {
@@ -37,6 +38,14 @@ impl UniversalValue {
         let mut ret: Vec<Box<UniversalValue>> = Default::default();
         for x in val {
             ret.push(Box::new(Self::num(x.clone())))
+        }
+        Self::List(ret)
+    }
+
+    fn big_num_list<'a, I: IntoIterator<Item=BigInt>>(val: I) -> Self {
+        let mut ret: Vec<Box<UniversalValue>> = Default::default();
+        for x in val {
+            ret.push(Box::new(Self::big_num(x.clone())))
         }
         Self::List(ret)
     }
@@ -77,6 +86,12 @@ pub fn get_constants(bytes: &[u8], protocol: ProtocolHash) -> Result<Option<Hash
         }
         proto_005_2::PROTOCOL_HASH => {
             use crate::protocol::proto_005_2::constants::{ParametricConstants, FIXED};
+            let mut param = ParametricConstants::from_bytes(bytes.to_vec())?.as_map();
+            param.extend(FIXED.clone().as_map());
+            Ok(Some(param))
+        }
+        proto_006::PROTOCOL_HASH => {
+            use crate::protocol::proto_006::constants::{ParametricConstants, FIXED};
             let mut param = ParametricConstants::from_bytes(bytes.to_vec())?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))
