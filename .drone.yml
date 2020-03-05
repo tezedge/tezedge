@@ -21,6 +21,37 @@ steps:
   commands:
     - cargo build --release --workspace
 
+- name: build-tezedge-master
+  image: simplestakingcom/tezedge-ci-builder:latest
+  user: root
+  volumes:
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - cd /tmp/tezedge-cache
+    - rm -rf tezedge
+    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge
+    - cargo build --release --workspace
+
+- name: tezedge-master-node-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: tezedge-master-node-data
+      path: /tmp/tezedge_developer
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  commands: 
+    - cd /tmp/tezedge-cache/tezedge
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "babylonnet" --protocol-runner "./target/release/protocol-runner" --p2p-port 39734 --websocket-address 0.0.0.0:34928 --rpc-port 28732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
+
 - name: tezedge-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -50,6 +81,12 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --bootstrap
+
+- name: wrk-performance-test
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  user: root
+  commands:
+    - tezos-node-bootstrap --performance-test 
 
 - name: tz-indexer-tezedge
   image: blockwatch/tzindex:latest
@@ -107,6 +144,12 @@ volumes:
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-node
+  - name: tezedge-master-node-data
+    host:
+      path: /etc/tezedge-master-node
+  - name: cache
+    host:
+      path: /etc/tezedge-ci/cache
       
   - name: indexer-tezedge-data
     temp: {}
