@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop_callback"
-version = "0.0.1-pre25"
+version = "0.0.2-pre01"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
