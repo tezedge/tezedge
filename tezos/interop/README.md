@@ -25,3 +25,14 @@ If you want to build rust library with local build of Ocaml library from Tezos s
 * `TEZOS_BASE_DIR=<your-local-directory-with-tezos-sources>`
 
 and run `SODIUM_USE_PKG_CONFIG=1 cargo build` to build tezedge node manually.
+
+### Run tests and benches
+```
+cargo test
+```
+```
+cargo bench
+```
+```
+cargo bench --tests
+```

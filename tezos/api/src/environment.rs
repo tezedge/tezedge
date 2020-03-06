@@ -20,6 +20,7 @@ lazy_static! {
 pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
+    Carthagenet,
     Mainnet,
     Zeronet,
 }
@@ -34,6 +35,7 @@ impl FromStr for TezosEnvironment {
         match s.to_ascii_lowercase().as_str() {
             "alphanet" => Ok(TezosEnvironment::Alphanet),
             "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
+            "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
             _ => Err(ParseTezosEnvironmentError(format!("Invalid variant name: {}", s)))
@@ -81,6 +83,26 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         },
     });
 
+    env.insert(TezosEnvironment::Carthagenet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2019-11-27T14:22:20Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisba8f1dPCdMR".to_string(),
+            protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "tezaria.com".to_string(),
+            "34.76.169.218".to_string(),
+            "34.90.24.160".to_string(),
+            "carthagenet.kaml.fr".to_string(),
+            "104.248.136.94".to_string()
+        ],
+        version: "TEZOS_ALPHANET_CARTHAGE_2019-11-27T14:22:20Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
+    });
+
     env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
         genesis: GenesisChain {
             time: "2018-06-30T16:07:32Z".to_string(),
@@ -122,10 +144,14 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     env
 }
 
-/// Structure holding all environment specific crucial information
+/// Structure holding all environment specific crucial information - according to different Tezos Gitlab branches
 pub struct TezosEnvironmentConfiguration {
+    /// Genesis information - see genesis_chain.ml
     pub genesis: GenesisChain,
+    /// Adresses used for initial bootstrap, if no peers are configured - see node_config_file.ml
     pub bootstrap_lookup_addresses: Vec<String>,
+    /// chain_name - see distributed_db_version.ml
     pub version: String,
+    /// protocol overrides - see block_header.ml
     pub protocol_overrides: ProtocolOverrides,
 }

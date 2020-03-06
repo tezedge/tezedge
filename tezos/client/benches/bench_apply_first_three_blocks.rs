@@ -87,7 +87,7 @@ fn apply_first_three_blocks(chain_id: ChainId) -> Result<(), failure::Error> {
 
 mod test_data {
     use tezos_api::environment::TezosEnvironment;
-    use crypto::hash::{ContextHash, HashEncoding, HashType};
+    use crypto::hash::{ContextHash, HashType};
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
