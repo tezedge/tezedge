@@ -9,6 +9,6 @@ crate-type = ["dylib", "rlib"]
 
 [dependencies]
 hex = "0.4"
-ocaml = "0.8.1"
+ocaml = "0.9.2"
 # local dependencies
 tezos_context = { path = "../context" }

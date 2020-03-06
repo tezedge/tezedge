@@ -1462,7 +1462,7 @@ dependencies = [
 
 [[package]]
 name = "ocaml"
-version = "0.8.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -2414,7 +2414,7 @@ dependencies = [
  "enum-iterator 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ocaml 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_encoding 0.1.0",
@@ -2473,7 +2473,7 @@ dependencies = [
  "futures 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ocaml 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "os_type 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.46 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2489,7 +2489,7 @@ name = "tezos_interop_callback"
 version = "0.0.2-pre01"
 dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ocaml 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_context 0.0.1",
 ]
 
@@ -2978,7 +2978,7 @@ dependencies = [
 "checksum num-traits 0.1.43 (registry+https://github.com/rust-lang/crates.io-index)" = "92e5113e9fd4cc14ded8e499429f396a20f98c772a47cc8622a736e1ec843c31"
 "checksum num-traits 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "c62be47e61d1842b9170f0fdeec8eba98e60e90e5446449a0545e5152acd7096"
 "checksum num_cpus 1.12.0 (registry+https://github.com/rust-lang/crates.io-index)" = "46203554f085ff89c235cd12f7075f3233af9b11ed7c9e16dfe2560d03313ce6"
-"checksum ocaml 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "b497481786e5fa6606783d684f5eb0671721fac38efae1930e8a58f4335b9d2a"
+"checksum ocaml 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6ce1f283c403331318b6825f3d94d6ae57672bb18210a325241100b04dee7093"
 "checksum opaque-debug 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "2839e79665f131bdb5782e51f2c6c9599c133c6098982a54c794358bf432529c"
 "checksum os_type 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7edc011af0ae98b7f88cf7e4a83b70a54a75d2b8cb013d6efd02e5956207e9eb"
 "checksum page_size 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "eebde548fbbf1ea81a99b128872779c437752fb99f217c45245e1a61dcd9edcd"
