@@ -85,9 +85,9 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
 
     env.insert(TezosEnvironment::Carthagenet, TezosEnvironmentConfiguration {
         genesis: GenesisChain {
-            time: "2019-11-27T14:22:20Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesisba8f1dPCdMR".to_string(),
-            protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+            time: "2019-11-28T13:02:13Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
         },
         bootstrap_lookup_addresses: vec![
             "tezaria.com".to_string(),
@@ -96,7 +96,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "carthagenet.kaml.fr".to_string(),
             "104.248.136.94".to_string()
         ],
-        version: "TEZOS_ALPHANET_CARTHAGE_2019-11-27T14:22:20Z".to_string(),
+        version: "TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z".to_string(),
         protocol_overrides: ProtocolOverrides {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
@@ -112,7 +112,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         bootstrap_lookup_addresses: vec![
             "boot.tzbeta.net".to_string()
         ],
-        version: "TEZOS_BETANET_2018-06-30T16:07:32Z".to_string(),
+        version: "TEZOS_MAINNET".to_string(),
         protocol_overrides: ProtocolOverrides {
             forced_protocol_upgrades: vec![
                 (28082 as i32, "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string()),
