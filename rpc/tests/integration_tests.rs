@@ -129,6 +129,9 @@ async fn integration_tests_rpc(start_block: &str) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "votes/listings")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "context/constants")).await;
+
+        //test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
 
         // --------------------------------- End of tests --------------------------------
 
@@ -147,14 +150,14 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
     let url = match node {
         NodeType::Ocaml => format!(
-            "http://ocaml-node-run:8732/{}",
-            //"http://127.0.0.1:8732/{}", //switch for local testing
+            //"http://ocaml-node-run:8732/{}",
+            "http://127.0.0.1:8732/{}", //switch for local testing
             rpc_path
         ), // reference Ocaml node
         NodeType::Tezedge => format!(
-            "http://tezedge-node-run:18732/{}",
+            //"http://tezedge-node-run:18732/{}",
             //"http://ocaml-node-run:8732/{}", // POW that tests are OK
-            //"http://127.0.0.1:18732/{}", //swith for local testing
+            "http://127.0.0.1:18732/{}", //swith for local testing
             rpc_path
         ), // Tezedge node
     }.parse().expect("Invalid URL");

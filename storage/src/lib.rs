@@ -31,6 +31,7 @@ pub mod block_meta_storage;
 pub mod context_storage;
 pub mod system_storage;
 pub mod skip_list;
+pub mod context_ram_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

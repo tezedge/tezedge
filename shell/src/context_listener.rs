@@ -15,7 +15,7 @@ use slog::{crit, debug, Logger, warn};
 
 use crypto::hash::HashType;
 use storage::{BlockStorage, ContextStorage};
-use storage::persistent::{ContextList, ContextMap, PersistentStorage};
+use storage::persistent::{ContextList, ContextMap, PersistentStorage, ContextRamMap};
 use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
@@ -48,13 +48,16 @@ impl ContextListener {
             let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || {
-                let mut context_storage = ContextStorage::new(&persistent_storage);
+                let mut context_storage = ContextStorage::new(&persistent_storage); 
                 let mut block_storage = BlockStorage::new(&persistent_storage);
+                let context_ram_storage = persistent_storage.context_ram_storage();
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         &mut context_storage,
+                        &context_ram_storage,
+                        //&context_blocks,
                         &mut block_storage,
                         storage.clone(),
                         &log,
@@ -113,6 +116,7 @@ fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     context_storage: &mut ContextStorage,
+    context_ram_storage: &ContextRamMap,
     block_storage: &mut BlockStorage,
     storage: ContextList,
     log: &Logger,
@@ -136,8 +140,8 @@ fn listen_protocol_events(
                 match &msg {
                     ContextAction::Set { block_hash: Some(block_hash), key, value, .. } => {
                         let state = get_default(&mut blocks, block_hash.clone());
+                        
                         state.insert(key.join("/"), Bucket::Exists(value.clone()));
-
                         context_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, .. } => {
@@ -145,6 +149,7 @@ fn listen_protocol_events(
 
                         let from_key = from_key.join("/");
                         let to_key = key.join("/");
+
                         if let Some(value) = partial_state.get(&from_key) {
                             let value = value.clone();
                             state.insert(to_key, value);
@@ -163,12 +168,19 @@ fn listen_protocol_events(
                         let state = get_default(&mut blocks, block_hash.clone());
                         state.insert(key.join("/"), Bucket::Deleted);
 
+                        // let mut context_ram_writer = context_ram_storage.write().expect("lock poisoning");
+                        // context_ram_writer.push_state(&HashType::BlockHash.bytes_to_string(&block_hash), state.clone())?;
+
                         context_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Commit { new_context_hash, block_hash: Some(block_hash), .. } => {
                         if let Some(block) = blocks.get(block_hash) {
-                            let mut writer = storage.write().expect("lock poisoning");
-                            writer.push(block.clone())?;
+                            // let mut writer = storage.write().expect("lock poisoning");
+                            let mut context_ram_writer = context_ram_storage.write().expect("lock poisoning");
+
+                            context_ram_writer.push_state(&HashType::BlockHash.bytes_to_string(&block_hash), block.clone())?;
+                            context_ram_writer.push_block_hash(&HashType::BlockHash.bytes_to_string(&block_hash))?;
+                            // writer.push(block.clone())?;
                         } else {
                             crit!(log, "Trying to commit non-existent block"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
                         }

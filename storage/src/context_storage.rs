@@ -37,7 +37,7 @@ impl ContextStorage {
             context_primary_index: ContextPrimaryIndex::new(persistent_storage.kv()),
             context_by_contract_index: ContextByContractIndex::new(persistent_storage.kv()),
             clog: persistent_storage.clog(),
-            generator: persistent_storage.seq().generator(Self::name()),
+            generator: persistent_storage.seq().generator(Self::name()), 
         }
     }
 
