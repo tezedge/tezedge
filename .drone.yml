@@ -83,7 +83,8 @@ steps:
     - tezos-node-bootstrap --bootstrap
 
 - name: wrk-performance-test
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: simplestakingcom/tezos-node-bootstrap:wrk1
+  pull: always
   user: root
   commands:
     - tezos-node-bootstrap --performance-test 

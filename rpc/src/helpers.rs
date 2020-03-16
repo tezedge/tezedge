@@ -813,14 +813,20 @@ pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, us
     let cycle_position: i32 = level_position(level.into(), blocks_per_cycle)?.try_into()?;
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
-    let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();
+    let mut rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();
     
     // take the 4 highest bytes and xor them with the priority/slot (offset)
     let higher = num_from_slice!(rd, 0, i32) ^ offset;
     
     // set the 4 highest bytes to the result of the xor operation
-    let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..])).to_vec();
+    //let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..]));
+    let higher_b = higher.to_be_bytes();
+    rd[0] = higher_b[0];
+    rd[1] = higher_b[1];
+    rd[2] = higher_b[2];
+    rd[3] = higher_b[3];
 
+    let sequence = blake2b::digest_256(&rd);
     Ok(sequence)
 }
 
