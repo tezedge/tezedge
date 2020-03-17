@@ -684,7 +684,7 @@ pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_sto
 
     // filter out the listings data
     let listings_data: ContextMap = ctxt.unwrap().into_iter()
-        .filter(|(k, _)| k.contains(&"data/votes/listings/"))
+        .filter(|(k, _)| k.starts_with(&"data/votes/listings/"))
         .collect();
 
     // convert the raw context data to VoteListings
