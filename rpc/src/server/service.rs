@@ -14,16 +14,18 @@ use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextReco
 use storage::block_storage::BlockJsonData;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
+use storage::num_from_slice;
 use tezos_context::channel::ContextAction;
 
 use crate::ContextList;
 use crate::encoding::context::ContextConstants;
 use crate::encoding::conversions::{
     chain_id_to_string,
-    contract_id_to_address
+    contract_id_to_address,
+    hash_to_contract_id
 };
 use crate::helpers::{BlockHeaderInfo, EndorserSlots, EndorsingRight, FullBlockInfo, get_block_hash_by_block_id, get_level_by_block_id, get_prng_number, init_prng, PagedResult,
-                     RightsConstants, RightsContextData, RightsParams, RpcResponseData};
+                     RightsConstants, RightsContextData, RightsParams, RpcResponseData, VoteListings, ContextMap};
 use crate::helpers::BakingRights;
 use crate::merge_slices;
 use crate::rpc_actor::RpcCollectedStateRef;
@@ -666,6 +668,41 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
 
     Ok(Some(rolls))
 
+}
+
+pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {
+    let mut listings = Vec::<VoteListings>::new();
+
+    // get block level first
+    let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
+        Some(val) => val.try_into()?,
+        None => bail!("Block level not found")
+    };
+
+    // get the whole context
+    let ctxt = get_context(&block_level.to_string(), context_list)?;
+
+    // filter out the listings data
+    let listings_data: ContextMap = ctxt.unwrap().into_iter()
+        .filter(|(k, _)| k.starts_with(&"data/votes/listings/"))
+        .collect();
+
+    // convert the raw context data to VoteListings
+    for (key, value) in listings_data.into_iter() {
+        if let Bucket::Exists(data) = value {
+            // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
+            let address = key.split("/").skip(4).take(6).join("");
+            let curve = key.split("/").skip(3).take(1).join("");
+
+            let address_decoded = hash_to_contract_id(&address, &curve)?;
+            listings.push(VoteListings::new(address_decoded, num_from_slice!(data, 0, i32)));
+        }
+    }
+    
+    // sort the vector in reverse ordering (as in ocaml node)
+    listings.sort();
+    listings.reverse();
+    Ok(Some(listings))
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {

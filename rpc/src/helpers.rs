@@ -35,7 +35,7 @@ macro_rules! merge_slices {
     }}
 }
 
-type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
+pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
@@ -942,5 +942,27 @@ pub(crate) fn get_block_timestamp_by_level(level: i32,  persistent_storage: &Per
     match block_storage.get_by_block_level(level)? {
         Some(current_head) => Ok(current_head.header.timestamp()),
         None => bail!("Block not found in db by level {}", level)
+    }
+}
+
+/// Struct for the delegates and they voting power (in rolls)
+#[derive(Serialize, Debug, Clone, Getters, Eq, Ord, PartialEq, PartialOrd)]
+pub struct VoteListings {
+    /// Public key hash (address, e.g tz1...)
+    #[get = "pub(crate)"]
+    pkh: String,
+
+    /// Number of rolls the pkh owns
+    #[get = "pub(crate)"]
+    rolls: i32,
+}
+
+impl VoteListings {
+    /// Simple constructor to construct VoteListings
+    pub fn new(pkh: String, rolls: i32) -> Self{
+        Self {
+            pkh,
+            rolls,
+        }
     }
 }

@@ -127,7 +127,8 @@ async fn integration_tests_rpc(start_block: &str) {
         // test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", &prev_block)).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
-        //test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "votes/listings")).await;
 
         // --------------------------------- End of tests --------------------------------
 
