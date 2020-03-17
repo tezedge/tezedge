@@ -1,8 +1,45 @@
-use failure::bail;
+use std::convert::From;
+
+use failure::Fail;
+use hex::FromHexError;
 
 use crypto::hash::{ChainId, HashType};
 use crypto::blake2b;
+use crypto::base58::FromBase58CheckError;
 use storage::context_storage::ContractAddress;
+
+#[derive(Debug, Fail, PartialEq)]
+pub enum ConversionError {
+    #[fail(display = "Invalid contract id: {}", contract_id)]
+    InvalidContractId {
+        contract_id: String
+    },
+
+    #[fail(display = "Conversion from invalid public key")]
+    InvalidPublicKey,
+
+    #[fail(display = "Invalid hash: {}", hash)]
+    InvalidHash {
+        hash: String
+    },
+
+    #[fail(display = "Invalid curve tag: {}", curve_tag)]
+    InvalidCurveTag {
+        curve_tag: String
+    },
+}
+
+impl From<hex::FromHexError> for ConversionError {
+    fn from(error: FromHexError) -> Self {
+        ConversionError::InvalidContractId { contract_id: error.to_string() }
+    }
+}
+
+impl From<FromBase58CheckError> for ConversionError {
+    fn from(error: FromBase58CheckError) -> Self {
+        ConversionError::InvalidContractId { contract_id: error.to_string() }
+    }
+}
 
 /// convert contract id to contract address
 /// 
@@ -10,7 +47,7 @@ use storage::context_storage::ContractAddress;
 /// 
 /// * `contract_id` - contract id (tz... or KT1...)
 #[inline]
-pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, failure::Error> {
+pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, ConversionError> {
     let contract_address = {
         if contract_id.len() == 44 {
             hex::decode(contract_id)?
@@ -34,11 +71,11 @@ pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, fail
                     contract_address.extend(&HashType::ContractKt1Hash.string_to_bytes(contract_id)?);
                     contract_address.push(0);
                 }
-                _ => bail!("Invalid contract id")
+                _ => return Err(ConversionError::InvalidContractId{contract_id: contract_id.to_string()})
             }
             contract_address
         } else {
-            bail!("Invalid contract id");
+            return Err(ConversionError::InvalidContractId{contract_id: contract_id.to_string()})
         }
     };
 
@@ -51,7 +88,7 @@ pub fn contract_id_to_address(contract_id: &str) -> Result<ContractAddress, fail
 /// 
 /// * `pk` - public key in byte string format
 #[inline]
-pub fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> {
+pub fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, ConversionError> {
     // 1 byte tag and - 32 bytes for ed25519 (tz1)
     //                - 33 bytes for secp256k1 (tz2) and p256 (tz3)
     if pk.len() == 33 || pk.len() == 34 {
@@ -68,16 +105,16 @@ pub fn public_key_to_contract_id(pk: Vec<u8>) -> Result<String, failure::Error> 
             2 => {
                 HashType::ContractTz3Hash.bytes_to_string(&hash)
             }
-            _ => bail!("Invalid public key")
+            _ => return Err(ConversionError::InvalidPublicKey)
         };
         Ok(contract_id)
     } else {
-        bail!("Invalid public key")
+        return Err(ConversionError::InvalidPublicKey)
     }
 }
 
 #[inline]
-pub fn hash_to_contract_id(hash: &str, curve: &str) -> Result<String, failure::Error>{
+pub fn hash_to_contract_id(hash: &str, curve: &str) -> Result<String, ConversionError>{
     if hash.len() == 40 {
         let contract_id = match curve {
             "ed25519" => {
@@ -89,12 +126,12 @@ pub fn hash_to_contract_id(hash: &str, curve: &str) -> Result<String, failure::E
             "p256" => {
                 HashType::ContractTz3Hash.bytes_to_string(&hex::decode(&hash)?)
             }
-            _ => bail!("Invalid curve tag")
+            _ => return Err(ConversionError::InvalidCurveTag{curve_tag: curve.to_string()})
         };
         Ok(contract_id)
     } else {
-        bail!("Invalid hash")
-    }
+        return Err(ConversionError::InvalidHash{hash: hash.to_string()})
+        }
 }
 
 #[inline]
@@ -122,6 +159,49 @@ mod tests {
 
         let result = contract_id_to_address("KT1NrjjM791v7cyo6VGy7rrzB3Dg3p1mQki3")?;
         assert_eq!(result, hex::decode("019c96e27f418b5db7c301147b3e941b41bd224fe400")?);
+
+        let result = contract_id_to_address("tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj")?;
+        print!("{}", hex::encode(result));
+        // assert_eq!(result, hex::decode("019c96e27f418b5db7c301147b3e941b41bd224fe400")?);
+
+        //tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj
+        Ok(())
+    }
+
+    #[test]
+    fn test_hash_to_contract_id() -> Result<(), failure::Error> {
+        let result = hash_to_contract_id(&"2cca28ab019ae2d8c26f4ce4924cad67a2dc6618", &"ed25519")?;
+        assert_eq!(result, "tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17");
+        
+        let result = hash_to_contract_id(&"20262e6195b91181f1713c4237c8195096b8adc9", &"secp256k1")?;
+        assert_eq!(result, "tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj");
+
+        let result = hash_to_contract_id(&"6fde46af0356a0476dae4e4600172dc9309b3aa4", &"p256")?;
+        assert_eq!(result, "tz3WXYtyDUNL91qfiCJtVUX746QpNv5i5ve5");
+
+        let result = hash_to_contract_id(&"2cca28ab019ae2d8c26f4ce4924cad67a2dc6618", &"invalidcurvetag");
+        assert_eq!(result, Err(ConversionError::InvalidCurveTag{curve_tag: "invalidcurvetag".to_string()}));
+
+        let result = hash_to_contract_id(&"2cca28a6f4ce4924cad67a2dc6618", &"ed25519");
+        assert_eq!(result, Err(ConversionError::InvalidHash{hash: "2cca28a6f4ce4924cad67a2dc6618".to_string()}));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_public_key_to_contract_id() -> Result<(), failure::Error> {
+        let valid_pk = vec![0,3,65,14,206,174,244,127,36,48,150,156,243,27,213,139,41,30,231,173,127,97,192,177,142,31,107,197,219,246,111,155,121];
+        let short_pk = vec![0,3,65,14,206,174,244,127,36,48,150,156,243,27,213,139,41,30,231,173,127,97,192,177,142,31,107,197,219];
+        let wrong_tag_pk = vec![4,3,65,14,206,174,244,127,36,48,150,156,243,27,213,139,41,30,231,173,127,97,192,177,142,31,107,197,219,246,111,155,121];
+
+        let result = public_key_to_contract_id(valid_pk)?;
+        assert_eq!(result, "tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17");
+
+        let result = public_key_to_contract_id(short_pk);
+        assert_eq!(result, Err(ConversionError::InvalidPublicKey));
+
+        let result = public_key_to_contract_id(wrong_tag_pk);
+        assert_eq!(result, Err(ConversionError::InvalidPublicKey));
 
         Ok(())
     }
