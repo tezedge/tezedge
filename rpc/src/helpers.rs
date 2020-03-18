@@ -801,6 +801,7 @@ pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
 /// * `offset` - For baking priority, for endorsing slot
 /// 
 /// Return first random sequence state to use in [get_prng_number](`get_prng_number`)
+#[inline]
 pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, use_string_bytes: &[u8], level: i32, offset: i32) -> Result<RandomSeedState, failure::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
@@ -818,8 +819,8 @@ pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, us
     let higher = num_from_slice!(rd, 0, i32) ^ offset;
     
     // set the 4 highest bytes to the result of the xor operation
-    let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..])).to_vec();
-
+    let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..]));
+    
     Ok(sequence)
 }
 
@@ -831,6 +832,7 @@ pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, us
 /// * `bound` - Last possible roll nuber that have meaning to be generated taken from [RightsContextData.last_roll](`RightsContextData.last_roll`).
 /// 
 /// Return pseudo random generated roll number and RandomSeedState for next roll generation if the roll provided is missing from the roll list
+#[inline]
 pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
     if bound < 1 {
         return Err(TezosPRNGError::BoundNotCorrect{bound: bound})

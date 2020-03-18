@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
+use std::time::{Duration, Instant};
 
 use failure::{bail, format_err};
 use itertools::Itertools;
@@ -104,7 +105,7 @@ pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level:
         Some(val) => val.try_into()?,
         None => bail!("Block level not found")
     };
-
+    
     let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage, state)?;
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
@@ -121,6 +122,7 @@ pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level:
 /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
+#[inline]
 pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
     let mut baking_rights = Vec::<BakingRights>::new();
 
@@ -140,16 +142,16 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
             let estimated_timestamp = timestamp + seconds_to_add;
 
             // assign rolls goes here
-            let level_baking_rights = baking_rights_assign_rolls(&parameters, &constants, &context_data, level, estimated_timestamp)?;
+            baking_rights_assign_rolls(&parameters, &constants, &context_data, level, estimated_timestamp, &mut baking_rights)?;
 
-            baking_rights = merge_slices!(&baking_rights, &level_baking_rights);
+            // baking_rights = merge_slices!(&baking_rights, &level_baking_rights);
         }
     } else {
         let level = *parameters.requested_level();
         let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
         let estimated_timestamp = timestamp + seconds_to_add;
         // assign rolls goes here
-        baking_rights = baking_rights_assign_rolls(&parameters, &constants, &context_data, level, estimated_timestamp)?;
+        baking_rights_assign_rolls(&parameters, &constants, &context_data, level, estimated_timestamp, &mut baking_rights)?;
     }
 
     // if there is some delegate specified, retrive his priorities
@@ -171,11 +173,11 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
 /// * `estimated_head_timestamp` - Estimated time of baking, is set to None if in past relative to block_id.
 ///
 /// Baking priorities are are assigned to Roles, the default behavior is to include only the top priority for the delegate
-fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i64, estimated_head_timestamp: i64) -> Result<Vec<BakingRights>, failure::Error>{
+#[inline]
+fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i64, estimated_head_timestamp: i64, baking_rights: &mut Vec<BakingRights>) -> Result<(), failure::Error>{
     const BAKING_USE_STRING: &[u8] = b"level baking:";
 
     // hashset is defined to keep track of the delegates with priorities allready assigned
-    let mut baking_rights = Vec::<BakingRights>::new();
     let mut assigned = HashSet::new();
 
     let time_between_blocks = constants.time_between_blocks();
@@ -183,6 +185,8 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
     let max_priority = *parameters.max_priority();
     let has_all = parameters.has_all();
     let block_level = *parameters.block_level();
+    let last_roll = *context_data.last_roll();
+    let rolls_map = context_data.rolls();
 
     for priority in 0..max_priority {
         // draw the rolls for the requested parameters
@@ -191,9 +195,9 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
         let mut state = init_prng(&context_data, &constants, BAKING_USE_STRING, level.try_into()?, priority.try_into()?)?;
 
         loop {
-            let (random_num, sequence) = get_prng_number(state, *context_data.last_roll())?;
+            let (random_num, sequence) = get_prng_number(state, last_roll)?;
 
-            if let Some(d) = context_data.rolls().get(&random_num) {
+            if let Some(d) = rolls_map.get(&random_num) {
                 delegate_to_assign = d;
                 break;
             } else {
@@ -215,7 +219,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
         }
         assigned.insert(delegate_to_assign);
     }
-    Ok(baking_rights)
+    Ok(())
 }
 
 /// Return generated endorsing rights.
@@ -272,14 +276,14 @@ fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsPar
             // the base level for estimated time computation is level of previous block
             let estimated_time: Option<String> = parameters.get_estimated_time(constants, Some(level-1));
 
-            let level_endorsing_rights = complete_endorsing_rights_for_level(context_data, parameters, constants, level, level, estimated_time)?;
-            endorsing_rights = merge_slices!(&endorsing_rights, &level_endorsing_rights);
+            complete_endorsing_rights_for_level(context_data, parameters, constants, level, level, estimated_time, &mut endorsing_rights)?;
+            // endorsing_rights = merge_slices!(&endorsing_rights, &level_endorsing_rights);
         }
     } else {
         // use level prepared during parameter parsing to compute estimated time
         let estimated_time: Option<String> = parameters.get_estimated_time(constants, None);
 
-        endorsing_rights = complete_endorsing_rights_for_level(context_data, parameters, constants, *parameters.requested_level(), *parameters.display_level(), estimated_time)?;
+        complete_endorsing_rights_for_level(context_data, parameters, constants, *parameters.requested_level(), *parameters.display_level(), estimated_time, &mut endorsing_rights)?;
     };
 
     Ok(Some(RpcResponseData::EndorsingRights(endorsing_rights)))
@@ -296,8 +300,8 @@ fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsPar
 /// * `display_level` - Level to be displayed in output.
 /// * `estimated_time` - Estimated time of endorsement, is set to None if in past relative to block_id.
 #[inline]
-fn complete_endorsing_rights_for_level(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants, level: i64, display_level: i64, estimated_time: Option<String>) -> Result<Vec::<EndorsingRight>, failure::Error> {
-    let mut endorsing_rights = Vec::<EndorsingRight>::new();
+fn complete_endorsing_rights_for_level(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants, level: i64, display_level: i64, estimated_time: Option<String>, endorsing_rights: &mut Vec<EndorsingRight>) -> Result<(), failure::Error> {
+    // let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
     // endorsers_slots is needed to group all slots by delegate
     let endorsers_slots = get_endorsers_slots(constants, context_data, level)?;
@@ -323,7 +327,7 @@ fn complete_endorsing_rights_for_level(context_data: &RightsContextData, paramet
             estimated_time.clone())
         )
     }
-    Ok(endorsing_rights)
+    Ok(())
 }
 
 /// Use tezos PRNG to collect all slots for each endorser by public key hash (for later ordering of endorsers)
