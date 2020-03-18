@@ -206,6 +206,7 @@ fn main() {
             no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
         },
         env.tezos_network,
+        env.enable_testchain,
         &env.storage.tezos_data_dir,
         &env.protocol_runner,
     ));

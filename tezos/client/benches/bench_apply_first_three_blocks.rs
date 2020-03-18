@@ -33,6 +33,7 @@ fn bench_apply_first_three_block(_: &mut Bencher) {
     let TezosStorageInitInfo { chain_id, .. } = client::init_storage(
         common::prepare_empty_dir(&format!("bootstrap_test_storage_bench_{}", now.elapsed().as_nanos())),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     let storage_clocks = storage_clocks.elapsed();
 

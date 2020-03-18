@@ -71,6 +71,7 @@ pub struct Environment {
     pub record: bool,
     pub identity_json_file_path: PathBuf,
     pub tezos_network: TezosEnvironment,
+    pub enable_testchain: bool,
     pub protocol_runner: PathBuf,
     pub no_of_ffi_calls_threshold_for_gc: i32,
     pub tokio_threads: usize
@@ -178,6 +179,11 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .value_name("PORT")
                 .help("Rust server RPC port for communication with rust node")
                 .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+        .arg(Arg::with_name("enable-testchain")
+            .long("enable-testchain")
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Flag for enable/disable test chain switching for block applying. Default: false"))
         .arg(Arg::with_name("websocket-address")
             .long("websocket-address")
             .takes_value(true)
@@ -485,6 +491,10 @@ impl Environment {
                 .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
+            enable_testchain: args.value_of("enable-testchain")
+                .unwrap_or("false")
+                .parse::<bool>()
+                .expect("Provided value cannot be converted to bool"),
         }
     }
 }

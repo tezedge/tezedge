@@ -25,8 +25,12 @@ use timeout_io::Acceptor;
 /// IPC communication errors
 #[derive(Debug, Fail)]
 pub enum IpcError {
-    #[fail(display = "Receive error: {}", reason)]
-    ReceiveError {
+    #[fail(display = "Receive message length error: {}", reason)]
+    ReceiveMessageLengthError {
+        reason: io::Error
+    },
+    #[fail(display = "Receive message error: {}", reason)]
+    ReceiveMessageError {
         reason: io::Error
     },
     #[fail(display = "Send error: {}", reason)]
@@ -120,13 +124,13 @@ where
     pub fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 8];
         self.0.read_exact(&mut msg_len_buf)
-            .map_err(|err| IpcError::ReceiveError { reason: err })?;
+            .map_err(|err| IpcError::ReceiveMessageLengthError { reason: err })?;
 
         let msg_len = usize::from_be_bytes(msg_len_buf);
 
         let mut msg_buf = vec![0u8; msg_len];
         self.0.read_exact(&mut msg_buf)
-            .map_err(|err| IpcError::ReceiveError { reason: err })?;
+            .map_err(|err| IpcError::ReceiveMessageError { reason: err })?;
 
         bincode::deserialize(&msg_buf)
             .map_err(|err| IpcError::DeserializationError { reason: format!("{:?}", err) })

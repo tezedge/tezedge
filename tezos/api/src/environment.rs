@@ -62,6 +62,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: false,
     });
 
     env.insert(TezosEnvironment::Babylonnet, TezosEnvironmentConfiguration {
@@ -81,6 +82,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: true,
     });
 
     env.insert(TezosEnvironment::Carthagenet, TezosEnvironmentConfiguration {
@@ -101,6 +103,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: true,
     });
 
     env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
@@ -122,6 +125,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
                 ("PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(), "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string())
             ],
         },
+        enable_testchain: false,
     });
 
     env.insert(TezosEnvironment::Zeronet, TezosEnvironmentConfiguration {
@@ -139,6 +143,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: true,
     });
 
     env
@@ -154,4 +159,6 @@ pub struct TezosEnvironmentConfiguration {
     pub version: String,
     /// protocol overrides - see block_header.ml
     pub protocol_overrides: ProtocolOverrides,
+    /// if network has enabled switching test chains by default
+    pub enable_testchain: bool,
 }

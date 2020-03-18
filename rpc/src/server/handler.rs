@@ -155,7 +155,6 @@ pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: 
     // list -> context, persistent, state odizolovat
     match service::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
         Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), env.log()),
-        // Ok(Some(RpcResponseData::ErrorMsg(res))) => result_to_json_response(Ok(Some(res)), &log),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
             result_to_json_response(res, env.log())

@@ -13,6 +13,7 @@ use crate::server::handler;
 pub(crate) fn create_routes() -> PathTree<Handler> {
 
     let mut routes = PathTree::<Handler>::new();
+    // Tezos shell and protocol rpc
     routes.handle("/monitor/bootstrapped", handler::bootstrapped);
     routes.handle("/monitor/commit_hash", handler::commit_hash);
     routes.handle("/monitor/active_chains", handler::active_chains);
@@ -28,13 +29,15 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", handler::baking_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", handler::endorsing_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", handler::votes_listings);
-    routes.handle("/p2p/:offset/:count", handler::p2p_messages);
-    routes.handle("/p2p/:offset/:count/:host", handler::p2p_host_messages);
+
+    // Tezedge dev and support rpc
     routes.handle("/dev/chains/main/blocks", handler::dev_blocks);
     routes.handle("/dev/chains/main/blocks/:block_id/actions", handler::dev_block_actions);
     routes.handle("/dev/chains/main/actions/contracts/:contract_id", handler::dev_contract_actions);
     routes.handle("/dev/context/:id", handler::dev_context);
     routes.handle("/stats/memory", handler::dev_stats_memory);
+    routes.handle("/p2p/:offset/:count", handler::p2p_messages);
+    routes.handle("/p2p/:offset/:count/:host", handler::p2p_host_messages);
 
     routes
 }

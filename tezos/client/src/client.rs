@@ -23,14 +23,14 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
 }
 
 /// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
+pub fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment, enable_testchain: bool) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
     let cfg: &TezosEnvironmentConfiguration = match environment::TEZOS_ENV.get(&tezos_environment) {
         None => return Err(TezosStorageInitError::InitializeError {
             message: format!("FFI 'init_storage' failed, because there is no tezos environment configured for: {:?}", tezos_environment)
         }),
         Some(cfg) => cfg
     };
-    match ffi::init_storage(storage_data_dir, &cfg.genesis, &cfg.protocol_overrides) {
+    match ffi::init_storage(storage_data_dir, &cfg.genesis, &cfg.protocol_overrides, enable_testchain) {
         Ok(result) => Ok(TezosStorageInitInfo::new(result?)
             .map_err(|err| TezosStorageInitError::InitializeError { message: format!("Decoding from hex failed! Reason: {:?}", err) })?),
         Err(e) => {

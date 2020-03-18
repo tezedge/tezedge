@@ -18,7 +18,7 @@ pub trait ProtocolApi {
     fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError>;
 
     /// Command tezos ocaml code to initialize storage.
-    fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, TezosStorageInitError>;
+    fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment, enable_testchain: bool) -> Result<TezosStorageInitInfo, TezosStorageInitError>;
 
     /// Command tezos ocaml code to generate a new identity.
     fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError>;

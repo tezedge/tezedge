@@ -99,8 +99,8 @@ mod tezos {
             change_runtime_configuration(settings)
         }
 
-        fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
-            init_storage(storage_data_dir, tezos_environment)
+        fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment, enable_testchain: bool) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
+            init_storage(storage_data_dir, tezos_environment, enable_testchain)
         }
 
         fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {

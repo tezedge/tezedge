@@ -265,6 +265,42 @@ fn test_fn_decode_context_data_votes() {
             data("00001f40"),
         ).unwrap().unwrap()
     );
+
+    assert_eq!(
+        "59".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, listings, ed25519, 03, cb, 7d, 78, 42, 406496fc07288635562bfd17e176c4"),
+            data("0000003b"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "1613".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, listings_size"),
+            data("0000064d"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "5973".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, participation_ema"),
+            data("00001755"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "\"yay\"".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, ballots, ed25519, a3, 1e, 81, ac, 34, 25310e3274a4698a793b2839dc0afa"),
+            data("00"),
+        ).unwrap().unwrap()
+    );
 }
 
 #[test]
@@ -420,6 +456,15 @@ fn test_fn_decode_context_data_contracts() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, contracts, index, ed25519, 89, b5, 12, 22, 97, e589f9ba8b91f4bf74804da2fe8d4a, data, storage"),
             data("0000001a0a0000001500b2e19a9e74440d86c59f13dab8a18ff873e889ea"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "\"inited\"".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, contracts, index, 55, 36, 40, 10, 0e, b8, 000043a84d013b61b4c2cafe3fb89463329d7295a377, delegated, 55, 36, 40, 10, 0e, b8, 000043a84d013b61b4c2cafe3fb89463329d7295a377"),
+            data("696e69746564"),
         ).unwrap().unwrap()
     );
 }

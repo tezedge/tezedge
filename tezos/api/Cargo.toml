@@ -8,7 +8,7 @@ edition = "2018"
 enum-iterator = "0.5.0"
 failure = "0.1"
 lazy_static = "1.4"
-ocaml = "0.9.2"
+ocaml = "0.9.3"
 serde = { version = "1.0", features = ["derive"] }
 slog = "2.5"
 # local dependencies

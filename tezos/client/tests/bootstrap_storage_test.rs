@@ -31,6 +31,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_01"),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -98,6 +99,7 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_09"),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -147,6 +149,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
     let TezosStorageInitInfo { chain_id, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_10"),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
 
     // apply first block - level 0
@@ -302,6 +305,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_unknown_predecesso
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_02"),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -336,6 +340,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_03"),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -367,6 +372,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir("bootstrap_test_storage_04"),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -412,6 +418,7 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
     let TezosStorageInitInfo { chain_id, genesis_block_header_hash, current_block_header_hash, .. } = client::init_storage(
         common::prepare_empty_dir(&storage_data_dir),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(genesis_block_header_hash, current_block_header_hash);
@@ -446,6 +453,7 @@ fn test_bootstrap_empty_storage_with_first_block_and_reinit_storage_with_same_di
             .unwrap()
             .to_string(),
         test_data::TEZOS_ENV,
+        false
     ).unwrap();
     // current hash is not equal to genesis anymore
     assert_ne!(genesis_block_header_hash, current_block_header_hash);
@@ -466,6 +474,7 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
     let alphanet_init_info: TezosStorageInitInfo = client::init_storage(
         common::prepare_empty_dir(&storage_data_dir),
         TezosEnvironment::Alphanet,
+        false
     ).unwrap();
     // current hash must be equal to genesis
     assert_eq!(alphanet_init_info.genesis_block_header_hash, alphanet_init_info.current_block_header_hash);
@@ -490,6 +499,7 @@ fn test_init_empty_storage_with_alphanet_and_then_reinit_with_zeronet_the_same_d
             .unwrap()
             .to_string(),
         TezosEnvironment::Mainnet,
+        false
     ).unwrap();
     // current hash is equal to genesis in new storage
     assert_eq!(mainnet_init_info.genesis_block_header_hash, mainnet_init_info.current_block_header_hash);
