@@ -3,7 +3,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
-use std::time::{Duration, Instant};
 
 use failure::{bail, format_err};
 use itertools::Itertools;
@@ -28,7 +27,6 @@ use crate::encoding::conversions::{
 use crate::helpers::{BlockHeaderInfo, EndorserSlots, EndorsingRight, FullBlockInfo, get_block_hash_by_block_id, get_level_by_block_id, get_prng_number, init_prng, PagedResult,
                      RightsConstants, RightsContextData, RightsParams, RpcResponseData, VoteListings, ContextMap};
 use crate::helpers::BakingRights;
-use crate::merge_slices;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
 

@@ -19,7 +19,7 @@ use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::{ContextList, ContextRamMap};
+use crate::ContextRamMap;
 use crate::encoding::conversions::public_key_to_contract_id;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
