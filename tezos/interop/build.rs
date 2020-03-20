@@ -47,7 +47,9 @@ fn get_remote_lib() -> RemoteLib {
         }
         OSType::Debian => match platform.version.as_str() {
             "9" => Some("libtezos-ffi-debian9.so"),
+            v if v.starts_with("9.") => Some("libtezos-ffi-debian9.so"),
             "10" => Some("libtezos-ffi-debian10.so"),
+            v if v.starts_with("10.") => Some("libtezos-ffi-debian10.so"),
             _ => None
         }
         OSType::OpenSUSE => match platform.version.as_str() {
