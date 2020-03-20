@@ -14,7 +14,6 @@ pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
 use crate::skip_list::{Bucket, TypedSkipList, DatabaseBackedSkipList};
-use crate::context_ram_storage::ContextRamStorage;
 
 pub mod sequence;
 pub mod codec;
@@ -55,7 +54,6 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 
 
 pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
-pub type ContextRamMap = Arc<RwLock<ContextRamStorage>>;
 pub type ContextList = Arc<RwLock<dyn TypedSkipList<String, Bucket<Vec<u8>>, ContextMap> + Sync + Send>>;
 
 /// Groups all components required for correct permanent storage functioning
@@ -69,8 +67,6 @@ pub struct PersistentStorage {
     seq: Arc<Sequences>,
     /// skip list backed context storage
     cs: ContextList,
-    /// ram storage
-    crs: ContextRamMap
 }
 
 impl PersistentStorage {
@@ -80,8 +76,6 @@ impl PersistentStorage {
             kv: kv.clone(),
             clog,
             cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
-            crs: Arc::new(RwLock::new(ContextRamStorage::new())),
-            // context_blocks: ContextBlocks::new(RwLock::new(Vec::<String>::new())),
         }
     }
 
@@ -102,9 +96,5 @@ impl PersistentStorage {
 
     #[inline]
     pub fn context_storage(&self) -> ContextList { self.cs.clone() }
-
-    #[inline]
-    pub fn context_ram_storage(&self) -> ContextRamMap { self.crs.clone() }
-
 }
 

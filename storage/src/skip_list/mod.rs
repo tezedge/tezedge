@@ -26,6 +26,7 @@ pub use crate::skip_list::skip_list::{DatabaseBackedSkipList, DatabaseBackedFlat
 mod content;
 mod lane;
 mod skip_list;
+mod context_ram_storage;
 
 pub const LEVEL_BASE: usize = 8;
 
