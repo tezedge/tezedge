@@ -160,3 +160,71 @@ volumes:
 trigger:
   branch:
     - master
+
+########################################################################################
+---
+kind: pipeline
+name: carthage
+
+steps:
+- name: build-tezedge
+  image: simplestakingcom/tezedge-ci-builder:latest
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - cargo build --release
+
+- name: ocaml-node-run
+  user: root
+  image: tezos/tezos:carthagenet
+  detach: true
+  volumes:
+    - name: ocaml-node-data
+      path: /home/tezos/data
+  commands:
+    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
+    - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive --disable-testchain
+
+- name: tezedge-node-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  commands: 
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "carthagenet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
+
+- name: bootstrapping
+  image: simplestakingcom/tezos-node-bootstrap:timestamp
+  commands:
+    - tezos-node-bootstrap --bootstrap "2019-12-14T02:29:45Z"
+
+- name: rpc-integration-tests
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands:
+    - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
+
+volumes:
+  - name: ocaml-node-data
+    host:
+      path: /etc/carthage/ocaml-node
+  - name: tezedge-node-data
+    host:
+      path: /etc/carthage/tezedge-node
+
+trigger:
+  branch:
+    - feature/TE-99_TE-100
