@@ -31,6 +31,7 @@ use crate::helpers::{BlockHeaderInfo, ContextMap, EndorserSlots, EndorsingRight,
 use crate::helpers::BakingRights;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
+use tezos_messages::protocol::UniversalValue;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -458,6 +459,55 @@ pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: 
     Ok(Some(ContextConstants::transpile_context_bytes(&constants, protocol_hash)?))
 }
 
+/// Get protocol context constants from context list
+/// (just for RPC render use-case, do not use in processing or algorithms)
+///
+/// # Arguments
+///
+/// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
+/// * `opt_level` - Optionaly input block level from block_id if is already known to prevent double code execution.
+/// * `list` - Context list handler.
+/// * `persistent_storage` - Persistent storage handler.
+/// * `state` - Current RPC collected state (head).
+pub(crate) fn get_context_constants_just_for_rpc(
+    block_id: &str,
+    opt_level: Option<i64>,
+    list: ContextList,
+    persistent_storage: &PersistentStorage,
+    state: &RpcCollectedStateRef) -> Result<Option<HashMap<&'static str, UniversalValue>>, failure::Error> {
+
+    // first check if level is already known
+    let level: usize = if let Some(l) = opt_level {
+        l.try_into()?
+    } else {
+        // get level level by block_id
+        if let Some(l) = get_level_by_block_id(block_id, persistent_storage, state)? {
+            l
+        } else {
+            bail!("Level not found for block_id {}", block_id)
+        }
+    };
+
+    
+    let protocol_hash: Vec<u8>;
+    let constants: Vec<u8>;
+    {
+        let reader = list.read().unwrap();
+        if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
+            protocol_hash = data;
+        } else {
+            panic!(format!("Protocol not found in block: {}, level: {}", block_id, level))
+        }
+
+        if let Some(Bucket::Exists(data)) = reader.get_key(level, &"data/v1/constants".to_string())? {
+            constants = data;
+        } else {
+            constants = Default::default();
+        }
+    };
+
+    Ok(tezos_messages::protocol::get_constants_for_rpc(&constants, protocol_hash)?)
+}
 
 pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
     let ctxt_level: usize = level.parse().unwrap();

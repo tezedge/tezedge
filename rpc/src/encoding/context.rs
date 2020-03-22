@@ -85,107 +85,109 @@ impl Default for ContextConstants {
 }
 
 impl ContextConstants {
+    // TODO: refactor
     pub fn transpile_context_bytes(value: &[u8], protocol: ProtocolHash) -> Result<Self, Error> {
-        let consts = tezos_messages::protocol::get_constants(value, protocol)?;
+        let consts = tezos_messages::protocol::get_constants_for_rpc(value, protocol)?;
         let mut ret: Self = Default::default();
         if let Some(consts) = consts {
-            if let Some(UniversalValue::Number(num)) = consts.get("proof_of_work_nonce_size") {
-                ret.proof_of_work_nonce_size = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("nonce_length") {
-                ret.nonce_length = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("max_revelations_per_block") {
-                ret.max_revelations_per_block = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("max_operation_data_length") {
-                ret.max_operation_data_length = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("max_proposals_per_delegate") {
-                ret.max_proposals_per_delegate = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("preserved_cycles") {
-                ret.preserved_cycles = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_cycle") {
-                ret.blocks_per_cycle = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_commitment") {
-                ret.blocks_per_commitment = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_roll_snapshot") {
-                ret.blocks_per_roll_snapshot = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_voting_period") {
-                ret.blocks_per_voting_period = num.clone();
-            }
-            if let Some(UniversalValue::List(values)) = consts.get("time_between_blocks") {
-                for x in values {
-                    if let UniversalValue::Number(num) = **x {
-                        ret.time_between_blocks.push(format!("{}", num));
-                    }
-                }
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("endorsers_per_block") {
-                ret.endorsers_per_block = num.clone();
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_gas_limit_per_operation") {
-                ret.hard_gas_limit_per_operation = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_gas_limit_per_block") {
-                ret.hard_gas_limit_per_block = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("proof_of_work_threshold") {
-                ret.proof_of_work_threshold = format!("{}", num);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("tokens_per_roll") {
-                ret.tokens_per_roll = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("michelson_maximum_type_size") {
-                ret.michelson_maximum_type_size = num.clone();
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("seed_nonce_revelation_tip") {
-                ret.seed_nonce_revelation_tip = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("origination_size") {
-                ret.origination_size = num.clone();
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("block_security_deposit") {
-                ret.block_security_deposit = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("endorsement_security_deposit") {
-                ret.endorsement_security_deposit = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("block_reward") {
-                ret.block_reward = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("endorsement_reward") {
-                ret.endorsement_reward = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("cost_per_byte") {
-                ret.cost_per_byte = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_storage_limit_per_operation") {
-                ret.hard_storage_limit_per_operation = format!("{}", num.0);
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("test_chain_duration") {
-                ret.test_chain_duration = format!("{}", num);
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("quorum_min") {
-                ret.quorum_min = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("quorum_max") {
-                ret.quorum_max = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("min_proposal_quorum") {
-                ret.min_proposal_quorum = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("initial_endorsers") {
-                ret.initial_endorsers = num.clone();
-            }
-            if let Some(UniversalValue::Number(num)) = consts.get("delay_per_missing_endorsement") {
-                ret.delay_per_missing_endorsement = format!("{}", num);
-            }
+            // if let Some(UniversalValue::Number(num)) = consts.get("proof_of_work_nonce_size") {
+            //     ret.proof_of_work_nonce_size = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("nonce_length") {
+            //     ret.nonce_length = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("max_revelations_per_block") {
+            //     ret.max_revelations_per_block = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("max_operation_data_length") {
+            //     ret.max_operation_data_length = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("max_proposals_per_delegate") {
+            //     ret.max_proposals_per_delegate = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("preserved_cycles") {
+            //     ret.preserved_cycles = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_cycle") {
+            //     ret.blocks_per_cycle = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_commitment") {
+            //     ret.blocks_per_commitment = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_roll_snapshot") {
+            //     ret.blocks_per_roll_snapshot = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("blocks_per_voting_period") {
+            //     ret.blocks_per_voting_period = num.clone();
+            // }
+            // if let Some(UniversalValue::List(values)) = consts.get("time_between_blocks") {
+            //     for x in values {
+            //         if let UniversalValue::Number(num) = **x {
+            //             ret.time_between_blocks.push(format!("{}", num));
+            //         }
+            //     }
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("endorsers_per_block") {
+            //     ret.endorsers_per_block = num.clone();
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_gas_limit_per_operation") {
+            //     ret.hard_gas_limit_per_operation = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_gas_limit_per_block") {
+            //     ret.hard_gas_limit_per_block = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("proof_of_work_threshold") {
+            //     ret.proof_of_work_threshold = format!("{}", num);
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("tokens_per_roll") {
+            //     ret.tokens_per_roll = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("michelson_maximum_type_size") {
+            //     ret.michelson_maximum_type_size = num.clone();
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("seed_nonce_revelation_tip") {
+            //     ret.seed_nonce_revelation_tip = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("origination_size") {
+            //     ret.origination_size = num.clone();
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("block_security_deposit") {
+            //     ret.block_security_deposit = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("endorsement_security_deposit") {
+            //     ret.endorsement_security_deposit = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("block_reward") {
+            //     ret.block_reward = format!("{}", num.0);
+            // }
+            // // TODO: toto minimalne nesedi
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("endorsement_reward") {
+            //     ret.endorsement_reward = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("cost_per_byte") {
+            //     ret.cost_per_byte = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::BigNumber(num)) = consts.get("hard_storage_limit_per_operation") {
+            //     ret.hard_storage_limit_per_operation = format!("{}", num.0);
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("test_chain_duration") {
+            //     ret.test_chain_duration = format!("{}", num);
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("quorum_min") {
+            //     ret.quorum_min = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("quorum_max") {
+            //     ret.quorum_max = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("min_proposal_quorum") {
+            //     ret.min_proposal_quorum = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("initial_endorsers") {
+            //     ret.initial_endorsers = num.clone();
+            // }
+            // if let Some(UniversalValue::Number(num)) = consts.get("delay_per_missing_endorsement") {
+            //     ret.delay_per_missing_endorsement = format!("{}", num);
+            // }
         }
         Ok(ret)
     }

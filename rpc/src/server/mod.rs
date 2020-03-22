@@ -16,9 +16,11 @@ use slog::Logger;
 use crypto::hash::{BlockHash, HashType};
 use storage::persistent::PersistentStorage;
 
+use crate::empty;
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
 
 mod handler;
+mod dev_handler;
 mod service;
 mod router;
 
@@ -78,7 +80,7 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                             let fut = handler(req, params, query, env);
                             Pin::from(fut).await
                         } else {
-                            handler::empty()
+                            empty()
                         }
                     }
                 }))
@@ -104,4 +106,38 @@ fn parse_query_string(query: &str) -> HashMap<String, Vec<String>> {
         }
     }
     ret
+}
+
+pub trait HasSingleValue {
+    fn get_str(&self, key: &str) -> Option<&str>;
+
+    fn get_u64(&self, key: &str) -> Option<u64> {
+        self.get_str(key).and_then(|value| value.parse::<u64>().ok())
+    }
+
+    fn get_usize(&self, key: &str) -> Option<usize> {
+        self.get_str(key).and_then(|value| value.parse::<usize>().ok())
+    }
+
+    fn contains_key(&self, key: &str) -> bool {
+        self.get_str(key).is_some()
+    }
+}
+
+impl HasSingleValue for Params {
+    fn get_str(&self, key: &str) -> Option<&str> {
+        self.iter().find_map(|(k, v)| {
+            if k == key {
+                Some(v.as_str())
+            } else {
+                None
+            }
+        })
+    }
+}
+
+impl HasSingleValue for Query {
+    fn get_str(&self, key: &str) -> Option<&str> {
+        self.get(key).map(|values| values.iter().next().map(String::as_str)).flatten()
+    }
 }

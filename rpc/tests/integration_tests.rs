@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::env;
+
 use assert_json_diff::assert_json_eq;
 use bytes::buf::BufExt;
 use hyper::Client;
@@ -13,26 +15,12 @@ pub enum NodeType {
 
 #[ignore]
 #[tokio::test]
-async fn integration_test_full() {
-    // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_full'
-    // start full test from level 125717
-    integration_tests_rpc("BM61Z4zsa8Vu3zF3CYcMa4ZHUfttmJ2eVUavLmC5Lfbnv2dq4Gw").await
+async fn test_rpc_compare() {
+    integration_tests_rpc(&from_block_header(), &to_block_header()).await
 }
 
-#[ignore]
-#[tokio::test]
-async fn integration_test_dev() {
-    // to execute test run 'cargo test --verbose -- --nocapture --ignored integration_test_dev'
-    // start development tests from block:
-    integration_tests_rpc("BLhryL6tkjAYzX7k6ehY1J2Dpzs2e6NeoNod6d7Uno8tuUpzvLy").await // level=12600
-    //integration_tests_rpc("BLYr7qUkCK8ZNNQZqn9opBP3giFU1wA4zb8LSn5PxDBi6v3Rd2Y").await // level=19000
-    //integration_tests_rpc("BMdwdpjSwFsY55YtxGAXqQdiNdVTfDBgtynMXHzRTgqUoXoEiT8").await // level=25000
-    //integration_tests_rpc("BKp3e6n8NhVp7NavCq3GsqRb2hbq5ah2wSTPzezteoJqEzYsp99").await // level=34000
-
-}
-
-async fn integration_tests_rpc(start_block: &str) {
-    let mut prev_block = start_block.to_string();
+async fn integration_tests_rpc(from_block: &str, to_block: &str) {
+    let mut prev_block = to_block.to_string();
     // TODO: take const from constants? from which block?
     const BLOCKS_PER_SNAPSHOT: i64 = 256;
     const BLOCKS_PER_CYCLE: i64 = 2048;
@@ -41,20 +29,27 @@ async fn integration_tests_rpc(start_block: &str) {
     const MAX_CYCLE_LOOPS: i64 = 4;
 
     while prev_block != "" {
-        //println!("{}", &format!("{}/{}", "chains/main/blocks", &prev_block));
         let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", &prev_block)).await
             .expect("Failed to get block from ocaml");
         let predecessor = block_json["header"]["predecessor"]
             .to_string()
             .replace("\"", "");
-        // Do not check genesys block
-        if prev_block == "BLockGenesisGenesisGenesisGenesisGenesisd1f7bcGMoXy" {
-            println!("Genesis block reached and checked, breaking loop...");
+        // check if "from_block" was reached
+        if prev_block == from_block {
+            println!("From_block: {:?} block reached and checked, breaking loop...", from_block);
             break;
         }
 
         // -------------------------- Integration tests for RPC --------------------------
         // ---------------------- Please keep one function per test ----------------------
+
+        // --------------------------- Tests for each block_id ---------------------------
+        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", &prev_block)).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "context/constants")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "votes/listings")).await;
+        // --------------------------------- End of tests --------------------------------
 
         let level: i64 = block_json["metadata"]["level"]["level"].as_i64().unwrap();
         let cycle: i64 = block_json["metadata"]["level"]["cycle"].as_i64().unwrap();
@@ -63,7 +58,7 @@ async fn integration_tests_rpc(start_block: &str) {
         if level >= BLOCKS_PER_SNAPSHOT && level % BLOCKS_PER_SNAPSHOT == 0 {
             // --------------------- Tests for each snapshot of the cycle ---------------------
             println!("run snapshot tests: {}, level: {:?}", cycle, level);
-        
+
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-1) )).await;
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-10) )).await;
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-1000) )).await;
@@ -100,8 +95,6 @@ async fn integration_tests_rpc(start_block: &str) {
             test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
             //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
 
-            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "context/constants")).await;
-
             // known ocaml node bugs
             // - endorsing rights: for cycle 0, when requested cycle 4 there should be cycle check error:
             //  [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":0,"requested":4,"latest":3}]
@@ -122,16 +115,6 @@ async fn integration_tests_rpc(start_block: &str) {
             cycle_loop_counter += 1;
         }
 
-        // --------------------------- Tests for each block_id ---------------------------
-
-        // test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", &prev_block)).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "votes/listings")).await;
-
-        // --------------------------------- End of tests --------------------------------
-
         prev_block = predecessor;
     }    
 }
@@ -145,25 +128,49 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 }
 
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
-    let url = match node {
-        NodeType::Ocaml => format!(
-            "http://ocaml-node-run:8732/{}",
-            //"http://127.0.0.1:8732/{}", //switch for local testing
-            rpc_path
-        ), // reference Ocaml node
-        NodeType::Tezedge => format!(
-            "http://tezedge-node-run:18732/{}",
-            //"http://ocaml-node-run:8732/{}", // POW that tests are OK
-            //"http://127.0.0.1:18732/{}", //swith for local testing
-            rpc_path
-        ), // Tezedge node
-    }.parse().expect("Invalid URL");
+    let url_as_string = node_rpc_url(node, rpc_path);
+    let url = url_as_string.parse().expect("Invalid URL");
 
     let client = Client::new();
     let body = match client.get(url).await {
         Ok(res) => hyper::body::aggregate(res.into_body()).await.expect("Failed to read response body"),
-        Err(e) => panic!("Request for getting block failed: {}", e),
+        Err(e) => panic!("Request url: {:?} for getting block failed: {}, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e),
     };
 
     serde_json::from_reader(&mut body.reader())
+}
+
+fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
+    match node {
+        NodeType::Ocaml => format!(
+            "{}/{}",
+            &ocaml_node_rpc_context_root(),
+            rpc_path
+        ), // reference Ocaml node
+        NodeType::Tezedge => format!(
+            "{}/{}",
+            &tezedge_node_rpc_context_root(),
+            rpc_path
+        ), // Tezedge node
+    }
+}
+
+fn from_block_header() -> String {
+    env::var("FROM_BLOCK_HEADER")
+        .unwrap_or_else(|_| panic!("FROM_BLOCK_HEADER env variable is missing, check rpc/README.md"))
+}
+
+fn to_block_header() -> String {
+    env::var("TO_BLOCK_HEADER")
+        .unwrap_or_else(|_| panic!("TO_BLOCK_HEADER env variable is missing, check rpc/README.md"))
+}
+
+fn ocaml_node_rpc_context_root() -> String {
+    env::var("OCAML_NODE_RPC_CONTEXT_ROOT")
+        .unwrap_or("http://ocaml-node-run:8732".to_string())
+}
+
+fn tezedge_node_rpc_context_root() -> String {
+    env::var("TEZEDGE_NODE_RPC_CONTEXT_ROOT")
+        .unwrap_or("http://tezedge-node-run:18732".to_string())
 }
