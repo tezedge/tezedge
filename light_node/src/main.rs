@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use riker::actors::*;
 use slog::{crit, debug, Drain, error, info, Logger};
@@ -21,9 +22,10 @@ use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
+use storage::p2p_message_storage::{P2PMessageSecondaryIndex, P2PMessageStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
-use storage::skip_list::{DatabaseBackedSkipList, Lane};
+use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -31,13 +33,13 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use storage::p2p_message_storage::{P2PMessageStorage, P2PMessageSecondaryIndex};
 
 mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 8;
+const DATABASE_VERSION: i64 = 9;
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -134,8 +136,6 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
 
     tokio_runtime.block_on(async move {
         use std::thread;
-        use std::time::Duration;
-
         use tokio::signal;
 
         signal::ctrl_c().await.expect("Failed to listen for ctrl-c event");
@@ -155,8 +155,11 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         // give actors some time to shut down
         thread::sleep(Duration::from_secs(1));
 
+
         info!(log, "Shutting down actor runtime");
-        let _ = actor_system.shutdown().await;
+        let shutdown = actor_system.shutdown();
+        info!(log, "Waiting for actors to exit");
+        let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, shutdown).await;
     });
 }
 
@@ -267,6 +270,7 @@ fn main() {
         P2PMessageStorage::descriptor(),
         P2PMessageSecondaryIndex::descriptor(),
         Lane::descriptor(),
+        ListValue::descriptor(),
         Sequences::descriptor(),
     ];
     let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
@@ -291,7 +295,6 @@ fn main() {
     let protocol_runner_run = Arc::new(AtomicBool::new(true));
     {
         use std::thread;
-        use std::time::Duration;
 
         let log = log.clone();
         let run = protocol_runner_run.clone();
@@ -332,11 +335,14 @@ fn main() {
     {
         let persistent_storage = PersistentStorage::new(rocks_db.clone(), commit_logs.clone());
         match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, &persistent_storage, log.clone()) {
-            Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log),
+            Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log.clone()),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
         }
     }
 
+    info!(log, "Flushing commit logs");
     commit_logs.flush().expect("Failed to flush commit logs");
+    info!(log, "Flushing database");
     rocks_db.flush().expect("Failed to flush database");
+    info!(log, "Shutdown complete");
 }

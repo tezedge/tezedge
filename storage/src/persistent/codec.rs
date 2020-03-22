@@ -1,12 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+use std::ops::Range;
+
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::Hash;
-use std::collections::HashMap;
-use std::ops::Range;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -84,9 +85,14 @@ macro_rules! num_codec {
     }
 }
 
+num_codec!(u8);
+num_codec!(i16);
 num_codec!(u16);
+num_codec!(i64);
 num_codec!(u64);
 num_codec!(i32);
+num_codec!(u32);
+num_codec!(usize);
 
 pub trait BincodeEncoded: Sized + Serialize + for<'a> Deserialize<'a> {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {

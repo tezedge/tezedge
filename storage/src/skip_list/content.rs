@@ -1,13 +1,18 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::Arc;
+
+use failure::_core::marker::PhantomData;
 use failure::Fail;
+use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
-use crate::persistent::{Codec, DBError, Decoder, Encoder, SchemaError, BincodeEncoded};
-
-use crate::skip_list::LEVEL_BASE;
-use std::collections::HashMap;
+use crate::num_from_slice;
+use crate::persistent::{BincodeEncoded, Codec, DBError, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::persistent::database::IteratorWithSchema;
+use crate::persistent::sequence::SequenceError;
+use crate::skip_list::{LEVEL_BASE, TryExtend};
 
 /// Structure for orientation in the list.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -113,37 +118,207 @@ impl NodeHeader {
     }
 }
 
-impl Decoder for NodeHeader {
-    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        bincode::deserialize(bytes)
-            .map_err(|_| SchemaError::DecodeError)
-    }
+impl BincodeEncoded for NodeHeader {}
+
+
+pub type ListValueDatabase = dyn KeyValueStoreWithSchema<ListValue> + Sync + Send;
+
+pub struct ListValue {
+    id: usize,
+    db: Arc<ListValueDatabase>,
 }
 
-impl Encoder for NodeHeader {
-    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        bincode::serialize(self)
-            .map_err(|_| SchemaError::EncodeError)
+impl ListValue {
+    pub fn new(id: usize, db: Arc<ListValueDatabase>) -> Self {
+        Self { id, db }
     }
-}
 
-/// Trait representing node value.
-/// Value must be able to be recreated by merging, and then split by difference.
-/// diff = A.diff(B);
-/// A.merge(diff) == B
-pub trait ListValue<K, V>: Codec + Default
-    where K: Codec,
-          V: Codec,
-{
     /// Merge two values into one, in-place
-    fn merge(&mut self, other: &Self);
+    pub fn merge(&mut self, other: &Self) -> Result<(), SkipListError>{
+        for (key, value) in self.db.prefix_iterator(&ListValueKey::from_id(other.id))? {
+            self.db.put(&ListValueKey::new(self.id, &key?.key), &value?)?;
+        }
 
-    /// Create difference between two values.
-    fn diff(&mut self, other: &Self);
-
-    // Get value from stored container
-    fn get(&self, value: &K) -> Option<V>;
+        Ok(())
+    }
 }
+
+impl KeyValueSchema for ListValue {
+    type Key = ListValueKey;
+    type Value = Vec<u8>;
+
+    fn descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = Options::default();
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ListValueKey::LEN_ID));
+        cf_opts.set_memtable_prefix_bloom_ratio(0.2);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    fn name() -> &'static str {
+        "skip_list_values"
+    }
+}
+
+impl<'a, K, V> TryExtend<(&'a K, &'a V)> for ListValue
+    where
+        K: Encoder + 'a,
+        V: Encoder + 'a
+{
+    fn try_extend<T: IntoIterator<Item=(&'a K, &'a V)>>(&mut self, iter: T) -> Result<(), SkipListError> {
+        for (key, value) in iter {
+            self.db.put(&ListValueKey::new(self.id, &key.encode()?), &value.encode()?)?;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) trait TypedListValue<'a, K, V> {
+    fn get(&self, key: &K) -> Result<Option<V>, SkipListError>;
+
+    fn iter(&'a self) -> Result<Iter<'a, K, V>, SkipListError>;
+
+    fn iter_prefix(&'a self, prefix: &'a K) -> Result<IterPrefix<'a, K, V>, SkipListError>;
+}
+
+impl<'a, K: Codec, V: Decoder> TypedListValue<'a, K, V> for ListValue {
+    /// Get value from stored container
+    fn get(&self, value: &K) -> Result<Option<V>, SkipListError> {
+        self.db.get(&ListValueKey::new(self.id, &value.encode()?))?
+            .map(|bytes| V::decode(&bytes))
+            .transpose()
+            .map_err(SkipListError::from)
+    }
+
+    fn iter(&'a self) -> Result<Iter<'a, K, V>, SkipListError> {
+        Iter::create(self.id, &self.db)
+    }
+
+    fn iter_prefix(&'a self, prefix: &'a K) -> Result<IterPrefix<'a, K, V>, SkipListError> {
+        IterPrefix::create(self.id, prefix, &self.db)
+    }
+}
+
+pub struct Iter<'a, K, V> {
+    inner: IteratorWithSchema<'a, ListValue>,
+    _phantom: PhantomData<(K, V)>
+}
+
+impl<'a, K, V> Iter<'a, K, V> {
+    fn create(id: usize, db: &'a Arc<ListValueDatabase>) -> Result<Self, SkipListError> {
+        let inner = db.prefix_iterator(&ListValueKey::from_id(id))?;
+        Ok(Self { inner, _phantom: PhantomData })
+    }
+}
+
+impl<'a, K: Decoder, V: Decoder> Iterator for Iter<'a, K, V> {
+    type Item = Result<(K, V), SkipListError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        extract_and_decode(self.inner.next())
+    }
+}
+
+pub struct IterPrefix<'a, K, V> {
+    inner: IteratorWithSchema<'a, ListValue>,
+    prefix: Vec<u8>,
+    _phantom: PhantomData<(K, V)>
+}
+
+impl<'a, K: Encoder, V> IterPrefix<'a, K, V> {
+    fn create(id: usize, prefix: &'a K, db: &'a Arc<ListValueDatabase>) -> Result<Self, SkipListError> {
+        let prefix = prefix.encode()?;
+        let inner = db.prefix_iterator(&ListValueKey::new(id, &prefix))?;
+        Ok(Self { inner, prefix, _phantom: PhantomData })
+    }
+}
+
+impl<'a, K: Decoder, V: Decoder> Iterator for IterPrefix<'a, K, V> {
+    type Item = Result<(K, V), SkipListError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)> = self.inner.next();
+        if let Some((Ok(ListValueKey { key, .. }), _)) = &next  {
+            if !key.starts_with(&self.prefix) {
+                return None
+            }
+        }
+
+        extract_and_decode(next)
+    }
+}
+
+fn extract_and_decode<K: Decoder, V: Decoder>(value: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)>) ->  Option<Result<(K, V), SkipListError>> {
+    value.map(|(k, v)|
+        k.map(|k| k.key)
+            .and_then(|key| K::decode(&key))
+            .and_then(|k| v.and_then(|value| V::decode(&value)).map(|v| (k, v)))
+            .map_err(SkipListError::from))
+}
+
+trait StartsWith<T> {
+    fn starts_with(&self, needle: &[T]) -> bool;
+}
+
+impl<T> StartsWith<T> for Vec<T>
+    where
+        T: Sized + Eq
+{
+    fn starts_with(&self, needle: &[T]) -> bool {
+        if needle.len() > self.len() {
+            return false
+        }
+
+        for idx in (0..needle.len()).rev() {
+            if self[idx] != needle[idx] {
+                return false
+            }
+        }
+
+        true
+    }
+}
+
+pub struct ListValueKey {
+    id: usize,
+    key: Vec<u8>
+}
+
+impl ListValueKey {
+
+    const LEN_ID: usize = std::mem::size_of::<usize>();
+    const IDX_ID: usize = 0;
+    const IDX_KEY: usize = Self::IDX_ID + Self::LEN_ID;
+
+    fn new(id: usize, key: &[u8]) -> Self {
+        Self { id, key: key.to_vec() }
+    }
+
+    fn from_id(id: usize) -> Self {
+        Self { id, key: vec![] }
+    }
+}
+
+impl Decoder for ListValueKey {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        if bytes.len() >= Self::LEN_ID {
+            let id = num_from_slice!(bytes, Self::IDX_ID, usize);
+            let key = bytes[Self::IDX_KEY..].to_vec();
+            Ok(Self { id, key })
+        } else {
+            Err(SchemaError::DecodeError)
+        }
+    }
+}
+
+impl Encoder for ListValueKey {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        let mut bytes = Vec::with_capacity(Self::LEN_ID + self.key.len());
+        bytes.extend(&self.id.to_be_bytes());
+        bytes.extend(&self.key);
+        Ok(bytes)
+    }
+}
+
 
 /// ID of the skip list
 pub type SkipListId = u16;
@@ -154,12 +329,16 @@ pub enum SkipListError {
     PersistentStorageError {
         error: DBError,
     },
-    #[fail(display = "Internal error occured during skip list operation: {}", description)]
+    #[fail(display = "Internal error occurred during skip list operation: {}", description)]
     InternalError {
         description: String,
     },
     #[fail(display = "Index is out of skip list bounds")]
     OutOfBoundsError,
+    #[fail(display = "List value sequence error: {}", error)]
+    SequenceError {
+        error: SequenceError
+    }
 }
 
 impl From<DBError> for SkipListError {
@@ -174,24 +353,9 @@ impl From<SchemaError> for SkipListError {
     }
 }
 
-impl<K: Codec, V: Codec> ListValue<K, V> for HashMap<K, V>
-    where K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a> + Clone,
-          V: Serialize + for<'a> Deserialize<'a> + Clone
-{
-    fn merge(&mut self, other: &Self) {
-        self.extend(other.clone())
-    }
-
-    fn diff(&mut self, other: &Self) {
-        for (k, v) in other {
-            if !self.contains_key(k) {
-                self.insert(k.clone(), v.clone());
-            }
-        }
-    }
-
-    fn get(&self, value: &K) -> Option<V> {
-        self.get(value).map(|val| val.clone())
+impl From<SequenceError> for SkipListError {
+    fn from(error: SequenceError) -> Self {
+        SkipListError::SequenceError { error }
     }
 }
 

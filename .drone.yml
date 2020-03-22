@@ -3,15 +3,15 @@ name: default
 
 steps:
 # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
-# - name: cleanup-tezedge-data
-#   image: alpine/git
-#   user: root
-#   volumes:
-#     - name: tezedge-node-data
-#       path: /tmp/tezedge_developer
-#   commands:
-#     - rm -rf /tmp/tezedge_developer/light-node
-#     - rm -rf /tmp/tezedge_developer/tezos-node
+- name: cleanup-tezedge-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+  commands:
+    - rm -rf /tmp/tezedge_developer/light-node
+    - rm -rf /tmp/tezedge_developer/tezos-node
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -78,9 +78,21 @@ steps:
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive 
 
 - name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: simplestakingcom/tezos-node-bootstrap:level
   commands:
-    - tezos-node-bootstrap --bootstrap
+    - tezos-node-bootstrap --bootstrap 30500
+
+- name: test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands:
+    - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
 
 - name: wrk-performance-test
   image: simplestakingcom/tezos-node-bootstrap:wrk1
@@ -125,18 +137,6 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --indexer-test
-
-- name: test
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
-  commands:
-    - cargo test --verbose --release -- --nocapture --ignored integration_test_dev
 
 volumes:
   - name: ocaml-node-data

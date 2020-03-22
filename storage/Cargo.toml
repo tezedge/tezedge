@@ -27,3 +27,4 @@ tezos_messages = { path = "../tezos/messages" }
 [dev-dependencies]
 hex = "0.4"
 rand = "0.7.3"
+maplit = "1.0"

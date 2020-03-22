@@ -12,9 +12,11 @@ use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
 use storage::block_storage::BlockJsonData;
+use storage::num_from_slice;
+use storage::p2p_message_storage::P2PMessageStorage;
+use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
-use storage::num_from_slice;
 use tezos_context::channel::ContextAction;
 
 use crate::ContextList;
@@ -24,13 +26,11 @@ use crate::encoding::conversions::{
     contract_id_to_address,
     hash_to_contract_id,
 };
-use crate::helpers::{BlockHeaderInfo, EndorserSlots, EndorsingRight, FullBlockInfo, get_block_hash_by_block_id, get_level_by_block_id, get_prng_number, init_prng, PagedResult,
-                     RightsConstants, RightsContextData, RightsParams, RpcResponseData, VoteListings, ContextMap};
+use crate::helpers::{BlockHeaderInfo, ContextMap, EndorserSlots, EndorsingRight, FullBlockInfo, get_block_hash_by_block_id, get_level_by_block_id, get_prng_number, init_prng,
+                     PagedResult, RightsConstants, RightsContextData, RightsParams, RpcResponseData, VoteListings};
 use crate::helpers::BakingRights;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
-use storage::p2p_message_storage::P2PMessageStorage;
-use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -550,58 +550,21 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<O
 }
 
 pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: ContextList) -> Result<Option<CycleJson>, failure::Error> {
-    let ctxt_level: usize = level.parse().unwrap();
+    let level: usize = level.parse()?;
 
-    let context_data = {
-        let reader = list.read().expect("mutex poisoning");
-        if let Ok(Some(c)) = reader.get(ctxt_level) {
-            c
-        } else {
-            bail!("Context data not found")
+    let list = list.read().expect("mutex poisoning");
+    let random_seed = list.get_key(level, &format!("data/cycle/{}/random_seed", &cycle_id));
+    let roll_snapshot = list.get_key(level, &format!("data/cycle/{}/roll_snapshot", &cycle_id));
+    match (random_seed, roll_snapshot) {
+        (Ok(Some(random_seed)), Ok(Some(roll_snapshot))) => {
+            let cycle_json = CycleJson {
+                random_seed: if let Bucket::Exists(value) = random_seed { Some(hex::encode(value).to_string()) } else { None },
+                roll_snapshot: if let Bucket::Exists(value) = roll_snapshot { hex::encode(value).parse().ok() } else { None },
+            };
+            Ok(Some(cycle_json))
         }
-    };
-
-    let patch_cycle = format!("cycle/{}", &cycle_id);
-    // get cylce list from context storage
-    let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
-        .filter(|(k, _)| k.contains(&patch_cycle))
-        .filter(|(_, v)| match v {
-            Bucket::Exists(_) => true,
-            _ => false
-        })
-        .collect();
-
-
-    let mut cycle = CycleJson {
-        roll_snapshot: None,
-        random_seed: None,
-    };
-
-    // process every key value pair
-    for (key, bucket) in cycle_lists.iter() {
-
-        // create vector from path
-        let path: Vec<&str> = key.split('/').collect();
-
-        // convert value from bytes to hex
-        let value = match bucket {
-            Bucket::Exists(value) => hex::encode(value).to_string(),
-            _ => "".to_string()
-        };
-
-        // process cycle key value pairs
-        match path.as_slice() {
-            ["data", "cycle", _, "random_seed"] => {
-                cycle.random_seed = Some(value);
-            }
-            ["data", "cycle", _, "roll_snapshot"] => {
-                cycle.roll_snapshot = Some(value.parse().unwrap());
-            }
-            _ => ()
-        };
+        _ => bail!("Context data not found")
     }
-
-    Ok(Some(cycle))
 }
 
 pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {

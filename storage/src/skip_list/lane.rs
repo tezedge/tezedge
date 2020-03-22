@@ -1,32 +1,36 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::hash::Hash;
 use std::sync::Arc;
 
-use crate::Direction;
-use crate::persistent::{KeyValueStoreWithSchema, KeyValueSchema, Codec, Decoder, SchemaError};
-use crate::persistent::database::{IteratorMode, IteratorWithSchema};
-
-use crate::skip_list::content::{NodeHeader, SkipListId};
-use crate::skip_list::SkipListError;
-use std::marker::PhantomData;
-use std::iter::Take;
+use crate::persistent::{Codec, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::sequence::SequenceGenerator;
+use crate::skip_list::{ListValue, SkipListError};
+use crate::skip_list::content::{ListValueDatabase, NodeHeader, SkipListId, TypedListValue};
 
 pub type LaneDatabase = dyn KeyValueStoreWithSchema<Lane> + Sync + Send;
 
 /// Lane is an way to traverse the chain.
 /// Lane is just an linked list, containing all changes between nodes.
 /// There should be multiple lanes, to be able to skip multiple nodes and traverse structure faster.
+#[derive(Clone)]
 pub struct Lane {
     list_id: SkipListId,
     level: usize,
-    db: Arc<LaneDatabase>,
+    lane_db: Arc<LaneDatabase>,
+    value_db: Arc<ListValueDatabase>,
+    sequence_gen: Arc<SequenceGenerator>
 }
 
 impl Lane {
     /// Create new lane handler for given database
-    pub fn new(list_id: SkipListId, level: usize, db: Arc<LaneDatabase>) -> Self {
-        Lane { list_id, level, db }
+    pub fn new(list_id: SkipListId, level: usize, lane_db: Arc<LaneDatabase>, value_db: Arc<ListValueDatabase>, sequence_gen: Arc<SequenceGenerator>) -> Self {
+        Lane { list_id, level, lane_db, value_db, sequence_gen }
+    }
+
+    fn new_level(self, level: usize) -> Self {
+        Self { list_id: self.list_id, level, lane_db: self.lane_db, value_db: self.value_db, sequence_gen: self.sequence_gen }
     }
 
     /// Get level of current handler
@@ -40,93 +44,83 @@ impl Lane {
             self.level - 1
         };
 
-        Self { list_id: self.list_id, level, db: self.db }
+        self.new_level(level)
     }
 
     /// Create handler for a lane on higher level
     pub fn higher_lane(self) -> Self {
-        Self { list_id: self.list_id, level: self.level + 1, db: self.db }
+        let new_level = self.level + 1;
+        self.new_level(new_level)
+    }
+
+    fn node_header(&self, index: usize) -> NodeHeader {
+        NodeHeader::new(self.list_id, self.level, index)
+    }
+
+    pub fn get_list_value(&self, index: usize) -> Result<Option<ListValue>, SkipListError> {
+        self.lane_db.get(&self.node_header(index))
+            .map(|value_id| value_id.map(|value_id| ListValue::new(value_id, self.value_db.clone())))
+            .map_err(SkipListError::from)
+    }
+
+    pub fn put_list_value(&mut self, index: usize) -> Result<ListValue, SkipListError> {
+        let value_id = match self.lane_db.get(&self.node_header(index))? {
+            Some(value_id) => {
+                value_id
+            }
+            None => {
+                // generate new unique value_id
+                let value_id = self.sequence_gen.next()? as usize;
+                self.lane_db.put(&self.node_header(index), &value_id)?;
+                value_id
+            }
+        };
+
+        Ok(ListValue::new(value_id, self.value_db.clone()))
     }
 }
 
 impl KeyValueSchema for Lane {
     type Key = NodeHeader;
-    type Value = Vec<u8>;
+    type Value = usize;
 
     fn name() -> &'static str {
         "skip_list_lanes"
     }
 }
 
-pub trait TypedLane<C: Codec> {
-    fn get(&self, index: usize) -> Result<Option<C>, SkipListError>;
+pub trait TypedLane<K, V> {
+    /// Get a single key from specific index.
+    fn get(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError>;
 
-    fn put(&self, index: usize, value: &C) -> Result<(), SkipListError>;
+    /// Get all keys starting with `prefix`.
+    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<Vec<(K, V)>>, SkipListError>;
 
-    fn base_iterator(&self, starting_index: usize) -> Result<LaneIterator<C>, SkipListError>;
-
-    fn rev_base_iterator(&self, end_index: usize, count: usize) -> Result<SizedLaneIterator<C>, SkipListError>;
+    /// Get values from specific index (relative to this lane).
+    fn get_all(&self, index: usize) -> Result<Option<Vec<(K, V)>>, SkipListError>;
 }
 
-impl<C: Codec> TypedLane<C> for Lane {
-    /// Get value from specific index (relative to this lane).
-    fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
-        self.db.get(&NodeHeader::new(self.list_id, self.level, index))
-            .map_err(SkipListError::from)?
-            .map(|value| C::decode(&value).map_err(SkipListError::from))
+impl<K, V> TypedLane<K, V> for Lane
+    where
+        K: Codec + Hash + Eq,
+        V: Codec
+{
+    fn get(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
+        self.get_list_value(index)?
+            .map(|list_value| list_value.get(key))
+            .transpose()
+            .map(|value| value.flatten())
+    }
+
+    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<Vec<(K, V)>>, SkipListError> {
+        self.get_list_value(index)?
+            .map(|list_value| list_value.iter_prefix(prefix).and_then(|i| i.collect::<Result<Vec<(K, V)>, SkipListError>>()))
             .transpose()
     }
 
-    /// Put new value on specific index of this lane, beware, that lanes should contain continuous
-    /// indexes, thus some meta-structure should control and contain data about end of the lane, as
-    /// we cannot guarantee correct end handling on lane level.
-    fn put(&self, index: usize, value: &C) -> Result<(), SkipListError> {
-        self.db.put(&NodeHeader::new(self.list_id, self.level, index), &value.encode()?)
-            .map_err(SkipListError::from)
-    }
-
-    /// From starting index, iterate backwards.
-    fn base_iterator(&self, starting_index: usize) -> Result<LaneIterator<C>, SkipListError> {
-        let iterator = self.db.iterator(IteratorMode::From(
-            &NodeHeader::new(self.list_id, self.level, starting_index), Direction::Reverse,
-        )).map_err(SkipListError::from)?;
-        Ok(LaneIterator(iterator, PhantomData))
-    }
-
-    /// Create iterator of items starting from index - count and going up to the index
-    fn rev_base_iterator(&self, end_index: usize, count: usize) -> Result<SizedLaneIterator<C>, SkipListError> {
-        if count > end_index + 1 || count == 0 {
-            Err(SkipListError::OutOfBoundsError)
-        } else {
-            let starting_index = end_index + 1 - count;
-            let iterator = self.db.iterator(IteratorMode::From(
-                &NodeHeader::new(self.list_id, self.level, starting_index), Direction::Forward,
-            )).map_err(SkipListError::from)?.take(count);
-            Ok(SizedLaneIterator(iterator, count, PhantomData))
-        }
-    }
-}
-
-pub struct LaneIterator<'a, D: Decoder>(IteratorWithSchema<'a, Lane>, PhantomData<D>);
-
-impl<'a, D: Decoder> Iterator for LaneIterator<'a, D> {
-    type Item = (Result<NodeHeader, SchemaError>, Result<D, SchemaError>);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-            .map(|(k, v)| (k, v.and_then(|v| D::decode(&v))))
-    }
-}
-
-pub struct SizedLaneIterator<'a, D: Decoder>(Take<IteratorWithSchema<'a, Lane>>, usize, PhantomData<D>);
-
-impl<'a, D: Decoder> Iterator for SizedLaneIterator<'a, D> {
-    type Item = (Result<NodeHeader, SchemaError>, Result<D, SchemaError>);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-            .map(|(k, v)| (k, v.and_then(|v| D::decode(&v))))
+    fn get_all(&self, index: usize) -> Result<Option<Vec<(K, V)>>, SkipListError> {
+        self.get_list_value(index)?
+            .map(|list_value| list_value.iter().and_then(|i| i.collect::<Result<Vec<(K, V)>, SkipListError>>()))
+            .transpose()
     }
 }

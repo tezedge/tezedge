@@ -168,7 +168,7 @@ fn listen_protocol_events(
                     ContextAction::Commit { new_context_hash, block_hash: Some(block_hash), .. } => {
                         if let Some(block) = blocks.get(block_hash) {
                             let mut writer = storage.write().expect("lock poisoning");
-                            writer.push(block.clone())?;
+                            writer.push(&block)?;
                         } else {
                             crit!(log, "Trying to commit non-existent block"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
                         }
