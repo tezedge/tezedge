@@ -22,6 +22,7 @@
 pub use crate::skip_list::content::{Bucket, ListValue, SkipListError};
 pub use crate::skip_list::lane::{Lane, TypedLane};
 pub use crate::skip_list::skip_list::{DatabaseBackedSkipList, DatabaseBackedFlatList, SkipList, TypedSkipList};
+pub use crate::skip_list::context_ram_storage::ContextRamStorage;
 
 mod content;
 mod lane;

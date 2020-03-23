@@ -19,7 +19,7 @@ use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::ContextRamMap;
+use crate::ContextList;
 use crate::encoding::conversions::public_key_to_contract_id;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
@@ -338,7 +338,7 @@ impl RightsContextData {
     /// * `list` - Context list handler.
     /// 
     /// Return RightsContextData.
-    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, context_map: ContextRamMap) -> Result<Self, failure::Error> {
+    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, list: ContextList) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
         let preserved_cycles = *constants.preserved_cycles();
@@ -356,7 +356,7 @@ impl RightsContextData {
         };
 
         // get context list of block_id level as ContextMap
-        let current_context = Self::get_context_as_hashmap(block_level.try_into()?, context_map.clone())?;
+        let current_context = Self::get_context_as_hashmap(block_level.try_into()?, list.clone())?;
         
         // get index of roll snapshot
         let roll_snapshot: i16 = {
@@ -396,7 +396,7 @@ impl RightsContextData {
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
             (cycle_of_rolls * blocks_per_cycle) + (((roll_snapshot + 1) as i64) * blocks_per_roll_snapshot) - 1
         };
-        let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, context_map.clone())?;
+        let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
         // get list of rolls from context list
         let context_rolls = if let Some(rolls) = Self::get_context_rolls(roll_context)? {
@@ -451,10 +451,10 @@ impl RightsContextData {
     /// * `list` - context list handler
     /// 
     /// Return context list for given level as HashMap
-    fn get_context_as_hashmap(level: usize, context_map: ContextRamMap) -> Result<ContextMap, failure::Error> {
+    fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<ContextMap, failure::Error> {
         // get the whole context
         let context = {
-            let reader = context_map.read().unwrap();
+            let reader = list.read().unwrap();
             if let Ok(Some(ctx)) = reader.get(level) {
                 ctx
             } else {

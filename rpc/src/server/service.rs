@@ -17,7 +17,7 @@ use storage::skip_list::Bucket;
 use storage::num_from_slice;
 use tezos_context::channel::ContextAction;
 
-use crate::{ContextList, ContextRamMap};
+use crate::ContextList;
 use crate::encoding::context::ContextConstants;
 use crate::encoding::conversions::{
     chain_id_to_string,
@@ -96,7 +96,7 @@ pub(crate) fn get_contract_actions(contract_id: &str, from_id: Option<u64>, limi
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, max_priority: Option<&str>, has_all: bool, context_map: ContextRamMap, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, max_priority: Option<&str>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
 
     // get block level first
     let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
@@ -104,11 +104,11 @@ pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level:
         None => bail!("Block level not found")
     };
 
-    let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, persistent_storage, state)?;
+    let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage, state)?;
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
 
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context_map)?;
+    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
     get_baking_rights(&context_data, &params, &constants)
 }
@@ -235,7 +235,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, has_all: bool, context_map: ContextRamMap, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
 
     // get block level from block_id and from now get all nessesary data by block level
     let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
@@ -243,11 +243,11 @@ pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, lev
         None => bail!("Block level not found")
     };
 
-    let constants: RightsConstants = get_and_parse_rights_constants(chain_id, block_id, block_level, persistent_storage, state)?;
+    let constants: RightsConstants = get_and_parse_rights_constants(chain_id, block_id, block_level, list.clone(), persistent_storage, state)?;
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, None, has_all, block_level, &constants, persistent_storage, false)?;
 
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context_map)?;
+    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
 
     get_endorsing_rights(&context_data, &params, &constants)
 }
@@ -423,7 +423,7 @@ pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentSt
 /// * `list` - Context list handler.
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
-pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: Option<i64>, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<ContextConstants>, failure::Error> {
+pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: Option<i64>, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<ContextConstants>, failure::Error> {
     // first check if level is already known
     let level: usize = if let Some(l) = opt_level {
         l.try_into()?
@@ -439,8 +439,7 @@ pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: 
     let protocol_hash: Vec<u8>;
     let constants: Vec<u8>;
     {
-        let context_storage = persistent_storage.context_ram_storage();
-        let reader = context_storage.read().unwrap();
+        let reader = list.read().unwrap();
         if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
             protocol_hash = data.to_vec();
         } else {
@@ -713,19 +712,6 @@ pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
     memory.get_memory_stats()
 }
 
-pub(crate) fn get_context_from_ram_storage(level: &str, context_map: ContextRamMap) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
-    
-    let block_level: i32 = level.parse()?;
-    {
-        let context_reader = context_map.read().expect("mutex poisoning");
-        if let Some(context) = context_reader.get(block_level as usize)? {
-            Ok(Some(context))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
 pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
     let level = level.parse()?;
     {
@@ -744,8 +730,8 @@ pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashM
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
 #[inline]
-fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, block_level: i64, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<RightsConstants, failure::Error> {
-    let constants = match get_context_constants(chain_id, block_id, Some(block_level), persistent_storage, state)? {
+fn get_and_parse_rights_constants(chain_id: &str, block_id: &str, block_level: i64, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<RightsConstants, failure::Error> {
+    let constants = match get_context_constants(chain_id, block_id, Some(block_level), list.clone(), persistent_storage, state)? {
         Some(v) => v,
         None => bail!("Cannot get protocol constants")
     };

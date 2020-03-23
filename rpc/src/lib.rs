@@ -9,7 +9,7 @@ mod helpers;
 pub mod rpc_actor;
 mod server;
 
-pub use storage::persistent::{ContextList, ContextMap, ContextRamMap};
+pub use storage::persistent::{ContextList, ContextMap};
 
 /// Crate level custom result
 pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;

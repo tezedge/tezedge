@@ -1,24 +1,19 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::{bail, format_err};
-use std::sync::Arc;
 use std::collections::HashMap;
-use getset::Getters;
 
 use crate::skip_list::{content::ListValue, Bucket, SkipList, TypedSkipList, SkipListError};
-use crate::persistent::Codec;
+use crate::persistent::{Codec};
 
 pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
-#[derive(Getters)]
-pub struct ContextRamStorage<C> {
-    context_ram_map: HashMap<String, ContextMap>,
-    context_blocks: Vec<String>,
-    current_context: C,
+#[derive(Clone)]
+pub struct ContextRamStorage<C: Clone> {
+    context_ram_map: HashMap<usize, C>,
 }
 
-impl<C> SkipList for ContextRamStorage<C> {
+impl<C: Clone> SkipList for ContextRamStorage<C> {
     fn len(&self) -> usize {
         self.context_ram_map.len()
     }
@@ -34,69 +29,51 @@ impl<C> SkipList for ContextRamStorage<C> {
     }
 }
 
-impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for ContextRamStorage<C> {
+impl<K: Codec, V: Codec, C: ListValue<K, V> + Clone> TypedSkipList<K, V, C> for ContextRamStorage<C> {
     fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         if self.contains(index) {
             // return Ok(None);
-            Ok(self.context_ram_map.get(index))
+            Ok(Some(self.context_ram_map.get(&index).unwrap().clone()))
         } else {
             Ok(None)
         }
-        // take a slice from the begining to the desired block
-        // let relevant_blocks = &self.context_blocks[0..index + 1];
+    }
 
-        // // merge the context changes starting from the requested block to genesis
-        // let mut context: HashMap<String, Bucket<Vec<u8>>> = HashMap::<String, Bucket<Vec<u8>>>::new();
-        // for block_hash in relevant_blocks {
-        //     let block_context: HashMap<String, Bucket<Vec<u8>>> = self.context_ram_map.get(block_hash).unwrap().clone();
-        //     context.extend(block_context);
-        // }
-        // Ok(Some(context))
+    fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
+        Ok(self.get(index)?.and_then(|c| c.get(key)))
+    }
+
+    fn get_raw(&self, lane_level: usize, index: usize) -> Result<Option<C>, SkipListError> {
+        if lane_level == 0 {
+            self.get(index)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn push(&mut self, value: C) -> Result<(), SkipListError> {
+        let index = self.context_ram_map.len();
+        let mut current_context;
+        if let Some(ctxt) = self.context_ram_map.get_mut(&(index - 1)) {
+            current_context = ctxt.clone();
+        } else {
+            current_context = Default::default();
+        }
+        current_context.merge(&value);
+        self.context_ram_map.insert(index, current_context);
+
+        Ok(())
+    }
+
+    fn diff(&self, _from: usize, _to: usize) -> Result<Option<C>, SkipListError> {
+        unimplemented!()
     }
 }
 
-impl<C: Default> ContextRamStorage<C> {
+impl<C: Default + Clone> ContextRamStorage<C> {
     pub fn new() -> Self {
         let context_ram_map = HashMap::new();
-        let context_blocks = Vec::<String>::new();
 
-        Self{context_ram_map, context_blocks, current_context: Default::default()}
+        Self{context_ram_map}
     }
-
-    // pub fn push_state(&mut self, block_hash: &str, state: ContextMap) -> Result<(), failure::Error> {
-    //     self.context_ram_map.insert(block_hash.to_string(), state);
-    //     Ok(())
-    // }
-
-    // pub fn push_block_hash(&mut self, block_hash: &str) -> Result<(), failure::Error> {
-    //     self.context_blocks.push(block_hash.to_string());
-    //     Ok(())
-    // }
-
-    // pub fn get_key(&self, level: usize, key: &str) -> Result<Option<Bucket<Vec<u8>>>, failure::Error> {
-        
-    //     let context;
-    //     if let Some(ctxt) = self.get(level)? {
-    //         context = ctxt;
-    //     } else {
-    //         return Ok(None);
-    //     }
-
-    //     let value;
-    //     // get from hashmap
-    //     if let Some(data) = context.get(key) {
-    //         value = data;
-    //     } else {
-    //         return Ok(None);
-    //     }
-
-    //     Ok(Some(value.clone()))
-    // }
-
-    // pub fn get(&self, level: usize) -> Result<Option<ContextMap>, failure::Error> {
-    //     // look for the block index (order of insertion)
-    //     //let block_position = self.context_blocks.iter().position(|x| x == block_id).unwrap();
-
-        
-    // }
 }
