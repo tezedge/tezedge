@@ -105,6 +105,14 @@ supported linux distributions:
     
 If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
 
+**Services exposed**
+
+We have the following services:
+* Websocket
+* P2P layer
+* RPC
+
+Each service runs on a port as defined in the configuration.
 
 Running node manually
 ----------------
