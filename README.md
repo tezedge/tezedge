@@ -105,14 +105,23 @@ supported linux distributions:
     
 If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
 
-**Services exposed**
+Services exposed
+----------------
 
-We have the following services:
+**We have the following services:**
 * Websocket
 * P2P layer
 * RPC
 
 Each service runs on a port as defined in the configuration.
+
+Example of how to call the RPC
+----------------
+
+Open shell and type this code into the command line and then press Enter:
+
+```curl localhost:18732/chains/main/blocks/head/context/constants```
+
 
 Running node manually
 ----------------
