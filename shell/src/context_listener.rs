@@ -162,7 +162,11 @@ fn listen_protocol_events(
                     ContextAction::Delete { block_hash: Some(block_hash), key, .. }
                     | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, .. } => {
                         let state = get_default(&mut blocks, block_hash.clone());
-                        state.insert(key.join("/"), Bucket::Deleted);
+                        let key_joined = key.join("/");
+                        if key_joined.contains("votes/listings") {
+                            println!("GOT DELETING ACTION FOR LISITNGS, KEY: {}", key_joined);
+                        }
+                        state.insert(key_joined.clone(), Bucket::Deleted);
                         
                         context_storage.put_action(&block_hash.clone(), msg)?;
                     }

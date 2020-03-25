@@ -13,7 +13,7 @@ pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
-use crate::skip_list::{Bucket, TypedSkipList, ContextRamStorage};
+use crate::skip_list::{Bucket, TypedSkipList, ContextRamStorage, DatabaseBackedSkipList};
 
 pub mod sequence;
 pub mod codec;
@@ -77,8 +77,8 @@ impl PersistentStorage {
             seq: Arc::new(Sequences::new(kv.clone(), 1000)),
             kv: kv.clone(),
             clog,
-            cs: Arc::new(RwLock::new(ContextRamStorage::new())),
-            //cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
+            // cs: Arc::new(RwLock::new(ContextRamStorage::new())),
+            cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
         }
     }
 

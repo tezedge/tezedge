@@ -7,6 +7,7 @@ use crate::skip_list::{content::ListValue, Bucket, SkipList, TypedSkipList, Skip
 use crate::persistent::{Codec};
 
 pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
+const SAVE_ON_BLOCK_LEVEL: usize = 2048;
 
 #[derive(Clone)]
 pub struct ContextRamStorage<C: Clone> {
@@ -29,11 +30,32 @@ impl<C: Clone> SkipList for ContextRamStorage<C> {
     }
 }
 
+// use a hybrid approach between a skiplist and a flatlist
+// store all the changes, and every 2048 level, store the whole context
+// 0, 1 ..   
+//
 impl<K: Codec, V: Codec, C: ListValue<K, V> + Clone> TypedSkipList<K, V, C> for ContextRamStorage<C> {
     fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         if self.contains(index) {
             // return Ok(None);
-            Ok(Some(self.context_ram_map.get(&index).unwrap().clone()))
+            // Ok(Some(self.context_ram_map.get(&index).unwrap().clone()))
+            if index != 0 && index % SAVE_ON_BLOCK_LEVEL == 0 {
+                println!("Selected checkpoint level: {} -> serving whole context", index);
+                Ok(Some(self.context_ram_map.get(&index).unwrap().clone()))
+            } else {
+                let stored = index / SAVE_ON_BLOCK_LEVEL;
+                let start_index = stored * SAVE_ON_BLOCK_LEVEL;
+
+                // println!("SELECTED LEVEL: {}     CHECKPOINT: {}", index, start_index);
+
+                let mut merged_context: C = Default::default();
+                for ctxt_index in start_index..index + 1 {
+                    let current_context = self.context_ram_map.get(&ctxt_index).unwrap().clone();
+
+                    merged_context.merge(&current_context);
+                }
+                Ok(Some(merged_context))
+            }
         } else {
             Ok(None)
         }
@@ -53,14 +75,33 @@ impl<K: Codec, V: Codec, C: ListValue<K, V> + Clone> TypedSkipList<K, V, C> for 
 
     fn push(&mut self, value: C) -> Result<(), SkipListError> {
         let index = self.context_ram_map.len();
-        let mut current_context;
-        if let Some(ctxt) = self.context_ram_map.get_mut(&(index - 1)) {
-            current_context = ctxt.clone();
+
+        // make a checkpoint with the merged changes up to this level
+        if index != 0 && index % SAVE_ON_BLOCK_LEVEL == 0 {
+            println!("Level: {} -> saving whole context", index);
+            let mut merged_context: C = Default::default();
+            let mut current_context;
+
+            // merge all the changes since the last checkpoint
+            for level in index - SAVE_ON_BLOCK_LEVEL..index {
+                if let Some(ctxt) = self.context_ram_map.get_mut(&level) {
+                    current_context = ctxt.clone();
+                } else {
+                    current_context = Default::default();
+                }
+                merged_context.merge(&current_context);
+            }
+            // lastly, merge the current changes
+            merged_context.merge(&value);
+            
+            // insert into context map
+            self.context_ram_map.insert(index, merged_context);
         } else {
-            current_context = Default::default();
+            // println!("Level: {} -> saving context difference", index);
+
+            // insert the change into the context map
+            self.context_ram_map.insert(index, value.clone());
         }
-        current_context.merge(&value);
-        self.context_ram_map.insert(index, current_context);
 
         Ok(())
     }
