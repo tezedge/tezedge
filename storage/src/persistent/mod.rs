@@ -77,8 +77,8 @@ impl PersistentStorage {
             seq: Arc::new(Sequences::new(kv.clone(), 1000)),
             kv: kv.clone(),
             clog,
-            // cs: Arc::new(RwLock::new(ContextRamStorage::new())),
-            cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
+            cs: Arc::new(RwLock::new(ContextRamStorage::new())),
+            // cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
         }
     }
 

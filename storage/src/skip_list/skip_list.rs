@@ -93,6 +93,8 @@ pub trait TypedSkipList<K: Codec, V: Codec, C: ListValue<K, V>>: SkipList {
     fn push(&mut self, value: C) -> Result<(), SkipListError>;
 
     fn diff(&self, from: usize, to: usize) -> Result<Option<C>, SkipListError>;
+
+    fn drop(&mut self, new_checkpoint: usize) -> Result<(), SkipListError>;
 }
 
 impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for DatabaseBackedSkipList {
@@ -278,6 +280,10 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
             }
         }
     }
+
+    fn drop(&mut self, _new_checkpoint: usize) -> Result<(), SkipListError> {
+        unimplemented!();
+    }
 }
 
 pub struct DatabaseBackedFlatList<C> {
@@ -377,6 +383,10 @@ impl<K: Codec, V: Codec, C: ListValue<K, V>> TypedSkipList<K, V, C> for Database
     }
 
     fn diff(&self, _from: usize, _to: usize) -> Result<Option<C>, SkipListError> {
+        unimplemented!()
+    }
+
+    fn drop(&mut self, _new_checkpoint: usize) -> Result<(), SkipListError> {
         unimplemented!()
     }
 }

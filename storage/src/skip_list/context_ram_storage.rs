@@ -7,16 +7,29 @@ use crate::skip_list::{content::ListValue, Bucket, SkipList, TypedSkipList, Skip
 use crate::persistent::{Codec};
 
 pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
-const SAVE_ON_BLOCK_LEVEL: usize = 2048;
+
+// Note: this flag is temporary, this behaviour should be triggered by the rolling node mode;
+const ENABLE_DROP_FLAG: bool = true;
+
+// Note: This should be dependant on the protocol constants
+const BLOCKS_PER_CYCLE: usize = 2048;
+
+// Note: Also dependant on protocol constants
+// Number of cycles into the past to keep 
+const PRESERVED_CYCLES: usize = 5;
+
+const PRESERVED_BLOCKS: usize = BLOCKS_PER_CYCLE * PRESERVED_CYCLES;
 
 #[derive(Clone)]
 pub struct ContextRamStorage<C: Clone> {
     context_ram_map: HashMap<usize, C>,
+    last_index: usize,
+    checkpoint: usize,
 }
 
 impl<C: Clone> SkipList for ContextRamStorage<C> {
     fn len(&self) -> usize {
-        self.context_ram_map.len()
+        self.last_index
     }
 
     #[inline]
@@ -26,27 +39,20 @@ impl<C: Clone> SkipList for ContextRamStorage<C> {
 
     #[inline]
     fn contains(&self, index: usize) -> bool {
-        self.context_ram_map.len() > index
+        self.last_index > index && self.checkpoint <= index
     }
 }
 
 // use a hybrid approach between a skiplist and a flatlist
-// store all the changes, and every 2048 level, store the whole context
-// 0, 1 ..   
-//
+// store all the changes, and every BLOCKS_PER_CYCLE level, store the whole context 
 impl<K: Codec, V: Codec, C: ListValue<K, V> + Clone> TypedSkipList<K, V, C> for ContextRamStorage<C> {
     fn get(&self, index: usize) -> Result<Option<C>, SkipListError> {
         if self.contains(index) {
-            // return Ok(None);
-            // Ok(Some(self.context_ram_map.get(&index).unwrap().clone()))
-            if index != 0 && index % SAVE_ON_BLOCK_LEVEL == 0 {
-                println!("Selected checkpoint level: {} -> serving whole context", index);
+            if index != 0 && index % BLOCKS_PER_CYCLE == 0 {
                 Ok(Some(self.context_ram_map.get(&index).unwrap().clone()))
             } else {
-                let stored = index / SAVE_ON_BLOCK_LEVEL;
-                let start_index = stored * SAVE_ON_BLOCK_LEVEL;
-
-                // println!("SELECTED LEVEL: {}     CHECKPOINT: {}", index, start_index);
+                let stored = index / BLOCKS_PER_CYCLE;
+                let start_index = stored * BLOCKS_PER_CYCLE;
 
                 let mut merged_context: C = Default::default();
                 for ctxt_index in start_index..index + 1 {
@@ -74,16 +80,15 @@ impl<K: Codec, V: Codec, C: ListValue<K, V> + Clone> TypedSkipList<K, V, C> for 
     }
 
     fn push(&mut self, value: C) -> Result<(), SkipListError> {
-        let index = self.context_ram_map.len();
+        let index = self.len();
 
         // make a checkpoint with the merged changes up to this level
-        if index != 0 && index % SAVE_ON_BLOCK_LEVEL == 0 {
-            println!("Level: {} -> saving whole context", index);
+        if index != 0 && index % BLOCKS_PER_CYCLE == 0 {
             let mut merged_context: C = Default::default();
             let mut current_context;
 
             // merge all the changes since the last checkpoint
-            for level in index - SAVE_ON_BLOCK_LEVEL..index {
+            for level in index - BLOCKS_PER_CYCLE..index {
                 if let Some(ctxt) = self.context_ram_map.get_mut(&level) {
                     current_context = ctxt.clone();
                 } else {
@@ -97,24 +102,83 @@ impl<K: Codec, V: Codec, C: ListValue<K, V> + Clone> TypedSkipList<K, V, C> for 
             // insert into context map
             self.context_ram_map.insert(index, merged_context);
         } else {
-            // println!("Level: {} -> saving context difference", index);
-
             // insert the change into the context map
             self.context_ram_map.insert(index, value.clone());
         }
 
+        // this is experimental garbage collection, for future rolling mode
+        // we drop the ctxt when the drop flag is enabled every PRESERVED_BLOCKS,
+        // special cases include the first PRESERVED_BLOCKS, when the chain has no past ctxt (checkpoint on level 0) so there is nothing to drop
+        // hence the clause: index != PRESERVED_BLOCKS
+        if ENABLE_DROP_FLAG && index % PRESERVED_BLOCKS == 0 && index != 0 && index != PRESERVED_BLOCKS {
+            println!("Cleaning ctxt data - index: {}", index);
+            self.drop(index - PRESERVED_BLOCKS)?;
+        }
+
+        // increment the last_index by one
+        self.last_index += 1;
         Ok(())
     }
 
     fn diff(&self, _from: usize, _to: usize) -> Result<Option<C>, SkipListError> {
         unimplemented!()
     }
+
+    fn drop(&mut self, new_checkpoint: usize) -> Result<(), SkipListError> {
+        println!("Checkpoint reached: old checkpoint: {} -> new checkpoint: {}", self.checkpoint, new_checkpoint);
+        self.checkpoint = new_checkpoint;
+        
+        // only keep levels above the new checkpoint
+        Ok(self.context_ram_map.retain(|&k, _| k >= new_checkpoint))
+    }
 }
 
 impl<C: Default + Clone> ContextRamStorage<C> {
     pub fn new() -> Self {
         let context_ram_map = HashMap::new();
+        let last_index = 0;
+        let checkpoint = 0;
 
-        Self{context_ram_map}
+        Self{context_ram_map, last_index, checkpoint}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_drop() {
+        // run only, if ENABLE_DROP_FLAG is set
+        if ENABLE_DROP_FLAG {
+            let mut map = ContextRamStorage::<ContextMap>::new();
+
+            // bootstrap to the level, where the first drop occures
+            // the first checkpoint should be at PRESERVED_BLOCKS
+            const BOOTSTRAP_INDEX: usize = PRESERVED_BLOCKS * 2; 
+
+            // botstrap simulation to block 8192
+            for _ in 0..BOOTSTRAP_INDEX + 1 {
+                let mut dummy: ContextMap = HashMap::new();
+                dummy.insert("key".to_string(), Bucket::Exists(vec![0,0]));
+                map.push(dummy.clone()).unwrap();
+            }
+
+            // check indexes bellow checkpoint level, everything bellow the new checkpoint should be dropped
+            let ctxt = map.get(0).unwrap();
+            assert!(ctxt.is_none());
+            let ctxt = map.get(PRESERVED_BLOCKS - 1).unwrap();
+            assert!(ctxt.is_none());
+            let ctxt = map.get(PRESERVED_BLOCKS / 2).unwrap();
+            assert!(ctxt.is_none());
+            
+            // naturally ctxt should exist on BOOTSTRAP_INDEX
+            let ctxt = map.get(BOOTSTRAP_INDEX).unwrap();
+            assert!(ctxt.is_some());
+
+            // check the checkpoint index, it should exist
+            let ctxt = map.get(PRESERVED_BLOCKS).unwrap();
+            assert!(ctxt.is_some());
+        }
     }
 }
