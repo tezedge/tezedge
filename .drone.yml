@@ -190,6 +190,17 @@ kind: pipeline
 name: carthage
 
 steps:
+# uncomment this step when a modification to the storage was done and requires a fresh bootstrap
+- name: cleanup-tezedge-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+  commands:
+    - rm -rf /tmp/tezedge_developer/light-node
+    - rm -rf /tmp/tezedge_developer/tezos-node
+
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
   user: root
@@ -224,9 +235,9 @@ steps:
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "carthagenet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
 
 - name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:timestamp
+  image: simplestakingcom/tezos-node-bootstrap:level
   commands:
-    - tezos-node-bootstrap --bootstrap "2019-12-14T02:29:45Z"
+    - tezos-node-bootstrap --bootstrap 20000
 
 - name: rpc-integration-tests
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -242,7 +253,10 @@ steps:
     FROM_BLOCK_HEADER: BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7
 #    TO_BLOCK_HEADER: BLR48VJKmrQys6az5KxkDhSksS7G98u59HX1Xq7vxkALXi5md7J
 #    TO_BLOCK_HEADER: BMD5u3toJreiLek1dE1WPfqKrFZjQ31NWtb5o8xeGo5MeD8mB6A
-    TO_BLOCK_HEADER: BMa4gyvXyDm5RUugSqBWii1VcPpKX8xHeK8RPtstBTio6ErMjY9
+#    TO_BLOCK_HEADER: BKosYnQbd4zhakKey6YdjyC96sZJ8K11yw8FJWbHAgfJ1yG4EFC
+#    TO_BLOCK_HEADER: BMD5u3toJreiLek1dE1WPfqKrFZjQ31NWtb5o8xeGo5MeD8mB6A
+#    TO_BLOCK_HEADER: BMa4gyvXyDm5RUugSqBWii1VcPpKX8xHeK8RPtstBTio6ErMjY9
+    TO_BLOCK_HEADER: BKzda7hqWkcbBTU88j5rvNX78TdecvZRkHPaDBLGCKY19kwsh3E
   commands:
     - cargo test --verbose --release -- --nocapture --ignored test_rpc_compare
 

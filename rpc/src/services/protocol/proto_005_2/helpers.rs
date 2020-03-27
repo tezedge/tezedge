@@ -374,7 +374,13 @@ impl RightsParams {
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
                 timestamp_level = level - 1;
                 // there can be requested also negative level, this is not an error but it is handled same as level 1 would be requested
-                Self::get_valid_level(level)
+                // In Ocaml Tezos node there can be negative level provided as query parameter, it is not handled as error but it will instead return endorsing rights for level 1
+                // for all reuqested negative levels use level 1
+                if level < 1 && !is_baking_rights {
+                    1
+                } else {
+                    level
+                }
             }
             // here is the main difference between endorsing and baking rights which data are loaded from context list based on level
             None => if is_baking_rights {
@@ -432,17 +438,6 @@ impl RightsParams {
             Some(est_timestamp)
         } else {
             None
-        }
-    }
-
-    /// In Ocaml Tezos node there can be negative level provided as query parameter, it is not handled as error but it will instead return endorsing rights for level 1
-    #[inline]
-    fn get_valid_level(level: i64) -> i64 {
-        // for all reuqested negative levels use level 1
-        if level < 1 {
-            1
-        } else {
-            level
         }
     }
 

@@ -20,22 +20,18 @@ async fn test_rpc_compare() {
 }
 
 async fn integration_tests_rpc(from_block: &str, to_block: &str) {
-    let mut prev_block = to_block.to_string();
-    // TODO: take const from constants? from which block?
-    const BLOCKS_PER_SNAPSHOT: i64 = 256;
-    const BLOCKS_PER_CYCLE: i64 = 2048;
-    const PERSERVED_CYCLES: i64 = 3;
+    let mut block_to_check = to_block.to_string();
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
-    while prev_block != "" {
-        let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", &prev_block)).await
+    while block_to_check != "" {
+        let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", &block_to_check)).await
             .expect("Failed to get block from ocaml");
         let predecessor = block_json["header"]["predecessor"]
             .to_string()
             .replace("\"", "");
         // check if "from_block" was reached
-        if prev_block == from_block {
+        if block_to_check == from_block {
             println!("From_block: {:?} block reached and checked, breaking loop...", from_block);
             break;
         }
@@ -44,55 +40,64 @@ async fn integration_tests_rpc(from_block: &str, to_block: &str) {
         // ---------------------- Please keep one function per test ----------------------
 
         // --------------------------- Tests for each block_id ---------------------------
-        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", &prev_block)).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "context/constants")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "helpers/baking_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &prev_block, "votes/listings")).await;
+        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", &block_to_check)).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "context/constants")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "helpers/baking_rights")).await;
+        // TODO: check listing
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "votes/listings")).await;
         // --------------------------------- End of tests --------------------------------
+
+        // we need some constants for
+        let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "context/constants")).await
+            .expect("Failed to get constants from tezedge");
+
+        let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", &block_to_check));
+        let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", &block_to_check));
+        let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", &block_to_check));
 
         let level: i64 = block_json["metadata"]["level"]["level"].as_i64().unwrap();
         let cycle: i64 = block_json["metadata"]["level"]["cycle"].as_i64().unwrap();
 
         // test last level of snapshot
-        if level >= BLOCKS_PER_SNAPSHOT && level % BLOCKS_PER_SNAPSHOT == 0 {
+        if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
             // --------------------- Tests for each snapshot of the cycle ---------------------
             println!("run snapshot tests: {}, level: {:?}", cycle, level);
 
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-1) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-10) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-1000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, level-3000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", level+1 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", level+10 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", level+1000 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", level+3000 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", std::cmp::max(0, level-1) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", std::cmp::max(0, level-10) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", std::cmp::max(0, level-1000) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", std::cmp::max(0, level-3000) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", level+1 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", level+10 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", level+1000 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", level+3000 )).await;
 
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-1) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-10) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-1000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, level-3000) )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+1 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+10 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+1000 )).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", level+3000 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", std::cmp::max(0, level-1) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", std::cmp::max(0, level-10) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", std::cmp::max(0, level-1000) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", std::cmp::max(0, level-3000) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", level+1 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", level+10 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", level+1000 )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", level+3000 )).await;
 
             // ----------------- End of tests for each snapshot of the cycle ------------------
         }
 
         // test first and last level of cycle
-        if level == 1 || (level >= BLOCKS_PER_CYCLE && ( (level-1) % BLOCKS_PER_CYCLE == 0 || level % BLOCKS_PER_CYCLE == 0)) {
+        if level == 1 || (level >= blocks_per_cycle && ( (level-1) % blocks_per_cycle == 0 || level % blocks_per_cycle == 0)) {
 
             // ----------------------- Tests for each cycle of the cycle -----------------------
             println!("run cycle tests: {}, level: {:?}", cycle, level);
 
-            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle+PERSERVED_CYCLES)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, cycle-2) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", cycle)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", cycle+preserved_cycles)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &block_to_check, "helpers/endorsing_rights", std::cmp::max(0, cycle-2) )).await;
 
-            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", cycle)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", cycle+PERSERVED_CYCLES)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &prev_block, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", cycle)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", cycle+preserved_cycles)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", &block_to_check, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
             //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
 
             // known ocaml node bugs
@@ -115,7 +120,16 @@ async fn integration_tests_rpc(from_block: &str, to_block: &str) {
             cycle_loop_counter += 1;
         }
 
-        prev_block = predecessor;
+        // check if "from_block" was reached
+        if block_to_check == from_block {
+            println!("From_block: {:?} block reached and checked, breaking loop...", from_block);
+            block_to_check = "".to_string();
+        } else {
+            let predecessor = block_json["header"]["predecessor"]
+                .to_string()
+                .replace("\"", "");
+            block_to_check = predecessor;
+        }
     }    
 }
 

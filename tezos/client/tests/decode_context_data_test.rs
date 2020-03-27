@@ -301,6 +301,33 @@ fn test_fn_decode_context_data_votes() {
             data("00"),
         ).unwrap().unwrap()
     );
+
+    assert_eq!(
+        "\"PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb\"".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, current_proposal"),
+            data("3e5e3a606afab74a59ca09e333633e2770b6492c5e594455b71e9a2f0ea92afb"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "1".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, proposals_count, ed25519, 43, a8, 4d, 01, 3b, 61b4c2cafe3fb89463329d7295a377"),
+            data("0001"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "\"inited\"".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, votes, proposals, 3e, 5e, 3a, 60, 6a, fab74a59ca09e333633e2770b6492c5e594455b71e9a2f0ea92afb, ed25519, 43, a8, 4d, 01, 3b, 61b4c2cafe3fb89463329d7295a377"),
+            data("696e69746564"),
+        ).unwrap().unwrap()
+    );
 }
 
 #[test]
@@ -464,6 +491,15 @@ fn test_fn_decode_context_data_contracts() {
         client::decode_context_data(
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, contracts, index, 55, 36, 40, 10, 0e, b8, 000043a84d013b61b4c2cafe3fb89463329d7295a377, delegated, 55, 36, 40, 10, 0e, b8, 000043a84d013b61b4c2cafe3fb89463329d7295a377"),
+            data("696e69746564"),
+        ).unwrap().unwrap()
+    );
+
+    assert_eq!(
+        "\"inited\"".to_string(),
+        client::decode_context_data(
+            protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
+            key("data, contracts, index, 55, 36, 40, 10, 0e, b8, 000043a84d013b61b4c2cafe3fb89463329d7295a377, inactive_delegate"),
             data("696e69746564"),
         ).unwrap().unwrap()
     );
