@@ -82,9 +82,9 @@ steps:
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive 
 
 - name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: simplestakingcom/tezos-node-bootstrap:timestamp
   commands:
-    - tezos-node-bootstrap --bootstrap
+    - tezos-node-bootstrap --bootstrap "2019-09-27T19:34:10Z"
 
 - name: wrk-performance-test
   image: simplestakingcom/tezos-node-bootstrap:wrk1
