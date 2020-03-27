@@ -7,6 +7,7 @@ use slog::warn;
 
 use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
+use tezos_messages::ts_to_rfc3339;
 
 use crate::{
     empty,
@@ -18,9 +19,8 @@ use crate::{
     result_option_to_json_response,
     result_to_json_response,
     ServiceResult,
-    ts_to_rfc3339
+    services
 };
-use crate::helpers::RpcResponseData;
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::server::service;
 
@@ -110,7 +110,6 @@ pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, 
     }
 }
 
-
 pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
 
@@ -144,8 +143,8 @@ pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: 
     let has_all = query.contains_key("all");
 
     // list -> context, persistent, state odizolovat
-    match service::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
-        Ok(Some(RpcResponseData::BakingRights(res))) => result_to_json_response(Ok(Some(res)), env.log()),
+    match services::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
+        Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
             result_to_json_response(res, env.log())
@@ -167,8 +166,8 @@ pub async fn endorsing_rights(_: Request<Body>, params: Params, query: Query, en
     let has_all = query.contains_key("all");
 
     // get RPC response and unpack it from RpcResponseData enum
-    match service::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
-        Ok(Some(RpcResponseData::EndorsingRights(res))) => result_to_json_response(Ok(Some(res)), env.log()),
+    match services::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
+        Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
             result_to_json_response(res, env.log())
