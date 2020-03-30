@@ -3,7 +3,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
-use std::time::{Duration, Instant};
 
 use failure::{bail, format_err};
 use itertools::Itertools;
@@ -28,10 +27,9 @@ use crate::encoding::conversions::{
 use crate::helpers::{BlockHeaderInfo, EndorserSlots, EndorsingRight, FullBlockInfo, get_block_hash_by_block_id, get_level_by_block_id, get_prng_number, init_prng, PagedResult,
                      RightsConstants, RightsContextData, RightsParams, RpcResponseData, VoteListings, ContextMap};
 use crate::helpers::BakingRights;
-use crate::merge_slices;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
-use storage::p2p_message_storage::{P2PMessageStorage, P2PMessage};
+use storage::p2p_message_storage::P2PMessageStorage;
 use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 
 // Serialize, Deserialize,
@@ -696,13 +694,6 @@ pub(crate) fn retrieve_host_p2p_messages(start: &str, end: &str, host: &str, per
     let end = end.parse().unwrap();
     let host = host.parse().unwrap();
     Ok(p2p_store.get_range_for_host(host, start, end)?)
-    // match p2p_store.get_range_for_host(host, start, end) {
-    //     Ok(data) => Ok(data),
-    //     Err(e) => {
-    //         println!("Error occured on {:?}", host);
-    //         Ok(Default::default())
-    //     }
-    // }
 }
 
 pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {

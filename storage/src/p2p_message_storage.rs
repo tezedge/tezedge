@@ -3,14 +3,12 @@ use crate::persistent::{KeyValueStoreWithSchema, PersistentStorage, KeyValueSche
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use serde::{Serialize, Deserialize};
-use crate::persistent::sequence::{Sequences, SequenceGenerator};
-use crate::{StorageError, IteratorMode, Direction};
-use bytes::BufMut;
+use crate::persistent::sequence::SequenceGenerator;
+use crate::StorageError;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use crate::p2p_message_storage::rpc_message::P2PRpcMessage;
-use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr, IpAddr, Ipv6Addr};
+use std::net::{SocketAddr, Ipv4Addr, IpAddr, Ipv6Addr};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::p2p_message_storage::rpc_message::P2PRpcMessage::P2pMessage;
 use lazy_static::lazy_static;
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 
@@ -58,7 +56,7 @@ impl P2PMessageStorage {
             message: msg.clone(),
         };
 
-        self.host_index.put(remote_addr, index);
+        self.host_index.put(remote_addr, index)?;
         self.kv.put(&index, &val)?;
         Ok(self.inc_count())
     }
@@ -73,7 +71,7 @@ impl P2PMessageStorage {
             message: msg.clone(),
         };
 
-        self.host_index.put(remote_addr, index);
+        self.host_index.put(remote_addr, index)?;
         self.kv.put(&index, &val)?;
         Ok(self.inc_count())
     }
@@ -88,7 +86,7 @@ impl P2PMessageStorage {
             message: msgs.clone(),
         };
 
-        self.host_index.put(remote_addr, index);
+        self.host_index.put(remote_addr, index)?;
         self.kv.put(&index, &val)?;
         Ok(self.inc_count())
     }
@@ -213,6 +211,7 @@ fn encode_address(addr: &IpAddr) -> u128 {
     }
 }
 
+#[allow(dead_code)]
 fn decode_address(value: u128) -> IpAddr {
     if value & 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000 == 0 {
         IpAddr::V4(Ipv4Addr::from(value as u32))
@@ -323,12 +322,10 @@ impl Encoder for P2PMessage {
 pub mod rpc_message {
     use tezos_messages::p2p::encoding::prelude::*;
     use crypto::hash::HashType;
-    use failure::Fail;
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::SocketAddr;
     use super::P2PMessage;
     use serde::Serialize;
     use tezos_messages::p2p::encoding::operation_hashes_for_blocks::OperationHashesForBlock;
-    use crate::p2p_message_storage::rpc_message::P2PRpcMessage::P2pMessage;
 
     #[derive(Debug, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
