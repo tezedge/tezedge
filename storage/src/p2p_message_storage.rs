@@ -77,7 +77,7 @@ impl P2PMessageStorage {
     pub fn get_range(&self, start: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
         // let key = P2PMessageKey { index: start };
         let mut ret = Vec::with_capacity(count as usize);
-        for index in start..start + count {
+        for index in (start..start + count).rev() {
             let key = P2PMessageKey { index };
             match self.kv.get(&key) {
                 Ok(Some(value)) => ret.push(value.into()),
