@@ -196,7 +196,7 @@ impl CachedData for Path {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetOperationsForBlocksMessage {
     #[get = "pub"]
     get_operations_for_blocks: Vec<OperationsForBlock>,

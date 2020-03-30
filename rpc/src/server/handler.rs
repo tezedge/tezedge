@@ -199,6 +199,13 @@ pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: Rpc
     result_to_json_response(service::get_votes_listings(chain_id, block_id, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
 }
 
+pub async fn p2p_messages(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let start = params.get_str("start").unwrap();
+    let end = params.get_str("end").unwrap();
+
+    result_to_json_response(service::retrieve_p2p_messages(start, end, env.persistent_storage()), env.log())
+}
+
 pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), env.genesis_hash());
     let limit = query.get_usize("limit").unwrap_or(50);

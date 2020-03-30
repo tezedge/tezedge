@@ -12,7 +12,7 @@ use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader
 use super::block_header::BlockHeader;
 use super::mempool::Mempool;
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct CurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,
@@ -58,7 +58,7 @@ impl CachedData for CurrentHeadMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,

@@ -8,7 +8,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolMessage {
     protocol: Protocol,
 
@@ -37,7 +37,7 @@ impl CachedData for ProtocolMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Component {
     name: String,
     interface: Option<String>,
@@ -70,7 +70,7 @@ impl CachedData for Component {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Protocol {
     expected_env_version: i16,
     components: Vec<Component>,
@@ -111,7 +111,7 @@ impl CachedData for Protocol {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetProtocolsMessage {
     get_protocols: Vec<ProtocolHash>,
 

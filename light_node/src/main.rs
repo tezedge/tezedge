@@ -31,6 +31,7 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
+use storage::p2p_message_storage::P2PMessageStorage;
 
 mod configuration;
 mod identity;
@@ -111,7 +112,8 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         environment::TEZOS_ENV
             .get(&env.tezos_network)
             .map(|cfg| cfg.version.clone())
-            .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network)))
+            .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network)),
+        persistent_storage.clone())
         .expect("Failed to create peer manager");
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_info)
         .expect("Failed to create chain manager");
@@ -262,10 +264,11 @@ fn main() {
         context_storage::ContextByContractIndex::descriptor(),
         SystemStorage::descriptor(),
         DatabaseBackedSkipList::descriptor(),
+        P2PMessageStorage::descriptor(),
         Lane::descriptor(),
         Sequences::descriptor(),
     ];
-    let mut rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
+    let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
         Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.bootstrap_db_path), actor_system)
     };
@@ -320,7 +323,7 @@ fn main() {
         BlockStorage::descriptor(),
         ContextStorage::descriptor()
     ];
-    let mut commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
+    let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
         Ok(commit_logs) => Arc::new(commit_logs),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
     };
@@ -333,23 +336,6 @@ fn main() {
         }
     }
 
-    loop {
-        match Arc::try_unwrap(commit_logs) {
-            Ok(commit_logs) => {
-                commit_logs.flush().expect("Failed to flush commit logs");
-                break;
-            }
-            Err(arc) => commit_logs = arc,
-        }
-    }
-
-    loop {
-        match Arc::try_unwrap(rocks_db) {
-            Ok(rocks_db) => {
-                rocks_db.flush().expect("Failed to flush database");
-                break;
-            }
-            Err(arc) => rocks_db = arc,
-        }
-    }
+    commit_logs.flush().expect("Failed to flush commit logs");
+    rocks_db.flush().expect("Failed to flush database");
 }

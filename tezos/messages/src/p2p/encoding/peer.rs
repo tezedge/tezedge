@@ -12,7 +12,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::prelude::*;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerMessage {
     Disconnect,
     Advertise(AdvertiseMessage),

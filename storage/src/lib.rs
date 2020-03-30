@@ -29,6 +29,7 @@ pub mod operations_meta_storage;
 pub mod block_storage;
 pub mod block_meta_storage;
 pub mod context_storage;
+pub mod p2p_message_storage;
 pub mod system_storage;
 pub mod skip_list;
 
@@ -88,7 +89,7 @@ pub enum StorageError {
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError {
         error: SequenceError
-    }
+    },
 }
 
 impl From<DBError> for StorageError {

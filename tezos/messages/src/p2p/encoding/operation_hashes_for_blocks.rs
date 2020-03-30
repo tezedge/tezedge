@@ -11,7 +11,7 @@ use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader
 use crate::p2p::encoding::prelude::Path;
 use super::operations_for_blocks::path_encoding;
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetOperationHashesForBlocksMessage {
     #[get = "pub"]
     get_operation_hashes_for_blocks: Vec<OperationHashesForBlock>,
@@ -50,7 +50,7 @@ impl CachedData for GetOperationHashesForBlocksMessage {
 }
 
 // ------------------ Response ------------------ //
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct OperationHashesForBlocksMessage {
     #[get = "pub"]
     operation_hashes_for_block: OperationHashesForBlock,
@@ -97,7 +97,7 @@ impl CachedData for OperationHashesForBlocksMessage {
 }
 
 // ------------------ Inner message for operation hashes message ------------------ //
-#[derive(Serialize, Deserialize, Debug, Getters, CopyGetters)]
+#[derive(Serialize, Deserialize, Debug, Getters, CopyGetters, Clone)]
 pub struct OperationHashesForBlock {
     #[get = "pub"]
     hash: BlockHash,
