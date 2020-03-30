@@ -31,7 +31,7 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use storage::p2p_message_storage::P2PMessageStorage;
+use storage::p2p_message_storage::{P2PMessageStorage, P2PMessageSecondaryIndex};
 
 mod configuration;
 mod identity;
@@ -265,6 +265,7 @@ fn main() {
         SystemStorage::descriptor(),
         DatabaseBackedSkipList::descriptor(),
         P2PMessageStorage::descriptor(),
+        P2PMessageSecondaryIndex::descriptor(),
         Lane::descriptor(),
         Sequences::descriptor(),
     ];

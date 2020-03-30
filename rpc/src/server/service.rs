@@ -690,6 +690,21 @@ pub(crate) fn retrieve_p2p_messages(start: &str, count: &str, persistent_storage
     }
 }
 
+pub(crate) fn retrieve_host_p2p_messages(start: &str, end: &str, host: &str, persistent_storage: &PersistentStorage) -> Result<Vec<P2PRpcMessage>, failure::Error> {
+    let p2p_store = P2PMessageStorage::new(persistent_storage);
+    let start = start.parse().unwrap();
+    let end = end.parse().unwrap();
+    let host = host.parse().unwrap();
+    Ok(p2p_store.get_range_for_host(host, start, end)?)
+    // match p2p_store.get_range_for_host(host, start, end) {
+    //     Ok(data) => Ok(data),
+    //     Err(e) => {
+    //         println!("Error occured on {:?}", host);
+    //         Ok(Default::default())
+    //     }
+    // }
+}
+
 pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {
     let mut listings = Vec::<VoteListings>::new();
 
