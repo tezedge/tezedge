@@ -20,8 +20,8 @@ pub struct P2PMessageStorage {
     seq: Arc<SequenceGenerator>,
 }
 
-fn default_addr() -> SocketAddr {
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0))
+fn get_ts() -> u128 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
 }
 
 impl P2PMessageStorage {
@@ -32,42 +32,42 @@ impl P2PMessageStorage {
         }
     }
 
-    pub fn store_connection_message(&mut self, msg: &ConnectionMessage) -> Result<(), StorageError> {
+    pub fn store_connection_message(&mut self, msg: &ConnectionMessage, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
         let key = P2PMessageKey { index };
         let val = P2PMessage::ConnectionMessage {
-            incoming: false,
-            ts: 0u128,
-            index: 0u64,
-            remote_addr: default_addr(),
+            incoming,
+            index,
+            remote_addr,
+            ts: get_ts(),
             message: msg.clone(),
         };
 
         Ok(self.kv.put(&key, &val)?)
     }
 
-    pub fn store_metadata_message(&mut self, msg: &MetadataMessage) -> Result<(), StorageError> {
+    pub fn store_metadata_message(&mut self, msg: &MetadataMessage, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
         let key = P2PMessageKey { index };
         let val = P2PMessage::Metadata {
-            incoming: false,
-            ts: 0u128,
-            index: 0u64,
-            remote_addr: default_addr(),
+            incoming,
+            index,
+            remote_addr,
+            ts: get_ts(),
             message: msg.clone(),
         };
 
         Ok(self.kv.put(&key, &val)?)
     }
 
-    pub fn store_peer_message(&mut self, msgs: &Vec<PeerMessage>) -> Result<(), StorageError> {
+    pub fn store_peer_message(&mut self, msgs: &Vec<PeerMessage>, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
         let key = P2PMessageKey { index };
         let val = P2PMessage::P2PMessage {
-            incoming: false,
-            ts: 0u128,
-            index: 0u64,
-            remote_addr: default_addr(),
+            incoming,
+            index,
+            remote_addr,
+            ts: get_ts(),
             message: msgs.clone(),
         };
 
