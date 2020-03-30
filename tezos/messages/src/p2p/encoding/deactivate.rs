@@ -9,7 +9,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crypto::hash::{ChainId, HashType};
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct DeactivateMessage {
     #[get = "pub"]
     deactivate: ChainId,

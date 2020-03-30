@@ -28,6 +28,7 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", handler::baking_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", handler::endorsing_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", handler::votes_listings);
+    routes.handle("/p2p/:start/:end", handler::p2p_messages);
     routes.handle("/dev/chains/main/blocks", handler::dev_blocks);
     routes.handle("/dev/chains/main/blocks/:block_id/actions", handler::dev_block_actions);
     routes.handle("/dev/chains/main/actions/contracts/:contract_id", handler::dev_contract_actions);

@@ -12,7 +12,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct BlockHeaderMessage {
     #[get = "pub"]
     block_header: BlockHeader,
@@ -48,7 +48,7 @@ impl From<BlockHeader> for BlockHeaderMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetBlockHeadersMessage {
     #[get = "pub"]
     get_block_headers: Vec<BlockHash>,

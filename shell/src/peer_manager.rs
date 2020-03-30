@@ -27,6 +27,8 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::*;
+use storage::p2p_message_storage::P2PMessageStorage;
+use storage::persistent::PersistentStorage;
 
 /// Timeout for outgoing connections
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -119,6 +121,8 @@ pub struct PeerManager {
     check_peer_count_last: Option<Instant>,
     /// Indicates that system is shutting down
     shutting_down: bool,
+    /// Storage
+    p2p_msg_storage: P2PMessageStorage,
 }
 
 /// Reference to [peer manager](PeerManager) actor.
@@ -135,6 +139,7 @@ impl PeerManager {
                  listener_port: u16,
                  identity: Identity,
                  protocol_version: String,
+                 ps: PersistentStorage,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(PeerManager::new, (
@@ -146,7 +151,8 @@ impl PeerManager {
                 threshold,
                 listener_port,
                 identity,
-                protocol_version)),
+                protocol_version,
+                ps)),
             PeerManager::name())
     }
 
@@ -156,8 +162,8 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
-           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self {
+    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, ps):
+           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, PersistentStorage)) -> Self {
         PeerManager {
             network_channel,
             shell_channel,
@@ -175,6 +181,7 @@ impl PeerManager {
             discovery_last: None,
             check_peer_count_last: None,
             shutting_down: false,
+            p2p_msg_storage: P2PMessageStorage::new(&ps),
         }
     }
 
@@ -215,6 +222,7 @@ impl PeerManager {
             &self.protocol_version,
             self.tokio_executor.clone(),
             socket_address,
+            self.p2p_msg_storage.clone(),
         ).unwrap();
 
         self.peers.insert(peer.uri().clone(), peer.clone());
@@ -241,7 +249,7 @@ impl PeerManager {
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
                 unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
-            },
+            }
             _ => ()
         }
 
@@ -346,7 +354,7 @@ impl Receive<CheckPeerCount> for PeerManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckPeerCount, _sender: Sender) {
         // received message instructs this actor to check whether number of connected peers is within desired bounds
         if self.shutting_down {
-            return
+            return;
         }
 
         if self.peers.len() < self.threshold.low {

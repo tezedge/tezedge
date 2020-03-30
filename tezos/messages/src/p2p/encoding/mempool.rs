@@ -9,7 +9,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug, Default, Getters)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, Getters)]
 pub struct Mempool {
     #[get = "pub"]
     known_valid: Vec<OperationHash>,

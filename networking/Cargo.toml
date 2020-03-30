@@ -17,4 +17,5 @@ tokio = { version = "0.2", features = ["io-util", "time", "tcp", "rt-core"] }
 # local dependencies
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
+storage = { path = "../storage" }
 crypto = { path = "../crypto" }

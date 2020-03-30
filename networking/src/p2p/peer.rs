@@ -24,6 +24,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
+use storage::p2p_message_storage::P2PMessageStorage;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -152,7 +153,7 @@ pub struct Local {
     /// proof of work
     proof_of_work_stamp: String,
     /// version of network protocol
-    version: String
+    version: String,
 }
 
 pub type PeerRef = ActorRef<PeerMsg>;
@@ -168,10 +169,11 @@ pub struct Peer {
     net: Network,
     /// Tokio task executor
     tokio_executor: Handle,
+    /// Msg storage
+    msg_store: P2PMessageStorage,
 }
 
 impl Peer {
-
     /// Create instance of a peer actor.
     pub fn actor(sys: &impl ActorRefFactory,
                  network_channel: NetworkChannelRef,
@@ -181,21 +183,22 @@ impl Peer {
                  proof_of_work_stamp: &str,
                  version: &str,
                  tokio_executor: Handle,
-                 socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
+                 socket_address: &SocketAddr,
+                 p2p_msg_store: P2PMessageStorage) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port,
             proof_of_work_stamp: proof_of_work_stamp.into(),
             public_key: public_key.into(),
             secret_key: secret_key.into(),
-            version: version.into()
+            version: version.into(),
         };
-        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address));
+        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address, p2p_msg_store));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }
 
-    fn new((event_channel, info, tokio_executor, socket_address): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr)) -> Self {
+    fn new((event_channel, info, tokio_executor, socket_address, msg_store): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr, P2PMessageStorage)) -> Self {
         Peer {
             network_channel: event_channel,
             local: info,
@@ -205,6 +208,7 @@ impl Peer {
                 socket_address,
             },
             tokio_executor,
+            msg_store,
         }
     }
 }
@@ -232,6 +236,7 @@ impl Receive<Bootstrap> for Peer {
         let net = self.net.clone();
         let network_channel = self.network_channel.clone();
 
+        let store = self.msg_store.clone();
         self.tokio_executor.spawn(async move {
             async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
                 net.rx_run.store(true, Ordering::Release);
@@ -240,7 +245,7 @@ impl Receive<Bootstrap> for Peer {
 
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
-            match bootstrap(msg, info, system.log()).await {
+            match bootstrap(msg, info, system.log(), store.clone()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
@@ -249,15 +254,15 @@ impl Receive<Bootstrap> for Peer {
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Success {
-                                peer: myself.clone(),
-                                peer_id: peer_id.clone(),
+                            peer: myself.clone(),
+                            peer_id: peer_id.clone(),
                         }.into(),
-                        topic: NetworkChannelTopic::NetworkEvents.into()
+                        topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
 
                     // begin to process incoming messages in a loop
                     let log = system.log().new(slog::o!("peer" => peer_id));
-                    begin_process_incoming(rx, net.rx_run, myself.clone(), network_channel, log).await;
+                    begin_process_incoming(rx, net.rx_run, myself.clone(), network_channel, log, store.clone()).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
@@ -269,7 +274,7 @@ impl Receive<Bootstrap> for Peer {
                         msg: PeerBootstrapped::Failure {
                             address: peer_address,
                         }.into(),
-                        topic: NetworkChannelTopic::NetworkEvents.into()
+                        topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
 
                     system.stop(myself);
@@ -286,9 +291,11 @@ impl Receive<SendMessage> for Peer {
         let system = ctx.system.clone();
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
+        let mut store = self.msg_store.clone();
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
+                store.store_peer_message(msg.message.messages());
                 match timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await {
                     Ok(write_result) => {
                         if let Err(e) = write_result {
@@ -309,7 +316,7 @@ impl Receive<SendMessage> for Peer {
 /// Output values of the successful bootstrap process
 struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey);
 
-async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<BootstrapOutput, PeerError> {
+async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P2PMessageStorage) -> Result<BootstrapOutput, PeerError> {
     let (mut msg_rx, mut msg_tx) = {
         let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");
         let msg_reader: MessageStream = stream.into();
@@ -323,6 +330,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
         vec![Version::new(info.version.clone(), 0, 0)]);
+    storage.store_connection_message(&connection_message);
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
@@ -336,6 +344,10 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
         Ok(msg) => msg,
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
+    if let Ok(connection_message) = ConnectionMessage::from_bytes(received_connection_msg.content().to_vec()) {
+        storage.store_connection_message(&connection_message);
+    }
+
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_msg, msg.incoming);
 
@@ -357,10 +369,12 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger) -> Result<Boot
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
+    storage.store_metadata_message(&metadata);
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
+    storage.store_metadata_message(&metadata_received);
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
@@ -391,13 +405,14 @@ fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: boo
 }
 
 /// Start to process incoming data
-async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger) {
+async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger, mut storage: P2PMessageStorage) {
     info!(log, "Starting to accept messages");
 
     while rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
                 Ok(msg) => {
+                    storage.store_peer_message(msg.messages());
                     let should_broadcast_message = rx_run.load(Ordering::Acquire);
                     if should_broadcast_message {
                         trace!(log, "Message parsed successfully");

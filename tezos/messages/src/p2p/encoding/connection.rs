@@ -14,14 +14,14 @@ use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::version::Version;
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct ConnectionMessage {
-    port: u16,
-    versions: Vec<Version>,
+    pub port: u16,
+    pub versions: Vec<Version>,
     #[get = "pub"]
-    public_key: Vec<u8>,
-    proof_of_work_stamp: Vec<u8>,
-    message_nonce: Vec<u8>,
+    pub public_key: Vec<u8>,
+    pub proof_of_work_stamp: Vec<u8>,
+    pub message_nonce: Vec<u8>,
     #[serde(skip_serializing)]
     body: BinaryDataCache
 }

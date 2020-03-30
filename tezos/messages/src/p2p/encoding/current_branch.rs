@@ -101,7 +101,7 @@ impl CachedData for CurrentBranch {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetCurrentBranchMessage {
     pub chain_id: ChainId,
 

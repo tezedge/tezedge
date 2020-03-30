@@ -8,7 +8,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
-#[derive(Serialize, Deserialize, Debug, CopyGetters)]
+#[derive(Serialize, Deserialize, Debug, CopyGetters, Clone)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]
     disable_mempool: bool,

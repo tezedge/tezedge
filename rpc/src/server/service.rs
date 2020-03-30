@@ -23,7 +23,7 @@ use crate::encoding::context::ContextConstants;
 use crate::encoding::conversions::{
     chain_id_to_string,
     contract_id_to_address,
-    hash_to_contract_id
+    hash_to_contract_id,
 };
 use crate::helpers::{BlockHeaderInfo, EndorserSlots, EndorsingRight, FullBlockInfo, get_block_hash_by_block_id, get_level_by_block_id, get_prng_number, init_prng, PagedResult,
                      RightsConstants, RightsContextData, RightsParams, RpcResponseData, VoteListings, ContextMap};
@@ -31,15 +31,17 @@ use crate::helpers::BakingRights;
 use crate::merge_slices;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::ts_to_rfc3339;
+use storage::p2p_message_storage::{P2PMessageStorage, P2PMessage};
+use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Cycle
 {
     #[serde(skip_serializing_if = "Option::is_none")]
-    last_roll: Option<HashMap<String,String>>,
+    last_roll: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    nonces: Option<HashMap<String,String>>,
+    nonces: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     random_seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -98,14 +100,14 @@ pub(crate) fn get_contract_actions(contract_id: &str, from_id: Option<u64>, limi
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, max_priority: Option<&str>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, max_priority: Option<&str>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<RpcResponseData>, failure::Error> {
 
     // get block level first
     let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
         Some(val) => val.try_into()?,
         None => bail!("Block level not found")
     };
-    
+
     let constants: RightsConstants = get_and_parse_rights_constants(&chain_id, &block_id, block_level, list.clone(), persistent_storage, state)?;
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
@@ -123,7 +125,7 @@ pub(crate) fn check_and_get_baking_rights(chain_id: &str, block_id: &str, level:
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
 #[inline]
-pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
+pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option<RpcResponseData>, failure::Error> {
     let mut baking_rights = Vec::<BakingRights>::new();
 
     let blocks_per_cycle = *constants.blocks_per_cycle();
@@ -174,7 +176,7 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
 ///
 /// Baking priorities are are assigned to Roles, the default behavior is to include only the top priority for the delegate
 #[inline]
-fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i64, estimated_head_timestamp: i64, baking_rights: &mut Vec<BakingRights>) -> Result<(), failure::Error>{
+fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i64, estimated_head_timestamp: i64, baking_rights: &mut Vec<BakingRights>) -> Result<(), failure::Error> {
     const BAKING_USE_STRING: &[u8] = b"level baking:";
 
     // hashset is defined to keep track of the delegates with priorities allready assigned
@@ -237,7 +239,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
 /// * `state` - Current RPC collected state (head).
 ///
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
-pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option< RpcResponseData >, failure::Error> {
+pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, level: Option<&str>, delegate: Option<&str>, cycle: Option<&str>, has_all: bool, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<RpcResponseData>, failure::Error> {
 
     // get block level from block_id and from now get all nessesary data by block level
     let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
@@ -261,7 +263,7 @@ pub(crate) fn check_and_get_endorsing_rights(chain_id: &str, block_id: &str, lev
 /// * `context_data` - Data from context list used in baking and endorsing rights generation filled in [RightsContextData](RightsContextData::prepare_context_data_for_rights).
 /// * `parameters` - Parameters created by [RightsParams](RightsParams::parse_rights_parameters).
 /// * `constants` - Context constants used in baking and endorsing rights [`get_and_parse_rights_constants`].
-fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option< RpcResponseData >, failure::Error> {
+fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants) -> Result<Option<RpcResponseData>, failure::Error> {
 
     // define helper and output variables
     let mut endorsing_rights = Vec::<EndorsingRight>::new();
@@ -274,7 +276,7 @@ fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsPar
         for level in first_cycle_level..last_cycle_level {
             // get estimated time first because is equal for all endorsers in given level
             // the base level for estimated time computation is level of previous block
-            let estimated_time: Option<String> = parameters.get_estimated_time(constants, Some(level-1));
+            let estimated_time: Option<String> = parameters.get_estimated_time(constants, Some(level - 1));
 
             complete_endorsing_rights_for_level(context_data, parameters, constants, level, level, estimated_time, &mut endorsing_rights)?;
             // endorsing_rights = merge_slices!(&endorsing_rights, &level_endorsing_rights);
@@ -344,7 +346,7 @@ fn get_endorsers_slots(constants: &RightsConstants, context_data: &RightsContext
     // prepare helper variable
     let mut endorsers_slots: HashMap<String, EndorserSlots> = HashMap::new();
 
-    for endorser_slot in (0 .. *constants.endorsers_per_block() as u8).rev() {
+    for endorser_slot in (0..*constants.endorsers_per_block() as u8).rev() {
         // generate PRNG per endorsement slot and take delegates by roll number from context_rolls
         // if roll number is not found then reroll with new state till roll nuber is found in context_rolls
         let mut state = init_prng(&context_data, &constants, ENDORSEMENT_USE_STRING, level.try_into()?, endorser_slot.try_into()?)?;
@@ -355,7 +357,7 @@ fn get_endorsers_slots(constants: &RightsConstants, context_data: &RightsContext
                 // collect all slots for each delegate
                 // convert contract id to public key hash address hex byte string (needed for later ordering)
                 let public_key_hash = hex::encode(contract_id_to_address(&delegate)?);
-                let endorsers_slots_entry = endorsers_slots.entry(public_key_hash).or_insert( EndorserSlots::new(delegate.clone(),Vec::new()) );
+                let endorsers_slots_entry = endorsers_slots.entry(public_key_hash).or_insert(EndorserSlots::new(delegate.clone(), Vec::new()));
                 endorsers_slots_entry.push_to_slot(endorser_slot);
                 break;
             } else {
@@ -460,7 +462,6 @@ pub(crate) fn get_context_constants(_chain_id: &str, block_id: &str, opt_level: 
 
 
 pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
-
     let ctxt_level: usize = level.parse().unwrap();
 
     let context_data = {
@@ -475,17 +476,20 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<O
     // get cylce list from context storage
     let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
         .filter(|(k, _)| k.contains("cycle"))
-        .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+        .filter(|(_, v)| match v {
+            Bucket::Exists(_) => true,
+            _ => false
+        })
         .collect();
 
     // transform cycle list
-    let mut cycles: HashMap<String,Cycle> = HashMap::new();
+    let mut cycles: HashMap<String, Cycle> = HashMap::new();
 
     // process every key value pair
     for (key, bucket) in cycle_lists.iter() {
 
         // create vector from path
-        let path:Vec<&str> = key.split('/').collect();
+        let path: Vec<&str> = key.split('/').collect();
 
         // convert value from bytes to hex
         let value = match bucket {
@@ -509,37 +513,37 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<O
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     cycle.random_seed = Some(value);
                 });
-            },
+            }
             ["data", "cycle", cycle, "roll_snapshot"] => {
                 // println!("cycle: {:?} roll_snapshot: {:?}", cycle, value);
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     cycle.roll_snapshot = Some(value);
                 });
-            },
+            }
             ["data", "cycle", cycle, "nonces", nonces] => {
                 // println!("cycle: {:?} nonces: {:?}/{:?}", cycle, nonces, value)
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     match cycle.nonces.as_mut() {
-                        Some(entry) => entry.insert(nonces.to_string(),value),
+                        Some(entry) => entry.insert(nonces.to_string(), value),
                         None => {
                             cycle.nonces = Some(HashMap::new());
-                            cycle.nonces.as_mut().unwrap().insert(nonces.to_string(),value)
+                            cycle.nonces.as_mut().unwrap().insert(nonces.to_string(), value)
                         }
                     };
                 });
-            },
+            }
             ["data", "cycle", cycle, "last_roll", last_roll] => {
                 // println!("cycle: {:?} last_roll: {:?}/{:?}", cycle, last_roll, value)
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     match cycle.last_roll.as_mut() {
-                        Some(entry) => entry.insert(last_roll.to_string(),value),
+                        Some(entry) => entry.insert(last_roll.to_string(), value),
                         None => {
                             cycle.last_roll = Some(HashMap::new());
-                            cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(),value)
+                            cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(), value)
                         }
                     };
                 });
-            },
+            }
             _ => ()
         };
     }
@@ -548,7 +552,6 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<O
 }
 
 pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: ContextList) -> Result<Option<CycleJson>, failure::Error> {
-
     let ctxt_level: usize = level.parse().unwrap();
 
     let context_data = {
@@ -560,11 +563,14 @@ pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: 
         }
     };
 
-    let patch_cycle = format!("cycle/{}", &cycle_id );
+    let patch_cycle = format!("cycle/{}", &cycle_id);
     // get cylce list from context storage
     let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
         .filter(|(k, _)| k.contains(&patch_cycle))
-        .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+        .filter(|(_, v)| match v {
+            Bucket::Exists(_) => true,
+            _ => false
+        })
         .collect();
 
 
@@ -577,7 +583,7 @@ pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: 
     for (key, bucket) in cycle_lists.iter() {
 
         // create vector from path
-        let path:Vec<&str> = key.split('/').collect();
+        let path: Vec<&str> = key.split('/').collect();
 
         // convert value from bytes to hex
         let value = match bucket {
@@ -589,10 +595,10 @@ pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: 
         match path.as_slice() {
             ["data", "cycle", _, "random_seed"] => {
                 cycle.random_seed = Some(value);
-            },
+            }
             ["data", "cycle", _, "roll_snapshot"] => {
                 cycle.roll_snapshot = Some(value.parse().unwrap());
-            },
+            }
             _ => ()
         };
     }
@@ -600,8 +606,7 @@ pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: 
     Ok(Some(cycle))
 }
 
-pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String,HashMap<String,HashMap<String,String>>>>, failure::Error> {
-
+pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
     let ctxt_level: usize = level.parse().unwrap();
     // println!("level: {:?}", ctxt_level);
 
@@ -617,17 +622,20 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
     // get rolls list from context storage
     let rolls_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
         .filter(|(k, _)| k.contains("rolls/owner/current"))
-        .filter(|(_, v)| match v { Bucket::Exists(_) => true, _ => false })
+        .filter(|(_, v)| match v {
+            Bucket::Exists(_) => true,
+            _ => false
+        })
         .collect();
 
     // create rolls list
-    let mut rolls: HashMap<String,HashMap<String,HashMap<String,String>>> = HashMap::new();
+    let mut rolls: HashMap<String, HashMap<String, HashMap<String, String>>> = HashMap::new();
 
     // process every key value pair
     for (key, bucket) in rolls_lists.iter() {
 
         // create vector from path
-        let path:Vec<&str> = key.split('/').collect();
+        let path: Vec<&str> = key.split('/').collect();
 
         // convert value from bytes to hex
         let value = match bucket {
@@ -637,18 +645,18 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
 
         // process roll key value pairs
         match path.as_slice() {
-            ["data", "rolls","owner","current", path1, path2, path3 ] => {
+            ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
                 // println!("rolls: {:?}/{:?}/{:?} value: {:?}", path1, path2, path3, value );
 
                 rolls.entry(path1.to_string())
                     .and_modify(|roll| {
                         roll.entry(path2.to_string())
                             .and_modify(|index2| {
-                                index2.insert(path3.to_string(),value.to_string());
+                                index2.insert(path3.to_string(), value.to_string());
                             })
                             .or_insert({
                                 let mut index3 = HashMap::new();
-                                index3.insert(path3.to_string(),value.to_string());
+                                index3.insert(path3.to_string(), value.to_string());
                                 index3
                             });
                     })
@@ -657,21 +665,29 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
                         index2.entry(path2.to_string())
                             .or_insert({
                                 let mut index3 = HashMap::new();
-                                index3.insert(path3.to_string(),value.to_string());
+                                index3.insert(path3.to_string(), value.to_string());
                                 index3
                             });
                         index2
                     });
-
-            },
+            }
             _ => ()
         }
-
     }
 
 
     Ok(Some(rolls))
+}
 
+pub(crate) fn retrieve_p2p_messages(start: &str, count: &str, persistent_storage: &PersistentStorage) -> Result<Vec<P2PRpcMessage>, failure::Error> {
+    let p2p_store = P2PMessageStorage::new(persistent_storage);
+    let start = start.parse().unwrap();
+    let count = count.parse().unwrap();
+    if let Ok(data) = p2p_store.get_range(start, count) {
+        Ok(data)
+    } else {
+        Ok(Default::default())
+    }
 }
 
 pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {
@@ -702,7 +718,7 @@ pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_sto
             listings.push(VoteListings::new(address_decoded, num_from_slice!(data, 0, i32)));
         }
     }
-    
+
     // sort the vector in reverse ordering (as in ocaml node)
     listings.sort();
     listings.reverse();
