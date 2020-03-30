@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 use crate::persistent::{KeyValueStoreWithSchema, PersistentStorage, KeyValueSchema, Decoder, SchemaError, Encoder};
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
@@ -11,8 +11,13 @@ use crate::p2p_message_storage::rpc_message::P2PRpcMessage;
 use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::p2p_message_storage::rpc_message::P2PRpcMessage::P2pMessage;
+use lazy_static::lazy_static;
 
 pub type P2PMessageStorageKV = dyn KeyValueStoreWithSchema<P2PMessageStorage> + Sync + Send;
+
+lazy_static! {
+    static ref COUNT: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+}
 
 #[derive(Clone)]
 pub struct P2PMessageStorage {
@@ -32,6 +37,14 @@ impl P2PMessageStorage {
         }
     }
 
+    fn count(&self) -> u64 {
+        COUNT.load(Ordering::SeqCst)
+    }
+
+    fn inc_count(&mut self) {
+        COUNT.fetch_add(1, Ordering::SeqCst);
+    }
+
     pub fn store_connection_message(&mut self, msg: &ConnectionMessage, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
         let key = P2PMessageKey { index };
@@ -43,7 +56,8 @@ impl P2PMessageStorage {
             message: msg.clone(),
         };
 
-        Ok(self.kv.put(&key, &val)?)
+        self.kv.put(&key, &val)?;
+        Ok(self.inc_count())
     }
 
     pub fn store_metadata_message(&mut self, msg: &MetadataMessage, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
@@ -57,7 +71,8 @@ impl P2PMessageStorage {
             message: msg.clone(),
         };
 
-        Ok(self.kv.put(&key, &val)?)
+        self.kv.put(&key, &val)?;
+        Ok(self.inc_count())
     }
 
     pub fn store_peer_message(&mut self, msgs: &Vec<PeerMessage>, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
@@ -71,12 +86,16 @@ impl P2PMessageStorage {
             message: msgs.clone(),
         };
 
-        Ok(self.kv.put(&key, &val)?)
+        self.kv.put(&key, &val)?;
+        Ok(self.inc_count())
     }
 
-    pub fn get_range(&self, start: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
+    pub fn get_range(&self, offset: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
         // let key = P2PMessageKey { index: start };
         let mut ret = Vec::with_capacity(count as usize);
+        let end: u64 = self.count();
+        println!("> Message size: {}", end);
+        let start = end.saturating_sub(offset).saturating_sub(count);
         for index in (start..start + count).rev() {
             let key = P2PMessageKey { index };
             match self.kv.get(&key) {
