@@ -144,17 +144,21 @@ impl P2PMessageSecondaryIndex {
         Ok(self.kv.put(&key, &index)?)
     }
 
-    pub fn get(&self, key: &P2PMessageSecondaryKey) -> Result<Option<u64>, StorageError> {
-        Ok(self.kv.get(key)?)
+    pub fn get(&self, sock_addr: SocketAddr, index: u64) -> Result<Option<u64>, StorageError> {
+        let key = P2PMessageSecondaryKey::new(sock_addr, index);
+        Ok(self.kv.get(&key)?)
     }
 
     pub fn get_for_host(&self, sock_addr: SocketAddr, offset: u64, limit: u64) -> Result<Vec<u64>, StorageError> {
+        let key = P2PMessageSecondaryKey::new(sock_addr, offset as u64);
         let (offset, limit) = (offset as usize, limit as usize);
-        let key = P2PMessageSecondaryKey::prefix(sock_addr);
 
         let mut ret = Vec::with_capacity(limit);
-        for (_key, value) in self.kv.prefix_iterator(&key)?.skip(offset) {
-            ret.push(value?);
+        let idx = self.kv.prefix_iterator(&key)?
+            .map(|(_, val)| val)
+            .collect::<Result<Vec<_>, _>>()?;
+        for index in idx.iter().rev().skip(offset).take(limit) {
+            ret.push(index.clone());
             if ret.len() == limit { break; }
         }
 
