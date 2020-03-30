@@ -200,10 +200,18 @@ pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: Rpc
 }
 
 pub async fn p2p_messages(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let start = params.get_str("start").unwrap();
-    let end = params.get_str("end").unwrap();
+    let start = params.get_str("offset").unwrap();
+    let end = params.get_str("count").unwrap();
 
     result_to_json_response(service::retrieve_p2p_messages(start, end, env.persistent_storage()), env.log())
+}
+
+pub async fn  p2p_host_messages(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let start = params.get_str("offset").unwrap();
+    let end = params.get_str("count").unwrap();
+    let host = params.get_str("host").unwrap();
+
+    result_to_json_response(service::retrieve_host_p2p_messages(start, end, host, env.persistent_storage()), env.log())
 }
 
 pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {

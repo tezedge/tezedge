@@ -295,11 +295,11 @@ impl Receive<SendMessage> for Peer {
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
         let mut store = self.msg_store.clone();
-        let mut addr = self.remote_addr;
+        let addr = self.remote_addr;
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
-                store.store_peer_message(msg.message.messages(), true, addr);
+                let _ = store.store_peer_message(msg.message.messages(), true, addr);
                 match timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await {
                     Ok(write_result) => {
                         if let Err(e) = write_result {
@@ -335,7 +335,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
         vec![Version::new(info.version.clone(), 0, 0)]);
-    storage.store_connection_message(&connection_message, false, addr);
+    let _ = storage.store_connection_message(&connection_message, false, addr);
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
@@ -350,7 +350,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
     if let Ok(connection_message) = ConnectionMessage::from_bytes(received_connection_msg.content().to_vec()) {
-        storage.store_connection_message(&connection_message, true, addr);
+        let _ = storage.store_connection_message(&connection_message, true, addr);
     }
 
     // generate local and remote nonce
@@ -374,12 +374,12 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
-    storage.store_metadata_message(&metadata, false, addr);
+    let _ = storage.store_metadata_message(&metadata, false, addr);
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
-    storage.store_metadata_message(&metadata_received, true, addr);
+    let _ = storage.store_metadata_message(&metadata_received, true, addr);
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
@@ -417,7 +417,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
                 Ok(msg) => {
-                    storage.store_peer_message(msg.messages(), false, peer_addr);
+                    let _ = storage.store_peer_message(msg.messages(), false, peer_addr);
                     let should_broadcast_message = rx_run.load(Ordering::Acquire);
                     if should_broadcast_message {
                         trace!(log, "Message parsed successfully");

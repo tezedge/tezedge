@@ -3,15 +3,14 @@ use crate::persistent::{KeyValueStoreWithSchema, PersistentStorage, KeyValueSche
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use serde::{Serialize, Deserialize};
-use crate::persistent::sequence::{Sequences, SequenceGenerator};
-use crate::{StorageError, IteratorMode, Direction};
-use bytes::BufMut;
+use crate::persistent::sequence::SequenceGenerator;
+use crate::StorageError;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use crate::p2p_message_storage::rpc_message::P2PRpcMessage;
-use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+use std::net::{SocketAddr, Ipv4Addr, IpAddr, Ipv6Addr};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::p2p_message_storage::rpc_message::P2PRpcMessage::P2pMessage;
 use lazy_static::lazy_static;
+use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 
 pub type P2PMessageStorageKV = dyn KeyValueStoreWithSchema<P2PMessageStorage> + Sync + Send;
 
@@ -22,6 +21,7 @@ lazy_static! {
 #[derive(Clone)]
 pub struct P2PMessageStorage {
     kv: Arc<P2PMessageStorageKV>,
+    host_index: P2PMessageSecondaryIndex,
     seq: Arc<SequenceGenerator>,
 }
 
@@ -33,6 +33,7 @@ impl P2PMessageStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
             kv: persistent_storage.kv(),
+            host_index: P2PMessageSecondaryIndex::new(persistent_storage),
             seq: persistent_storage.seq().generator("p2p_exp_msg_index_gen"),
         }
     }
@@ -47,7 +48,6 @@ impl P2PMessageStorage {
 
     pub fn store_connection_message(&mut self, msg: &ConnectionMessage, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
-        let key = P2PMessageKey { index };
         let val = P2PMessage::ConnectionMessage {
             incoming,
             remote_addr,
@@ -56,13 +56,13 @@ impl P2PMessageStorage {
             message: msg.clone(),
         };
 
-        self.kv.put(&key, &val)?;
+        self.host_index.put(remote_addr, index)?;
+        self.kv.put(&index, &val)?;
         Ok(self.inc_count())
     }
 
     pub fn store_metadata_message(&mut self, msg: &MetadataMessage, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
-        let key = P2PMessageKey { index };
         let val = P2PMessage::Metadata {
             incoming,
             remote_addr,
@@ -71,13 +71,13 @@ impl P2PMessageStorage {
             message: msg.clone(),
         };
 
-        self.kv.put(&key, &val)?;
+        self.host_index.put(remote_addr, index)?;
+        self.kv.put(&index, &val)?;
         Ok(self.inc_count())
     }
 
     pub fn store_peer_message(&mut self, msgs: &Vec<PeerMessage>, incoming: bool, remote_addr: SocketAddr) -> Result<(), StorageError> {
         let index = self.seq.next()?;
-        let key = P2PMessageKey { index };
         let val = P2PMessage::P2PMessage {
             incoming,
             remote_addr,
@@ -86,19 +86,29 @@ impl P2PMessageStorage {
             message: msgs.clone(),
         };
 
-        self.kv.put(&key, &val)?;
+        self.host_index.put(remote_addr, index)?;
+        self.kv.put(&index, &val)?;
         Ok(self.inc_count())
     }
 
     pub fn get_range(&self, offset: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
-        // let key = P2PMessageKey { index: start };
         let mut ret = Vec::with_capacity(count as usize);
         let end: u64 = self.count();
-        println!("> Message size: {}", end);
         let start = end.saturating_sub(offset).saturating_sub(count);
         for index in (start..start + count).rev() {
-            let key = P2PMessageKey { index };
-            match self.kv.get(&key) {
+            match self.kv.get(&index) {
+                Ok(Some(value)) => ret.push(value.into()),
+                _ => continue,
+            }
+        }
+        Ok(ret)
+    }
+
+    pub fn get_range_for_host(&self, host: SocketAddr, offset: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
+        let idx = self.host_index.get_for_host(host, offset, count)?;
+        let mut ret = Vec::with_capacity(idx.len());
+        for index in idx.iter().rev() {
+            match self.kv.get(index) {
                 Ok(Some(value)) => ret.push(value.into()),
                 _ => continue,
             }
@@ -108,37 +118,160 @@ impl P2PMessageStorage {
 }
 
 impl KeyValueSchema for P2PMessageStorage {
-    type Key = P2PMessageKey;
+    type Key = u64;
     type Value = P2PMessage;
 
     fn name() -> &'static str { "p2p_message_storage" }
 }
 
+pub type P2PMessageSecondaryIndexKV = dyn KeyValueStoreWithSchema<P2PMessageSecondaryIndex> + Sync + Send;
+
+#[derive(Clone)]
+pub struct P2PMessageSecondaryIndex {
+    kv: Arc<P2PMessageSecondaryIndexKV>,
+}
+
+impl P2PMessageSecondaryIndex {
+    pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        Self { kv: persistent_storage.kv() }
+    }
+
+    #[inline]
+    pub fn put(&mut self, sock_addr: SocketAddr, index: u64) -> Result<(), StorageError> {
+        let key = P2PMessageSecondaryKey::new(sock_addr, index);
+        Ok(self.kv.put(&key, &index)?)
+    }
+
+    pub fn get(&self, sock_addr: SocketAddr, index: u64) -> Result<Option<u64>, StorageError> {
+        let key = P2PMessageSecondaryKey::new(sock_addr, index);
+        Ok(self.kv.get(&key)?)
+    }
+
+    pub fn get_for_host(&self, sock_addr: SocketAddr, offset: u64, limit: u64) -> Result<Vec<u64>, StorageError> {
+        let key = P2PMessageSecondaryKey::new(sock_addr, offset as u64);
+        let (offset, limit) = (offset as usize, limit as usize);
+
+        let mut ret = Vec::with_capacity(limit);
+        let idx = self.kv.prefix_iterator(&key)?
+            .map(|(_, val)| val)
+            .collect::<Result<Vec<_>, _>>()?;
+        for index in idx.iter().rev().skip(offset).take(limit) {
+            ret.push(index.clone());
+            if ret.len() == limit { break; }
+        }
+
+        ret.sort();
+        Ok(ret)
+    }
+}
+
+impl KeyValueSchema for P2PMessageSecondaryIndex {
+    type Key = P2PMessageSecondaryKey;
+    type Value = u64;
+
+    fn descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = Options::default();
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(16 + 2));
+        cf_opts.set_memtable_prefix_bloom_ratio(0.2);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    fn name() -> &'static str {
+        "p2p_message_secondary_index"
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct P2PMessageKey {
-    // TODO: Add addresses for prefixing
+pub struct P2PMessageSecondaryKey {
+    pub addr: u128,
+    pub port: u16,
     pub index: u64,
 }
 
-/// * bytes layout: `[index(8)]` TODO: Add remote address as prefix
-impl Decoder for P2PMessageKey {
+impl P2PMessageSecondaryKey {
+    pub fn new(sock_addr: SocketAddr, index: u64) -> Self {
+        let addr = sock_addr.ip();
+        let port = sock_addr.port();
+        Self {
+            addr: encode_address(&addr),
+            port,
+            index,
+        }
+    }
+
+    pub fn prefix(sock_addr: SocketAddr) -> Self {
+        Self::new(sock_addr, 0)
+    }
+}
+
+fn encode_address(addr: &IpAddr) -> u128 {
+    match addr {
+        &IpAddr::V6(addr) => u128::from(addr),
+        &IpAddr::V4(addr) => u32::from(addr) as u128,
+    }
+}
+
+#[allow(dead_code)]
+fn decode_address(value: u128) -> IpAddr {
+    if value & 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000 == 0 {
+        IpAddr::V4(Ipv4Addr::from(value as u32))
+    } else {
+        IpAddr::V6(Ipv6Addr::from(value))
+    }
+}
+
+/// * bytes layout: `[address(16)][port(2)][index(8)]`
+impl Decoder for P2PMessageSecondaryKey {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        let mut value = [0u8; 8];
-        for (x, y) in value.iter_mut().zip(bytes) {
+        if bytes.len() != 26 {
+            return Err(SchemaError::DecodeError);
+        }
+        let addr_value = &bytes[0..16];
+        let port_value = &bytes[16..16 + 2];
+        let index_value = &bytes[16 + 2..];
+        // index
+        let mut index = [0u8; 8];
+        for (x, y) in index.iter_mut().zip(index_value) {
             *x = *y;
         }
-        let index = u64::from_be_bytes(value);
+        let index = u64::from_be_bytes(index);
+        // port
+        let mut port = [0u8; 2];
+        for (x, y) in port.iter_mut().zip(port_value) {
+            *x = *y;
+        }
+        let port = u16::from_be_bytes(port);
+        // addr
+        let mut addr = [0u8; 16];
+        for (x, y) in addr.iter_mut().zip(addr_value) {
+            *x = *y;
+        }
+        let addr = u128::from_be_bytes(addr);
+
         Ok(Self {
-            index
+            addr,
+            port,
+            index,
         })
     }
 }
 
-impl Encoder for P2PMessageKey {
+/// * bytes layout: `[address(16)][port(2)][index(8)]`
+impl Encoder for P2PMessageSecondaryKey {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        Ok(self.index.to_be_bytes().to_vec())
+        let mut buf = Vec::with_capacity(26);
+        buf.extend_from_slice(&self.addr.to_be_bytes());
+        buf.extend_from_slice(&self.port.to_be_bytes());
+        buf.extend_from_slice(&self.index.to_be_bytes());
+
+        if buf.len() != 26 {
+            println!("{:?} - {:?}", self, buf);
+            Err(SchemaError::EncodeError)
+        } else {
+            Ok(buf)
+        }
     }
 }
 
@@ -189,12 +322,10 @@ impl Encoder for P2PMessage {
 pub mod rpc_message {
     use tezos_messages::p2p::encoding::prelude::*;
     use crypto::hash::HashType;
-    use failure::Fail;
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::SocketAddr;
     use super::P2PMessage;
     use serde::Serialize;
     use tezos_messages::p2p::encoding::operation_hashes_for_blocks::OperationHashesForBlock;
-    use crate::p2p_message_storage::rpc_message::P2PRpcMessage::P2pMessage;
 
     #[derive(Debug, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
