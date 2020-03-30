@@ -37,9 +37,9 @@ impl P2PMessageStorage {
         let key = P2PMessageKey { index };
         let val = P2PMessage::ConnectionMessage {
             incoming,
-            index,
             remote_addr,
-            ts: get_ts(),
+            id: index,
+            timestamp: get_ts(),
             message: msg.clone(),
         };
 
@@ -51,9 +51,9 @@ impl P2PMessageStorage {
         let key = P2PMessageKey { index };
         let val = P2PMessage::Metadata {
             incoming,
-            index,
             remote_addr,
-            ts: get_ts(),
+            id: index,
+            timestamp: get_ts(),
             message: msg.clone(),
         };
 
@@ -65,9 +65,9 @@ impl P2PMessageStorage {
         let key = P2PMessageKey { index };
         let val = P2PMessage::P2PMessage {
             incoming,
-            index,
             remote_addr,
-            ts: get_ts(),
+            id: index,
+            timestamp: get_ts(),
             message: msgs.clone(),
         };
 
@@ -129,8 +129,8 @@ pub enum P2PMessage {
     /// Unencrypted message, which is part of tezos communication handshake
     ConnectionMessage {
         incoming: bool,
-        ts: u128,
-        index: u64,
+        timestamp: u128,
+        id: u64,
         remote_addr: SocketAddr,
         message: ConnectionMessage,
     },
@@ -138,16 +138,16 @@ pub enum P2PMessage {
     /// Actual deciphered P2P message sent by some tezos node
     P2PMessage {
         incoming: bool,
-        ts: u128,
-        index: u64,
+        timestamp: u128,
+        id: u64,
         remote_addr: SocketAddr,
         message: Vec<PeerMessage>,
     },
 
     Metadata {
         incoming: bool,
-        ts: u128,
-        index: u64,
+        timestamp: u128,
+        id: u64,
         remote_addr: SocketAddr,
         message: MetadataMessage,
     },
@@ -183,23 +183,23 @@ pub mod rpc_message {
     pub enum P2PRpcMessage {
         ConnectionMessage {
             incoming: bool,
-            ts: u128,
-            index: u64,
+            timestamp: u128,
+            id: u64,
             remote_addr: SocketAddr,
             message: MappedConnectionMessage,
         },
         P2pMessage {
             incoming: bool,
-            ts: u128,
-            index: u64,
+            timestamp: u128,
+            id: u64,
             remote_addr: SocketAddr,
             message: Vec<MappedPeerMessage>,
         },
 
         Metadata {
             incoming: bool,
-            ts: u128,
-            index: u64,
+            timestamp: u128,
+            id: u64,
             remote_addr: SocketAddr,
             message: MetadataMessage,
         },
@@ -208,29 +208,29 @@ pub mod rpc_message {
     impl From<P2PMessage> for P2PRpcMessage {
         fn from(value: P2PMessage) -> Self {
             match value {
-                P2PMessage::ConnectionMessage { incoming, ts, index, remote_addr, message } => {
+                P2PMessage::ConnectionMessage { incoming, timestamp, id, remote_addr, message } => {
                     P2PRpcMessage::ConnectionMessage {
                         incoming,
-                        ts,
-                        index,
+                        timestamp,
+                        id,
                         remote_addr,
                         message: message.into(),
                     }
                 }
-                P2PMessage::P2PMessage { incoming, ts, index, remote_addr, message } => {
+                P2PMessage::P2PMessage { incoming, timestamp, id, remote_addr, message } => {
                     P2PRpcMessage::P2pMessage {
                         incoming,
-                        ts,
-                        index,
+                        timestamp,
+                        id,
                         remote_addr,
                         message: message.into_iter().map(|x| MappedPeerMessage::from(x)).collect(),
                     }
                 }
-                P2PMessage::Metadata { incoming, ts, index, remote_addr, message } => {
+                P2PMessage::Metadata { incoming, timestamp, id, remote_addr, message } => {
                     P2PRpcMessage::Metadata {
                         incoming,
-                        ts,
-                        index,
+                        timestamp,
+                        id,
                         remote_addr,
                         message,
                     }
