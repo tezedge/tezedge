@@ -8,6 +8,9 @@ use crate::{StorageError, IteratorMode, Direction};
 use bytes::BufMut;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use crate::p2p_message_storage::rpc_message::P2PRpcMessage;
+use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+use std::time::{SystemTime, UNIX_EPOCH};
+use crate::p2p_message_storage::rpc_message::P2PRpcMessage::P2pMessage;
 
 pub type P2PMessageStorageKV = dyn KeyValueStoreWithSchema<P2PMessageStorage> + Sync + Send;
 
@@ -15,6 +18,10 @@ pub type P2PMessageStorageKV = dyn KeyValueStoreWithSchema<P2PMessageStorage> + 
 pub struct P2PMessageStorage {
     kv: Arc<P2PMessageStorageKV>,
     seq: Arc<SequenceGenerator>,
+}
+
+fn default_addr() -> SocketAddr {
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0))
 }
 
 impl P2PMessageStorage {
@@ -26,15 +33,45 @@ impl P2PMessageStorage {
     }
 
     pub fn store_connection_message(&mut self, msg: &ConnectionMessage) -> Result<(), StorageError> {
-        self.store_msg(&P2PMessage::ConnectionMessage(msg.clone()))
+        let index = self.seq.next()?;
+        let key = P2PMessageKey { index };
+        let val = P2PMessage::ConnectionMessage {
+            incoming: false,
+            ts: 0u128,
+            index: 0u64,
+            remote_addr: default_addr(),
+            message: msg.clone(),
+        };
+
+        Ok(self.kv.put(&key, &val)?)
     }
 
     pub fn store_metadata_message(&mut self, msg: &MetadataMessage) -> Result<(), StorageError> {
-        self.store_msg(&P2PMessage::Metadata(msg.clone()))
+        let index = self.seq.next()?;
+        let key = P2PMessageKey { index };
+        let val = P2PMessage::Metadata {
+            incoming: false,
+            ts: 0u128,
+            index: 0u64,
+            remote_addr: default_addr(),
+            message: msg.clone(),
+        };
+
+        Ok(self.kv.put(&key, &val)?)
     }
 
     pub fn store_peer_message(&mut self, msgs: &Vec<PeerMessage>) -> Result<(), StorageError> {
-        self.store_msg(&P2PMessage::P2PMessage(msgs.clone()))
+        let index = self.seq.next()?;
+        let key = P2PMessageKey { index };
+        let val = P2PMessage::P2PMessage {
+            incoming: false,
+            ts: 0u128,
+            index: 0u64,
+            remote_addr: default_addr(),
+            message: msgs.clone(),
+        };
+
+        Ok(self.kv.put(&key, &val)?)
     }
 
     pub fn get_range(&self, start: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
@@ -44,17 +81,10 @@ impl P2PMessageStorage {
             let key = P2PMessageKey { index };
             match self.kv.get(&key) {
                 Ok(Some(value)) => ret.push(value.into()),
-                Ok(None) => println!("Out of bounds: {:?}", key),
-                Err(err) => println!("Bad value: {:?}", err),
+                _ => continue,
             }
         }
         Ok(ret)
-    }
-
-    fn store_msg(&mut self, val: &P2PMessage) -> Result<(), StorageError> {
-        let index = self.seq.next()?;
-        let key = P2PMessageKey { index };
-        Ok(self.kv.put(&key, &val)?)
     }
 }
 
@@ -97,12 +127,30 @@ impl Encoder for P2PMessageKey {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum P2PMessage {
     /// Unencrypted message, which is part of tezos communication handshake
-    ConnectionMessage(ConnectionMessage),
+    ConnectionMessage {
+        incoming: bool,
+        ts: u128,
+        index: u64,
+        remote_addr: SocketAddr,
+        message: ConnectionMessage,
+    },
 
     /// Actual deciphered P2P message sent by some tezos node
-    P2PMessage(Vec<PeerMessage>),
+    P2PMessage {
+        incoming: bool,
+        ts: u128,
+        index: u64,
+        remote_addr: SocketAddr,
+        message: Vec<PeerMessage>,
+    },
 
-    Metadata(MetadataMessage),
+    Metadata {
+        incoming: bool,
+        ts: u128,
+        index: u64,
+        remote_addr: SocketAddr,
+        message: MetadataMessage,
+    },
 }
 
 impl Decoder for P2PMessage {
@@ -123,7 +171,7 @@ pub mod rpc_message {
     use tezos_messages::p2p::encoding::prelude::*;
     use crypto::hash::HashType;
     use failure::Fail;
-    use std::net::IpAddr;
+    use std::net::{IpAddr, SocketAddr};
     use super::P2PMessage;
     use serde::Serialize;
     use tezos_messages::p2p::encoding::operation_hashes_for_blocks::OperationHashesForBlock;
@@ -134,30 +182,58 @@ pub mod rpc_message {
     /// Types of messages sent by external RPC, directly maps to the StoreMessage, with different naming
     pub enum P2PRpcMessage {
         ConnectionMessage {
+            incoming: bool,
+            ts: u128,
+            index: u64,
+            remote_addr: SocketAddr,
             message: MappedConnectionMessage,
         },
         P2pMessage {
-            messages: Vec<MappedPeerMessage>,
+            incoming: bool,
+            ts: u128,
+            index: u64,
+            remote_addr: SocketAddr,
+            message: Vec<MappedPeerMessage>,
         },
 
-        Metadata(MetadataMessage),
+        Metadata {
+            incoming: bool,
+            ts: u128,
+            index: u64,
+            remote_addr: SocketAddr,
+            message: MetadataMessage,
+        },
     }
 
     impl From<P2PMessage> for P2PRpcMessage {
         fn from(value: P2PMessage) -> Self {
             match value {
-                P2PMessage::ConnectionMessage(msg) => {
+                P2PMessage::ConnectionMessage { incoming, ts, index, remote_addr, message } => {
                     P2PRpcMessage::ConnectionMessage {
-                        message: msg.into(),
+                        incoming,
+                        ts,
+                        index,
+                        remote_addr,
+                        message: message.into(),
                     }
                 }
-                P2PMessage::P2PMessage(msgs) => {
+                P2PMessage::P2PMessage { incoming, ts, index, remote_addr, message } => {
                     P2PRpcMessage::P2pMessage {
-                        messages: msgs.into_iter().map(|x| MappedPeerMessage::from(x)).collect(),
+                        incoming,
+                        ts,
+                        index,
+                        remote_addr,
+                        message: message.into_iter().map(|x| MappedPeerMessage::from(x)).collect(),
                     }
                 }
-                P2PMessage::Metadata(msg) => {
-                    P2PRpcMessage::Metadata(msg)
+                P2PMessage::Metadata { incoming, ts, index, remote_addr, message } => {
+                    P2PRpcMessage::Metadata {
+                        incoming,
+                        ts,
+                        index,
+                        remote_addr,
+                        message,
+                    }
                 }
             }
         }
