@@ -91,7 +91,7 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
             let estimated_timestamp = timestamp + seconds_to_add;
 
             // assign rolls goes here
-            baking_rights_assign_rolls(&parameters, &constants, &context_data, level.try_into()?, estimated_timestamp, &mut baking_rights)?;
+            baking_rights_assign_rolls(&parameters, &constants, &context_data, level.try_into()?, estimated_timestamp, true, &mut baking_rights)?;
 
             // baking_rights = merge_slices!(&baking_rights, &level_baking_rights);
         }
@@ -100,7 +100,7 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
         let seconds_to_add = (level - block_level).abs() * time_between_blocks[0];
         let estimated_timestamp = timestamp + seconds_to_add;
         // assign rolls goes here
-        baking_rights_assign_rolls(&parameters, &constants, &context_data, level.try_into()?, estimated_timestamp, &mut baking_rights)?;
+        baking_rights_assign_rolls(&parameters, &constants, &context_data, level.try_into()?, estimated_timestamp, false, &mut baking_rights)?;
     }
 
     // if there is some delegate specified, retrive his priorities
@@ -139,7 +139,7 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
 ///
 /// Baking priorities are are assigned to Roles, the default behavior is to include only the top priority for the delegate
 #[inline]
-fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i32, estimated_head_timestamp: i64, baking_rights: &mut Vec<BakingRights>) -> Result<(), failure::Error> {
+fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i32, estimated_head_timestamp: i64, is_cycle: bool, baking_rights: &mut Vec<BakingRights>) -> Result<(), failure::Error> {
     const BAKING_USE_STRING: &[u8] = b"level baking:";
 
     // hashset is defined to keep track of the delegates with priorities allready assigned
@@ -152,6 +152,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
     let block_level = *parameters.block_level();
     let last_roll = *context_data.last_roll();
     let rolls_map = context_data.rolls();
+    let display_level: i32 = (*parameters.display_level()).try_into()?;
 
     for priority in 0..max_priority {
         // draw the rolls for the requested parameters
@@ -181,9 +182,17 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
         } else {
             None
         };
+
+        // used to handle corner cases, where the requested level < 1, not necessary when handling whole cycles
+        let rights_level = if is_cycle {
+            level
+        } else {
+            display_level
+        };
+
         baking_rights.push(
             BakingRights::new(
-                level,
+                rights_level,
                 SignaturePublicKeyHash::from_b58_hash(&delegate_to_assign)?,
                 priority as u16,
                 priority_timestamp,

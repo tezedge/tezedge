@@ -279,7 +279,7 @@ pub struct RightsParams {
     #[get = "pub(crate)"]
     requested_level: i64,
 
-    /// Level to be displayed in output. Endorsing rights only.
+    /// Level to be displayed in output.
     #[get = "pub(crate)"]
     display_level: i64,
 
@@ -358,7 +358,7 @@ impl RightsParams {
         // this is the cycle of block_id level
         let current_cycle = cycle_from_level(block_level, blocks_per_cycle)?;
 
-        // endorsing rights only: display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
+        // display_level is here because of corner case where all levels < 1 are computed as level 1 but oputputed as they are
         let mut display_level: i64 = block_level;
         // endorsing rights only: timestamp_level is the base level for timestamp computation is taken from last known block (block_id) timestamp + time_between_blocks[0]
         let mut timestamp_level: i64 = block_level;
@@ -369,14 +369,14 @@ impl RightsParams {
                 let level = level.parse()?;
                 // check the bounds for the requested level (if it is in the previous/next preserved cycles)
                 Self::validate_cycle(cycle_from_level(level, blocks_per_cycle)?, current_cycle, preserved_cycles)?;
-                // endorsing rights: display level is always same as level requested
+                // display level is always same as level requested
                 display_level = level;
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
                 timestamp_level = level - 1;
                 // there can be requested also negative level, this is not an error but it is handled same as level 1 would be requested
-                // In Ocaml Tezos node there can be negative level provided as query parameter, it is not handled as error but it will instead return endorsing rights for level 1
+                // In Ocaml Tezos node there can be negative level provided as query parameter, it is not handled as error but it will instead return endorsing/baking rights for level 1
                 // for all reuqested negative levels use level 1
-                if level < 1 && !is_baking_rights {
+                if level < 1 {
                     1
                 } else {
                     level
@@ -384,6 +384,7 @@ impl RightsParams {
             }
             // here is the main difference between endorsing and baking rights which data are loaded from context list based on level
             None => if is_baking_rights {
+                display_level = block_level + 1;
                 block_level + 1
             } else {
                 block_level
