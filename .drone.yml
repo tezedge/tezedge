@@ -189,17 +189,23 @@ trigger:
 kind: pipeline
 name: carthage
 
+environment:
+  FROM_BLOCK_HEADER: 2
+  TO_BLOCK_HEADER: 20000
+  SODIUM_USE_PKG_CONFIG: 1
+  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+
 steps:
 # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
-- name: cleanup-tezedge-data
-  image: alpine/git
-  user: root
-  volumes:
-    - name: tezedge-node-data
-      path: /tmp/tezedge_developer
-  commands:
-    - rm -rf /tmp/tezedge_developer/light-node
-    - rm -rf /tmp/tezedge_developer/tezos-node
+# - name: cleanup-tezedge-data
+#   image: alpine/git
+#   user: root
+#   volumes:
+#     - name: tezedge-node-data
+#       path: /tmp/tezedge_developer
+#   commands:
+#     - rm -rf /tmp/tezedge_developer/light-node
+#     - rm -rf /tmp/tezedge_developer/tezos-node
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -228,16 +234,13 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   commands: 
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "carthagenet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
 
 - name: bootstrapping
   image: simplestakingcom/tezos-node-bootstrap:level
   commands:
-    - tezos-node-bootstrap --bootstrap 20000
+    - tezos-node-bootstrap --bootstrap $TO_BLOCK_HEADER
 
 - name: rpc-integration-tests
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -245,18 +248,9 @@ steps:
   user: root
   environment:
     RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
     OCAML_BUILD_CHAIN: remote
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
     OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
     TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:18732
-    FROM_BLOCK_HEADER: BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7
-#    TO_BLOCK_HEADER: BLR48VJKmrQys6az5KxkDhSksS7G98u59HX1Xq7vxkALXi5md7J
-#    TO_BLOCK_HEADER: BMD5u3toJreiLek1dE1WPfqKrFZjQ31NWtb5o8xeGo5MeD8mB6A
-#    TO_BLOCK_HEADER: BKosYnQbd4zhakKey6YdjyC96sZJ8K11yw8FJWbHAgfJ1yG4EFC
-#    TO_BLOCK_HEADER: BMD5u3toJreiLek1dE1WPfqKrFZjQ31NWtb5o8xeGo5MeD8mB6A
-#    TO_BLOCK_HEADER: BMa4gyvXyDm5RUugSqBWii1VcPpKX8xHeK8RPtstBTio6ErMjY9
-    TO_BLOCK_HEADER: BKzda7hqWkcbBTU88j5rvNX78TdecvZRkHPaDBLGCKY19kwsh3E
   commands:
     - cargo test --verbose --release -- --nocapture --ignored test_rpc_compare
 

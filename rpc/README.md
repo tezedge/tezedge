@@ -11,7 +11,7 @@ Tezedge CI runs big integration test for RPC's on Drone server, which verifies c
 ```
 OCAML_NODE_RPC_CONTEXT_ROOT=http://ocaml-node-run:8732 \
 TEZEDGE_NODE_RPC_CONTEXT_ROOT=http://tezedge-node-run:18732 \
-FROM_BLOCK_HEADER=BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7 \
-TO_BLOCK_HEADER=BLR48VJKmrQys6az5KxkDhSksS7G98u59HX1Xq7vxkALXi5md7J \
+FROM_BLOCK_HEADER=1 \
+TO_BLOCK_HEADER=5000 \
 cargo test --verbose -- --nocapture --ignored test_rpc_compare
 ```
