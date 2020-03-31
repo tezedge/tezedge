@@ -28,7 +28,7 @@ Quick start
 
 **Pre-requisites**
 
-* Our GitHub repository 
+* GitHub repository 
 
 * Docker
 
