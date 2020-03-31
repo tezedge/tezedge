@@ -107,7 +107,7 @@ impl P2PMessageStorage {
     pub fn get_range_for_host(&self, host: SocketAddr, offset: u64, count: u64) -> Result<Vec<P2PRpcMessage>, StorageError> {
         let idx = self.host_index.get_for_host(host, offset, count)?;
         let mut ret = Vec::with_capacity(idx.len());
-        for index in idx.iter().rev() {
+        for index in idx.iter() {
             match self.kv.get(index) {
                 Ok(Some(value)) => ret.push(value.into()),
                 _ => continue,
@@ -148,19 +148,21 @@ impl P2PMessageSecondaryIndex {
     }
 
     pub fn get_for_host(&self, sock_addr: SocketAddr, offset: u64, limit: u64) -> Result<Vec<u64>, StorageError> {
+        use circular_queue::CircularQueue;
         let key = P2PMessageSecondaryKey::new(sock_addr, offset as u64);
         let (offset, limit) = (offset as usize, limit as usize);
 
         let mut ret = Vec::with_capacity(limit);
-        let idx = self.kv.prefix_iterator(&key)?
-            .map(|(_, val)| val)
-            .collect::<Result<Vec<_>, _>>()?;
-        for index in idx.iter().rev().skip(offset).take(limit) {
-            ret.push(index.clone());
-            if ret.len() == limit { break; }
+
+        let mut queue: CircularQueue<u64> = CircularQueue::with_capacity(limit);
+        for index in self.kv.prefix_iterator(&key)?.map(|(_, val)| val) {
+            queue.push(index?);
         }
 
-        ret.sort();
+        for index in queue.iter() {
+            ret.push(*index)
+        }
+
         Ok(ret)
     }
 }
