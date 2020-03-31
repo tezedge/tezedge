@@ -154,12 +154,12 @@ impl P2PMessageSecondaryIndex {
 
         let mut ret = Vec::with_capacity(limit);
 
-        let mut queue: CircularQueue<u64> = CircularQueue::with_capacity(limit);
+        let mut queue: CircularQueue<u64> = CircularQueue::with_capacity(offset + limit);
         for index in self.kv.prefix_iterator(&key)?.map(|(_, val)| val) {
             queue.push(index?);
         }
 
-        for index in queue.iter() {
+        for index in queue.iter().skip(offset) {
             ret.push(*index)
         }
 
