@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::bail;
-use getset::Getters;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -19,8 +18,6 @@ use tezos_messages::ts_to_rfc3339;
 
 use crate::ContextList;
 use crate::rpc_actor::RpcCollectedStateRef;
-
-pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
 
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
@@ -90,7 +87,7 @@ impl FullBlockInfo {
                 operations_hash,
                 fitness,
                 context,
-                protocol_data: serde_json::from_str(json_data.block_header_proto_json()).unwrap_or_default()
+                protocol_data: serde_json::from_str(json_data.block_header_proto_json()).unwrap_or_default(),
             },
             metadata: serde_json::from_str(json_data.block_header_proto_metadata_json()).unwrap_or_default(),
             operations: serde_json::from_str(json_data.operations_proto_metadata_json()).unwrap_or_default(),
@@ -132,7 +129,6 @@ impl BlockHeaderInfo {
             //seed_nonce_hash,
             proof_of_work_nonce: proof_of_work_nonce.as_str().unwrap().to_string(),
         }
-
     }
 }
 
@@ -271,12 +267,12 @@ pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &Pe
         // try to parse level as number
         match block_id.parse() {
             // block level was passed as parameter to block_id
-            Ok(value) =>  match block_storage.get_by_block_level(value)? {
+            Ok(value) => match block_storage.get_by_block_level(value)? {
                 Some(current_head) => current_head.hash,
-                None =>  bail!("block not found in db by level {}", block_id)
+                None => bail!("block not found in db by level {}", block_id)
             },
             // block hash string was passed as parameter to block_id
-            Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?   
+            Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?
         }
     };
 
@@ -289,7 +285,7 @@ pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &Pe
 /// 
 /// * `level` - Level of block.
 /// * `state` - Current RPC state (head).
-pub(crate) fn get_block_timestamp_by_level(level: i32,  persistent_storage: &PersistentStorage) -> Result<i64, failure::Error> {
+pub(crate) fn get_block_timestamp_by_level(level: i32, persistent_storage: &PersistentStorage) -> Result<i64, failure::Error> {
     let block_storage = BlockStorage::new(persistent_storage);
     match block_storage.get_by_block_level(level)? {
         Some(current_head) => Ok(current_head.header.timestamp()),
@@ -355,24 +351,10 @@ pub(crate) fn get_context_protocol_params(
     })
 }
 
-/// Struct for the delegates and they voting power (in rolls)
-#[derive(Serialize, Debug, Clone, Getters, Eq, Ord, PartialEq, PartialOrd)]
-pub struct VoteListings {
-    /// Public key hash (address, e.g tz1...)
-    #[get = "pub(crate)"]
-    pkh: String,
-
-    /// Number of rolls the pkh owns
-    #[get = "pub(crate)"]
-    rolls: i32,
-}
-
-impl VoteListings {
-    /// Simple constructor to construct VoteListings
-    pub fn new(pkh: String, rolls: i32) -> Self{
-        Self {
-            pkh,
-            rolls,
-        }
+pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+    let level = level.parse()?;
+    {
+        let storage = list.read().expect("poisoned storage lock");
+        storage.get(level).map_err(|e| e.into())
     }
 }

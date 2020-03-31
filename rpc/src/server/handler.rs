@@ -143,7 +143,7 @@ pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: 
     let has_all = query.contains_key("all");
 
     // list -> context, persistent, state odizolovat
-    match services::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
+    match services::protocol::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
@@ -166,7 +166,7 @@ pub async fn endorsing_rights(_: Request<Body>, params: Params, query: Query, en
     let has_all = query.contains_key("all");
 
     // get RPC response and unpack it from RpcResponseData enum
-    match services::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
+    match services::protocol::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
@@ -184,7 +184,7 @@ pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: Rpc
     let chain_id = params.get_str("chain_id").unwrap();
     let block_id = params.get_str("block_id").unwrap();
 
-    result_to_json_response(service::get_votes_listings(chain_id, block_id, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+    result_to_json_response(services::protocol::get_votes_listings(chain_id, block_id, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
 }
 
 /// Returns result as a JSON response.

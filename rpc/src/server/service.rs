@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
-use std::convert::TryInto;
 
 use failure::bail;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use shell::shell_channel::BlockApplied;
@@ -18,7 +16,6 @@ use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
-use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::RpcJsonMap;
 
 use crate::ContextList;
@@ -26,7 +23,7 @@ use crate::encoding::conversions::{
     chain_id_to_string,
     contract_id_to_address,
 };
-use crate::helpers::{BlockHeaderInfo, ContextMap, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id, PagedResult, VoteListings};
+use crate::helpers::{BlockHeaderInfo, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, PagedResult};
 use crate::rpc_actor::RpcCollectedStateRef;
 
 // Serialize, Deserialize,
@@ -356,52 +353,13 @@ pub(crate) fn retrieve_host_p2p_messages(start: &str, end: &str, host: &str, per
     Ok(p2p_store.get_range_for_host(host, start, end)?)
 }
 
-pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {
-    let mut listings = Vec::<VoteListings>::new();
-
-    // get block level first
-    let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
-        Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
-    };
-
-    // get the whole context
-    let ctxt = get_context(&block_level.to_string(), context_list)?;
-
-    // filter out the listings data
-    let listings_data: ContextMap = ctxt.unwrap().into_iter()
-        .filter(|(k, _)| k.starts_with(&"data/votes/listings/"))
-        .collect();
-
-    // convert the raw context data to VoteListings
-    for (key, value) in listings_data.into_iter() {
-        if let Bucket::Exists(data) = value {
-            // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
-            let address = key.split("/").skip(4).take(6).join("");
-            let curve = key.split("/").skip(3).take(1).join("");
-
-            let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
-            listings.push(VoteListings::new(address_decoded, num_from_slice!(data, 0, i32)));
-        }
-    }
-
-    // sort the vector in reverse ordering (as in ocaml node)
-    listings.sort();
-    listings.reverse();
-    Ok(Some(listings))
-}
-
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
     let memory = Memory::new();
     memory.get_memory_stats()
 }
 
 pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
-    let level = level.parse()?;
-    {
-        let storage = list.read().expect("poisoned storage lock");
-        storage.get(level).map_err(|e| e.into())
-    }
+    crate::helpers::get_context(level, list)
 }
 
 #[inline]
