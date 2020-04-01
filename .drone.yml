@@ -2,11 +2,20 @@ kind: pipeline
 name: default
 # default build goes with: --network "carthagenet"
 # integration test is using env variables:
-# - FROM_BLOCK_HEADER - block hash,
-# - TO_BLOCK_HEADER - block hash
-# -- all headers in interval (FROM_BLOCK_HEADER, TO_BLOCK_HEADER> are checked in test (rpc json compare)
+# - FROM_BLOCK_HEADER - block level,
+# - TO_BLOCK_HEADER - block level
+# -- all headers in interval <FROM_BLOCK_HEADER, TO_BLOCK_HEADER) are checked in test (rpc json compare)
 # - OCAML_NODE_RPC_CONTEXT_ROOT: running ocaml node, e.g.: http://ocaml-node-run:8732
 # - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-node-run:18732
+
+environment:
+  FROM_BLOCK_HEADER: 2
+  TO_BLOCK_HEADER: 20000
+  SODIUM_USE_PKG_CONFIG: 1
+  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:28732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
 
 steps:
 # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
@@ -34,8 +43,6 @@ steps:
   volumes:
     - name: cache
       path: /tmp/tezedge-cache
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
   commands:
     - cd /tmp/tezedge-cache
     - rm -rf tezedge
@@ -52,9 +59,6 @@ steps:
       path: /tmp/tezedge_developer
     - name: cache
       path: /tmp/tezedge-cache
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   commands: 
     - cd /tmp/tezedge-cache/tezedge
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "carthagenet" --protocol-runner "./target/release/protocol-runner" --p2p-port 39734 --websocket-address 0.0.0.0:34928 --rpc-port 28732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
@@ -67,9 +71,6 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   commands: 
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "carthagenet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
 
@@ -85,9 +86,9 @@ steps:
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive --disable-testchain
 
 - name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:level
+  image: simplestakingcom/tezos-node-bootstrap:stable
   commands:
-    - tezos-node-bootstrap --bootstrap 30500
+    - tezos-node-bootstrap --bootstrap
 
 - name: test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -141,7 +142,7 @@ steps:
     TZ_SNAPSHOT_PATH: /data/snapshots
 
 - name: indexer-test
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: simplestakingcom/tezos-node-bootstrap:stable
   commands:
     - tezos-node-bootstrap --indexer-test
 
@@ -197,15 +198,20 @@ environment:
 
 steps:
 # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
-# - name: cleanup-tezedge-data
+# - name: cleanup-node-data
 #   image: alpine/git
 #   user: root
 #   volumes:
 #     - name: tezedge-node-data
 #       path: /tmp/tezedge_developer
+#     - name: ocaml-node-data
+#       path: /home/tezos/data
 #   commands:
+#     # tezedge data
 #     - rm -rf /tmp/tezedge_developer/light-node
 #     - rm -rf /tmp/tezedge_developer/tezos-node
+#     # ocaml data
+#     - rm -rf /home/tezos/data/.tezos-node
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -238,9 +244,10 @@ steps:
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge.config" --network "carthagenet" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --protocol-runner "./target/release/protocol-runner" --p2p-port 39733 --websocket-address 0.0.0.0:34927 --rpc-port 18732 --tezos-data-dir=/tmp/tezedge_developer/tezos-node --bootstrap-db-path=/tmp/tezedge_developer/light-node
 
 - name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:level
+  image: simplestakingcom/tezos-node-bootstrap:stable
   commands:
-    - tezos-node-bootstrap --bootstrap $TO_BLOCK_HEADER
+    # Note: also moved the argument to --bootstrap to environment
+    - tezos-node-bootstrap --bootstrap
 
 - name: rpc-integration-tests
   image: simplestakingcom/tezedge-ci-builder:latest
