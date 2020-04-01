@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_context::channel::ContextAction;
-use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
+use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
+use tezos_messages::base::ConversionError;
 
 use crate::num_from_slice;
 use crate::persistent::{CommitLogSchema, CommitLogWithSchema, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage, SchemaError};

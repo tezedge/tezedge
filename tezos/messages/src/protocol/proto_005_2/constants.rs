@@ -62,6 +62,7 @@ pub struct ParametricConstants {
     hard_gas_limit_per_operation: BigInt,
     hard_gas_limit_per_block: BigInt,
     proof_of_work_threshold: i64,
+    #[get = "pub"]
     tokens_per_roll: BigInt,
     michelson_maximum_type_size: u16,
     seed_nonce_revelation_tip: BigInt,

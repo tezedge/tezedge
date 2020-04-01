@@ -2,5 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 pub(crate) mod rights_service;
-mod helpers;
+pub(crate) mod delegate_service;
+pub(crate) mod contract_service;
 pub(crate) mod votes_services;
+mod helpers;

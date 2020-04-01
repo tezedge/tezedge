@@ -234,6 +234,24 @@ impl JsonWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
+            Encoding::Array(list_inner_encoding, count) => {
+                match value {
+                    Value::List(ref values) => {
+                        if values.len() != *count {
+                            return Err(Error::custom("Fixed array element count mismatch"))
+                        }
+                        self.open_array();
+                        for (idx, value) in values.iter().enumerate() {
+                            if idx > 0 {
+                                self.push_delimiter();
+                            }
+                            self.encode_value(value, list_inner_encoding)?;
+                        }
+                        Ok(self.close_array())
+                    }
+                    _ => Err(Error::encoding_mismatch(encoding, value))
+                }
+            }
             Encoding::Bytes => {
                 match value {
                     Value::List(values) => {
@@ -411,6 +429,26 @@ mod tests {
 
         let expected_writer_result = r#"{ "a": 32, "b": true, "t": "2019-03-21T00:10:11+00:00", "s": { "x": 5, "y": 32, "v": [12, 34] }, "p": "6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a", "c": "5c4d4aa1", "d": 12.34, "e": "Disconnected", "f": [{ "name": "A", "major": 1, "minor": 1 }, { "name": "B", "major": 2, "minor": 0 }], "h": "NetXgtSLGNJvNye" }"#;
         assert_eq!(expected_writer_result, writer_result.unwrap());
+    }
+
+    #[test]
+    fn can_serialize_array() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            array: Vec<String>
+        }
+
+        let test_record = Record{array: vec!["ABC".to_string(), "xyz".to_string(), "123".to_string()]};
+
+        let record_schema = vec![
+            Field::new("array", Encoding::Array(Box::new(Encoding::String), 3))
+        ];
+
+        let mut writer = JsonWriter::new();
+        let writer_result = writer.write(&test_record, &Encoding::Obj(record_schema)).expect("Writer failed");
+
+        let expected_writer_result = r#"{ "array": ["ABC", "xyz", "123"] }"#;
+        assert_eq!(expected_writer_result, writer_result)
     }
 }
 

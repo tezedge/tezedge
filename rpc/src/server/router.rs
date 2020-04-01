@@ -24,6 +24,9 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/operations", handler::operations);
     routes.handle("/chains/:chain_id/blocks/:block_id/header", handler::chains_block_id_header);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/constants", handler::context_constants);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/delegates", handler::delegates_by_activity);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/delegates/:pkh", handler::delegates);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh", handler::context_contracts);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", handler::context_cycle);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", handler::rolls_owner_current);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle/:cycle_id", handler::cycle);
