@@ -267,8 +267,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             V: Visitor<'de>,
     {
         match *self.input {
-            Value::List(ref items) => visitor.visit_seq(SeqDeserializer::new(items)),
-            _ => Err(Error::custom("not an array")),
+            Value::List(ref items) => {
+                visitor.visit_seq(SeqDeserializer::new(items))
+            }
+            _ => Err(Error::custom(format!("not an array but a {:?}", self.input))),
         }
     }
 
@@ -479,7 +481,7 @@ impl<'de, 'a> de::VariantAccess<'de> for EnumDeserializer<'a, 'de> {
         match self.de.input {
             Value::Tag(_, tag_value) => {
                 seed.deserialize(&mut Deserializer::new(tag_value))
-            }
+            },
             _ => Err(Error::custom(format!("not an enum but a {:?}", self.de.input))),
         }
     }

@@ -117,6 +117,9 @@ impl BinaryReader {
     pub fn read<Buf: AsRef<[u8]>>(&self, buf: Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
         let mut buf = buf.as_ref();
 
+        let orig_buf = buf.clone();
+        // println!("Buf: {:?}", orig_buf);
+
         let result = match encoding {
             Encoding::Obj(schema) => self.decode_record(&mut buf, schema),
             Encoding::Tup(encodings) => self.decode_tuple(&mut buf, encodings),
@@ -124,8 +127,11 @@ impl BinaryReader {
         }?;
 
         if buf.remaining() == 0 {
+            //println!("Result: {:?}", result);
             Ok(result)
         } else {
+            println!("Buf: {:?}", orig_buf);
+            println!("Buf after: {:?}", buf);
             Err(BinaryReaderError::Overflow { bytes: buf.remaining() })
         }
     }
@@ -202,7 +208,10 @@ impl BinaryReader {
                         let tag_value = self.decode_value(buf, tag.get_encoding())?;
                         Ok(Value::Tag(tag.get_variant().to_string(), Box::new(tag_value)))
                     }
-                    None => Err(BinaryReaderError::UnsupportedTag { tag: tag_id })
+                    None => {
+                        println!("[Debug] failed with buffer: {:?}", buf.bytes());
+                        Err(BinaryReaderError::UnsupportedTag { tag: tag_id })
+                    }
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -213,6 +222,15 @@ impl BinaryReader {
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {
                     values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                }
+
+                Ok(Value::List(values))
+            }
+            Encoding::Array(encoding_inner, count) => {
+                let mut values = vec![];
+                for _ in 0..*count {
+                    values.push(self.decode_value(buf, encoding_inner)?);
+                    // println!("# {} arg Buf: {:?}", i, buf.bytes());
                 }
 
                 Ok(Value::List(values))
@@ -236,21 +254,24 @@ impl BinaryReader {
             }
             Encoding::Z => {
                 // read first byte
-                let byte = safe!(buf, get_u8, u8);
+                let mut byte = safe!(buf, get_u8, u8);
+                let mut has_next_byte = byte.get(7);
                 let negative = byte.get(6);
-                if byte <= 0x3F {
-                    let mut num = i32::from(byte);
+                if !has_next_byte {
+                    byte = byte & 0x3F;
+                    let num = u32::from(byte);
                     if negative {
-                        num *= -1;
+                        Ok(Value::String(format!("-{:x}", num)))
+                    } else {
+                        Ok(Value::String(format!("{:x}", num)))
                     }
-                    Ok(Value::String(format!("{:x}", num)))
                 } else {
                     let mut bits: BitVec<bitvec::BigEndian, u8> = BitVec::new();
                     for bit_idx in 0..6 {
                         bits.push(byte.get(bit_idx));
                     }
 
-                    let mut has_next_byte = true;
+                    // let mut has_next_byte = true;
                     while has_next_byte {
                         let byte = safe!(buf, get_u8, u8);
                         for bit_idx in 0..7 {
@@ -377,8 +398,13 @@ mod tests {
 
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
+        let value = reader.read(record_buf, &Encoding::Obj(record_schema.clone())).unwrap();
+        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("9da879e".to_string()))]), value);
+
+        let record_buf = hex::decode("41").unwrap();
+        let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
-        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("9da879e".to_string()))]), value)
+        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("-1".to_string()))]), value)
     }
 
     #[test]
@@ -450,6 +476,22 @@ mod tests {
 
             assert_eq!(value_serialized, value_deserialized)
         }
+
+        for num in -100..=100 {
+            let record = Record {
+                a: num_bigint::BigInt::from(num).into()
+            };
+
+            let mut serializer = Serializer::default();
+
+            let value_serialized = record.serialize(&mut serializer).unwrap();
+            let record_bytes = binary_writer::write(&record, &record_encoding).unwrap();
+
+            let reader = BinaryReader::new();
+            let value_deserialized = reader.read(record_bytes, &record_encoding).unwrap();
+
+            assert_eq!(value_serialized, value_deserialized)
+        }
     }
 
     #[test]
@@ -499,5 +541,28 @@ mod tests {
 
         let connection_message_deserialized: ConnectionMessage = de::from_value(&value).unwrap();
         assert_eq!(connection_message, connection_message_deserialized);
+    }
+
+    // TODO: add the suggested test for Encoding::Array (also add to both writers)
+
+    #[test]
+    fn can_deserialize_array_from_binary() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Record {
+            array: Vec<String>
+        }
+
+        let test_record = Record{array: vec!["ABC".to_string(), "xyz".to_string(), "123".to_string()]};
+
+        let record_schema = vec![
+            Field::new("array", Encoding::Array(Box::new(Encoding::String), 3))
+        ];
+
+        let record_buf = hex::decode("000000034142430000000378797a00000003313233").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
+
+        let deserialized = de::from_value(&value).unwrap();
+        assert_eq!(test_record, deserialized)
     }
 }

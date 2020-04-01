@@ -156,7 +156,7 @@ impl TezedgeContext {
         Ok(block.header.level() as usize)
     }
 
-    fn get_by_key_prefix(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<ContextMap>, ContextError> {
+    pub fn get_by_key_prefix(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<ContextMap>, ContextError> {
         if context_index.context_hash.is_none() && context_index.level.is_none() {
             return Ok(None);
         }

@@ -4,6 +4,7 @@
 use std::env;
 
 use assert_json_diff::assert_json_eq;
+use assert_json_diff::assert_json_eq_no_panic;
 use bytes::buf::BufExt;
 use hyper::Client;
 
@@ -16,6 +17,7 @@ pub enum NodeType {
 #[ignore]
 #[tokio::test]
 async fn test_rpc_compare() {
+    test_contracts(to_block_header()).await;
     integration_tests_rpc(from_block_header(), to_block_header()).await
 }
 
@@ -49,7 +51,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
             continue;
         }
-
+        
         // -------------------------- Integration tests for RPC --------------------------
         // ---------------------- Please keep one function per test ----------------------
 
@@ -58,7 +60,23 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates/tz1aWXP237BLwNHJcCD4b3DutCevhqq2T1Z9")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive&active")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active&inactive")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1AY1VhuU2UKAdFMeHwLZDktB6mSAJV8T4h")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1UzbgaH7sqcCpfUgPh6bWkgMFdagMVM9dS")).await;
+        // //test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1TL9gVnbUsetnarjxbvu2kYL1ysafcsksw")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1Hk937wj5Y8qzs2cymoaqWVTrHAUJ42cAV")).await;
+
+
+
+
+
+        // TODO: check listing
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "votes/listings")).await;
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants for
@@ -101,7 +119,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 
             // ----------------- End of tests for each snapshot of the cycle ------------------
         }
-            // test first and last level of cycle
+        // test first and last level of cycle
         if level == 1 || (level >= blocks_per_cycle && ( (level-1) % blocks_per_cycle == 0 || level % blocks_per_cycle == 0)) {
 
             // ----------------------- Tests for each cycle of the cycle -----------------------
@@ -138,12 +156,38 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     }
 }
 
+async fn test_contracts(to_block: i64) {
+    let contracts: Vec<String> = serde_json::from_value(get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}/{}", "chains/main/blocks", to_block, "context/contracts")).await.expect("Failed to get block from ocaml")).unwrap();
+
+    println!("Number of contracts up to block {}: {}", to_block, contracts.len());
+    println!("Number of smart contracts: {}", contracts.iter().filter(|v| v.starts_with("KT1")).count());
+
+    for contract in contracts {  
+        test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", to_block, "context/contracts", contract)).await;
+    }
+}
+// KT1P7WsdnB3aqvyLM7dHqLp2HSzKC3Xr7GN4
+
 async fn test_rpc_compare_json(rpc_path: &str) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     println!("Checking: {}", rpc_path);
     let ocaml_json = get_rpc_as_json(NodeType::Ocaml, rpc_path).await.unwrap();
     let tezedge_json = get_rpc_as_json(NodeType::Tezedge, rpc_path).await.unwrap();
     assert_json_eq!(tezedge_json, ocaml_json);
+}
+
+// this function does not panic on difference between the 2 responses, usefull for collecting all the errors
+async fn test_rpc_compare_json_debug(rpc_path: &str) {
+    // print the asserted path, to know which one errored in case of an error, use --nocapture
+    println!("Checking: {}", rpc_path);
+    let ocaml_json = get_rpc_as_json(NodeType::Ocaml, rpc_path).await.unwrap();
+    let tezedge_json = get_rpc_as_json(NodeType::Tezedge, rpc_path).await.unwrap();
+    
+    if let Err(msg) = assert_json_eq_no_panic(&tezedge_json, &ocaml_json) {
+        println!("{}", msg);
+    } else {
+        println!("OK");
+    }
 }
 
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {

@@ -267,6 +267,22 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                 _ => Err(Error::encoding_mismatch(encoding, value))
             }
         }
+        Encoding::Array(list_inner_encoding, count) => {
+            match value {
+                Value::List(values) => {
+                    if values.len() != *count {
+                        return Err(Error::custom("Fixed array element count mismatch"))
+                    }
+                    let data_len_before_write = data.len();
+                    // write data
+                    for value in values {
+                        encode_value(data, value, list_inner_encoding)?;
+                    }
+                    Ok(data.len() - data_len_before_write)
+                }
+                _ => Err(Error::encoding_mismatch(encoding, value))
+            }
+        }
         Encoding::Hash(hash_type) => {
             match value {
                 Value::List(ref values) => {
@@ -757,6 +773,25 @@ mod tests {
 
         let expected_writer_result = hex::decode("0bb9eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000014100010001000000014200020000").expect("Failed to decode");
         assert_eq!(expected_writer_result, writer_result);
+    }
+
+    #[test]
+    fn can_serialize_array() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            array: Vec<String>
+        }
+
+        let test_record = Record{array: vec!["ABC".to_string(), "xyz".to_string(), "123".to_string()]};
+
+        let record_schema = vec![
+            Field::new("array", Encoding::Array(Box::new(Encoding::String), 3))
+        ];
+
+        let expected = hex::decode("000000034142430000000378797a00000003313233").unwrap();
+        let writer_result = write(&test_record, &Encoding::Obj(record_schema)).expect("Writer failed");
+
+        assert_eq!(expected, writer_result)
     }
 }
 

@@ -16,3 +16,10 @@ pub fn ts_to_rfc3339(ts: i64) -> String {
     Utc.from_utc_datetime(&NaiveDateTime::from_timestamp(ts, 0))
         .to_rfc3339_opts(SecondsFormat::Secs, true)
 }
+
+pub fn is_rfc3339(ts: &str) -> bool {
+    match DateTime::parse_from_rfc3339(ts) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}

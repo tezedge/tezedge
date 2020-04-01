@@ -1,11 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 use serde::{Deserialize, Serialize};
+use getset::{CopyGetters, Getters};
+
 use tezos_encoding::{
     types::BigInt,
     encoding::{Encoding, Field, HasEncoding},
 };
-use getset::{CopyGetters, Getters};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use std::collections::HashMap;
@@ -59,6 +60,7 @@ pub struct ParametricConstants {
     hard_gas_limit_per_operation: BigInt,
     hard_gas_limit_per_block: BigInt,
     proof_of_work_threshold: i64,
+    #[get = "pub"]
     tokens_per_roll: BigInt,
     michelson_maximum_type_size: u16,
     seed_nonce_revelation_tip: BigInt,

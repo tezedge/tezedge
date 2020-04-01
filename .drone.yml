@@ -28,8 +28,8 @@ name: all-tests
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 500 # also check parameter --stop=
-  WRK_TEST_BLOCK_HEADER: 500 # also check parameter --stop=
+  TO_BLOCK_HEADER: 800 # also check parameter --stop=
+  WRK_TEST_BLOCK_HEADER: 800 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
@@ -150,7 +150,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=501"]
+  command: ["tzindex", "run", "--stop=801"]
 
 - name: tz-indexer-ocaml
   image: blockwatch/tzindex:latest
@@ -167,7 +167,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=501"]
+  command: ["tzindex", "run", "--stop=801"]
 
 - name: indexer-test
   image: simplestakingcom/tezos-node-bootstrap:latest

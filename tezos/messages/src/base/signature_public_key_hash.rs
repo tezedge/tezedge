@@ -4,48 +4,20 @@
 //! This crate provides functions for manipulation with 'public key hash'.
 //! Tezos uses this kinds: tz1(ed25519), tz2 (secp256k1), tz3(p256)
 
-use failure::Fail;
-use hex::FromHexError;
 use serde::{Deserialize, Serialize};
 
-use crypto::base58::FromBase58CheckError;
 use crypto::blake2b;
-use crypto::hash::{ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType};
+use crypto::hash::{ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType, ContractKt1Hash};
 
-#[derive(Debug, Fail, PartialEq)]
-pub enum ConversionError {
-    #[fail(display = "Conversion from invalid public key")]
-    InvalidPublicKey,
+use crate::base::ConversionError;
 
-    #[fail(display = "Invalid hash: {}", hash)]
-    InvalidHash {
-        hash: String
-    },
-
-    #[fail(display = "Invalid curve tag: {}", curve_tag)]
-    InvalidCurveTag {
-        curve_tag: String
-    },
-}
-
-impl From<hex::FromHexError> for ConversionError {
-    fn from(error: FromHexError) -> Self {
-        ConversionError::InvalidHash { hash: error.to_string() }
-    }
-}
-
-impl From<FromBase58CheckError> for ConversionError {
-    fn from(error: FromBase58CheckError) -> Self {
-        ConversionError::InvalidHash { hash: error.to_string() }
-    }
-}
-
-/// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
+/// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256) and smart contracts
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),
     Secp256k1(ContractTz2Hash),
     P256(ContractTz3Hash),
+    SmartContract(ContractKt1Hash)
 }
 
 impl SignaturePublicKeyHash {
@@ -55,6 +27,7 @@ impl SignaturePublicKeyHash {
             SignaturePublicKeyHash::Ed25519(h) => HashType::ContractTz1Hash.bytes_to_string(h),
             SignaturePublicKeyHash::Secp256k1(h) => HashType::ContractTz2Hash.bytes_to_string(h),
             SignaturePublicKeyHash::P256(h) => HashType::ContractTz3Hash.bytes_to_string(h),
+            SignaturePublicKeyHash::SmartContract(h) => HashType::ContractKt1Hash.bytes_to_string(h),
         }
     }
 
@@ -105,7 +78,7 @@ impl SignaturePublicKeyHash {
     /// convert public key byte string to contract id, e.g. data from context can be in this format
     ///
     /// 1 byte tag and - 32 bytes for ed25519 (tz1)
-    ///                 - 33 bytes for secp256k1 (tz2) and p256 (tz3)
+    ///                - 33 bytes for secp256k1 (tz2) and p256 (tz3)
     ///
     /// # Arguments
     ///
@@ -132,13 +105,59 @@ impl SignaturePublicKeyHash {
             return Err(ConversionError::InvalidPublicKey);
         }
     }
+
+    #[inline]
+    pub fn from_tagged_hex_string(pkh: &str) -> Result<SignaturePublicKeyHash, ConversionError> {
+        if pkh.len() == 44 {
+            // first byte is a tag for contract implicitness
+            match &pkh[0..2] {
+                "00" => {
+                    let tagless = &pkh[4..];
+                    match &pkh[2..4] {
+                        "00" => {
+                            Self::from_hex_hash_and_curve(&tagless, "ed25519")
+                        }
+                        "01" => {
+                            Self::from_hex_hash_and_curve(&tagless, "secp256k1")
+                        }
+                        "02" =>{
+                            Self::from_hex_hash_and_curve(&tagless, "p256")
+                        }
+                        _ => return Err(ConversionError::InvalidHash{ hash: pkh.to_string() })
+                    }
+                }
+                "01" => {
+                    let tagless = &pkh[2..pkh.len() - 2];
+                    Ok(SignaturePublicKeyHash::SmartContract(hex::decode(tagless)?))
+                }
+                _ => return Err(ConversionError::InvalidHash{ hash: pkh.to_string() })
+            }
+        } else if pkh.len() == 42 {
+            let tagless = &pkh[2..];
+            match &pkh[0..2] {
+                "00" => {
+                    Self::from_hex_hash_and_curve(&tagless, "ed25519")
+                }
+                "01" => {
+                    Self::from_hex_hash_and_curve(&tagless, "secp256k1")
+                }
+                "02" =>{
+                    Self::from_hex_hash_and_curve(&tagless, "p256")
+                }
+                _ => return Err(ConversionError::InvalidHash{ hash: pkh.to_string() })
+            }
+        } else {
+            return Err(ConversionError::InvalidHash{ hash: pkh.to_string() });
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crypto::hash::HashType;
 
-    use crate::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
+    use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
+    use crate::base::ConversionError;
 
     #[test]
     fn test_ed25519_from_bytes() -> Result<(), failure::Error> {
@@ -200,6 +219,23 @@ mod tests {
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(&"56a0476dae4e4600172dc9309b3aa4", &"p256");
         assert_eq!(result.unwrap_err(), ConversionError::InvalidHash { hash: "56a0476dae4e4600172dc9309b3aa4".to_string() });
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_tagged_hex_string() -> Result<(), failure::Error> {
+        let result = SignaturePublicKeyHash::from_tagged_hex_string(&"00002cca28ab019ae2d8c26f4ce4924cad67a2dc6618")?;
+        assert_eq!(result.to_string().as_str(), "tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17");
+
+        let result = SignaturePublicKeyHash::from_tagged_hex_string(&"000120262e6195b91181f1713c4237c8195096b8adc9")?;
+        assert_eq!(result.to_string().as_str(), "tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj");
+
+        let result = SignaturePublicKeyHash::from_tagged_hex_string(&"00026fde46af0356a0476dae4e4600172dc9309b3aa4")?;
+        assert_eq!(result.to_string().as_str(), "tz3WXYtyDUNL91qfiCJtVUX746QpNv5i5ve5");
+
+        let result = SignaturePublicKeyHash::from_tagged_hex_string(&"019c96e27f418b5db7c301147b3e941b41bd224fe400")?;
+        assert_eq!(result.to_string().as_str(), "KT1NrjjM791v7cyo6VGy7rrzB3Dg3p1mQki3");
+        
         Ok(())
     }
 }

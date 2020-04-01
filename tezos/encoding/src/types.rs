@@ -4,7 +4,7 @@
 //! Defines types of the intermediate data format.
 
 /// This is a wrapper for [num_bigint::BigInt] type.
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Ord, PartialOrd, Eq)]
 pub struct BigInt(pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for BigInt {
