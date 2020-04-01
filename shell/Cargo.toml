@@ -31,3 +31,11 @@ tezos_context = { path = "../tezos/context" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
+
+[dev-dependencies]
+slog-async = "2.3"
+slog-term = "2.4"
+ipc = { path = "../ipc" }
+tezos_client = { path = "../tezos/client" }
+tezos_interop = { path = "../tezos/interop" }
+tezos_interop_callback = { path = "../tezos/interop_callback" }

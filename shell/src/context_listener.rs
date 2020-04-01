@@ -11,11 +11,12 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, Logger, warn};
+use slog::{crit, debug, info, Logger, warn};
 
 use crypto::hash::HashType;
 use storage::{BlockStorage, ContextStorage};
-use storage::persistent::{ContextList, ContextMap, PersistentStorage};
+use storage::context::{ContextApi, ContextDiff, TezedgeContext};
+use storage::persistent::{ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
@@ -35,7 +36,6 @@ pub struct ContextListener {
 pub type ContextListenerRef = ActorRef<ContextListenerMsg>;
 
 impl ContextListener {
-
     /// Create new actor instance.
     ///
     /// This actor spawns a new thread in which it listens for incoming events from the `protocol_runner`.
@@ -48,21 +48,20 @@ impl ContextListener {
             let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || {
-                let mut context_storage = ContextStorage::new(&persistent_storage);
-                let mut block_storage = BlockStorage::new(&persistent_storage);
+                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), storage));
+                let mut context_action_storage = ContextStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
-                        &mut context_storage,
-                        &mut block_storage,
-                        storage.clone(),
+                        &mut context_action_storage,
+                        &mut context,
                         &log,
                     ) {
                         Ok(()) => debug!(log, "Context listener finished"),
                         Err(err) => {
                             if listener_run.load(Ordering::Acquire) {
-                                warn!(log, "Timeout while waiting for context event connection"; "reason" => format!("{:?}", err))
+                                crit!(log, "Error process context event"; "reason" => format!("{:?}", err))
                             }
                         }
                     }
@@ -112,9 +111,8 @@ impl Actor for ContextListener {
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
-    context_storage: &mut ContextStorage,
-    block_storage: &mut BlockStorage,
-    storage: ContextList,
+    context_action_storage: &mut ContextStorage,
+    context: &mut Box<dyn ContextApi>,
     log: &Logger,
 ) -> Result<(), Error> {
     debug!(log, "Waiting for connection from protocol runner");
@@ -122,23 +120,29 @@ fn listen_protocol_events(
     debug!(log, "Received connection from protocol runner. Starting to process context events.");
 
     let mut event_count = 0;
+
+    let mut context_diff: ContextDiff = context.init_from_start();
+
+    // TODO: remove/replace with context_diff
     let mut state: ContextMap = Default::default();
     let mut blocks: HashMap<Vec<u8>, ContextMap> = Default::default();
     while apply_block_run.load(Ordering::Acquire) {
+        debug!(log, "Received connection from protocol runner. Waiting on rx.receive()");
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
             Ok(msg) => {
-                if event_count % 100 == 0 {
-                    debug!(log, "Received protocol event"; "count" => event_count);
-                }
+                // if event_count % 100 == 0 {
+                info!(log, "Received protocol event"; "count" => event_count);
+                // }
                 event_count += 1;
 
                 match &msg {
-                    ContextAction::Set { block_hash: Some(block_hash), key, value, .. } => {
-                        let state = get_default(&mut blocks, block_hash.clone());
-                        state.insert(key.join("/"), Bucket::Exists(value.clone()));
+                    ContextAction::Set { block_hash: Some(block_hash), key, value, context_hash, .. } => {
+                        // add key/value
+                        context_diff.set(context_hash, key, value)?;
 
-                        context_storage.put_action(&block_hash.clone(), msg)?;
+                        // record event
+                        context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, .. } => {
                         let partial_state = get_default(&mut blocks, block_hash.clone());
@@ -152,38 +156,31 @@ fn listen_protocol_events(
                             let value = value.clone();
                             state.insert(to_key, value);
                         } else {
-                            warn!(log, "Trying to copy from non-existent location"; "from" => &from_key, "to" => &to_key);
+                            warn!(log, "Trying to copy from non-existent location"; "from" => &from_key, "to" => &to_key, "block" => HashType::BlockHash.bytes_to_string(block_hash));
                             state.insert(to_key, Bucket::Invalid);
                         }
 
-                        context_storage.put_action(&block_hash.clone(), msg)?;
+                        context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Delete { block_hash: Some(block_hash), key, .. }
                     | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, .. } => {
                         let state = get_default(&mut blocks, block_hash.clone());
                         state.insert(key.join("/"), Bucket::Deleted);
 
-                        context_storage.put_action(&block_hash.clone(), msg)?;
+                        context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    ContextAction::Commit { new_context_hash, block_hash: Some(block_hash), .. } => {
-                        if let Some(block) = blocks.get(block_hash) {
-                            let mut writer = storage.write().expect("lock poisoning");
-                            writer.push(&block)?;
-                        } else {
-                            crit!(log, "Trying to commit non-existent block"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
-                        }
-                        blocks.clear();
-                        block_storage.assign_to_context(block_hash, new_context_hash)?
+                    ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash), .. } => {
+                        context.commit(block_hash, parent_context_hash, new_context_hash, &context_diff)?;
                     }
-                    ContextAction::Checkout { context_hash: _, .. } => {
-                        /**/
+                    ContextAction::Checkout { context_hash, .. } => {
+                        context_diff = context.checkout(context_hash)?;
                     }
                     ContextAction::Mem { block_hash: Some(block_hash), .. }
                     | ContextAction::DirMem { block_hash: Some(block_hash), .. }
                     | ContextAction::Get { block_hash: Some(block_hash), .. }
                     | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
                         let key = block_hash.clone();
-                        context_storage.put_action(&key, msg)?;
+                        context_action_storage.put_action(&key, msg)?;
                     }
                     _ => (),
                 };

@@ -32,6 +32,7 @@ pub mod context_storage;
 pub mod p2p_message_storage;
 pub mod system_storage;
 pub mod skip_list;
+pub mod context;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
