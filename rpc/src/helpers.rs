@@ -30,6 +30,7 @@ macro_rules! merge_slices {
         res
     }}
 }
+pub type BlockOperations = Vec<Vec<HashMap<String, Value>>>;
 
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
@@ -38,7 +39,7 @@ pub struct FullBlockInfo {
     pub chain_id: String,
     pub header: InnerBlockHeader,
     pub metadata: HashMap<String, Value>,
-    pub operations: Vec<Vec<HashMap<String, Value>>>,
+    pub operations: BlockOperations,
 }
 
 /// Object containing all block header information

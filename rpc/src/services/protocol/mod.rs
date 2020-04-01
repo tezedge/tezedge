@@ -40,7 +40,7 @@ use tezos_messages::protocol::{
 };
 
 
-use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id, extract_curve_and_bytes};
+use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id, extract_curve_and_bytes, BlockOperations};
 use crate::rpc_actor::RpcCollectedStateRef;
 
 mod proto_005_2;
@@ -459,4 +459,30 @@ pub(crate) fn get_votes_ballot_list(_chain_id: &str, block_id: &str, persistent_
         .map(|v| v.as_map())
         .collect();
     Ok(Some(ballot_list))
+}
+
+pub(crate) fn get_operations_by_protocol(chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<BlockOperations>, failure::Error>{
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH
+        | proto_002_constants::PROTOCOL_HASH
+        | proto_003_constants::PROTOCOL_HASH
+        | proto_004_constants::PROTOCOL_HASH
+        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::operations_service::get_operations(chain_id, block_id, persistent_storage, state)
+        }
+        proto_006_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
 }

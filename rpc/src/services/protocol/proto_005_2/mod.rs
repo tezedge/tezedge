@@ -3,4 +3,5 @@
 
 pub(crate) mod rights_service;
 pub(crate) mod votes_services;
+pub(crate) mod operations_service;
 mod helpers;
