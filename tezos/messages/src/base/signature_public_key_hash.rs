@@ -197,6 +197,9 @@ mod tests {
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(&"2cca28a6f4ce4924cad67a2dc6618", &"ed25519");
         assert_eq!(result.unwrap_err(), ConversionError::InvalidHash { hash: "2cca28a6f4ce4924cad67a2dc6618".to_string() });
 
+        let result = SignaturePublicKeyHash::from_hex_hash_and_curve(&"56a0476dae4e4600172dc9309b3aa4", &"p256");
+        assert_eq!(result.unwrap_err(), ConversionError::InvalidHash { hash: "56a0476dae4e4600172dc9309b3aa4".to_string() });
+
         Ok(())
     }
 }

@@ -456,7 +456,7 @@ impl RightsParams {
 /// Struct used in endorsing rights to map endorsers to endorsement slots before they can be ordered and completed
 #[derive(Debug, Clone, Getters)]
 pub struct EndorserSlots {
-    /// endorser contract id
+    /// endorser contract id in form:tz1.../tz2.../KT1...
     #[get = "pub(crate)"]
     contract_id: String,
 

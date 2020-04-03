@@ -1,7 +1,6 @@
 pub mod base_types;
 pub mod monitor;
 pub mod chain;
-pub mod conversions;
 
 #[cfg(test)]
 pub mod test_helpers {

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use failure::bail;
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::chain_id_to_string;
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
@@ -19,12 +20,9 @@ use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::RpcJsonMap;
 
 use crate::ContextList;
-use crate::encoding::conversions::{
-    chain_id_to_string,
-    contract_id_to_address,
-};
 use crate::helpers::{BlockHeaderInfo, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, PagedResult};
 use crate::rpc_actor::RpcCollectedStateRef;
+use storage::context_storage::contract_id_to_contract_address_for_index;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -69,7 +67,7 @@ pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentS
 /// Get actions for a specific contract in ascending order.
 pub(crate) fn get_contract_actions(contract_id: &str, from_id: Option<u64>, limit: usize, persistent_storage: &PersistentStorage) -> Result<PagedResult<Vec<ContextRecordValue>>, failure::Error> {
     let context_storage = ContextStorage::new(persistent_storage);
-    let contract_address = contract_id_to_address(contract_id)?;
+    let contract_address = contract_id_to_contract_address_for_index(contract_id)?;
     let mut context_records = context_storage.get_by_contract_address(&contract_address, from_id, limit + 1)?;
     let next_id = if context_records.len() > limit { context_records.last().map(|rec| rec.id()) } else { None };
     context_records.truncate(std::cmp::min(context_records.len(), limit));

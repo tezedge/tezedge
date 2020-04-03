@@ -136,6 +136,11 @@ fn copy_bytes(data: &[u8]) -> Vec<u8> {
     data.to_vec()
 }
 
+#[inline]
+pub fn chain_id_to_string(chain_id: &ChainId) -> String {
+    HashType::ChainId.bytes_to_string(chain_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

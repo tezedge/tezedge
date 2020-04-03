@@ -21,9 +21,9 @@ use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::protocol::proto_005_2::rights::{BakingRights, EndorsingRight};
 
-use crate::encoding::conversions::contract_id_to_address;
 use crate::helpers::ContextProtocolParam;
 use crate::services::protocol::proto_005_2::helpers::{EndorserSlots, get_prng_number, init_prng, RightsConstants, RightsContextData, RightsParams};
+use storage::context_storage::contract_id_to_contract_address_for_index;
 
 /// Return generated baking rights.
 ///
@@ -309,14 +309,20 @@ fn get_endorsing_rights(context_data: &RightsContextData, parameters: &RightsPar
 /// * `estimated_time` - Estimated time of endorsement, is set to None if in past relative to block_id.
 #[inline]
 fn complete_endorsing_rights_for_level(context_data: &RightsContextData, parameters: &RightsParams, constants: &RightsConstants, level: i64, display_level: i64, estimated_time: Option<i64>, endorsing_rights: &mut Vec<EndorsingRight>) -> Result<(), failure::Error> {
-    // let mut endorsing_rights = Vec::<EndorsingRight>::new();
 
     // endorsers_slots is needed to group all slots by delegate
     let endorsers_slots = get_endorsers_slots(constants, context_data, level)?;
 
+    // convert contract id to hash contract address hex byte string (needed for ordering)
+    let mut endorers_slots_keys_for_order: HashMap<String, String> = HashMap::new();
+    for key in endorsers_slots.keys() {
+        endorers_slots_keys_for_order.insert(hex::encode(contract_id_to_contract_address_for_index(key.as_str())?), key.clone());
+    }
+
     // order descending by delegate public key hash address hex byte string
-    for delegate in endorsers_slots.keys().sorted().rev() {
-        let delegate_data = endorsers_slots.get(delegate).ok_or(format_err!("missing EndorserSlots"))?;
+    for delegate in endorers_slots_keys_for_order.keys().sorted().rev() {
+        let delegate_key = endorers_slots_keys_for_order.get(delegate).ok_or(format_err!("missing delegate key"))?;
+        let delegate_data = endorsers_slots.get(delegate_key).ok_or(format_err!("missing EndorserSlots for delegate_key: {:?}", delegate_key))?;
 
         // prepare delegate contract id
         let delegate_contract_id = delegate_data.contract_id().to_string();
@@ -363,9 +369,9 @@ fn get_endorsers_slots(constants: &RightsConstants, context_data: &RightsContext
 
             if let Some(delegate) = context_data.rolls().get(&random_num) {
                 // collect all slots for each delegate
-                // convert contract id to public key hash address hex byte string (needed for later ordering)
-                let public_key_hash = hex::encode(contract_id_to_address(&delegate)?);
-                let endorsers_slots_entry = endorsers_slots.entry(public_key_hash).or_insert(EndorserSlots::new(delegate.clone(), Vec::new()));
+                let endorsers_slots_entry = endorsers_slots
+                    .entry(delegate.clone())
+                    .or_insert(EndorserSlots::new(delegate.clone(), Vec::new()));
                 endorsers_slots_entry.push_to_slot(endorser_slot as u16);
                 break;
             } else {
