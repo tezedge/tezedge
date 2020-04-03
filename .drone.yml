@@ -85,7 +85,7 @@ steps:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
   commands: 
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json"
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=39732
 
 - name: ocaml-node-run
   user: root
