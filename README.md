@@ -1,6 +1,6 @@
 # TezEdge
 
-[![Build Status]][Build Link] [![Drone Status]][Drone Link]   [![Docs Status]][docs Link] [![MIT licensed]][MIT link]
+[![Build Status]][Build Link] [![Drone Status]][Drone Link]   [![Docs Status]][docs Link] [![Changelog][changelog-badge]][changelog] [![MIT licensed]][MIT link]
 
 
 [Build Status]: https://travis-ci.com/simplestaking/tezedge.svg?branch=master
@@ -16,6 +16,9 @@
 
 [MIT licensed]: https://img.shields.io/badge/license-MIT-blue.svg
 [MIT link]: https://github.com/simplestaking/tezedge/blob/master/LICENSE
+
+[changelog]: ./CHANGELOG.md
+[changelog-badge]: https://img.shields.io/badge/changelog-Changelog-%23E05735
 
 The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
 In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible. 
