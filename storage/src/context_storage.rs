@@ -3,6 +3,7 @@
 
 use std::cmp::Ordering;
 use std::mem;
+use std::ops::Range;
 use std::sync::Arc;
 
 use getset::{CopyGetters, Getters};
@@ -11,14 +12,14 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_context::channel::ContextAction;
+use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
 use crate::persistent::{CommitLogSchema, CommitLogWithSchema, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage, SchemaError};
-use crate::persistent::codec::{vec_from_slice, range_from_idx_len};
+use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
 use crate::persistent::commit_log::fold_consecutive_locations;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
-use std::ops::Range;
 
 pub type ContextStorageCommitLog = dyn CommitLogWithSchema<ContextStorage> + Sync + Send;
 
@@ -139,12 +140,37 @@ fn extract_contract_addresses(value: &ContextRecordValue) -> Vec<ContractAddress
 
     contract_addresses.into_iter()
         .filter_map(|c| c)
+        .filter(|c| c.len() == ContextByContractIndexKey::LEN_CONTRACT_ADDRESS)
         .collect()
 }
 
+/// Extracts contract id for index from contracts keys - see [contract_id_to_contract_address]
+///
+/// Relevant keys for contract index should looks like:
+/// 1. "data", "contracts", "index", "b5", "94", "d1", "1e", "8e", "52", "0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50", "roll_list"
+/// - in this case we use exact bytes: 0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50, which conforms "contract id index" length [LEN_TOTAL] [contract_id_to_contract_address]
+///
+/// 2. "data", "contracts", "index", "p256", "6f", "de", "46", "af", "03", "56a0476dae4e4600172dc9309b3aa4", "balance"
+/// - in this case we use exact hash to transform: p2566fde46af0356a0476dae4e4600172dc9309b3aa4, which conforms "contract id index" length [LEN_TOTAL] [contract_id_to_contract_address]
+///
 fn action_key_to_contract_address(key: &[String]) -> Option<ContractAddress> {
     if key.len() >= 10 && "data" == key[0] && "contracts" == key[1] && "index" == key[2] {
-        hex::decode(&key[9]).ok()
+
+        // check if case 1.
+        let contract_id = hex::decode(&key[9]).ok();
+        let contract_id_len = contract_id.map_or(0,|cid| cid.len());
+        if contract_id_len == ContextByContractIndexKey::LEN_CONTRACT_ADDRESS {
+            return hex::decode(&key[9]).ok();
+        };
+
+        // check if case 2.
+        match SignaturePublicKeyHash::from_hex_hash_and_curve(&key[4..10].join(""), &key[3].as_str()) {
+            Err(_) => None,
+            Ok(pubkey) => match contract_id_to_contract_address_for_index(pubkey.to_string().as_str()) {
+                Err(_) => None,
+                Ok(address) => Some(address)
+            }
+        }
     } else {
         None
     }
@@ -401,6 +427,47 @@ impl Encoder for ContextByContractIndexKey {
     }
 }
 
+/// Dedicated function to convert contract id to contract address for indexing in storage action,
+/// contract id index has specified length [LEN_TOTAL]
+///
+/// # Arguments
+///
+/// * `contract_id` - contract id (tz... or KT1...)
+#[inline]
+pub fn contract_id_to_contract_address_for_index(contract_id: &str) -> Result<ContractAddress, ConversionError> {
+    let contract_address = {
+        if contract_id.len() == 44 {
+            hex::decode(contract_id)?
+        } else if contract_id.len() > 3 {
+            let mut contract_address = Vec::with_capacity(22);
+            match &contract_id[0..3] {
+                "tz1" => {
+                    contract_address.extend(&[0, 0]);
+                    contract_address.extend(&HashType::ContractTz1Hash.string_to_bytes(contract_id)?);
+                }
+                "tz2" => {
+                    contract_address.extend(&[0, 1]);
+                    contract_address.extend(&HashType::ContractTz2Hash.string_to_bytes(contract_id)?);
+                }
+                "tz3" => {
+                    contract_address.extend(&[0, 2]);
+                    contract_address.extend(&HashType::ContractTz3Hash.string_to_bytes(contract_id)?);
+                }
+                "KT1" => {
+                    contract_address.push(1);
+                    contract_address.extend(&HashType::ContractKt1Hash.string_to_bytes(contract_id)?);
+                    contract_address.push(0);
+                }
+                _ => return Err(ConversionError::InvalidCurveTag { curve_tag: contract_id.to_string() })
+            }
+            contract_address
+        } else {
+            return Err(ConversionError::InvalidHash { hash: contract_id.to_string() });
+        }
+    };
+
+    Ok(contract_address)
+}
 
 #[cfg(test)]
 mod tests {
@@ -455,5 +522,69 @@ mod tests {
         }.encode()?;
 
         Ok(assert_eq!(Ordering::Less, ContextByContractIndexKey::reverse_id_comparator(&a, &b)))
+    }
+
+    #[test]
+    fn test_contract_id_to_address() -> Result<(), failure::Error> {
+        let result = contract_id_to_contract_address_for_index("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?;
+        assert_eq!(result, hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?);
+
+        let result = contract_id_to_contract_address_for_index("tz1Y68Da76MHixYhJhyU36bVh7a8C9UmtvrR")?;
+        assert_eq!(result, hex::decode("00008890efbd6ca6bbd7771c116111a2eec4169e0ed8")?);
+
+        let result = contract_id_to_contract_address_for_index("tz2LBtbMMvvguWQupgEmtfjtXy77cHgdr5TE")?;
+        assert_eq!(result, hex::decode("0001823dd85cdf26e43689568436e43c20cc7c89dcb4")?);
+
+        let result = contract_id_to_contract_address_for_index("tz3e75hU4EhDU3ukyJueh5v6UvEHzGwkg3yC")?;
+        assert_eq!(result, hex::decode("0002c2fe98642abd0b7dd4bc0fc42e0a5f7c87ba56fc")?);
+
+        let result = contract_id_to_contract_address_for_index("KT1NrjjM791v7cyo6VGy7rrzB3Dg3p1mQki3")?;
+        assert_eq!(result, hex::decode("019c96e27f418b5db7c301147b3e941b41bd224fe400")?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn extract_contract_address() -> Result<(), Error> {
+
+        // ok
+        let contract_address = extract_contract_addresses(&action(["data", "contracts", "index", "b5", "94", "d1", "1e", "8e", "52", "0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50", "roll_list"].to_vec()));
+        assert_eq!(1, contract_address.len());
+        assert_eq!("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50", hex::encode(&contract_address[0]));
+
+        // ok
+        let contract_address = extract_contract_addresses(&action(["data", "contracts", "index", "p256", "6f", "de", "46", "af", "03", "56a0476dae4e4600172dc9309b3aa4", "balance"].to_vec()));
+        assert_eq!(1, contract_address.len());
+        assert_eq!("00026fde46af0356a0476dae4e4600172dc9309b3aa4", hex::encode(&contract_address[0]));
+
+        // ok
+        let contract_address = extract_contract_addresses(&action(["data", "contracts", "index", "ed25519", "89", "b5", "12", "22", "97", "e589f9ba8b91f4bf74804da2fe8d4a", "frozen_balance", "0", "deposits"].to_vec()));
+        assert_eq!(1, contract_address.len());
+        assert_eq!("000089b5122297e589f9ba8b91f4bf74804da2fe8d4a", hex::encode(&contract_address[0]));
+
+        // ok
+        let contract_address = extract_contract_addresses(&action(["data", "contracts", "index", "AAA", "89", "b5", "12", "22", "97", "e589f9ba8b91f4bf74804da2fe8d4a", "frozen_balance", "0", "deposits"].to_vec()));
+        assert_eq!(0, contract_address.len());
+
+        Ok(())
+    }
+
+    fn to_key(key: Vec<&str>) -> Vec<String> {
+        key
+            .into_iter()
+            .map(|k| k.to_string())
+            .collect()
+    }
+
+    fn action(key: Vec<&str>) -> ContextRecordValue {
+        let action = ContextAction::Get {
+            context_hash: None,
+            block_hash: None,
+            operation_hash: None,
+            key: to_key(key),
+            start_time: 0 as f64,
+            end_time: 0 as f64,
+        };
+        ContextRecordValue::new(action, 123 as u64)
     }
 }

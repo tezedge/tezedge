@@ -75,7 +75,7 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
     })
 }
 
-pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides)
+pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides, enable_testchain: bool)
                     -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
         // genesis configuration
@@ -88,10 +88,13 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
         let protocol_overrides_tuple: Tuple = protocol_overrides_to_ocaml(protocol_overrides)?;
 
         let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");
-        match ocaml_function.call3_exn::<Str, Value, Value>(
-            storage_data_dir.as_str().into(),
-            Value::from(genesis_tuple),
-            Value::from(protocol_overrides_tuple),
+        match ocaml_function.call_n_exn(
+            [
+                Value::from(Str::from(storage_data_dir.as_str())),
+                Value::from(genesis_tuple),
+                Value::from(protocol_overrides_tuple),
+                Value::bool(enable_testchain)
+            ]
         ) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();

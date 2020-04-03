@@ -45,7 +45,8 @@ struct ApplyBlockParams {
 #[derive(Serialize, Deserialize, Debug)]
 struct InitStorageParams {
     storage_data_dir: String,
-    tezos_environment: TezosEnvironment
+    tezos_environment: TezosEnvironment,
+    enable_testchain: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -96,7 +97,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                 tx.send(&NodeMessage::ChangeRuntimeConfigurationResult(res))?;
             }
             ProtocolMessage::InitStorageCall(params) => {
-                let res = Proto::init_storage(params.storage_data_dir, params.tezos_environment);
+                let res = Proto::init_storage(params.storage_data_dir, params.tezos_environment, params.enable_testchain);
                 tx.send(&NodeMessage::InitStorageResult(res))?;
             }
             ProtocolMessage::GenerateIdentity(params) => {
@@ -189,6 +190,8 @@ pub struct ProtocolEndpointConfiguration {
     runtime_configuration: TezosRuntimeConfiguration,
     #[get_copy = "pub"]
     environment: TezosEnvironment,
+    #[get_copy = "pub"]
+    enable_testchain: bool,
     #[get = "pub"]
     data_dir: PathBuf,
     #[get = "pub"]
@@ -196,10 +199,11 @@ pub struct ProtocolEndpointConfiguration {
 }
 
 impl ProtocolEndpointConfiguration {
-    pub fn new<P: AsRef<Path>>(runtime_configuration: TezosRuntimeConfiguration, environment: TezosEnvironment, data_dir: P, executable_path: P) -> Self {
+    pub fn new<P: AsRef<Path>>(runtime_configuration: TezosRuntimeConfiguration, environment: TezosEnvironment, enable_testchain: bool, data_dir: P, executable_path: P) -> Self {
         ProtocolEndpointConfiguration {
             runtime_configuration,
             environment,
+            enable_testchain,
             data_dir: data_dir.as_ref().into(),
             executable_path: executable_path.as_ref().into(),
         }
@@ -326,11 +330,12 @@ impl<'a> ProtocolController<'a> {
     }
 
     /// Command tezos ocaml code to initialize storage.
-    pub fn init_storage(&self, storage_data_dir: String, tezos_environment: TezosEnvironment) -> Result<TezosStorageInitInfo, ProtocolServiceError> {
+    pub fn init_storage(&self, storage_data_dir: String, tezos_environment: TezosEnvironment, enable_testchain: bool) -> Result<TezosStorageInitInfo, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::InitStorageCall(InitStorageParams {
             storage_data_dir,
-            tezos_environment
+            tezos_environment,
+            enable_testchain,
         }))?;
         match io.rx.receive()? {
             NodeMessage::InitStorageResult(result) => result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into()),
@@ -368,7 +373,11 @@ impl<'a> ProtocolController<'a> {
     /// Initialize protocol environment from default configuration.
     pub fn init_protocol(&self) ->Result<TezosStorageInitInfo, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
-        self.init_storage(self.configuration.data_dir().to_str().unwrap().to_string(), self.configuration.environment())
+        self.init_storage(
+            self.configuration.data_dir().to_str().unwrap().to_string(),
+            self.configuration.environment(),
+            self.configuration.enable_testchain(),
+        )
     }
 }
 

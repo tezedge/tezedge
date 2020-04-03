@@ -68,6 +68,7 @@ fn prepare_empty_storage(dir_name: &str) -> OcamlStorageInitInfo {
         storage_data_dir_path.to_string(),
         &cfg.genesis,
         &cfg.protocol_overrides,
+        false
     ).unwrap().unwrap();
 
     let expected_chain_id = hex::decode(CHAIN_ID).unwrap();

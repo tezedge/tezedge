@@ -20,6 +20,7 @@ lazy_static! {
 pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
+    Carthagenet,
     Mainnet,
     Zeronet,
 }
@@ -34,6 +35,7 @@ impl FromStr for TezosEnvironment {
         match s.to_ascii_lowercase().as_str() {
             "alphanet" => Ok(TezosEnvironment::Alphanet),
             "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
+            "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
             _ => Err(ParseTezosEnvironmentError(format!("Invalid variant name: {}", s)))
@@ -60,6 +62,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: false,
     });
 
     env.insert(TezosEnvironment::Babylonnet, TezosEnvironmentConfiguration {
@@ -79,6 +82,28 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: true,
+    });
+
+    env.insert(TezosEnvironment::Carthagenet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2019-11-28T13:02:13Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "tezaria.com".to_string(),
+            "34.76.169.218".to_string(),
+            "34.90.24.160".to_string(),
+            "carthagenet.kaml.fr".to_string(),
+            "104.248.136.94".to_string()
+        ],
+        version: "TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
     });
 
     env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
@@ -90,7 +115,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         bootstrap_lookup_addresses: vec![
             "boot.tzbeta.net".to_string()
         ],
-        version: "TEZOS_BETANET_2018-06-30T16:07:32Z".to_string(),
+        version: "TEZOS_MAINNET".to_string(),
         protocol_overrides: ProtocolOverrides {
             forced_protocol_upgrades: vec![
                 (28082 as i32, "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string()),
@@ -100,6 +125,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
                 ("PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(), "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string())
             ],
         },
+        enable_testchain: false,
     });
 
     env.insert(TezosEnvironment::Zeronet, TezosEnvironmentConfiguration {
@@ -117,15 +143,22 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
+        enable_testchain: true,
     });
 
     env
 }
 
-/// Structure holding all environment specific crucial information
+/// Structure holding all environment specific crucial information - according to different Tezos Gitlab branches
 pub struct TezosEnvironmentConfiguration {
+    /// Genesis information - see genesis_chain.ml
     pub genesis: GenesisChain,
+    /// Adresses used for initial bootstrap, if no peers are configured - see node_config_file.ml
     pub bootstrap_lookup_addresses: Vec<String>,
+    /// chain_name - see distributed_db_version.ml
     pub version: String,
+    /// protocol overrides - see block_header.ml
     pub protocol_overrides: ProtocolOverrides,
+    /// if network has enabled switching test chains by default
+    pub enable_testchain: bool,
 }

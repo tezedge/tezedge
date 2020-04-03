@@ -39,6 +39,7 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
         match client::init_storage(
             common::prepare_empty_dir(&storage_data_dir),
             net,
+            false
         ) {
             Err(e) => panic!("Failed to initialize storage for: {:?}, Reason: {:?}", net, e),
             Ok(init_info) => {

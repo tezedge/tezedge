@@ -7,7 +7,7 @@ use tezos_encoding::{
 };
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use std::collections::HashMap;
-use crate::protocol::UniversalValue;
+use crate::protocol::{UniversalValue, ToRpcJsonMap};
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -26,8 +26,8 @@ pub struct FixedConstants {
     max_proposals_per_delegate: u8,
 }
 
-impl FixedConstants {
-    pub fn as_map(self) -> HashMap<&'static str, UniversalValue> {
+impl ToRpcJsonMap for FixedConstants {
+    fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
         ret.insert("proof_of_work_nonce_size", UniversalValue::num(self.proof_of_work_nonce_size));
         ret.insert("nonce_length", UniversalValue::num(self.nonce_length));
@@ -58,7 +58,7 @@ pub struct ParametricConstants {
     block_security_deposit: BigInt,
     endorsement_security_deposit: BigInt,
     baking_reward_per_endorsement: Vec<BigInt>,
-    endorsement_reward: BigInt,
+    endorsement_reward: Vec<BigInt>,
     cost_per_byte: BigInt,
     hard_storage_limit_per_operation: BigInt,
     test_chain_duration: i64,
@@ -92,7 +92,7 @@ impl HasEncoding for ParametricConstants {
             Field::new("block_security_deposit", Encoding::Mutez),
             Field::new("endorsement_security_deposit", Encoding::Mutez),
             Field::new("baking_reward_per_endorsement", Encoding::dynamic(Encoding::list(Encoding::Mutez))),
-            Field::new("endorsement_reward", Encoding::Mutez),
+            Field::new("endorsement_reward", Encoding::dynamic(Encoding::list(Encoding::Mutez))),
             Field::new("cost_per_byte", Encoding::Mutez),
             Field::new("hard_storage_limit_per_operation", Encoding::Z),
             Field::new("test_chain_duration", Encoding::Int64),
@@ -105,35 +105,35 @@ impl HasEncoding for ParametricConstants {
     }
 }
 
-impl ParametricConstants {
-    pub fn as_map(self) -> HashMap<&'static str, UniversalValue> {
+impl ToRpcJsonMap for ParametricConstants {
+    fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
         ret.insert("preserved_cycles", UniversalValue::num(self.preserved_cycles));
         ret.insert("blocks_per_cycle", UniversalValue::num(self.blocks_per_cycle));
         ret.insert("blocks_per_commitment", UniversalValue::num(self.blocks_per_commitment));
         ret.insert("blocks_per_roll_snapshot", UniversalValue::num(self.blocks_per_roll_snapshot));
         ret.insert("blocks_per_voting_period", UniversalValue::num(self.blocks_per_voting_period));
-        ret.insert("time_between_blocks", UniversalValue::num_list(self.time_between_blocks.iter()));
+        ret.insert("time_between_blocks", UniversalValue::i64_list(self.time_between_blocks.clone()));
         ret.insert("endorsers_per_block", UniversalValue::num(self.endorsers_per_block));
-        ret.insert("hard_gas_limit_per_operation", UniversalValue::big_num(self.hard_gas_limit_per_operation));
-        ret.insert("hard_gas_limit_per_block", UniversalValue::big_num(self.hard_gas_limit_per_block));
-        ret.insert("proof_of_work_threshold", UniversalValue::num(self.proof_of_work_threshold));
-        ret.insert("tokens_per_roll", UniversalValue::big_num(self.tokens_per_roll));
+        ret.insert("hard_gas_limit_per_operation", UniversalValue::big_num(self.hard_gas_limit_per_operation.clone()));
+        ret.insert("hard_gas_limit_per_block", UniversalValue::big_num(self.hard_gas_limit_per_block.clone()));
+        ret.insert("proof_of_work_threshold", UniversalValue::i64(self.proof_of_work_threshold));
+        ret.insert("tokens_per_roll", UniversalValue::big_num(self.tokens_per_roll.clone()));
         ret.insert("michelson_maximum_type_size", UniversalValue::num(self.michelson_maximum_type_size));
-        ret.insert("seed_nonce_revelation_tip", UniversalValue::big_num(self.seed_nonce_revelation_tip));
+        ret.insert("seed_nonce_revelation_tip", UniversalValue::big_num(self.seed_nonce_revelation_tip.clone()));
         ret.insert("origination_size", UniversalValue::num(self.origination_size));
-        ret.insert("block_security_deposit", UniversalValue::big_num(self.block_security_deposit));
-        ret.insert("endorsement_security_deposit", UniversalValue::big_num(self.endorsement_security_deposit));
-        ret.insert("baking_reward_per_endorsement", UniversalValue::big_num_list(self.baking_reward_per_endorsement));
-        ret.insert("endorsement_reward", UniversalValue::big_num(self.endorsement_reward));
-        ret.insert("cost_per_byte", UniversalValue::big_num(self.cost_per_byte));
-        ret.insert("hard_storage_limit_per_operation", UniversalValue::big_num(self.hard_storage_limit_per_operation));
-        ret.insert("test_chain_duration", UniversalValue::num(self.test_chain_duration));
+        ret.insert("block_security_deposit", UniversalValue::big_num(self.block_security_deposit.clone()));
+        ret.insert("endorsement_security_deposit", UniversalValue::big_num(self.endorsement_security_deposit.clone()));
+        ret.insert("baking_reward_per_endorsement", UniversalValue::big_num_list(self.baking_reward_per_endorsement.clone()));
+        ret.insert("endorsement_reward", UniversalValue::big_num_list(self.endorsement_reward.clone()));
+        ret.insert("cost_per_byte", UniversalValue::big_num(self.cost_per_byte.clone()));
+        ret.insert("hard_storage_limit_per_operation", UniversalValue::big_num(self.hard_storage_limit_per_operation.clone()));
+        ret.insert("test_chain_duration", UniversalValue::i64(self.test_chain_duration));
         ret.insert("quorum_min", UniversalValue::num(self.quorum_min));
         ret.insert("quorum_max", UniversalValue::num(self.quorum_max));
         ret.insert("min_proposal_quorum", UniversalValue::num(self.min_proposal_quorum));
         ret.insert("initial_endorsers", UniversalValue::num(self.initial_endorsers));
-        ret.insert("delay_per_missing_endorsement", UniversalValue::num(self.delay_per_missing_endorsement));
+        ret.insert("delay_per_missing_endorsement", UniversalValue::i64(self.delay_per_missing_endorsement));
         ret
     }
 }

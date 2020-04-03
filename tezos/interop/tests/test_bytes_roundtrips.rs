@@ -391,7 +391,7 @@ fn is_ocaml_log_enabled() -> bool {
 
 fn no_of_ffi_calls_treshold_for_gc() -> i32 {
     env::var("OCAML_CALLS_GC")
-        .unwrap_or("2000".to_string())
+        .unwrap_or("50".to_string())
         .parse::<i32>().unwrap()
 }
 

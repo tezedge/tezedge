@@ -13,7 +13,7 @@ use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage};
 
 /// Store block header data in a key-value store and into commit log.
-/// The value is fist inserted into commit log, which returns a location of the newly inserted value.
+/// The value is first inserted into commit log, which returns a location of the newly inserted value.
 /// That location is then stored as a value in the key-value store.
 #[derive(Clone)]
 pub struct BlockStorage {
