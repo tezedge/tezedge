@@ -165,7 +165,7 @@ pub mod tests_common {
     use crate::block_storage;
     use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
-    use crate::skip_list::{DatabaseBackedSkipList, Lane};
+    use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 
     use super::*;
 
@@ -195,6 +195,7 @@ pub mod tests_common {
                 Sequences::descriptor(),
                 DatabaseBackedSkipList::descriptor(),
                 Lane::descriptor(),
+                ListValue::descriptor(),
             ])?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),

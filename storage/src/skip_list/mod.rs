@@ -21,11 +21,14 @@
 
 pub use crate::skip_list::content::{Bucket, ListValue, SkipListError};
 pub use crate::skip_list::lane::{Lane, TypedLane};
-pub use crate::skip_list::skip_list::{DatabaseBackedSkipList, DatabaseBackedFlatList, SkipList, TypedSkipList};
+pub use crate::skip_list::skip_list::{DatabaseBackedSkipList, SkipList, TypedSkipList};
 
 mod content;
 mod lane;
 mod skip_list;
 
-pub const LEVEL_BASE: usize = 8;
+pub(crate) const LEVEL_BASE: usize = 8;
 
+pub trait TryExtend<A> {
+    fn try_extend<T: IntoIterator<Item = A>>(&mut self, iter: T) -> Result<(), SkipListError>;
+}

@@ -3,20 +3,19 @@
 
 use std::collections::HashMap;
 
-use storage::skip_list::{DatabaseBackedSkipList, DatabaseBackedFlatList, TypedSkipList, ListValue};
-use storage::tests_common::TmpStorage;
-
-use crate::common::{OrderedValue, Value};
-
-mod common;
-
+use maplit::hashmap;
 use rand::{
     distributions::{Distribution, Standard},
-    seq::SliceRandom,
     Rng,
+    seq::SliceRandom,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+use storage::persistent::BincodeEncoded;
+use storage::skip_list::{DatabaseBackedSkipList, TypedSkipList};
+use storage::tests_common::TmpStorage;
+
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 enum Operation {
     Set,
     Copy,
@@ -34,24 +33,20 @@ impl Distribution<Operation> for Standard {
     }
 }
 
-const LEDGER_SIZE: usize = 5000;
-const OPERATION_COUNT: usize = 100;
-const KEY_COUNT: u64 = 10000;
-
-type Ctx = OrderedValue;
+impl BincodeEncoded for Operation {}
 
 #[test]
 fn list_new() {
     let tmp_storage = TmpStorage::create("__skip_list:list_new").expect("Storage error");
-    let list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(1, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(1, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_new")).expect("failed to create skip list"));
     assert_eq!(list.len(), 0);
 }
 
 #[test]
 fn list_push() {
     let tmp_storage = TmpStorage::create("__skip_list:list_push").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(2, tmp_storage.storage().kv()).expect("failed to create skip list"));
-    list.push(Value::new(vec![1])).expect("failed to push value to skip list");
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(2, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_push")).expect("failed to create skip list"));
+    list.push(&hashmap! { 1 => 1 }).expect("failed to push value to skip list");
     assert!(list.contains(0));
 }
 
@@ -69,76 +64,133 @@ fn list_index_level() {
 #[test]
 fn list_check_first() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_first").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(3, tmp_storage.storage().kv()).expect("failed to create skip list"));
-    list.push(Value::new(vec![1])).expect("failed to push value to skip list");
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(3, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_first")).expect("failed to create skip list"));
+    list.push(&hashmap! { 1 => 1 }).expect("failed to push value to skip list");
     let val = list.get(0).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(0), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    assert_eq!(val.unwrap(), Value::new(vec![1]));
+    assert_eq!(val.unwrap(), hashmap! { 1 => 1 });
 }
 
 #[test]
 fn list_check_second() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_second").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(4, tmp_storage.storage().kv()).expect("failed to create skip list"));
-    list.push(Value::new(vec![1])).expect("failed to push value to skip list");
-    list.push(Value::new(vec![2])).expect("failed to push value to skip list");
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(4, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_second")).expect("failed to create skip list"));
+    list.push(&hashmap! { 1 => 1 }).expect("failed to push value to skip list");
+    list.push(&hashmap! { 2 => 2 }).expect("failed to push value to skip list");
     let val = list.get(1).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(1), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    assert_eq!(val.unwrap(), Value::new(vec![1, 2]));
+    assert_eq!(val.unwrap(), (1..=2).map(|i| (i, i)).collect());
 }
 
 #[test]
 fn list_check_bottom_lane() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_bottom_lane").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(5, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(5, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_bottom_lane")).expect("failed to create skip list"));
     for index in 0..=6 {
-        list.push(Value::new(vec![index])).expect("failed to push value to skip list");
+        list.push(&hashmap! { index => index }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 1);
     let val = list.get(6).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(6), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    assert_eq!(val.unwrap(), Value::new((0..=6).collect()));
+    assert_eq!(val.unwrap(), (0..=6).map(|i| (i, i)).collect());
 }
 
 #[test]
 pub fn list_check_faster_lane() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_faster_lane").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(6, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(6, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_faster_lane")).expect("failed to create skip list"));
     for index in 0..=7 {
-        list.push(Value::new(vec![index])).expect("failed to push value to skip list");
+        list.push(&hashmap! { index => index }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 2);
     let val = list.get(7).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(7), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    assert_eq!(val.unwrap(), Value::new((0..=7).collect()));
+    assert_eq!(val.unwrap(), (0..=7).map(|i| (i, i)).collect());
 }
 
 #[test]
 pub fn list_check_lane_traversal() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_lane_traversal").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, Value>> = Box::new(DatabaseBackedSkipList::new(7, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(7, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_lane_traversal")).expect("failed to create skip list"));
     for index in 0..=63 {
-        list.push(Value::new(vec![index])).expect("failed to push value to skip list");
+        list.push(&hashmap! { index => index }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 3);
     let val = list.get(63).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(63), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    assert_eq!(val.unwrap(), Value::new((0..=63).collect()));
+    assert_eq!(val.unwrap(), (0..=63).map(|i| (i, i)).collect());
+}
+
+#[test]
+pub fn list_get_value_by_key() {
+    let tmp_storage = TmpStorage::create("__skip_list:list_get_value_by_key").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_get_value_by_key")).expect("failed to create skip list"));
+    for index in 0..=63 {
+        list.push(&hashmap! { index => index * 5 }).expect("failed to push value to skip list");
+    }
+    assert_eq!(list.levels(), 3);
+    let key: i32 = 21;
+    let val = list.get_key((key - 1) as usize, &key).expect("failed to get value from skip list");
+    assert!(val.is_none(), "Key {} should not be found", key);
+    let val = list.get_key((key + 1) as usize, &key).expect("failed to get value from skip list");
+    assert!(val.is_some(), "Key {} not be found", key);
+    assert_eq!(val, Some(key * 5), "Invalid value was found")
+}
+
+#[test]
+pub fn list_get_values_by_prefix() -> Result<(), failure::Error> {
+    let tmp_storage = TmpStorage::create("__skip_list:list_get_values_by_prefix").expect("Storage error");
+    let mut list: Box<dyn TypedSkipList<String, i32>> = Box::new(DatabaseBackedSkipList::new(9, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_get_values_by_prefix")).expect("failed to create skip list"));
+
+    list.push(&hashmap! { String::from("/system") => 10 })?;
+    list.push(&hashmap! { String::from("/system/cpu") => 11 })?;
+    list.push(&hashmap! { String::from("/system/cpu/0") => 110 })?;
+    list.push(&hashmap! { String::from("/system/cpu/1") => 111 })?;
+    list.push(&hashmap! { String::from("/context/user/name") => 31 })?;
+    list.push(&hashmap! { String::from("/context/user/email") => 32 })?;
+    list.push(&hashmap! { String::from("/context/user") => 3 })?;
+    list.push(&hashmap! { String::from("/context/user/name") => 9000 })?;
+    list.push(&hashmap! {
+        String::from("/system/cpu/3") => 113,
+        String::from("/system/cpu/2") => 112,
+    })?;
+    assert_eq!(list.len(), 9, "Incorrect length");
+
+    let values = list.get_prefix(list.len() - 1, &String::from("/system"))?;
+    assert!(values.is_some());
+    assert_eq!(values, Some(hashmap! {
+        String::from("/system") => 10,
+        String::from("/system/cpu") => 11,
+        String::from("/system/cpu/0") => 110,
+        String::from("/system/cpu/1") => 111,
+        String::from("/system/cpu/3") => 113,
+        String::from("/system/cpu/2") => 112,
+    }));
+
+    let values = list.get_prefix(list.len() - 1, &String::from("/context/user"))?;
+    assert!(values.is_some());
+    assert_eq!(values, Some(hashmap! {
+        String::from("/context/user") => 3,
+        String::from("/context/user/name") => 9000,
+        String::from("/context/user/email") => 32,
+    }));
+
+    Ok(())
 }
 
 #[test]
 pub fn list_check_lane_order_traversal() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_lane_order_traversal").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_lane_order_traversal")).expect("failed to create skip list"));
     for (value, key) in (0..=63).zip((0..=7).cycle()) {
         let mut map = HashMap::new();
         map.insert(key, value);
-        list.push(OrderedValue::new(map)).expect("failed to store value into skip list");
+        list.push(&map).expect("failed to store value into skip list");
     }
     assert_eq!(list.levels(), 3);
     let val = list.get(63).expect("failed to get value from skip list");
@@ -148,17 +200,17 @@ pub fn list_check_lane_order_traversal() {
     for (value, key) in (56..=63).zip(0..=7) {
         expected.insert(key, value);
     }
-    assert_eq!(val.unwrap(), OrderedValue::new(expected));
+    assert_eq!(val.unwrap(), expected);
 }
 
 #[test]
 pub fn list_check_get_key() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_get_key").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_get_key")).expect("failed to create skip list"));
     for x in 0..=7 {
         let mut map = HashMap::new();
         map.insert(x, x);
-        list.push(OrderedValue::new(map)).expect("failed to store value into skip list");
+        list.push(&map).expect("failed to store value into skip list");
     }
     assert_eq!(list.levels(), 2);
     let val = list.get_key(7, &7);
@@ -168,60 +220,28 @@ pub fn list_check_get_key() {
 }
 
 #[test]
-pub fn flat_list_restore_state() {
-    let tmp_storage = TmpStorage::create("__flat_list:flat_list_restore_state").expect("Storage error");
-    {
-        let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create flat list"));
-        let mut map = HashMap::new();
-        map.insert(0, 0);
-        let expected = map.clone();
-        list.push(OrderedValue::new(map)).expect("failed to store value into flat list");
-        let val = list.get(0).expect("error during storage operation").expect("Expected value in storage");
-        assert_eq!(val, OrderedValue::new(expected));
-    }
-    // drop the list reference, and hope it will hydrate correctly
-    {
-        let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create flat list"));
-        let mut map = HashMap::new();
-        map.insert(1, 1);
-        let mut expected = map.clone();
-        expected.insert(0, 0);
-        list.push(OrderedValue::new(map)).expect("failed to store value into flat list");
-        let val = list.get(1).expect("error during storage operation").expect("Expected value in storage");
-        assert_eq!(val, OrderedValue::new(expected));
-    }
-}
-
-#[test]
-pub fn flat_list_simulate_ledger() {
-    let tmp_storage = TmpStorage::create("__flat_list:flat_list_simulate_ledger").expect("Storage error");
-    let list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedFlatList::new(8, tmp_storage.storage().kv()).expect("failed to create flat list"));
-    simulate_ledger(list);
-}
-
-#[test]
 pub fn skip_list_simulate_ledger() {
     let tmp_storage = TmpStorage::create("__skip_list:skip_list_simulate_ledger").expect("Storage error");
-    let list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
+    let list: Box<dyn TypedSkipList<u64, Operation>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:skip_list_simulate_ledger")).expect("failed to create skip list"));
     simulate_ledger(list);
 }
 
-#[test]
-pub fn skip_list_check_raw_data() {
-    let tmp_storage = TmpStorage::create("__skip_list:skip_list_check_raw_data").expect("Storage error");
-    let mut list: Box<dyn TypedSkipList<_, _, OrderedValue>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv()).expect("failed to create skip list"));
+fn simulate_ledger(mut list: Box<dyn TypedSkipList<u64, Operation>>) {
+    let ledger_size = 1000;
+    let operation_count = 100;
+    let key_count = 10000;
 
     let mut rng = rand::thread_rng();
 
-    let mut ops: Vec<Ctx> = Default::default();
+    let mut context_aggregate: HashMap<u64, Operation> = Default::default();
+    let mut context_snapshots: Vec<HashMap<u64, Operation>> = Default::default();
 
-    for _ in 0..LEDGER_SIZE {
-        let op_count = rng.gen_range(1, OPERATION_COUNT);
-        let mut state: Ctx = Default::default();
+    for _ in 0..ledger_size {
+        let mut state: HashMap<u64, Operation> = Default::default();
 
-        for _ in 0..op_count {
-            let primary_key = rng.gen_range(0, KEY_COUNT);
-            let secondary_key = state.0.keys()
+        for _ in 0..rng.gen_range(1, operation_count) {
+            let primary_key = rng.gen_range(0, key_count);
+            let secondary_key = state.keys()
                 .map(|v| v.clone())
                 .collect::<Vec<u64>>()
                 .choose(&mut rng)
@@ -229,90 +249,25 @@ pub fn skip_list_check_raw_data() {
 
             match rng.gen() {
                 Operation::Set => {
-                    state.0.insert(primary_key, rng.gen());
+                    state.insert(primary_key, rng.gen());
                 }
                 Operation::Copy => if let Some(secondary_key) = secondary_key {
-                    state.0.insert(primary_key, state.0.get(&secondary_key).unwrap().clone());
+                    state.insert(primary_key, state.get(&secondary_key).unwrap().clone());
                 }
                 Operation::Delete => if let Some(secondary_key) = secondary_key {
-                    state.0.remove(&secondary_key);
+                    state.remove(&secondary_key);
                 }
             }
         }
 
-        list.push(state.clone()).expect("Failed storing the context");
-        ops.push(state);
+        list.push(&state).expect("Failed storing the context");
+        context_aggregate.extend(state);
+        context_snapshots.push(context_aggregate.clone())
     }
 
-    let mut prev_lanes: HashMap<usize, Vec<Ctx>> = Default::default();
-    for lane_level in 0..=DatabaseBackedSkipList::index_level(LEDGER_SIZE) {
-        let node_count = (LEDGER_SIZE / 8_usize.pow(lane_level as u32)) as usize;
-        prev_lanes.insert(lane_level, Default::default());
-        for node_index in 0..node_count {
-            if lane_level == 0 {
-                let expected = ops.get(node_index).unwrap();
-                let provided = list.get_raw(lane_level, node_index).unwrap().unwrap();
-                assert_eq!(expected, &provided, "Failed at {}-{}", lane_level, node_index);
-                prev_lanes.get_mut(&lane_level).unwrap().push(provided);
-            } else {
-                let provided = list.get_raw(lane_level, node_index).unwrap().unwrap();
-                let mut expected = OrderedValue::new(Default::default());
-                let prev_lane = prev_lanes.get(&(lane_level - 1)).unwrap();
-                let end = ((node_index + 1) * 8) - 1;
-                let start = end + 1 - 8;
-                for val in prev_lane.iter().skip(start).take(8) {
-                    expected.merge(val);
-                }
-                assert_eq!(expected, provided, "Failed at {}-{}", lane_level, node_index);
-                prev_lanes.get_mut(&lane_level).unwrap().push(provided);
-            }
-        }
-    }
-}
-
-
-pub fn simulate_ledger(mut list: Box<dyn TypedSkipList<u64, u64, OrderedValue>>) {
-    let mut rng = rand::thread_rng();
-
-    let mut context: Ctx = Default::default();
-    let mut contexts: Vec<Ctx> = Default::default();
-    let mut changes: Vec<Ctx> = Default::default();
-
-    for _ in 0..LEDGER_SIZE {
-        let mut state: Ctx = Default::default();
-        let op_count = rng.gen_range(1, OPERATION_COUNT);
-
-        for _ in 0..op_count {
-            let primary_key = rng.gen_range(0, KEY_COUNT);
-            let secondary_key = state.0.keys()
-                .map(|v| v.clone())
-                .collect::<Vec<u64>>()
-                .choose(&mut rng)
-                .map(|v| v.clone());
-
-            match rng.gen() {
-                Operation::Set => {
-                    state.0.insert(primary_key, rng.gen());
-                }
-                Operation::Copy => if let Some(secondary_key) = secondary_key {
-                    state.0.insert(primary_key, state.0.get(&secondary_key).unwrap().clone());
-                }
-                Operation::Delete => if let Some(secondary_key) = secondary_key {
-                    state.0.remove(&secondary_key);
-                }
-            }
-        }
-
-        list.push(state.clone()).expect("Failed storing the context");
-        changes.push(context.clone());
-        context.0.extend(state.0);
-
-        contexts.push(context.clone())
-    }
-
-    for index in 0..LEDGER_SIZE {
-        let expected = contexts.get(index).expect("Unable to retrieve stored context");
+    for index in 0..ledger_size {
         let provided = list.get(index).expect(&format!("expected list to contain index {}", index)).expect(&format!("expected correct value on index {}", index));
+        let expected = context_snapshots.get(index).expect("Unable to retrieve stored context");
         assert_eq!(&provided, expected, "Failed at index {}", index);
     }
 }

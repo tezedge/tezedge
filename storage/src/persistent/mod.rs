@@ -13,7 +13,7 @@ pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
-use crate::skip_list::{Bucket, TypedSkipList, DatabaseBackedSkipList};
+use crate::skip_list::{Bucket, DatabaseBackedSkipList, TypedSkipList};
 
 pub mod sequence;
 pub mod codec;
@@ -54,7 +54,7 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 
 
 pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
-pub type ContextList = Arc<RwLock<dyn TypedSkipList<String, Bucket<Vec<u8>>, ContextMap> + Sync + Send>>;
+pub type ContextList = Arc<RwLock<dyn TypedSkipList<String, Bucket<Vec<u8>>> + Sync + Send>>;
 
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
@@ -71,11 +71,12 @@ pub struct PersistentStorage {
 
 impl PersistentStorage {
     pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
+        let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         Self {
-            seq: Arc::new(Sequences::new(kv.clone(), 1000)),
-            kv: kv.clone(),
             clog,
-            cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv).expect("failed to initialize context storage"))),
+            kv: kv.clone(),
+            cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv, seq.generator("skip_list")).expect("failed to initialize context storage"))),
+            seq,
         }
     }
 
