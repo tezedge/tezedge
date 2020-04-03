@@ -11,7 +11,6 @@ use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextRecordValue, ContextStorage};
 use storage::block_storage::BlockJsonData;
-use storage::num_from_slice;
 use storage::p2p_message_storage::P2PMessageStorage;
 use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 use storage::persistent::PersistentStorage;
