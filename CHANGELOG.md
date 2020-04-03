@@ -3,7 +3,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 ### Added
-- Support for mainnet and carthagenet
+- Support for Mainnet and Carthagenet
+- Replay node features
 ### Changed
 - Nothing.
 ### Deprecated
@@ -15,11 +16,12 @@ All notable changes to this project will be documented in this file.
 ### Security
 - Nothing.
 
-## [0.0.1] - 2019-12-31
+## [0.0.1] - 2020-03-31
 ### Added
+- P2P Explorer support with dedicated RPC exposed
+- Expose RPC for Tezos indexers
 - Ability to connect and bootstrap data from Tezos Babylonnet
 - Protocol FFI integration
-- Expose RPC for Tezos indexers
 
 [Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/simplestaking/tezedge/releases/tag/v0.0.1
