@@ -2145,7 +2145,6 @@ dependencies = [
  "futures 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "getset 0.0.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ipc 0.1.0",
  "itertools 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "networking 0.1.0",

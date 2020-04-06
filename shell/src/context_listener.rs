@@ -3,7 +3,6 @@
 
 //! Listens for events from the `protocol_runner`.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -11,13 +10,12 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, info, Logger, warn};
+use slog::{crit, debug, Logger, warn, info};
 
 use crypto::hash::HashType;
 use storage::{BlockStorage, ContextStorage};
 use storage::context::{ContextApi, ContextDiff, TezedgeContext};
-use storage::persistent::{ContextMap, PersistentStorage};
-use storage::skip_list::Bucket;
+use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -123,50 +121,31 @@ fn listen_protocol_events(
 
     let mut context_diff: ContextDiff = context.init_from_start();
 
-    // TODO: remove/replace with context_diff
-    let mut state: ContextMap = Default::default();
-    let mut blocks: HashMap<Vec<u8>, ContextMap> = Default::default();
     while apply_block_run.load(Ordering::Acquire) {
         debug!(log, "Received connection from protocol runner. Waiting on rx.receive()");
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
             Ok(msg) => {
-                // if event_count % 100 == 0 {
-                info!(log, "Received protocol event"; "count" => event_count);
-                // }
+                if event_count % 100 == 0 {
+                    debug!(log, "Received protocol event"; "count" => event_count);
+                }
                 event_count += 1;
 
                 match &msg {
                     ContextAction::Set { block_hash: Some(block_hash), key, value, context_hash, .. } => {
-                        // add key/value
                         context_diff.set(context_hash, key, value)?;
-
-                        // record event
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, .. } => {
-                        let partial_state = get_default(&mut blocks, block_hash.clone());
-
-                        let from_key = from_key.join("/");
-                        let to_key = key.join("/");
-                        if let Some(value) = partial_state.get(&from_key) {
-                            let value = value.clone();
-                            state.insert(to_key, value);
-                        } else if let Some(value) = state.get(&from_key) {
-                            let value = value.clone();
-                            state.insert(to_key, value);
-                        } else {
-                            warn!(log, "Trying to copy from non-existent location"; "from" => &from_key, "to" => &to_key, "block" => HashType::BlockHash.bytes_to_string(block_hash));
-                            state.insert(to_key, Bucket::Invalid);
-                        }
-
+                    ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, context_hash, .. } => {
+                        context.copy_to_diff(context_hash, from_key, key, &mut context_diff)?;
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    ContextAction::Delete { block_hash: Some(block_hash), key, .. }
-                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, .. } => {
-                        let state = get_default(&mut blocks, block_hash.clone());
-                        state.insert(key.join("/"), Bucket::Deleted);
-
+                    | ContextAction::Delete { block_hash: Some(block_hash), key, context_hash, .. } => {
+                        context.delete_to_diff(context_hash, key, &mut context_diff)?;
+                        context_action_storage.put_action(&block_hash.clone(), msg)?;
+                    }
+                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, context_hash, .. } => {
+                        context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?;
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash), .. } => {
@@ -179,8 +158,7 @@ fn listen_protocol_events(
                     | ContextAction::DirMem { block_hash: Some(block_hash), .. }
                     | ContextAction::Get { block_hash: Some(block_hash), .. }
                     | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
-                        let key = block_hash.clone();
-                        context_action_storage.put_action(&key, msg)?;
+                        context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     _ => (),
                 };
@@ -193,10 +171,4 @@ fn listen_protocol_events(
     }
 
     Ok(())
-}
-
-/// Get value contained in the dictionary, or create new entry associated with given key
-/// populated with default value
-fn get_default(state: &mut HashMap<Vec<u8>, ContextMap>, block_hash: Vec<u8>) -> &mut ContextMap {
-    state.entry(block_hash).or_insert(Default::default())
 }

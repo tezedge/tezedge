@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use slog::{Drain, Level, Logger, warn};
 
 use crypto::hash::HashType;
-use ipc::IpcClient;
 use shell::context_listener::ContextListener;
 use storage::{BlockHeaderWithHash, BlockStorage};
 use storage::context::TezedgeContext;
@@ -88,11 +87,8 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
 
     // clean up
     // shutdown events listening
-    tezos_context::channel::context_send(ContextAction::Shutdown);
+    tezos_context::channel::context_send(ContextAction::Shutdown)?;
 
-    // let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(&evt_socket_path);
-    // let (_, mut tx) = ipc_client.connect()?;
-    // tx.send(&ContextAction::Shutdown)?;
     assert!(event_thread.join().is_ok());
     let _ = actor_system.shutdown();
 
