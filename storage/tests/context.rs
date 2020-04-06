@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crypto::hash::{ContextHash, HashType};
 use storage::{BlockHeaderWithHash, BlockStorage};
-use storage::context::{ContextApi, TezedgeContext};
+use storage::context::{ContextApi, ContextIndex, TezedgeContext};
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
@@ -31,11 +31,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
 
     // add to context
     let mut diff = context.init_from_start();
-    diff.set(
-        &None,
-        &to_key(["data", "rolls", "owner", "current", "index", "123"].to_vec()),
-        &vec![1, 2, 3, 4, 5, 6],
-    )?;
+    diff.set(&None, &to_key(["data", "rolls", "owner", "current", "index", "123"].to_vec()), &vec![1, 2, 3, 4, 5, 6])?;
 
     // commit
     let new_context_hash: ContextHash = HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
@@ -93,15 +89,15 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_1, Bucket::Exists(vec![1, 2, 3]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "a"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "b"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "a"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "b"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
@@ -134,15 +130,15 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_2, Bucket::Exists(vec![1, 2, 3]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "a"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "b"], context_hash_2, Bucket::Deleted);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_2, Bucket::Deleted);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_2, Bucket::Deleted);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_2, Bucket::Deleted);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "a"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "b"], context_hash_2.clone(), Bucket::Deleted);
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_2.clone(), Bucket::Deleted);
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_2.clone(), Bucket::Deleted);
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_2.clone(), Bucket::Deleted);
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
 
     Ok(())
 }
@@ -185,13 +181,13 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_1, Bucket::Exists(vec![1, 2, 3]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1, Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
@@ -220,21 +216,21 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // get key from new commit - original stays unchanged
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_2, Bucket::Exists(vec![1, 2, 3]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
 
     // get key from new commit - original stays unchanged
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu"], context_hash_2, Bucket::Exists(vec![1, 2, 3]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "0"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "1"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2", "a"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2", "b"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "0"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "1"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2", "a"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
+    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2", "b"], context_hash_2.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
     assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "index", "123"], context_hash_2, Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
 
     Ok(())
@@ -271,7 +267,7 @@ fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, fail
 #[macro_export]
 macro_rules! assert_data_eq {
     ($ctx:expr, $key:expr, $context_hash:expr, $data:expr) => {{
-        let data = $ctx.get_key(&$context_hash, &to_key($key.to_vec()))?;
+        let data = $ctx.get_key(&ContextIndex::new(None, Some($context_hash)), &to_key($key.to_vec()))?;
         assert!(data.is_some());
         assert_eq!(data.unwrap(), $data);
     }}

@@ -82,19 +82,7 @@ pub trait ContextApi {
     /// Checks context and copies subtree under 'from_key' to new subtree under 'to_key'
     fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &Vec<String>, to_key: &Vec<String>, context_diff: &mut ContextDiff) -> Result<(), ContextError>;
 
-    fn get_key(&self, context_hash: &ContextHash, key: &Vec<String>) -> Result<Option<Bucket<Vec<u8>>>, ContextError>;
-}
-
-/// Struct points to context commmit hash or index, which is checkouted
-pub struct ContextIndex {
-    level: Option<usize>,
-    context_hash: Option<ContextHash>,
-}
-
-/// Stuct which hold diff againts predecessor's context
-pub struct ContextDiff {
-    predecessor_index: ContextIndex,
-    diff: ContextMap,
+    fn get_key(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<Bucket<Vec<u8>>>, ContextError>;
 }
 
 fn to_key(key: &Vec<String>) -> String {
@@ -109,13 +97,27 @@ fn replace_key(key: &String, matched: &Vec<String>, replacer: &Vec<String>) -> S
     key.replace(&to_key(matched), &to_key(replacer))
 }
 
+/// Struct points to context commmit hash or index, which is checkouted
+pub struct ContextIndex {
+    level: Option<usize>,
+    context_hash: Option<ContextHash>,
+}
+
+impl ContextIndex {
+    pub fn new(level: Option<usize>, context_hash: Option<ContextHash>) -> Self {
+        ContextIndex { level, context_hash }
+    }
+}
+
+/// Stuct which hold diff againts predecessor's context
+pub struct ContextDiff {
+    predecessor_index: ContextIndex,
+    diff: ContextMap,
+}
 impl ContextDiff {
     pub fn new(predecessor_level: Option<usize>, predecessor_context_hash: Option<ContextHash>, diff: ContextMap) -> Self {
         ContextDiff {
-            predecessor_index: ContextIndex {
-                level: predecessor_level,
-                context_hash: predecessor_context_hash,
-            },
+            predecessor_index: ContextIndex::new(predecessor_level, predecessor_context_hash),
             diff,
         }
     }
@@ -153,7 +155,7 @@ impl TezedgeContext {
     }
 
     fn get_by_key_prefix(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<ContextMap>, ContextError> {
-        if context_index.context_hash.is_none() || context_index.level.is_none() {
+        if context_index.context_hash.is_none() && context_index.level.is_none() {
             return Ok(None);
         }
 
@@ -276,10 +278,17 @@ impl ContextApi for TezedgeContext {
         Ok(())
     }
 
-    fn get_key(&self, context_hash: &ContextHash, key: &Vec<String>) -> Result<Option<Bucket<Vec<u8>>>, ContextError> {
+    fn get_key(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<Bucket<Vec<u8>>>, ContextError> {
+        if context_index.context_hash.is_none() && context_index.level.is_none() {
+            return Ok(None);
+        }
 
         // TODO: should be based just on context hash
-        let level = self.level_by_context_hash(&context_hash)?;
+        let level = if let Some(context_index_level) = context_index.level {
+            context_index_level
+        } else {
+            self.level_by_context_hash(context_index.context_hash.as_ref().unwrap())?
+        };
 
         let list = self.storage.read().expect("lock poisoning");
         list

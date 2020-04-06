@@ -13,7 +13,7 @@ use slog::{Drain, Level, Logger, warn};
 use crypto::hash::HashType;
 use shell::context_listener::ContextListener;
 use storage::{BlockHeaderWithHash, BlockStorage};
-use storage::context::TezedgeContext;
+use storage::context::{ContextApi, ContextIndex, TezedgeContext};
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_api::client::TezosStorageInitInfo;
@@ -98,20 +98,20 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
         persistent_storage.context_storage(),
     );
 
-    let reader = context.list().read().unwrap();
-    if let Some(Bucket::Exists(data)) = reader.get_key(0, &"protocol".to_string())? {
+
+    if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(0), None), &vec!["protocol".to_string()])? {
         assert_eq!("Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 0));
     }
 
-    if let Some(Bucket::Exists(data)) = reader.get_key(1, &"protocol".to_string())? {
+    if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(1), None), &vec!["protocol".to_string()])? {
         assert_eq!("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 1));
     }
 
-    if let Some(Bucket::Exists(data)) = reader.get_key(2, &"protocol".to_string())? {
+    if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(2), None), &vec!["protocol".to_string()])? {
         assert_eq!("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));

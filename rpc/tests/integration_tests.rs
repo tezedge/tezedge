@@ -53,7 +53,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "votes/listings")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants for
@@ -70,7 +70,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         } else {
             block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
         };
-        //let cycle: i64 = block_json["metadata"]["level"]["cycle"].as_i64().unwrap();
 
         // test last level of snapshot
         if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
