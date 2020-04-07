@@ -15,7 +15,7 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV};
 pub use crate::block_storage::{BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
-pub use crate::context_storage::{ContextPrimaryIndexKey, ContextRecordValue, ContextStorage};
+pub use crate::context_action_storage::{ContextActionStorage, ContextActionPrimaryIndexKey, ContextActionRecordValue};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, PersistentStorage, SchemaError};
@@ -28,7 +28,7 @@ pub mod operations_storage;
 pub mod operations_meta_storage;
 pub mod block_storage;
 pub mod block_meta_storage;
-pub mod context_storage;
+pub mod context_action_storage;
 pub mod p2p_message_storage;
 pub mod system_storage;
 pub mod skip_list;
@@ -190,8 +190,8 @@ pub mod tests_common {
                 BlockMetaStorage::descriptor(),
                 OperationsStorage::descriptor(),
                 OperationsMetaStorage::descriptor(),
-                context_storage::ContextPrimaryIndex::descriptor(),
-                context_storage::ContextByContractIndex::descriptor(),
+                context_action_storage::ContextActionPrimaryIndex::descriptor(),
+                context_action_storage::ContextActionByContractIndex::descriptor(),
                 SystemStorage::descriptor(),
                 Sequences::descriptor(),
                 DatabaseBackedSkipList::descriptor(),
@@ -200,7 +200,7 @@ pub mod tests_common {
             ])?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),
-                ContextStorage::descriptor(),
+                ContextActionStorage::descriptor(),
             ])?;
 
             Ok(Self {

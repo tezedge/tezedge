@@ -23,7 +23,7 @@ use tezos_messages::protocol::proto_005_2::rights::{BakingRights, EndorsingRight
 
 use crate::helpers::ContextProtocolParam;
 use crate::services::protocol::proto_005_2::helpers::{EndorserSlots, get_prng_number, init_prng, RightsConstants, RightsContextData, RightsParams};
-use storage::context_storage::contract_id_to_contract_address_for_index;
+use storage::context_action_storage::contract_id_to_contract_address_for_index;
 
 /// Return generated baking rights.
 ///

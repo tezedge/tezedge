@@ -10,10 +10,9 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, Logger, warn, info};
+use slog::{crit, debug, Logger, warn};
 
-use crypto::hash::HashType;
-use storage::{BlockStorage, ContextStorage};
+use storage::{BlockStorage, ContextActionStorage};
 use storage::context::{ContextApi, ContextDiff, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
@@ -39,15 +38,15 @@ impl ContextListener {
     /// This actor spawns a new thread in which it listens for incoming events from the `protocol_runner`.
     /// Events are received from IPC channel provided by [`event_server`](IpcEvtServer).
     pub fn actor(sys: &impl ActorRefFactory, persistent_storage: &PersistentStorage, mut event_server: IpcEvtServer, log: Logger) -> Result<ContextListenerRef, CreateError> {
-        let storage = persistent_storage.context_storage();
+        let context_storage = persistent_storage.context_storage();
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let listener_run = listener_run.clone();
             let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || {
-                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), storage));
-                let mut context_action_storage = ContextStorage::new(&persistent_storage);
+                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), context_storage));
+                let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
@@ -109,7 +108,7 @@ impl Actor for ContextListener {
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
-    context_action_storage: &mut ContextStorage,
+    context_action_storage: &mut ContextActionStorage,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
 ) -> Result<(), Error> {
@@ -122,7 +121,6 @@ fn listen_protocol_events(
     let mut context_diff: ContextDiff = context.init_from_start();
 
     while apply_block_run.load(Ordering::Acquire) {
-        debug!(log, "Received connection from protocol runner. Waiting on rx.receive()");
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
             Ok(msg) => {
@@ -144,7 +142,7 @@ fn listen_protocol_events(
                         context.delete_to_diff(context_hash, key, &mut context_diff)?;
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    | ContextAction::RemoveRecord { block_hash: Some(block_hash), key, context_hash, .. } => {
+                    | ContextAction::RemoveRecursively { block_hash: Some(block_hash), key, context_hash, .. } => {
                         context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?;
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }

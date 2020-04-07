@@ -59,7 +59,7 @@ pub enum ContextAction {
         start_time: f64,
         end_time: f64,
     },
-    RemoveRecord {
+    RemoveRecursively {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,

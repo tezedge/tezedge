@@ -253,7 +253,7 @@ fn context_remove_rec(
     start_time: f64,
     end_time: f64)
 {
-    context_send(ContextAction::RemoveRecord {
+    context_send(ContextAction::RemoveRecursively {
         context_hash,
         block_hash,
         operation_hash,
