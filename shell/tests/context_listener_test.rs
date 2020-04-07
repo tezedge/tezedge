@@ -98,19 +98,21 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
         persistent_storage.context_storage(),
     );
 
-
+    // check level 0
     if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(0), None), &vec!["protocol".to_string()])? {
         assert_eq!("Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 0));
     }
 
+    // check level 1
     if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(1), None), &vec!["protocol".to_string()])? {
         assert_eq!("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 1));
     }
 
+    // check level 2
     if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(2), None), &vec!["protocol".to_string()])? {
         assert_eq!("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP", HashType::ProtocolHash.bytes_to_string(&data));
     } else {

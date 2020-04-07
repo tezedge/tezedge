@@ -7,6 +7,9 @@ name: default
 # -- all headers in interval <FROM_BLOCK_HEADER, TO_BLOCK_HEADER) are checked in test (rpc json compare)
 # - OCAML_NODE_RPC_CONTEXT_ROOT: running ocaml node, e.g.: http://ocaml-node-run:8732
 # - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-node-run:18732
+# the command - tezos-node-bootstrap --bootstrap in the bootstrapping step accepts min. 2 and up to 3 args. You can specify the node urls to be bootstrapped
+# we want to bootstrap all 3 nodes in the master pipeline, so we pass all of them to the bootstrap app
+# in special pipelines, we could omit the master node (only needed for perftest) 
 
 environment:
   NETWORK: carthagenet
@@ -99,9 +102,9 @@ steps:
     - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive --disable-testchain
 
 - name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:stable
+  image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --bootstrap
+    - tezos-node-bootstrap --bootstrap $${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 - name: rpc-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -116,7 +119,7 @@ steps:
     - cargo test --verbose --release -- --nocapture --ignored test_rpc_compare
 
 - name: wrk-performance-test
-  image: simplestakingcom/tezos-node-bootstrap:stable
+  image: simplestakingcom/tezos-node-bootstrap:latest
   pull: always
   user: root
   commands:
@@ -155,7 +158,7 @@ steps:
     TZ_SNAPSHOT_PATH: /data/snapshots
 
 - name: indexer-test
-  image: simplestakingcom/tezos-node-bootstrap:stable
+  image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --indexer-test
 
