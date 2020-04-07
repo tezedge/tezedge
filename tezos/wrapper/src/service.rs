@@ -259,6 +259,10 @@ impl IpcEvtServer {
         let (rx, _) = self.0.accept()?;
         Ok(rx)
     }
+
+    pub fn client_path(&self) -> PathBuf {
+        self.0.client().path().to_path_buf()
+    }
 }
 
 /// Endpoint consists of a protocol runner and IPC communication (command and event channels).

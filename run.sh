@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 warn_if_not_using_recommended_rust() {
-  RUSTC_TOOLCHAIN_VERSION="2019-12-05"
+  RUSTC_TOOLCHAIN_VERSION="2020-02-04"
 
   EXPECTED_RUSTC_VERSION=$(date -d "$RUSTC_TOOLCHAIN_VERSION -1 day" +"%Y-%m-%d")
   RUSTC_VERSION=$(rustc --version | gawk 'match($0, /.*\(.* ([0-9-]+)\)/, a) {print a[1]}')

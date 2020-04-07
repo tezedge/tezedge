@@ -21,7 +21,7 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{block_storage, BlockMetaStorage, BlockStorage, context_storage, ContextStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
 use storage::p2p_message_storage::{P2PMessageSecondaryIndex, P2PMessageStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
@@ -38,7 +38,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 9;
+const DATABASE_VERSION: i64 = 10;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 macro_rules! shutdown_and_exit {
@@ -264,8 +264,8 @@ fn main() {
         OperationsMetaStorage::descriptor(),
         EventPayloadStorage::descriptor(),
         EventStorage::descriptor(),
-        context_storage::ContextPrimaryIndex::descriptor(),
-        context_storage::ContextByContractIndex::descriptor(),
+        context_action_storage::ContextActionPrimaryIndex::descriptor(),
+        context_action_storage::ContextActionByContractIndex::descriptor(),
         SystemStorage::descriptor(),
         DatabaseBackedSkipList::descriptor(),
         P2PMessageStorage::descriptor(),
@@ -326,7 +326,7 @@ fn main() {
 
     let schemas = vec![
         BlockStorage::descriptor(),
-        ContextStorage::descriptor()
+        ContextActionStorage::descriptor()
     ];
     let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
         Ok(commit_logs) => Arc::new(commit_logs),
