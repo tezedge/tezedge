@@ -8,7 +8,7 @@ edition = "2018"
 chrono = "0.4"
 erased-serde = "0.3"
 failure = "0.1"
-rand = "0.7.2"
+rand = "0.7.3"
 riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
 rocksdb = "0.13"
 ws = "*"
