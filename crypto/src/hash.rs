@@ -141,6 +141,13 @@ pub fn chain_id_to_b58_string(chain_id: &ChainId) -> String {
     HashType::ChainId.bytes_to_string(chain_id)
 }
 
+/// Implementation of chain_id.ml -> of_block_hash
+#[inline]
+pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> ChainId {
+    let result = crate::blake2b::digest_256(block_hash);
+    result[0..4].to_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +160,40 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_chain_id_to_b58_string() -> Result<(), failure::Error> {
+        let decoded = chain_id_to_b58_string(&hex::decode("8eceda2f")?);
+        let expected = "NetXgtSLGNJvNye";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_chain_id_from_block_hash() -> Result<(), failure::Error> {
+        let decoded_chain_id: ChainId = chain_id_from_block_hash(&HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?);
+        let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
+        let expected_chain_id = "NetXgtSLGNJvNye";
+        assert_eq!(expected_chain_id, decoded_chain_id);
+
+        let decoded_chain_id: ChainId = chain_id_from_block_hash(&HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?);
+        let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
+        let expected_chain_id = "NetXjD3HPJJjmcd";
+        assert_eq!(expected_chain_id, decoded_chain_id);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encode_block_header_genesis() -> Result<(), failure::Error> {
+        let decoded = HashType::BlockHash.bytes_to_string(&hex::decode("8fcf233671b6a04fcf679d2a381c2544ea6c1ea29ba6157776ed8424affa610d")?);
+        let expected = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
 
     #[test]
     fn test_encode_block_header() -> Result<(), failure::Error> {
