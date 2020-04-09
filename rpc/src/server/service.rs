@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use failure::bail;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::chain_id_to_string;
+use crypto::hash::chain_id_to_b58_string;
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
@@ -77,7 +77,7 @@ pub(crate) fn get_contract_actions(contract_id: &str, from_id: Option<u64>, limi
 pub(crate) fn get_full_current_head(state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
     let state = state.read().unwrap();
     let current_head = state.current_head().as_ref().map(|current_head| {
-        let chain_id = chain_id_to_string(state.chain_id());
+        let chain_id = chain_id_to_b58_string(state.chain_id());
         FullBlockInfo::new(current_head, &chain_id)
     });
 
@@ -88,7 +88,7 @@ pub(crate) fn get_full_current_head(state: &RpcCollectedStateRef) -> Result<Opti
 pub(crate) fn get_current_head_header(state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderInfo>, failure::Error> {
     let state = state.read().unwrap();
     let current_head = state.current_head().as_ref().map(|current_head| {
-        let chain_id = chain_id_to_string(state.chain_id());
+        let chain_id = chain_id_to_b58_string(state.chain_id());
         BlockHeaderInfo::new(current_head, &chain_id)
     });
 
@@ -362,14 +362,14 @@ pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashM
 #[inline]
 fn map_header_and_json_to_full_block_info(header: BlockHeaderWithHash, json_data: BlockJsonData, state: &RpcCollectedStateRef) -> FullBlockInfo {
     let state = state.read().unwrap();
-    let chain_id = chain_id_to_string(state.chain_id());
+    let chain_id = chain_id_to_b58_string(state.chain_id());
     FullBlockInfo::new(&BlockApplied::new(header, json_data), &chain_id)
 }
 
 #[inline]
 fn map_header_and_json_to_block_header_info(header: BlockHeaderWithHash, json_data: BlockJsonData, state: &RpcCollectedStateRef) -> BlockHeaderInfo {
     let state = state.read().unwrap();
-    let chain_id = chain_id_to_string(state.chain_id());
+    let chain_id = chain_id_to_b58_string(state.chain_id());
     BlockHeaderInfo::new(&BlockApplied::new(header, json_data), &chain_id)
 }
 

@@ -137,7 +137,7 @@ fn copy_bytes(data: &[u8]) -> Vec<u8> {
 }
 
 #[inline]
-pub fn chain_id_to_string(chain_id: &ChainId) -> String {
+pub fn chain_id_to_b58_string(chain_id: &ChainId) -> String {
     HashType::ChainId.bytes_to_string(chain_id)
 }
 
