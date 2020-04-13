@@ -62,7 +62,7 @@ run_node() {
   # -i | --identity
   IDENTITY_FILE=./light_node/etc/tezedge/identity.json
   # -n | --network
-  NETWORK=babylonnet
+  NETWORK=carthage
   # rest of the commandline arguments will end up here
   args=()
 
