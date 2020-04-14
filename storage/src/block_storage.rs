@@ -52,6 +52,8 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
+    fn get_multiple_without_json(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
+
     fn get_every_nth_with_json_data(&self, every_nth: BlockLevel, from_block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
     fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
@@ -205,6 +207,18 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_multiple_without_json(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
+        self.get(block_hash)?
+            .map_or_else(
+                || Ok(Vec::new()),
+                |block| self.by_level_index.get_blocks_directed(
+                    block.header.level(), limit, Direction::Forward))?
+            .into_iter()
+            .map(|location| self.get_block_header_by_location(&location))
+            .collect()
+    }
+
+    #[inline]
     fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError> {
         self.by_context_hash_index.get(context_hash)?
             .map(|location| self.get_block_header_by_location(&location))
@@ -331,6 +345,13 @@ impl BlockByLevelIndex {
 
     fn get_blocks(&self, from_level: BlockLevel, limit: usize) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
         self.kv.iterator(IteratorMode::From(&from_level, Direction::Reverse))?
+            .take(limit)
+            .map(|(_, location)| location.map_err(StorageError::from))
+            .collect()
+    }
+
+    fn get_blocks_directed(&self, from_level: BlockLevel, limit: usize, direction: Direction) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
+        self.kv.iterator(IteratorMode::From(&from_level, direction))?
             .take(limit)
             .map(|(_, location)| location.map_err(StorageError::from))
             .collect()

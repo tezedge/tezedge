@@ -21,6 +21,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 slog = { version = "2.5", features = ["nested-values"] }
 tokio = { version = "0.2", features = ["macros"] }
+rayon = "1.1"
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }

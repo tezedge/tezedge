@@ -5,8 +5,7 @@ use hyper::{Body, Request};
 use slog::warn;
 
 use crate::{empty, make_json_response, result_to_json_response, ServiceResult, unwrap_block_hash};
-use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
-use crate::server::service;
+use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment, service, service_stats};
 
 pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), env.genesis_hash());
@@ -35,6 +34,15 @@ pub async fn dev_context(_: Request<Body>, params: Params, _: Query, env: RpcSer
     // TODO: Add parameter checks
     let context_level = params.get_str("id").unwrap();
     result_to_json_response(service::get_context(context_level, env.persistent_storage().context_storage()), env.log())
+}
+
+pub async fn dev_stats_storage(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        service_stats::compute_storage_stats(
+            env.state(),
+            env.genesis_hash(),
+            env.persistent_storage()),
+        env.log())
 }
 
 pub async fn dev_stats_memory(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {

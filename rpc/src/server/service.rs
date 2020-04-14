@@ -1,12 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap};
 
 use failure::bail;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::chain_id_to_b58_string;
+use crypto::hash::{chain_id_to_b58_string};
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
@@ -58,6 +58,10 @@ pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: us
 pub(crate) fn get_block_actions(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<ContextAction>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+    get_block_actions_by_hash(&context_action_storage, &block_hash)
+}
+
+pub(crate) fn get_block_actions_by_hash(context_action_storage: &ContextActionStorage, block_hash: &Vec<u8>) -> Result<Vec<ContextAction>, failure::Error> {
     context_action_storage.get_by_block_hash(&block_hash)
         .map(|values| values.into_iter().map(|v| v.into_action()).collect())
         .map_err(|e| e.into())
@@ -138,7 +142,6 @@ pub(crate) fn get_context_constants_just_for_rpc(
     list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<RpcJsonMap>, failure::Error> {
-
     let context_proto_params = get_context_protocol_params(
         block_id,
         opt_level,
