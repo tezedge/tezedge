@@ -445,12 +445,12 @@ impl Receive<ConnectToPeer> for PeerManager {
                         info!(system.log(), "Connection successful"; "ip" => msg.address);
                         peer.tell(Bootstrap::outgoing(stream, msg.address), None);
                     }
-                    Ok(Err(_)) => {
-                        info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name());
+                    Ok(Err(e)) => {
+                        info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
                         system.stop(peer);
                     }
-                    Err(_) => {
-                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name());
+                    Err(e) => {
+                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
                         system.stop(peer);
                     }
                 }
@@ -506,7 +506,7 @@ fn dns_lookup_peers(bootstrap_addresses: &[String], log: &Logger) -> HashSet<Soc
 
 /// Try to resolve common peer name into Socket Address representation
 fn resolve_dns_name_to_peer_address(address: &str) -> Result<Vec<SocketAddr>, LookupError> {
-    let addrs = dns_lookup::getaddrinfo(Some(address), None, None)?
+    let addrs = dns_lookup::getaddrinfo(Some(address), Some("9732"), None)?
         .filter(Result::is_ok)
         .map(Result::unwrap)
         .map(|mut info| {

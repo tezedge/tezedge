@@ -3,11 +3,11 @@
 
 //! This module provides all the FFI callback functions.
 
-use ocaml::{Array1, caml, List, Str, Tuple, Value};
+use ocaml::{caml, List, Str, Tuple, Value};
 
 use tezos_context::channel::*;
 
-type OcamlBytes = Array1<u8>;
+type OcamlBytes = Str;
 type Hash = Vec<u8>;
 type ContextHash = Hash;
 type BlockHash = Hash;
@@ -39,7 +39,7 @@ fn to_hash(hash: Str) -> Option<Hash> {
     if hash.len() <= 0 {
         None
     } else {
-        Some(hex::decode(hash.as_str()).unwrap())
+        Some(hash.data().to_vec())
     }
 }
 

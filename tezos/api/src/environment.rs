@@ -4,15 +4,23 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use chrono::ParseError;
+use chrono::prelude::*;
 use enum_iterator::IntoEnumIterator;
+use failure::Fail;
 use serde::{Deserialize, Serialize};
 
+use crypto::base58::FromBase58CheckError;
+use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId, ContextHash, HashType, OperationListListHash, ProtocolHash};
 use lazy_static::lazy_static;
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
 use crate::ffi::{GenesisChain, ProtocolOverrides};
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
+    /// alternative to ocaml Operation_list_list_hash.empty
+    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = HashType::OperationListListHash.string_to_bytes("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap();
 }
 
 /// Enum representing different Tezos environment.
@@ -149,7 +157,35 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     env
 }
 
+
+/// Possible errors for environment
+#[derive(Debug, Fail)]
+pub enum TezosEnvironmentError {
+    #[fail(display = "Invalid block hash: {}, reason: {:?}", hash, error)]
+    InvalidBlockHash {
+        hash: String,
+        error: FromBase58CheckError,
+    },
+    #[fail(display = "Invalid protocol hash: {}, reason: {:?}", hash, error)]
+    InvalidProtocolHash {
+        hash: String,
+        error: FromBase58CheckError,
+    },
+    #[fail(display = "Invalid time: {}, reason: {:?}", time, error)]
+    InvalidTime {
+        time: String,
+        error: ParseError,
+    },
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct GenesisAdditionalData {
+    pub max_operations_ttl: u16,
+    pub last_allowed_fork_level: i32,
+}
+
 /// Structure holding all environment specific crucial information - according to different Tezos Gitlab branches
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TezosEnvironmentConfiguration {
     /// Genesis information - see genesis_chain.ml
     pub genesis: GenesisChain,
@@ -161,4 +197,90 @@ pub struct TezosEnvironmentConfiguration {
     pub protocol_overrides: ProtocolOverrides,
     /// if network has enabled switching test chains by default
     pub enable_testchain: bool,
+}
+
+impl TezosEnvironmentConfiguration {
+    /// Resolves genesis hash from configuration of GenesisChain.block
+    pub fn genesis_header_hash(&self) -> Result<BlockHash, TezosEnvironmentError> {
+        HashType::BlockHash
+            .string_to_bytes(&self.genesis.block)
+            .map_err(|e| TezosEnvironmentError::InvalidBlockHash {
+                hash: self.genesis.block.clone(),
+                error: e,
+            })
+    }
+
+    /// Resolves main chain_id, which is computed from genesis header
+    pub fn main_chain_id(&self) -> Result<ChainId, TezosEnvironmentError> {
+        Ok(chain_id_from_block_hash(&self.genesis_header_hash()?))
+    }
+
+    /// Resolves genesis protocol
+    pub fn genesis_protocol(&self) -> Result<ProtocolHash, TezosEnvironmentError> {
+        HashType::ProtocolHash
+            .string_to_bytes(&self.genesis.protocol)
+            .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
+                hash: self.genesis.protocol.clone(),
+                error: e,
+            })
+    }
+
+    pub fn genesis_time(&self) -> Result<i64, TezosEnvironmentError> {
+        parse_from_rfc3339(&self.genesis.time)
+    }
+
+    /// Returns initialized default genesis header
+    pub fn genesis_header(&self, context_hash: ContextHash, operation_list_list_hash: OperationListListHash) -> Result<BlockHeader, TezosEnvironmentError> {
+
+        // genesis predecessor is genesis
+        let genesis_hash = self.genesis_header_hash()?;
+        let genesis_time: i64 = self.genesis_time()?;
+
+        Ok(
+            BlockHeaderBuilder::default()
+                .level(0)
+                .proto(0)
+                .predecessor(genesis_hash)
+                .timestamp(genesis_time)
+                .validation_pass(0)
+                .operations_hash(operation_list_list_hash)
+                .fitness(vec![])
+                .context(context_hash)
+                .protocol_data(vec![])
+                .build().unwrap()
+        )
+    }
+
+    pub fn genesis_additional_data(&self) -> GenesisAdditionalData {
+        GenesisAdditionalData {
+            max_operations_ttl: 0,
+            last_allowed_fork_level: 0,
+        }
+    }
+}
+
+fn parse_from_rfc3339(time: &str) -> Result<i64, TezosEnvironmentError> {
+    DateTime::parse_from_rfc3339(time)
+        .map_err(|e| TezosEnvironmentError::InvalidTime {
+            time: time.to_string(),
+            error: e,
+        })
+        .map(|dt| dt.timestamp())
+}
+
+#[cfg(test)]
+mod tests {
+    use tezos_messages::ts_to_rfc3339;
+
+    use super::*;
+
+    #[test]
+    fn encoded_decoded_timestamp() -> Result<(), failure::Error> {
+        let dt = parse_from_rfc3339("2019-11-28T13:02:13Z")?;
+        let decoded = ts_to_rfc3339(dt);
+        let expected = "2019-11-28T13:02:13Z".to_string();
+
+        assert_eq!(expected, decoded);
+        Ok(())
+    }
 }

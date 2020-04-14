@@ -6,13 +6,13 @@ use std::sync::{Arc, RwLock};
 
 use getset::Getters;
 use riker::actors::*;
-use slog::warn;
+use slog::{Logger, warn};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::PersistentStorage;
-use tezos_api::client::TezosStorageInitInfo;
+use storage::StorageInitInfo;
 
 use crate::server::{RpcServiceEnvironment, spawn_server};
 
@@ -46,10 +46,18 @@ impl RpcServer {
         Self { shell_channel, state }
     }
 
-    pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, rpc_listen_address: SocketAddr, tokio_executor: &Handle, persistent_storage: &PersistentStorage, tezos_info: &TezosStorageInitInfo) -> Result<RpcServerRef, CreateError> {
+    pub fn actor(
+        sys: &ActorSystem,
+        shell_channel: ShellChannelRef,
+        rpc_listen_address: SocketAddr,
+        tokio_executor: &Handle,
+        persistent_storage: &PersistentStorage,
+        init_storage_data: &StorageInitInfo) -> Result<RpcServerRef, CreateError> {
+
+        // TODO: refactor - call load_current_head in pre_start
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(persistent_storage),
-            chain_id: tezos_info.chain_id.clone(),
+            current_head: load_current_head(persistent_storage, sys.log()),
+            chain_id: init_storage_data.chain_id.clone(),
         }));
         let actor_ref = sys.actor_of(
             Props::new_args(Self::new, (shell_channel, shared_state.clone())),
@@ -58,7 +66,7 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &tezos_info.genesis_block_header_hash, shared_state, sys.log());
+            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, sys.log());
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
@@ -109,26 +117,27 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(persistent_storage: &PersistentStorage) -> Option<BlockApplied> {
-    use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
+fn load_current_head(persistent_storage: &PersistentStorage, log: Logger) -> Option<BlockApplied> {
+    use storage::{BlockStorage, BlockStorageReader, BlockMetaStorage, BlockMetaStorageReader, StorageError};
 
-    BlockMetaStorage::new(persistent_storage)
-        .iter(IteratorMode::End)
-        .and_then(|meta_iterator|
-            meta_iterator
-                // unwrap a tuple of Result
-                .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
-                // we are interested in applied blocks only
-                .filter(|(_, meta)| meta.is_applied())
-                // get block with the highest level
-                .max_by_key(|(_, meta)| meta.level())
-                // get data for the block
-                .map(|(block_hash, _)|
-                    BlockStorage::new(persistent_storage)
-                        .get_with_json_data(&block_hash)
-                        .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey))
-                )
-                .transpose()
-        )
-        .unwrap_or(None)
+    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
+    match block_meta_storage.load_current_head() {
+        Ok(Some(block_hash)) => {
+            let block_applied = BlockStorage::new(persistent_storage)
+                .get_with_json_data(&block_hash)
+                .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));
+            match block_applied {
+                Ok(block) => Some(block),
+                Err(e) => {
+                    warn!(log, "Error reading current head detail from database."; "reason" => format!("{}", e));
+                    None
+                }
+            }
+        },
+        Ok(None) => None,
+        Err(e) => {
+            warn!(log, "Error reading current head from database."; "reason" => format!("{}", e));
+            None
+        }
+    }
 }

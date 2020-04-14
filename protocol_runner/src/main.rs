@@ -79,28 +79,39 @@ fn main() {
 }
 
 mod tezos {
-    use crypto::hash::ChainId;
-    use tezos_api::client::TezosStorageInitInfo;
-    use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+    use crypto::hash::{ChainId, ContextHash, ProtocolHash};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_api::identity::Identity;
-    use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, init_storage};
+    use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, genesis_result_data, init_protocol_context};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
 
     impl ProtocolApi for NativeTezosLib {
-        fn apply_block(chain_id: &ChainId, block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
-            apply_block(chain_id, block_header, operations)
+        fn apply_block(chain_id: &ChainId, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResult, ApplyBlockError> {
+            apply_block(chain_id, block_header, predecessor_block_header, operations, max_operations_ttl)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
             change_runtime_configuration(settings)
         }
 
-        fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment, enable_testchain: bool) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
-            init_storage(storage_data_dir, tezos_environment, enable_testchain)
+        fn init_protocol_context(
+            storage_data_dir: String,
+            genesis: GenesisChain,
+            protocol_overrides: ProtocolOverrides,
+            commit_genesis: bool,
+            enable_testchain: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain)
+        }
+
+        fn genesis_result_data(
+            genesis_context_hash: &ContextHash,
+            chain_id: &ChainId,
+            genesis_protocol_hash: &ProtocolHash,
+            genesis_max_operations_ttl: u16) -> Result<CommitGenesisResult, GetDataError> {
+            genesis_result_data(genesis_context_hash, chain_id, genesis_protocol_hash, genesis_max_operations_ttl)
         }
 
         fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {

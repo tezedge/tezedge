@@ -10,19 +10,19 @@ use riker::system::SystemBuilder;
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Level, Logger, warn};
 
-use crypto::hash::HashType;
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use shell::context_listener::ContextListener;
-use storage::{BlockHeaderWithHash, BlockStorage};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, resolve_storage_init_chain_data, store_commit_genesis_result};
 use storage::context::{ContextApi, ContextIndex, TezedgeContext};
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
-use tezos_api::client::TezosStorageInitInfo;
+use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
 use tezos_context::channel::*;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
+use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_wrapper::service::IpcEvtServer;
 
 #[test]
@@ -32,30 +32,14 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
     let log = create_logger();
 
     // storage
-    let tmp_storage = TmpStorage::create(common::prepare_empty_dir(&format!("__shell_test_apply_blocks{:?}_storage", "TODO_123")))?;
+    let tmp_storage = TmpStorage::create(common::prepare_empty_dir("__shell_context_listener_test_apply_blocks"))?;
     let persistent_storage = tmp_storage.storage();
-
-    // init storage with genesis (important step)
     let mut block_storage = BlockStorage::new(&persistent_storage);
-    // TODO: TE-98 - refactor - according to patch_context.ml / state.ml module Locked_block =
-    // TODO: nasetovat realne hodnoty - operations_hash a context.zero a proto_data
-    let genesis = BlockHeaderWithHash {
-        hash: HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
-        header: Arc::new(
-            BlockHeaderBuilder::default()
-                .level(0)
-                .proto(0)
-                .predecessor(HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?)
-                .timestamp(5_635_634)
-                .validation_pass(0)
-                .operations_hash(HashType::OperationListListHash.string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
-                .fitness(vec![])
-                .context(HashType::ContextHash.string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
-                .protocol_data(vec![])
-                .build().unwrap()
-        ),
-    };
-    block_storage.put_block_header(&genesis)?;
+    let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let mut operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+
+    // environement
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
 
     // run event ipc server
     let event_server = IpcEvtServer::new();
@@ -82,7 +66,13 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
     let _ = ContextListener::actor(&actor_system, &persistent_storage, event_server, log.clone()).expect("Failed to create context event listener");
 
     // run apply blocks
-    let _ = apply_first_three_blocks(&mut block_storage)?;
+    let _ = apply_first_three_blocks_like_chain_feeder(
+        &mut block_storage,
+        &mut block_meta_storage,
+        &mut operations_meta_storage,
+        tezos_env,
+        log.clone(),
+    )?;
     // assert!(result.is_ok());
 
     // clean up
@@ -122,7 +112,12 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
     Ok(())
 }
 
-fn apply_first_three_blocks(block_storage: &mut BlockStorage) -> Result<(), failure::Error> {
+fn apply_first_three_blocks_like_chain_feeder(
+    block_storage: &mut BlockStorage,
+    block_meta_storage: &mut BlockMetaStorage,
+    operations_meta_storage: &mut OperationsMetaStorage,
+    tezos_env: &TezosEnvironmentConfiguration,
+    log: Logger) -> Result<(), failure::Error> {
     ffi::change_runtime_configuration(
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
@@ -130,12 +125,33 @@ fn apply_first_three_blocks(block_storage: &mut BlockStorage) -> Result<(), fail
         }
     ).unwrap().unwrap();
 
-    // init empty storage for test (not measuring)
-    let TezosStorageInitInfo { chain_id, .. } = client::init_storage(
-        common::prepare_empty_dir(&format!("__shell_test_apply_blocks{:?}", "TODO_123")),
-        test_data::TEZOS_ENV,
-        false,
-    ).unwrap();
+    // init context
+    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, log.clone())?;
+    let (chain_id, .., genesis_context_hash) = init_test_protocol_context(tezos_env, "__shell_context_listener_test_apply_blocks_context");
+
+    // store genesis
+    let genesis_block_header = initialize_storage_with_genesis_block(
+        block_storage,
+        &init_storage_data,
+        &tezos_env,
+        &genesis_context_hash,
+        log.clone(),
+    )?;
+
+    // store genesis result
+    let commit_data = client::genesis_result_data(
+        &genesis_context_hash,
+        &chain_id,
+        &tezos_env.genesis_protocol()?,
+        tezos_env.genesis_additional_data().max_operations_ttl,
+    )?;
+    let _ = store_commit_genesis_result(
+        block_storage,
+        block_meta_storage,
+        operations_meta_storage,
+        &init_storage_data,
+        commit_data,
+    )?;
 
     // store and apply first block - level 1
     let block = BlockHeaderWithHash {
@@ -147,14 +163,17 @@ fn apply_first_three_blocks(block_storage: &mut BlockStorage) -> Result<(), fail
     let apply_block_result = client::apply_block(
         &chain_id,
         &block.header,
+        &genesis_block_header.header,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
         ),
-    );
-    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result?.context_hash);
+        tezos_env.genesis_additional_data().max_operations_ttl,
+    )?;
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
 
     // store and apply second block - level 2
+    let predecessor = block;
     let block = BlockHeaderWithHash {
         hash: HashType::BlockHash.string_to_bytes(&HashType::BlockHash.bytes_to_string(&hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?))?,
         header: Arc::new(BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?),
@@ -164,14 +183,17 @@ fn apply_first_three_blocks(block_storage: &mut BlockStorage) -> Result<(), fail
     let apply_block_result = client::apply_block(
         &chain_id,
         &block.header,
+        &predecessor.header,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         ),
-    );
-    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result?.validation_result_message);
+        apply_block_result.max_operations_ttl,
+    )?;
+    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
 
     // store apply third block - level 3
+    let predecessor = block;
     let block = BlockHeaderWithHash {
         hash: HashType::BlockHash.string_to_bytes(&HashType::BlockHash.bytes_to_string(&hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?))?,
         header: Arc::new(BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?),
@@ -181,12 +203,35 @@ fn apply_first_three_blocks(block_storage: &mut BlockStorage) -> Result<(), fail
     let apply_block_result = client::apply_block(
         &chain_id,
         &block.header,
+        &predecessor.header,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
         ),
-    );
-    Ok(assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result?.validation_result_message))
+        apply_block_result.max_operations_ttl,
+    )?;
+    Ok(assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.validation_result_message))
+}
+
+fn init_test_protocol_context(tezos_env: &TezosEnvironmentConfiguration, dir_name: &str) -> (ChainId, BlockHash, ContextHash) {
+    let result = client::init_protocol_context(
+        common::prepare_empty_dir(dir_name),
+        tezos_env.genesis.clone(),
+        tezos_env.protocol_overrides.clone(),
+        true,
+        false,
+    ).unwrap();
+
+    let genesis_context_hash = match result.genesis_commit_hash {
+        None => panic!("we needed commit_genesis and here should be result of it"),
+        Some(cr) => cr
+    };
+
+    (
+        tezos_env.main_chain_id().expect("invalid chain id"),
+        tezos_env.genesis_header_hash().expect("invalid genesis header hash"),
+        genesis_context_hash,
+    )
 }
 
 /// Empty message
@@ -205,7 +250,7 @@ mod test_data {
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
-    pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
+    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Alphanet;
 
     pub fn context_hash(hash: &str) -> ContextHash {
         HashType::ContextHash

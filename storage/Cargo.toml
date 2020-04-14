@@ -20,6 +20,7 @@ lazy_static = "1.4"
 circular-queue = "0.2"
 # local dependencies
 crypto = { path = "../crypto" }
+tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
@@ -28,3 +29,5 @@ tezos_messages = { path = "../tezos/messages" }
 hex = "0.4"
 rand = "0.7.3"
 maplit = "1.0"
+slog-async = "2.3"
+slog-term = "2.4"

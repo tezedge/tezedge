@@ -1,7 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use ocaml::{Array1, List, Str, Tuple, Value};
+use ocaml::{List, Str, ToValue, Tuple, Value};
+use ocaml::value::TRUE;
 use serde_json;
 
 use tezos_api::ffi::*;
@@ -10,8 +11,8 @@ use tezos_api::identity::Identity;
 use crate::runtime;
 use crate::runtime::OcamlError;
 
-pub type OcamlBytes = Array1<u8>;
-pub type OcamlHash = Str;
+pub type OcamlBytes = Str;
+pub type OcamlHash = OcamlBytes;
 
 pub trait Interchange<T> {
     fn convert_to(&self) -> T;
@@ -20,7 +21,7 @@ pub trait Interchange<T> {
 
 impl Interchange<OcamlBytes> for RustBytes {
     fn convert_to(&self) -> OcamlBytes {
-        Array1::from(self.as_slice())
+        Str::from(self.as_slice())
     }
 
     fn is_empty(&self) -> bool {
@@ -31,26 +32,6 @@ impl Interchange<OcamlBytes> for RustBytes {
 impl Interchange<RustBytes> for OcamlBytes {
     fn convert_to(&self) -> RustBytes {
         self.data().to_vec()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
-}
-
-impl Interchange<OcamlHash> for RustBytes {
-    fn convert_to(&self) -> OcamlHash {
-        Str::from(hex::encode(self).as_str())
-    }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
-}
-
-impl Interchange<RustBytes> for OcamlHash {
-    fn convert_to(&self) -> RustBytes {
-        hex::decode(self.as_str()).unwrap()
     }
 
     fn is_empty(&self) -> bool {
@@ -75,8 +56,13 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
     })
 }
 
-pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, protocol_overrides: &'static ProtocolOverrides, enable_testchain: bool)
-                    -> Result<Result<OcamlStorageInitInfo, TezosStorageInitError>, OcamlError> {
+pub fn init_protocol_context(
+    storage_data_dir: String,
+    genesis: GenesisChain,
+    protocol_overrides: ProtocolOverrides,
+    commit_genesis: bool,
+    enable_testchain: bool)
+    -> Result<Result<InitProtocolContextResult, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
         // genesis configuration
         let mut genesis_tuple: Tuple = Tuple::new(3);
@@ -87,45 +73,21 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
         // protocol overrides
         let protocol_overrides_tuple: Tuple = protocol_overrides_to_ocaml(protocol_overrides)?;
 
-        let ocaml_function = ocaml::named_value("init_storage").expect("function 'init_storage' is not registered");
+        let ocaml_function = ocaml::named_value("init_protocol_context").expect("function 'init_protocol_context' is not registered");
         match ocaml_function.call_n_exn(
             [
                 Value::from(Str::from(storage_data_dir.as_str())),
                 Value::from(genesis_tuple),
                 Value::from(protocol_overrides_tuple),
+                Value::bool(commit_genesis),
                 Value::bool(enable_testchain)
             ]
         ) {
             Ok(result) => {
                 let ocaml_result: Tuple = result.into();
 
-                // expecting 3 tuples
-                // 1. main and test chain
-                let chains: Tuple = ocaml_result.get(0).unwrap().into();
-                let main_chain_id: OcamlHash = chains.get(0).unwrap().into();
-
-                let test_chain: Tuple = chains.get(1).unwrap().into();
-                let test_chain_id: OcamlHash = test_chain.get(0).unwrap().into();
-                let test_chain: Option<TestChain> = if test_chain_id.is_empty() {
-                    None
-                } else {
-                    let protocol: OcamlHash = test_chain.get(1).unwrap().into();
-                    let time: Str = test_chain.get(2).unwrap().into();
-                    Some(TestChain {
-                        chain_id: test_chain_id.convert_to(),
-                        protocol_hash: protocol.convert_to(),
-                        expiration_date: String::from(time.as_str()),
-                    })
-                };
-
-                // 2. genesis and current head
-                let headers: Tuple = ocaml_result.get(1).unwrap().into();
-                let genesis_block_header_hash: OcamlHash = headers.get(0).unwrap().into();
-                let genesis_block_header: OcamlBytes = headers.get(1).unwrap().into();
-                let current_block_header_hash: OcamlHash = headers.get(2).unwrap().into();
-
-                // 3. list known protocols
-                let supported_protocol_hashes: List = ocaml_result.get(2).unwrap().into();
+                // 1. list known protocols
+                let supported_protocol_hashes: List = ocaml_result.get(0).unwrap().into();
                 let supported_protocol_hashes: Vec<RustBytes> = supported_protocol_hashes.to_vec()
                     .iter()
                     .map(|protocol_hash| {
@@ -134,13 +96,17 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
                     })
                     .collect();
 
-                Ok(OcamlStorageInitInfo {
-                    chain_id: main_chain_id.convert_to(),
-                    test_chain,
-                    genesis_block_header_hash: genesis_block_header_hash.convert_to(),
-                    genesis_block_header: genesis_block_header.convert_to(),
-                    current_block_header_hash: current_block_header_hash.convert_to(),
+                // 2. context_hash option
+                let genesis_commit_context_hash: OcamlHash = ocaml_result.get(1).unwrap().into();
+                let genesis_commit_hash = if genesis_commit_context_hash.is_empty() {
+                    None
+                } else {
+                    Some(genesis_commit_context_hash.convert_to())
+                };
+
+                Ok(InitProtocolContextResult {
                     supported_protocol_hashes,
+                    genesis_commit_hash,
                 })
             }
             Err(e) => {
@@ -150,39 +116,38 @@ pub fn init_storage(storage_data_dir: String, genesis: &'static GenesisChain, pr
     })
 }
 
-pub fn get_current_block_header(chain_id: RustBytes) -> Result<Result<RustBytes, BlockHeaderError>, OcamlError> {
+pub fn genesis_result_data(context_hash: RustBytes, chain_id: RustBytes, protocol_hash: RustBytes, genesis_max_operations_ttl: u16) -> Result<Result<CommitGenesisResult, GetDataError>, OcamlError> {
     runtime::execute(move || {
-        let ocaml_function = ocaml::named_value("get_current_block_header").expect("function 'get_current_block_header' is not registered");
-        match ocaml_function.call_exn::<OcamlHash>(chain_id.convert_to()) {
-            Ok(block_header) => {
-                let block_header: OcamlBytes = block_header.into();
-                if block_header.is_empty() {
-                    Err(BlockHeaderError::ExpectedButNotFound)
-                } else {
-                    Ok(block_header.convert_to())
-                }
-            }
-            Err(e) => {
-                Err(BlockHeaderError::from(e))
-            }
-        }
-    })
-}
+        let context_hash: OcamlHash = context_hash.convert_to();
+        let chain_id: OcamlHash = chain_id.convert_to();
+        let protocol_hash: OcamlHash = protocol_hash.convert_to();
 
-pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Result<Result<Option<RustBytes>, BlockHeaderError>, OcamlError> {
-    runtime::execute(move || {
-        let ocaml_function = ocaml::named_value("get_block_header").expect("function 'get_block_header' is not registered");
-        match ocaml_function.call2_exn::<OcamlHash, OcamlHash>(chain_id.convert_to(), block_header_hash.convert_to()) {
-            Ok(block_header) => {
-                let block_header: OcamlBytes = block_header.into();
-                if block_header.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(block_header.convert_to()))
-                }
+        let ocaml_function = ocaml::named_value("genesis_result_data").expect("function 'genesis_result_data' is not registered");
+        match ocaml_function.call_n_exn(
+            vec![
+                context_hash.to_value(),
+                chain_id.to_value(),
+                protocol_hash.to_value(),
+                Value::usize(genesis_max_operations_ttl as usize),
+            ]
+        ) {
+            Ok(result) => {
+                let ocaml_result: Tuple = result.into();
+
+                // context_hash option
+                let block_header_proto_json: Str = ocaml_result.get(0).unwrap().into();
+                let block_header_proto_metadata_json: Str = ocaml_result.get(1).unwrap().into();
+                let operations_proto_metadata_json: Str = ocaml_result.get(2).unwrap().into();
+                Ok(
+                    CommitGenesisResult {
+                        block_header_proto_json: String::from(block_header_proto_json.as_str()),
+                        block_header_proto_metadata_json: String::from(block_header_proto_metadata_json.as_str()),
+                        operations_proto_metadata_json: String::from(operations_proto_metadata_json.as_str()),
+                    }
+                )
             }
             Err(e) => {
-                Err(BlockHeaderError::from(e))
+                Err(GetDataError::from(e))
             }
         }
     })
@@ -191,17 +156,25 @@ pub fn get_block_header(chain_id: RustBytes, block_header_hash: RustBytes) -> Re
 pub fn apply_block(
     chain_id: RustBytes,
     block_header: RustBytes,
-    operations: Vec<Option<Vec<RustBytes>>>)
+    predecessor_block_header: RustBytes,
+    operations: Vec<Option<Vec<RustBytes>>>,
+    max_operations_ttl: u16)
     -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
 
+        let chain_id: OcamlHash = chain_id.convert_to();
+        let block_header: OcamlBytes = block_header.convert_to();
+        let predecessor_block_header: OcamlBytes = predecessor_block_header.convert_to();
+
         // call ffi
-        match ocaml_function.call3_exn::<OcamlHash, OcamlBytes, List>(
-            chain_id.convert_to(),
-            block_header.convert_to(),
-            operations_to_ocaml(&operations),
-        ) {
+        match ocaml_function.call_n_exn(vec![
+            chain_id.to_value(),
+            block_header.to_value(),
+            predecessor_block_header.to_value(),
+            operations_to_ocaml(&operations).to_value(),
+            Value::usize(max_operations_ttl as usize),
+        ]) {
             Ok(validation_result) => {
                 let validation_result: Tuple = validation_result.into();
 
@@ -210,6 +183,20 @@ pub fn apply_block(
                 let block_header_proto_json: Str = validation_result.get(2).unwrap().into();
                 let block_header_proto_metadata_json: Str = validation_result.get(3).unwrap().into();
                 let operations_proto_metadata_json: Str = validation_result.get(4).unwrap().into();
+                let max_operations_ttl: u16 = validation_result.get(5).unwrap().usize_val() as u16;
+                let last_allowed_fork_level: i32 = validation_result.get(6).unwrap().int32_val();
+                let forking_testchain = validation_result.get(7).unwrap().usize_val() == TRUE.usize_val();
+                let forking_testchain_data: Option<ForkingTestchainData> = if forking_testchain {
+                    let test_chain: Tuple = validation_result.get(8).unwrap().into();
+                    let genesis: OcamlHash = test_chain.get(0).unwrap().into();
+                    let chain_id: OcamlHash = test_chain.get(1).unwrap().into();
+                    Some(ForkingTestchainData {
+                        genesis: genesis.convert_to(),
+                        chain_id: chain_id.convert_to(),
+                    })
+                } else {
+                    None
+                };
 
                 Ok(ApplyBlockResult {
                     validation_result_message: validation_result_message.as_str().to_string(),
@@ -217,6 +204,10 @@ pub fn apply_block(
                     block_header_proto_json: block_header_proto_json.as_str().to_string(),
                     block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string(),
                     operations_proto_metadata_json: operations_proto_metadata_json.as_str().to_string(),
+                    max_operations_ttl,
+                    last_allowed_fork_level,
+                    forking_testchain,
+                    forking_testchain_data,
                 })
             }
             Err(e) => {
@@ -289,7 +280,7 @@ pub fn operations_to_ocaml(operations: &Vec<Option<Vec<RustBytes>>>) -> List {
     operations_for_ocaml
 }
 
-pub fn protocol_overrides_to_ocaml(protocol_overrides: &ProtocolOverrides) -> Result<Tuple, ocaml::Error> {
+pub fn protocol_overrides_to_ocaml(protocol_overrides: ProtocolOverrides) -> Result<Tuple, ocaml::Error> {
     let mut forced_protocol_upgrades = List::new();
     protocol_overrides.forced_protocol_upgrades.iter().rev()
         .for_each(|(level, protocol_hash)| {
