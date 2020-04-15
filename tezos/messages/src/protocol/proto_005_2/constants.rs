@@ -73,7 +73,9 @@ pub struct ParametricConstants {
     cost_per_byte: BigInt,
     hard_storage_limit_per_operation: BigInt,
     test_chain_duration: i64,
+    #[get_copy = "pub"]
     quorum_min: i32,
+    #[get_copy = "pub"]
     quorum_max: i32,
     min_proposal_quorum: i32,
     initial_endorsers: u16,

@@ -7,6 +7,7 @@ use std::convert::TryInto;
 use failure::bail;
 use serde::Serialize;
 use serde_json::Value;
+use itertools::Itertools;
 
 use crypto::hash::{BlockHash, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
@@ -368,4 +369,46 @@ pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashM
         let storage = list.read().expect("poisoned storage lock");
         storage.get(level).map_err(|e| e.into())
     }
+}
+
+// #[inline]
+// pub fn create_indexed_key_for_protocol_hash(prefix: &str, protocol_hash: &str) -> Result<Vec<String>, failure::Error> {
+//     const INDEX_SIZE: usize = 6;
+//     let mut key_vector = Vec::new();
+
+//     // let address = contract_id_to_contract_address_for_index(contract_id)?;
+//     let protocol_hash_bytes = HashType::ProtocolHash.string_to_bytes(protocol_hash)?;
+
+//     let hashed = hex::encode(blake2b::digest_256(&protocol_hash_bytes));
+
+//     key_vector.push(prefix.to_string());
+//     for elem in (0..INDEX_SIZE * 2).step_by(2) {
+//         key_vector.push(hashed[elem..elem + 2].to_string());
+//     }
+
+//     key_vector.push(hex::encode(protocol_hash_bytes));
+
+//     Ok(key_vector)
+// }
+
+// TODO: rename this, couldn't think of a better type alias for a touple ("ed25519", "43a84d013b61b4c2cafe3fb89463329d7295a377")
+//                                                                          curve               bytes
+// to be used in SignaturePublicKeyHash::from_hex_hash_and_curve
+pub type ComponentCurveAndHash = (String, String);
+
+pub fn extract_curve_and_bytes(key: &str) -> Result<Option<ComponentCurveAndHash>, failure::Error> {
+    let mut key_iter = key.split("/");
+
+    // find the curve in the iterator and get his positon
+    let curve = if let Some(c) = key_iter.find(|x| x == &"ed25519" || x == &"secp256k1" || x == &"p256") {
+        c
+    } else {
+        return Ok(None);
+    };
+
+    // the sliced serilized component(pkh, protocol_hash, etc)
+    // it directly follows the curve -> take the next 6 elements of the iterator
+    let bytes = key_iter.take(6).join("");
+
+    Ok(Some((curve.to_string(), bytes)))
 }

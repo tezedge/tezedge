@@ -16,7 +16,6 @@ use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::helpers::{ContextProtocolParam, get_block_timestamp_by_level};
-
 use crate::merge_slices;
 
 /// Context constants used in baking and endorsing rights

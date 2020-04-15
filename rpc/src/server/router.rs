@@ -29,6 +29,10 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", handler::baking_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", handler::endorsing_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", handler::votes_listings);
+    routes.handle("/chains/:chain_id/blocks/:block_id/votes/ballot_list", handler::votes_ballot_list);
+    routes.handle("/chains/:chain_id/blocks/:block_id/votes/current_proposal", handler::votes_current_proposal);
+    routes.handle("/chains/:chain_id/blocks/:block_id/votes/proposals", handler::votes_proposals);
+    routes.handle("/chains/:chain_id/blocks/:block_id/votes/current_quorum", handler::votes_current_quorum);
 
     // Tezedge dev and support rpc
     routes.handle("/dev/chains/main/blocks", dev_handler::dev_blocks);
