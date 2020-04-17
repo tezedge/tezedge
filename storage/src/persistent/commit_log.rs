@@ -232,6 +232,11 @@ impl CommitLogs {
     }
 }
 
+impl Drop for CommitLogs {
+    fn drop(&mut self) {
+        let _ = self.flush().expect("Failed to flush commit logs");
+    }
+}
 
 #[cfg(test)]
 impl Location {

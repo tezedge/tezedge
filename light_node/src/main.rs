@@ -39,7 +39,6 @@ mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
 const DATABASE_VERSION: i64 = 10;
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -156,11 +155,12 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         thread::sleep(Duration::from_secs(1));
 
 
-        info!(log, "Shutting down actor runtime");
-        let shutdown = actor_system.shutdown();
-        info!(log, "Waiting for actors to exit");
-        let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, shutdown).await;
+        info!(log, "Shutting down actors");
+        let _ = actor_system.shutdown().await;
+        info!(log, "Shutdown complete");
     });
+
+    tokio_runtime.shutdown_timeout(Duration::from_millis(100));
 }
 
 fn check_database_compatibility(db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo, log: Logger) -> Result<bool, StorageError> {
@@ -328,22 +328,17 @@ fn main() {
         BlockStorage::descriptor(),
         ContextActionStorage::descriptor()
     ];
-    let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
-        Ok(commit_logs) => Arc::new(commit_logs),
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
-    };
 
     {
-        let persistent_storage = PersistentStorage::new(rocks_db.clone(), commit_logs.clone());
+        let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
+            Ok(commit_logs) => Arc::new(commit_logs),
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
+        };
+
+        let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
         match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, &persistent_storage, log.clone()) {
-            Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log.clone()),
+            Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
         }
     }
-
-    info!(log, "Flushing commit logs");
-    commit_logs.flush().expect("Failed to flush commit logs");
-    info!(log, "Flushing database");
-    rocks_db.flush().expect("Failed to flush database");
-    info!(log, "Shutdown complete");
 }
