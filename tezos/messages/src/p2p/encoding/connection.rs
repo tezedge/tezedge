@@ -17,6 +17,7 @@ use crate::p2p::encoding::version::Version;
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct ConnectionMessage {
     pub port: u16,
+    #[get = "pub"]
     pub versions: Vec<Version>,
     #[get = "pub"]
     pub public_key: Vec<u8>,
