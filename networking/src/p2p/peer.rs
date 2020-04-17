@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
-use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -18,13 +18,13 @@ use tokio::time::timeout;
 use crypto::crypto_box::precompute;
 use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
+use storage::p2p_message_storage::P2PMessageStorage;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
-use storage::p2p_message_storage::P2PMessageStorage;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -36,6 +36,8 @@ pub type PublicKey = Vec<u8>;
 
 #[derive(Debug, Fail)]
 enum PeerError {
+    #[fail(display = "Unsupported protocol")]
+    UnsupportedProtocol,
     #[fail(display = "Received NACK from remote peer")]
     NackReceived,
     #[fail(display = "Failed to create precomputed key")]
@@ -328,13 +330,15 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         msg_reader.split()
     };
 
+    let supported_protocol_version = Version::new(info.version.clone(), 0, 0);
+
     // send connection message
     let connection_message = ConnectionMessage::new(
         info.listener_port,
         &info.public_key,
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
-        vec![Version::new(info.version.clone(), 0, 0)]);
+        vec![supported_protocol_version.clone()]);
     let _ = storage.store_connection_message(&connection_message, false, addr);
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
@@ -351,6 +355,11 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
     };
     if let Ok(connection_message) = ConnectionMessage::from_bytes(received_connection_msg.content().to_vec()) {
         let _ = storage.store_connection_message(&connection_message, true, addr);
+
+        if !connection_message.versions.iter().any(|version| supported_protocol_version.supports(version)) {
+            warn!(log, "Received connection message with unsupported protocol version"; "versions" => format!("{:?}", &connection_message.versions()));
+            return Err(PeerError::UnsupportedProtocol)
+        }
     }
 
     // generate local and remote nonce

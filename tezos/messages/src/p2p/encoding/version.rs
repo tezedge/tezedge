@@ -20,6 +20,14 @@ impl Version {
     pub fn new(name: String, major: u16, minor: u16) -> Self {
         Version { name, major, minor, body: Default::default() }
     }
+
+    /// Returns true if protocol version is supported.
+    ///
+    /// The protocol is supported in case the `name` and `major` version are the same.
+    /// Minor version is ignored.
+    pub fn supports(&self, other: &Version) -> bool {
+        self.name == other.name && self.major == other.major
+    }
 }
 
 impl HasEncoding for Version {
@@ -41,5 +49,15 @@ impl CachedData for Version {
     #[inline]
     fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
         Some(&mut self.body)
+    }
+}
+
+impl Eq for Version { }
+
+impl PartialEq for Version {
+    fn eq(&self, other: &Self) -> bool {
+        return self.name == other.name
+            && self.major == other.major
+            && self.minor == other.minor;
     }
 }
