@@ -569,14 +569,26 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: DisconnectStalledPeers, _sender: Sender) {
         self.peers.iter()
             .for_each(|(uri, state)| {
-                if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
+                let should_disconnect = if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
                     warn!(ctx.system.log(), "Peer failed to update its current head"; "peer" => format!("{}", uri));
-                    ctx.system.stop(state.peer_ref.clone());
+                    true
                 } else if (state.block_request_last > state.block_response_last) && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for block on time"; "peer" => format!("{}", uri), "request_secs" => state.block_request_last.elapsed().as_secs(), "response_secs" => state.block_response_last.elapsed().as_secs());
-                    ctx.system.stop(state.peer_ref.clone());
+                    true
                 } else if (state.operations_request_last > state.operations_response_last) && (state.operations_request_last - state.operations_response_last > SILENT_PEER_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for operations on time"; "peer" => format!("{}", uri), "request_secs" => state.operations_request_last.elapsed().as_secs(), "response_secs" => state.operations_response_last.elapsed().as_secs());
+                    true
+                } else if (state.queued_block_headers.len() >= BLOCK_HEADERS_BATCH_SIZE) &&  (state.block_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer block queue is full but is not responding"; "peer" => format!("{}", uri), "queued_blocks" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs());
+                    true
+                } else if (state.queued_operations.len() >= OPERATIONS_BATCH_SIZE) &&  (state.operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer operations queue is full but is not responding"; "peer" => format!("{}", uri), "queued_operations" => state.queued_operations.len(), "response_secs" => state.operations_response_last.elapsed().as_secs());
+                    true
+                } else {
+                    false
+                };
+
+                if should_disconnect {
                     ctx.system.stop(state.peer_ref.clone());
                 }
             });
