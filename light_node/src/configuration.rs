@@ -483,7 +483,7 @@ impl Environment {
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
             no_of_ffi_calls_threshold_for_gc: args.value_of("ffi-calls-gc-threshold")
-                .unwrap_or("100")
+                .unwrap_or("50")
                 .parse::<i32>()
                 .expect("Provided value cannot be converted to number"),
             tokio_threads: args.value_of("tokio-threads")

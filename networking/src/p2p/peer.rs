@@ -21,10 +21,14 @@ use crypto::nonce::{self, Nonce, NoncePair};
 use storage::p2p_message_storage::P2PMessageStorage;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
+use tezos_messages::p2p::encoding::ack::NackInfo;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
+
+const SUPPORTED_DISTRIBTUED_DB_VERSION: u16 = 0;
+const SUPPORTED_P2P_VERSION: u16 = 1;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -36,10 +40,17 @@ pub type PublicKey = Vec<u8>;
 
 #[derive(Debug, Fail)]
 enum PeerError {
-    #[fail(display = "Unsupported protocol")]
-    UnsupportedProtocol,
+    #[fail(display = "Unsupported protocol - supported_version: {} vs. {}", supported_version, incompatible_versions)]
+    UnsupportedProtocol {
+        supported_version: String,
+        incompatible_versions: String,
+    },
     #[fail(display = "Received NACK from remote peer")]
     NackReceived,
+    #[fail(display = "Received NACK from remote peer with info: {:?}", nack_info)]
+    NackWithMotiveReceived {
+        nack_info: NackInfo
+    },
     #[fail(display = "Failed to create precomputed key")]
     FailedToPrecomputeKey,
     #[fail(display = "Network error: {}", message)]
@@ -330,7 +341,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         msg_reader.split()
     };
 
-    let supported_protocol_version = Version::new(info.version.clone(), 0, 0);
+    let supported_protocol_version = Version::new(info.version.clone(), SUPPORTED_DISTRIBTUED_DB_VERSION, SUPPORTED_P2P_VERSION);
 
     // send connection message
     let connection_message = ConnectionMessage::new(
@@ -357,8 +368,12 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         let _ = storage.store_connection_message(&connection_message, true, addr);
 
         if !connection_message.versions.iter().any(|version| supported_protocol_version.supports(version)) {
-            warn!(log, "Received connection message with unsupported protocol version"; "versions" => format!("{:?}", &connection_message.versions()));
-            return Err(PeerError::UnsupportedProtocol)
+            return Err(
+                PeerError::UnsupportedProtocol {
+                    supported_version: format!("{:?}", &supported_protocol_version),
+                    incompatible_versions: format!("{:?}", &connection_message.versions()),
+                }
+            );
         }
     }
 
@@ -402,9 +417,13 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
             debug!(log, "Received ACK");
             Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key.clone()))
         }
-        AckMessage::Nack => {
+        AckMessage::NackV0 => {
             debug!(log, "Received NACK");
             Err(PeerError::NackReceived)
+        }
+        AckMessage::Nack(nack_info) => {
+            debug!(log, "Received NACK with info: {:?}", nack_info);
+            Err(PeerError::NackWithMotiveReceived { nack_info })
         }
     }
 }

@@ -6,36 +6,47 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use std::fmt;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Version {
-    name: String,
-    major: u16,
-    minor: u16,
+    chain_name: String,
+    distributed_db_version: u16,
+    p2p_version: u16,
     #[serde(skip_serializing)]
     body: BinaryDataCache,
 }
 
+impl fmt::Debug for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Version")
+            .field("chain_name", &self.chain_name)
+            .field("distributed_db_version", &self.distributed_db_version)
+            .field("p2p_version", &self.p2p_version)
+            .finish()
+    }
+}
+
 impl Version {
-    pub fn new(name: String, major: u16, minor: u16) -> Self {
-        Version { name, major, minor, body: Default::default() }
+    pub fn new(chain_name: String, distributed_db_version: u16, p2p_version: u16) -> Self {
+        Version { chain_name, distributed_db_version, p2p_version, body: Default::default() }
     }
 
-    /// Returns true if protocol version is supported.
+    /// Returns true if version is compatibile.
     ///
-    /// The protocol is supported in case the `name` and `major` version are the same.
-    /// Minor version is ignored.
+    /// The version is compatible in case the `chain_name` and `distributed_db_version` version are the same.
+    /// p2p_version is ignored.
     pub fn supports(&self, other: &Version) -> bool {
-        self.name == other.name && self.major == other.major
+        self.chain_name == other.chain_name && self.distributed_db_version == other.distributed_db_version
     }
 }
 
 impl HasEncoding for Version {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("name", Encoding::String),
-            Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new("chain_name", Encoding::String),
+            Field::new("distributed_db_version", Encoding::Uint16),
+            Field::new("p2p_version", Encoding::Uint16)
         ])
     }
 }
@@ -56,8 +67,8 @@ impl Eq for Version { }
 
 impl PartialEq for Version {
     fn eq(&self, other: &Self) -> bool {
-        return self.name == other.name
-            && self.major == other.major
-            && self.minor == other.minor;
+        return self.chain_name == other.chain_name
+            && self.distributed_db_version == other.distributed_db_version
+            && self.p2p_version == other.p2p_version;
     }
 }

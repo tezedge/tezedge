@@ -449,8 +449,8 @@ impl Receive<ConnectToPeer> for PeerManager {
                         info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
                         system.stop(peer);
                     }
-                    Err(e) => {
-                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
+                    Err(_) => {
+                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name());
                         system.stop(peer);
                     }
                 }

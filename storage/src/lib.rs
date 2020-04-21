@@ -167,7 +167,7 @@ pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
     };
 
-    info!(log, "Storage based on genesis"; "init_data" => format!("{:?}", &init_data));
+    info!(log, "Storage based on data"; "chain_name" => &tezos_env.version, "init_data" => format!("{:?}", &init_data));
     Ok(init_data)
 }
 
