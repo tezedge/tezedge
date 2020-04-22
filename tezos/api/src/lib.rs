@@ -3,5 +3,4 @@
 
 pub mod ffi;
 pub mod environment;
-pub mod client;
 pub mod identity;

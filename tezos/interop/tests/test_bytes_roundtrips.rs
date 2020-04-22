@@ -306,7 +306,13 @@ fn test_context_callback() {
 
                     assert_eq!(expected_key_cloned.clone(), key);
                     assert_eq!(expected_data_cloned.clone(), value);
-                }
+                },
+                ContextAction::Checkout {
+                    context_hash,
+                    ..
+                } => {
+                    assert_eq!(expected_context_hash_cloned, context_hash);
+                },
                 _ => panic!("test failed - waiting just 'Set' action!")
             }
         }
@@ -391,7 +397,7 @@ fn is_ocaml_log_enabled() -> bool {
 
 fn no_of_ffi_calls_treshold_for_gc() -> i32 {
     env::var("OCAML_CALLS_GC")
-        .unwrap_or("50".to_string())
+        .unwrap_or("1000".to_string())
         .parse::<i32>().unwrap()
 }
 

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Sends blocks to the `protocol_runner`.
+//! This actor is responsible for correct applying of blocks with Tezos protocol in context
+//! This actor is aslo responsible for correct initialization of genesis in storage.
 
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,15 +11,15 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use failure::Error;
+use failure::{Error, Fail};
 use riker::actors::*;
-use slog::{debug, Logger, warn};
+use slog::{debug, Logger, warn, trace};
 
-use crypto::hash::{BlockHash, ChainId, HashType};
-use storage::{BlockJsonDataBuilder, BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, OperationsStorageReader};
+use crypto::hash::{BlockHash, HashType};
+use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
 use storage::persistent::PersistentStorage;
-use tezos_api::client::TezosStorageInitInfo;
-use tezos_wrapper::service::{IpcCmdServer, ProtocolController};
+use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
 
 use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
@@ -43,7 +45,6 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
-
     /// Create new actor instance.
     ///
     /// If the actor is successfully created then reference to the actor is returned.
@@ -52,32 +53,39 @@ impl ChainFeeder {
     /// This actor spawns a new thread in which it will periodically monitor [`persistent_storage`](PersistentStorage).
     /// Purpose of the monitoring thread is to detect whether it is possible to apply blocks received by the p2p layer.
     /// If the block can be applied, it is sent via IPC to the `protocol_runner`, where it is then applied by calling a tezos ffi.
-    pub fn actor(sys: &impl ActorRefFactory, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, tezos_init: &TezosStorageInitInfo, ipc_server: IpcCmdServer, log: Logger) -> Result<ChainFeederRef, CreateError> {
+    pub fn actor(
+        sys: &impl ActorRefFactory,
+        shell_channel: ShellChannelRef,
+        persistent_storage: &PersistentStorage,
+        init_storage_data: &StorageInitInfo,
+        tezos_env: &TezosEnvironmentConfiguration,
+        ipc_server: IpcCmdServer,
+        log: Logger) -> Result<ChainFeederRef, CreateError> {
         let apply_block_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let apply_block_run = apply_block_run.clone();
-            let current_head_hash = tezos_init.current_block_header_hash.clone();
-            let chain_id = tezos_init.chain_id.clone();
             let shell_channel = shell_channel.clone();
             let persistent_storage = persistent_storage.clone();
+            let init_storage_data = init_storage_data.clone();
+            let tezos_env = tezos_env.clone();
 
             thread::spawn(move || {
                 let mut block_storage = BlockStorage::new(&persistent_storage);
                 let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let operations_storage = OperationsStorage::new(&persistent_storage);
-                let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+                let mut operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
                 let mut ipc_server = ipc_server;
 
                 while apply_block_run.load(Ordering::Acquire) {
                     match ipc_server.accept() {
                         Ok(protocol_controller) =>
-                            match feed_chain_to_protocol(&chain_id, &apply_block_run, &current_head_hash, &shell_channel, &mut block_storage, &mut block_meta_storage, &operations_storage, &operations_meta_storage, protocol_controller, &log) {
+                            match feed_chain_to_protocol(&tezos_env, &init_storage_data, &apply_block_run, &shell_channel, &mut block_storage, &mut block_meta_storage, &operations_storage, &mut operations_meta_storage, protocol_controller, &log) {
                                 Ok(()) => debug!(log, "Feed chain to protocol finished"),
                                 Err(err) => {
                                     if apply_block_run.load(Ordering::Acquire) {
                                         warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
                                     }
-                                },
+                                }
                             }
                         Err(err) => warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err)),
                     }
@@ -112,7 +120,7 @@ impl ChainFeeder {
         match msg {
             ShellChannelMsg::ShuttingDown(_) => {
                 self.block_applier_run.store(false, Ordering::Release);
-            },
+            }
             _ => ()
         }
 
@@ -171,23 +179,71 @@ impl Receive<FeedChainToProtocol> for ChainFeeder {
     }
 }
 
+/// Possible errors for feeding chain
+#[derive(Debug, Fail)]
+pub enum FeedChainError {
+    #[fail(display = "Cannot resolve current head, no genesis was commited")]
+    UnknownCurrentHeadError,
+    #[fail(display = "Storage read/write error! Reason: {:?}", error)]
+    StorageError {
+        error: StorageError
+    },
+    #[fail(display = "Protocol service error error! Reason: {:?}", error)]
+    ProtocolServiceError {
+        error: ProtocolServiceError
+    },
+}
+
+impl From<StorageError> for FeedChainError {
+    fn from(error: StorageError) -> Self {
+        FeedChainError::StorageError { error }
+    }
+}
+
+impl From<ProtocolServiceError> for FeedChainError {
+    fn from(error: ProtocolServiceError) -> Self {
+        FeedChainError::ProtocolServiceError { error }
+    }
+}
+
 fn feed_chain_to_protocol(
-    chain_id: &ChainId,
+    tezos_env: &TezosEnvironmentConfiguration,
+    init_storage_data: &StorageInitInfo,
     apply_block_run: &AtomicBool,
-    current_head_hash: &BlockHash,
     shell_channel: &ShellChannelRef,
     block_storage: &mut BlockStorage,
     block_meta_storage: &mut BlockMetaStorage,
     operations_storage: &OperationsStorage,
-    operations_meta_storage: &OperationsMetaStorage,
+    operations_meta_storage: &mut OperationsMetaStorage,
     protocol_controller: ProtocolController,
     log: &Logger,
-) -> Result<(), Error> {
+) -> Result<(), FeedChainError> {
+    let chain_id = init_storage_data.chain_id.clone();
     let block_hash_encoding = HashType::BlockHash;
-    let mut current_head_hash = current_head_hash.clone();
 
-    protocol_controller.init_protocol()?;
+    // at first we initialize protocol runtime and ffi context
+    initialize_protocol_context(
+        &apply_block_run,
+        &shell_channel,
+        block_storage,
+        block_meta_storage,
+        operations_meta_storage,
+        &protocol_controller,
+        &log,
+        &tezos_env,
+        &init_storage_data,
+    )?;
 
+    // now resolve where to start apply next blocks (at least genesis should be there)
+    let mut current_head_hash: BlockHash = match &block_meta_storage.load_current_head()? {
+        Some(block) => block.clone(),
+        None => {
+            // this should not happen here, we applied at least genesis before
+            return Err(FeedChainError::UnknownCurrentHeadError);
+        }
+    };
+
+    // now we can start applying block
     while apply_block_run.load(Ordering::Acquire) {
         match block_meta_storage.get(&current_head_hash)? {
             Some(mut current_head_meta) => {
@@ -214,19 +270,37 @@ fn feed_chain_to_protocol(
                                     .drain(..)
                                     .map(Some)
                                     .collect();
+
                                 // apply block and it's operations
-                                let apply_block_result = protocol_controller.apply_block(&chain_id, &current_head.header, &operations)?;
-                                debug!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => apply_block_result.validation_result_message);
-                                // mark current head as applied
-                                current_head_meta.set_is_applied(true);
-                                block_meta_storage.put(&current_head.hash, &current_head_meta)?;
-                                // store json data
-                                let block_json_data = BlockJsonDataBuilder::default()
-                                    .block_header_proto_json(apply_block_result.block_header_proto_json)
-                                    .block_header_proto_metadata_json(apply_block_result.block_header_proto_metadata_json)
-                                    .operations_proto_metadata_json(apply_block_result.operations_proto_metadata_json)
-                                    .build().unwrap();
-                                block_storage.put_block_json_data(&current_head.hash, block_json_data.clone())?;
+                                let (predecessor, predecessor_additional_data) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
+                                    None => {
+                                        warn!(log, "No data was found in database for the predecessor, so we try to apply it first"; "predecessor_block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.header.predecessor()));
+                                        current_head_hash = current_head.header.predecessor().clone();
+                                        continue;
+                                    }
+                                    Some(predecesor_data) => predecesor_data
+                                };
+
+                                let apply_block_result = protocol_controller.apply_block(
+                                    &chain_id,
+                                    &current_head.header,
+                                    &predecessor.header,
+                                    &operations,
+                                    predecessor_additional_data.max_operations_ttl().clone(),
+                                )?;
+                                debug!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => &apply_block_result.validation_result_message);
+
+
+
+                                // store result
+                                let (block_json_data, _) = store_applied_block_result(
+                                    block_storage,
+                                    block_meta_storage,
+                                    &current_head.hash,
+                                    apply_block_result,
+                                    &mut current_head_meta,
+                                )?;
+
                                 // notify listeners
                                 if apply_block_run.load(Ordering::Acquire) {
                                     // notify others that the block successfully applied
@@ -266,3 +340,69 @@ fn feed_chain_to_protocol(
     Ok(())
 }
 
+/// This initializes ocaml runtime and protocol context,
+/// if we start with new databazes without genesis,
+/// it ensures correct initialization of storage with genesis and his data.
+pub(crate) fn initialize_protocol_context(
+    apply_block_run: &AtomicBool,
+    shell_channel: &ShellChannelRef,
+    block_storage: &mut BlockStorage,
+    block_meta_storage: &mut BlockMetaStorage,
+    operations_meta_storage: &mut OperationsMetaStorage,
+    protocol_controller: &ProtocolController,
+    log: &Logger,
+    tezos_env: &TezosEnvironmentConfiguration,
+    init_storage_data: &StorageInitInfo) -> Result<(), FeedChainError> {
+
+    // we must check if genesis is applied, if not then we need "commit_genesis" to context
+    let need_commit_genesis = match block_meta_storage.get(&init_storage_data.genesis_block_header_hash)? {
+        Some(genesis_meta) => !genesis_meta.is_applied(),
+        None => true,
+    };
+    trace!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
+
+    // initialize protocol context runtime
+    let genesis_commit_data = protocol_controller.init_protocol(need_commit_genesis)?;
+    trace!(log, "Protocol context initialized"; "genesis_commit_data" => format!("{:?}", &genesis_commit_data));
+
+    if need_commit_genesis {
+
+        // if we needed commit_genesis, it means, that it is apply of 0 block,
+        // which initiates genesis protocol in context, so we need to store some data, like we do in normal apply, see below store_apply_block_result
+        if let Some(genesis_context_hash) = genesis_commit_data.genesis_commit_hash {
+
+            // at first store genesis to storage
+            let genesis_with_hash = initialize_storage_with_genesis_block(
+                block_storage,
+                &init_storage_data,
+                &tezos_env,
+                &genesis_context_hash,
+                log.clone(),
+            )?;
+
+            // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
+            // this needs to be second step, because, this triggers context.checkout, so we need to call it after store_commit_genesis_result
+            let commit_data = protocol_controller.genesis_result_data(&genesis_context_hash)?;
+
+            let block_json_data = store_commit_genesis_result(
+                block_storage,
+                block_meta_storage,
+                operations_meta_storage,
+                &init_storage_data,
+                commit_data,
+            )?;
+
+            // notify listeners
+            if apply_block_run.load(Ordering::Acquire) {
+                // notify others that the block successfully applied
+                shell_channel.tell(
+                    Publish {
+                        msg: BlockApplied::new(genesis_with_hash, block_json_data).into(),
+                        topic: ShellChannelTopic::ShellEvents.into(),
+                    }, None);
+            }
+        }
+    }
+
+    Ok(())
+}

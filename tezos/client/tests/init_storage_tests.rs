@@ -5,20 +5,20 @@ use std::collections::HashSet;
 
 use enum_iterator::IntoEnumIterator;
 
-use tezos_api::environment::TezosEnvironment;
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
+use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
-use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 
 mod common;
 
 #[test]
-fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Error> {
+fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Error> {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         }
     ).unwrap();
 
@@ -27,7 +27,6 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
 
     let mut chains: HashSet<ChainId> = HashSet::new();
     let mut genesises: HashSet<BlockHash> = HashSet::new();
-    let mut current_heads: HashSet<BlockHash> = HashSet::new();
     let mut protocol_hashes: HashSet<ProtocolHash> = HashSet::new();
 
     // run init storage for all nets
@@ -36,16 +35,19 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
     iterator.for_each(|net| {
         environment_counter += 1;
 
-        match client::init_storage(
+        let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&net).expect(&format!("no tezos environment configured for: {:?}", &net));
+
+        match client::init_protocol_context(
             common::prepare_empty_dir(&storage_data_dir),
-            net,
-            false
+            tezos_env.genesis.clone(),
+            tezos_env.protocol_overrides.clone(),
+            true,
+            false,
         ) {
             Err(e) => panic!("Failed to initialize storage for: {:?}, Reason: {:?}", net, e),
             Ok(init_info) => {
-                chains.insert(init_info.chain_id);
-                genesises.insert(init_info.genesis_block_header_hash);
-                current_heads.insert(init_info.current_block_header_hash);
+                chains.insert(tezos_env.main_chain_id().expect("chain_id error"));
+                genesises.insert(tezos_env.genesis_header_hash().expect("genesis_hash error"));
 
                 init_info.supported_protocol_hashes.iter().for_each(|protocol_hash| {
                     protocol_hashes.insert(protocol_hash.clone());
@@ -57,7 +59,6 @@ fn test_init_empty_storage_for_all_enviroment_nets() -> Result<(), failure::Erro
     // check result - we should have
     assert_eq!(environment_counter, chains.len());
     assert_eq!(environment_counter, genesises.len());
-    assert_eq!(environment_counter, current_heads.len());
     assert!(protocol_hashes.len() > 1);
 
     Ok(())

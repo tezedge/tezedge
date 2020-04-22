@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use derive_builder::Builder;
-use getset::Getters;
+use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash};
@@ -35,10 +35,20 @@ pub struct BlockJsonData {
     operations_proto_metadata_json: String,
 }
 
+#[derive(Clone, Builder, CopyGetters, Serialize, Deserialize, Debug)]
+pub struct BlockAdditionalData {
+    #[get_copy = "pub"]
+    max_operations_ttl: u16,
+    #[get_copy = "pub"]
+    last_allowed_fork_level: i32,
+}
+
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn get_with_json_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
+    fn get_with_additional_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockAdditionalData)>, StorageError>;
 
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
@@ -70,6 +80,7 @@ impl BlockStorage {
                 let location = BlockStorageColumnsLocation {
                     block_header: block_header_location,
                     block_json_data: None,
+                    block_additional_data: None,
                 };
                 self.primary_index.put(&block_header.hash, &location).and(self.by_level_index.put(block_header.header.level(), &location))
             })
@@ -80,6 +91,19 @@ impl BlockStorage {
             let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
             column_location.block_json_data = Some(block_json_data_location);
+            column_location
+        };
+        let block_header = self.get_block_header_by_location(&updated_column_location)?;
+        // update indexes
+        self.primary_index.put(&block_header.hash, &updated_column_location)
+            .and(self.by_level_index.put(block_header.header.level(), &updated_column_location))
+    }
+
+    pub fn put_block_additional_data(&mut self, block_hash: &BlockHash, additional_data: BlockAdditionalData) -> Result<(), StorageError> {
+        let updated_column_location = {
+            let block_additional_data_location = self.clog.append(&BlockStorageColumn::BlockAdditionalData(additional_data))?;
+            let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
+            column_location.block_additional_data = Some(block_additional_data_location);
             column_location
         };
         let block_header = self.get_block_header_by_location(&updated_column_location)?;
@@ -108,6 +132,17 @@ impl BlockStorage {
         match &location.block_json_data {
             Some(block_json_data_location) => match self.clog.get(block_json_data_location).map_err(StorageError::from)? {
                 BlockStorageColumn::BlockJsonData(json_data) => Ok(Some(json_data)),
+                _ => Err(StorageError::InvalidColumn)
+            }
+            None => Ok(None)
+        }
+    }
+
+    #[inline]
+    fn get_block_additional_data_by_location(&self, location: &BlockStorageColumnsLocation) -> Result<Option<BlockAdditionalData>, StorageError> {
+        match &location.block_additional_data {
+            Some(block_additional_data_location) => match self.clog.get(block_additional_data_location).map_err(StorageError::from)? {
+                BlockStorageColumn::BlockAdditionalData(data) => Ok(Some(data)),
                 _ => Err(StorageError::InvalidColumn)
             }
             None => Ok(None)
@@ -146,16 +181,26 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn get_every_nth_with_json_data(&self, every_nth: BlockLevel, from_block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
-        let locations = self.get(from_block_hash)?
-            .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks_by_nth_level(every_nth, block.header.level(), limit))?;
-        self.get_blocks_with_json_data_by_location(locations)
+    fn get_with_additional_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockAdditionalData)>, StorageError> {
+        match self.primary_index.get(block_hash)? {
+            Some(location) => self.get_block_additional_data_by_location(&location)?
+                .map(|json_data| self.get_block_header_by_location(&location).map(|block_header| (block_header, json_data)))
+                .transpose(),
+            None => Ok(None)
+        }
     }
 
     #[inline]
     fn get_multiple_with_json_data(&self, block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
         let locations = self.get(block_hash)?
             .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks(block.header.level(), limit))?;
+        self.get_blocks_with_json_data_by_location(locations)
+    }
+
+    #[inline]
+    fn get_every_nth_with_json_data(&self, every_nth: BlockLevel, from_block_hash: &BlockHash, limit: usize) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError> {
+        let locations = self.get(from_block_hash)?
+            .map_or_else(|| Ok(Vec::new()), |block| self.by_level_index.get_blocks_by_nth_level(every_nth, block.header.level(), limit))?;
         self.get_blocks_with_json_data_by_location(locations)
     }
 
@@ -203,6 +248,7 @@ impl CommitLogSchema for BlockStorage {
 pub enum BlockStorageColumn {
     BlockHeader(BlockHeaderWithHash),
     BlockJsonData(BlockJsonData),
+    BlockAdditionalData(BlockAdditionalData),
 }
 
 impl BincodeEncoded for BlockStorageColumn {}
@@ -212,6 +258,7 @@ impl BincodeEncoded for BlockStorageColumn {}
 pub struct BlockStorageColumnsLocation {
     block_header: Location,
     block_json_data: Option<Location>,
+    block_additional_data: Option<Location>,
 }
 
 impl BincodeEncoded for BlockStorageColumnsLocation {}
@@ -367,7 +414,7 @@ mod tests {
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {
-                index.put(i, &BlockStorageColumnsLocation { block_header: Location::new(i as u64), block_json_data: None })?;
+                index.put(i, &BlockStorageColumnsLocation { block_header: Location::new(i as u64), block_json_data: None, block_additional_data: None })?;
             }
 
             let res = index.get_blocks(649, 2)?.iter().map(|location| location.block_header.offset()).collect::<Vec<_>>();

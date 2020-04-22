@@ -362,7 +362,6 @@ impl From<SequenceError> for SkipListError {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub enum Bucket<V> {
     Exists(V),
-    Invalid,
     Deleted,
 }
 

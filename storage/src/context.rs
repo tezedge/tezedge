@@ -71,6 +71,7 @@ pub trait ContextApi {
     fn checkout(&self, context_hash: &ContextHash) -> Result<ContextDiff, ContextError>;
 
     /// Commit new generated context diff to storage
+    /// if parent_context_hash is empty, it means that its a commit_genesis a we dont assign context_hash to header
     fn commit(&mut self, block_hash: &BlockHash, parent_context_hash: &Option<ContextHash>, new_context_hash: &ContextHash, context_diff: &ContextDiff) -> Result<(), ContextError>;
 
     /// Checks context and resolves keys to be delete a place them to diff, and also deletes keys from diff
@@ -114,6 +115,7 @@ pub struct ContextDiff {
     predecessor_index: ContextIndex,
     diff: ContextMap,
 }
+
 impl ContextDiff {
     pub fn new(predecessor_level: Option<usize>, predecessor_context_hash: Option<ContextHash>, diff: ContextMap) -> Self {
         ContextDiff {
@@ -175,7 +177,6 @@ impl TezedgeContext {
 
 impl ContextApi for TezedgeContext {
     fn init_from_start(&self) -> ContextDiff {
-        // TODO: initial context diff, should be initialized by genesis
         ContextDiff::new(None, None, Default::default())
     }
 
@@ -201,13 +202,31 @@ impl ContextApi for TezedgeContext {
         writer.push(&context_diff.diff)?;
 
         // associate block and context_hash
-        self.block_storage
-            .assign_to_context(block_hash, new_context_hash)
-            .map_err(|e| ContextError::ContextHashAssignError {
-                block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                context_hash: HashType::ContextHash.bytes_to_string(new_context_hash),
-                error: e,
-            })?;
+        if let Err(e) = self.block_storage.assign_to_context(block_hash, new_context_hash) {
+            match e {
+                StorageError::MissingKey => {
+                    if parent_context_hash.is_some() {
+                        return Err(
+                            ContextError::ContextHashAssignError {
+                                block_hash: HashType::BlockHash.bytes_to_string(block_hash),
+                                context_hash: HashType::ContextHash.bytes_to_string(new_context_hash),
+                                error: e,
+                            }
+                        );
+                    } else {
+                        // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
+                        ()
+                    }
+                }
+                _ => return Err(
+                    ContextError::ContextHashAssignError {
+                        block_hash: HashType::BlockHash.bytes_to_string(block_hash),
+                        context_hash: HashType::ContextHash.bytes_to_string(new_context_hash),
+                        error: e,
+                    }
+                )
+            };
+        }
 
         Ok(())
     }
@@ -258,7 +277,6 @@ impl ContextApi for TezedgeContext {
                 match bucket {
                     Bucket::Exists(_) => final_context_to_copy.insert(key.clone(), bucket.clone()),
                     | Bucket::Deleted => final_context_to_copy.remove(key),
-                    _ => None
                 };
             }
         }

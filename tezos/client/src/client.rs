@@ -1,10 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{BlockHash, ChainId, ProtocolHash};
-use tezos_api::client::TezosStorageInitInfo;
-use tezos_api::environment::{self, TezosEnvironment, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, BlockHeaderError, ContextDataError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use crypto::hash::{ChainId, ContextHash, ProtocolHash};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, CommitGenesisResult, ContextDataError, GenesisChain, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, GetDataError};
 use tezos_api::identity::Identity;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -22,60 +20,35 @@ pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Resu
     }
 }
 
-/// Initializes storage for Tezos ocaml storage in chosen directory
-pub fn init_storage(storage_data_dir: String, tezos_environment: TezosEnvironment, enable_testchain: bool) -> Result<TezosStorageInitInfo, TezosStorageInitError> {
-    let cfg: &TezosEnvironmentConfiguration = match environment::TEZOS_ENV.get(&tezos_environment) {
-        None => return Err(TezosStorageInitError::InitializeError {
-            message: format!("FFI 'init_storage' failed, because there is no tezos environment configured for: {:?}", tezos_environment)
-        }),
-        Some(cfg) => cfg
-    };
-    match ffi::init_storage(storage_data_dir, &cfg.genesis, &cfg.protocol_overrides, enable_testchain) {
-        Ok(result) => Ok(TezosStorageInitInfo::new(result?)
-            .map_err(|err| TezosStorageInitError::InitializeError { message: format!("Decoding from hex failed! Reason: {:?}", err) })?),
+/// Initializes context for Tezos ocaml protocol
+pub fn init_protocol_context(
+    storage_data_dir: String,
+    genesis: GenesisChain,
+    protocol_overrides: ProtocolOverrides,
+    commit_genesis: bool,
+    enable_testchain: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain) {
+        Ok(result) => Ok(result?),
         Err(e) => {
             Err(TezosStorageInitError::InitializeError {
-                message: format!("FFI 'init_storage' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
+                message: format!("FFI 'init_protocol_context' failed! Initialization of Tezos context failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
             })
         }
     }
 }
 
-/// Get current header block from storage
-pub fn get_current_block_header(chain_id: &ChainId) -> Result<BlockHeader, BlockHeaderError> {
-    match ffi::get_current_block_header(chain_id.clone()) {
-        Ok(result) => {
-            match BlockHeader::from_bytes(result?) {
-                Ok(header) => Ok(header),
-                Err(_) => Err(BlockHeaderError::ReadError { message: "Decoding from bytes failed!".to_string() })
-            }
-        }
+/// Gets data for genesis
+pub fn genesis_result_data(
+    context_hash: &ContextHash,
+    chain_id: &ChainId,
+    protocol_hash: &ProtocolHash,
+    genesis_max_operations_ttl: u16,
+) -> Result<CommitGenesisResult, GetDataError> {
+    match ffi::genesis_result_data(context_hash.clone(), chain_id.clone(), protocol_hash.clone(), genesis_max_operations_ttl) {
+        Ok(result) => Ok(result?),
         Err(e) => {
-            Err(BlockHeaderError::ReadError {
-                message: format!("FFI 'get_current_block_header' failed! Initialization of Tezos storage failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
-            })
-        }
-    }
-}
-
-/// Get block header from storage or None
-pub fn get_block_header(chain_id: &ChainId, block_header_hash: &BlockHash) -> Result<Option<BlockHeader>, BlockHeaderError> {
-    match ffi::get_block_header(chain_id.clone(), block_header_hash.clone()) {
-        Ok(result) => {
-            let header = result?;
-            match header {
-                None => Ok(None),
-                Some(header) => {
-                    match BlockHeader::from_bytes(header) {
-                        Ok(header) => Ok(Some(header)),
-                        Err(e) => Err(BlockHeaderError::ReadError { message: format!("Decoding from hex failed! Reason: {:?}", e) })
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            Err(BlockHeaderError::ReadError {
-                message: format!("FFI 'get_block_header' failed! Something is wrong! Reason: {:?}", e)
+            Err(GetDataError::ReadError {
+                message: format!("FFI 'genesis_result_data' failed! Reason: {:?}", e)
             })
         }
     }
@@ -89,7 +62,9 @@ pub fn get_block_header(chain_id: &ChainId, block_header_hash: &BlockHash) -> Re
 pub fn apply_block(
     chain_id: &ChainId,
     block_header: &BlockHeader,
-    operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<ApplyBlockResult, ApplyBlockError> {
+    predecessor_block_header: &BlockHeader,
+    operations: &Vec<Option<OperationsForBlocksMessage>>,
+    max_operations_ttl: u16) -> Result<ApplyBlockResult, ApplyBlockError> {
 
     // check operations count by validation_pass
     if (block_header.validation_pass() as usize) != operations.len() {
@@ -107,12 +82,22 @@ pub fn apply_block(
         ),
         Ok(data) => data
     };
+    let predecessor_block_header = match predecessor_block_header.as_bytes() {
+        Err(e) => return Err(
+            ApplyBlockError::InvalidBlockHeaderData {
+                message: format!("Block header as_bytes failed: {:?}, block: {:?}", e, predecessor_block_header)
+            }
+        ),
+        Ok(data) => data
+    };
     let operations = to_bytes(operations)?;
 
     match ffi::apply_block(
         chain_id.clone(),
         block_header,
+        predecessor_block_header,
         operations,
+        max_operations_ttl,
     ) {
         Ok(result) => result,
         Err(e) => {
@@ -147,7 +132,7 @@ pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: 
     }
 }
 
-fn to_bytes(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<Vec<Option<Vec<Vec<u8>>>>, ApplyBlockError> {
+pub fn to_bytes(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<Vec<Option<Vec<Vec<u8>>>>, ApplyBlockError> {
     let mut operations = Vec::with_capacity(block_operations.len());
 
     for block_ops in block_operations {

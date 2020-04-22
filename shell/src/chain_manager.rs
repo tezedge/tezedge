@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Manages chain synchronisation process.
+//! - tries to download most recent header from the other peers
+//! - also supplies downloaded data to other peers
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -14,9 +16,9 @@ use slog::{debug, FnValue, info, trace, warn};
 use crypto::hash::{BlockHash, ChainId, HashType};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::block_meta_storage::BlockMetaStorageReader;
 use storage::persistent::PersistentStorage;
-use tezos_api::client::TezosStorageInitInfo;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -63,9 +65,25 @@ pub struct LogStats;
 struct CurrentHead {
     /// Represents local current head. Value here is the same as the
     /// hash of the last applied block.
-    local: BlockHash,
-    /// Remote / network remote current head. This represents info about
+    local: Option<BlockHash>,
+    /// Remote current head. This represents info about
     /// the current branch with the highest level received from network.
+    remote: Option<RemoteCurrentHead>,
+}
+
+impl CurrentHead {
+    fn need_update_remote_level(&self, new_remote_level: i32) -> bool {
+        match &self.remote {
+            None => true,
+            Some(current_remote_head) => new_remote_level > current_remote_head.remote_level
+        }
+    }
+}
+
+/// This struct holds info about remote "current" head and level
+#[derive(Clone, Debug)]
+struct RemoteCurrentHead {
+    /// Remote / network remote current head.
     remote: BlockHash,
     /// Level of the remote current head.
     remote_level: i32,
@@ -98,6 +116,8 @@ pub struct ChainManager {
     peers: HashMap<ActorUri, PeerState>,
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
+    /// Block meta storage
+    block_meta_storage: Box<dyn BlockMetaStorageReader>,
     /// Operations storage
     operations_storage: Box<dyn OperationsStorageReader>,
     /// Holds state of the block chain
@@ -118,10 +138,17 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 impl ChainManager {
 
     /// Create new actor instance.
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (network_channel, shell_channel, persistent_storage.clone(), init_info.chain_id.clone(),
-                                                CurrentHead { local: init_info.current_block_header_hash.clone(), remote: init_info.genesis_block_header_hash.clone(), remote_level: 0 })),
+            Props::new_args(
+                ChainManager::new,
+                (
+                        network_channel,
+                        shell_channel,
+                        persistent_storage.clone(),
+                        chain_id.clone()
+                )
+            ),
             ChainManager::name())
     }
 
@@ -131,16 +158,20 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((network_channel, shell_channel, persistent_storage, chain_id, current_head): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, CurrentHead)) -> Self {
+    fn new((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             block_state: BlockState::new(&persistent_storage, &chain_id),
             operations_state: OperationsState::new(&persistent_storage, &chain_id),
             peers: HashMap::new(),
-            current_head,
+            current_head: CurrentHead {
+                local: None,
+                remote: None,
+            },
             shutting_down: false,
             stats: Stats {
                 unseen_block_count: 0,
@@ -278,9 +309,11 @@ impl ChainManager {
                                     let current_head = message.current_branch().current_head();
 
                                     // if needed, update remote current head
-                                    if message.current_branch().current_head().level() > self.current_head.remote_level {
-                                        self.current_head.remote_level = message.current_branch().current_head().level();
-                                        self.current_head.remote = message.current_branch().current_head().message_hash()?;
+                                    if self.current_head.need_update_remote_level(message.current_branch().current_head().level()) {
+                                        self.current_head.remote = Some(RemoteCurrentHead {
+                                            remote: message.current_branch().current_head().message_hash()?,
+                                            remote_level: message.current_branch().current_head().level(),
+                                        });
                                     }
 
                                     // update peer stats
@@ -305,10 +338,12 @@ impl ChainManager {
                                 PeerMessage::GetCurrentBranch(message) => {
                                     debug!(log, "Current branch requested by a peer");
                                     if block_state.get_chain_id() == &message.chain_id {
-                                        if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let history = block_state.get_history()?;
-                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
-                                            tell_peer(msg.into(), peer);
+                                        if let Some(current_head_local) = &self.current_head.local {
+                                            if let Some(current_head) = block_storage.get(current_head_local)? {
+                                                let history = block_state.get_history()?;
+                                                let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
+                                                tell_peer(msg.into(), peer);
+                                            }
                                         }
                                     }
                                 }
@@ -359,9 +394,11 @@ impl ChainManager {
                                 PeerMessage::GetCurrentHead(message) => {
                                     debug!(log, "Current head requested");
                                     if block_state.get_chain_id() == message.chain_id() {
-                                        if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
-                                            tell_peer(msg.into(), peer);
+                                        if let Some(current_head_local) = &self.current_head.local {
+                                            if let Some(current_head) = block_storage.get(&current_head_local)? {
+                                                let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
+                                                tell_peer(msg.into(), peer);
+                                            }
                                         }
                                     }
                                 }
@@ -434,7 +471,7 @@ impl ChainManager {
     fn process_shell_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
             ShellChannelMsg::BlockApplied(message) => {
-                self.current_head.local = message.header().hash.clone();
+                self.current_head.local = Some(message.header().hash.clone());
                 self.stats.applied_block_level = Some(message.header().header.level());
                 self.stats.applied_block_last = Some(Instant::now());
             }
@@ -451,10 +488,14 @@ impl ChainManager {
     fn hydrate_state(&mut self, ctx: &Context<ChainManagerMsg>) {
         info!(ctx.system.log(), "Hydrating block state");
         self.block_state.hydrate().expect("Failed to hydrate block state");
+
         info!(ctx.system.log(), "Hydrating operations state");
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
-        info!(ctx.system.log(), "Hydrating completed successfully");
 
+        info!(ctx.system.log(), "Loading current head");
+        self.current_head.local = self.block_meta_storage.load_current_head().expect("Failed to load current head");
+
+        info!(ctx.system.log(), "Hydrating completed successfully");
         self.stats.hydrated_state_last = Some(Instant::now());
     }
 }
@@ -540,7 +581,21 @@ impl Receive<LogStats> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
         let block_hash_encoding = HashType::BlockHash;
-        info!(log, "Head info"; "local" => &block_hash_encoding.bytes_to_string(&self.current_head.local), "remote" => &block_hash_encoding.bytes_to_string(&self.current_head.remote), "remote_level" => self.current_head.remote_level);
+        let local = match &self.current_head.local {
+            None => "-none-".to_string(),
+            Some(block) => block_hash_encoding.bytes_to_string(block),
+        };
+        let (remote, remote_level) = match &self.current_head.remote {
+            None => ("-none-".to_string(), 0 as i32),
+            Some(remote_current_head) => (
+                block_hash_encoding.bytes_to_string(&remote_current_head.remote),
+                remote_current_head.remote_level
+            ),
+        };
+        info!(log, "Head info";
+            "local" => local,
+            "remote" => remote,
+            "remote_level" => remote_level);
         info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,
             "last_block_secs" => self.stats.unseen_block_last.elapsed().as_secs(),

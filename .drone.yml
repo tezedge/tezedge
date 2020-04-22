@@ -13,7 +13,7 @@ name: default
 
 environment:
   NETWORK: carthagenet
-  FROM_BLOCK_HEADER: 2
+  FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 3000
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
