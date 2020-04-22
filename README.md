@@ -35,7 +35,7 @@ Quick start
 
 * Docker
 
-**1. Open shell and type this code into the command line and then press Enter:
+**1. Open shell and type this code into the command line and then press Enter**
 
 ```
 git clone https://github.com/simplestaking/tezedge
