@@ -35,14 +35,14 @@ Quick start
 
 * Docker
 
-Open shell and type this code into the command line and then press Enter:
+**1. Open shell and type this code into the command line and then press Enter:
 
 ```
 git clone https://github.com/simplestaking/tezedge
 cd tezedge
 ```
 
-**1. Download and install Docker and Docker Compose**
+**2. Download and install Docker and Docker Compose**
 
 Open shell and type this code into the command line and then press Enter:
 
@@ -53,7 +53,7 @@ docker-compose up
 
 ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/node_bootstrap.gif)
 
-**2. Open the TezEdge Explorer in your browser** 
+**3. Open the TezEdge Explorer in your browser** 
 
 You can view the status of the node in your browser by entering this address into your browser's URL bar:
 
