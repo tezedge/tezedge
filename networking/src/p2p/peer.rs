@@ -27,7 +27,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
-const SUPPORTED_DISTRIBTUED_DB_VERSION: u16 = 0;
+const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
 const SUPPORTED_P2P_VERSION: u16 = 1;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
@@ -283,12 +283,18 @@ impl Receive<Bootstrap> for Peer {
                     system.stop(myself);
                 }
                 Err(err) => {
-                    info!(system.log(), "Connection to peer failed"; "reason" => err, "ip" => &peer_address, "peer" => myself.name());
+                    info!(system.log(), "Connection to peer failed"; "reason" => &err, "ip" => &peer_address, "peer" => myself.name());
+
+                    let potential_peers = match err {
+                        PeerError::NackWithMotiveReceived { nack_info } => Some(nack_info.potential_peers_to_connect),
+                        _ => None
+                    };
 
                     // notify that peer failed at bootstrap process
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Failure {
                             address: peer_address,
+                            potential_peers_to_connect: potential_peers
                         }.into(),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
@@ -341,7 +347,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         msg_reader.split()
     };
 
-    let supported_protocol_version = Version::new(info.version.clone(), SUPPORTED_DISTRIBTUED_DB_VERSION, SUPPORTED_P2P_VERSION);
+    let supported_protocol_version = Version::new(info.version.clone(), SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION);
 
     // send connection message
     let connection_message = ConnectionMessage::new(

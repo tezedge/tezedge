@@ -41,14 +41,17 @@ impl fmt::Debug for NackInfo {
     }
 }
 
-fn nack_info_encoding() -> Encoding {
-    Encoding::Obj(
-        vec![
-            Field::new("motive", Encoding::Int16),
-            Field::new("potential_peers_to_connect", Encoding::dynamic(Encoding::list(Encoding::String))),
-        ]
-    )
+impl NackInfo {
+    fn encoding() -> Encoding {
+        Encoding::Obj(
+            vec![
+                Field::new("motive", Encoding::Int16),
+                Field::new("potential_peers_to_connect", Encoding::dynamic(Encoding::list(Encoding::String))),
+            ]
+        )
+    }
 }
+
 
 impl HasEncoding for AckMessage {
     fn encoding() -> Encoding {
@@ -56,7 +59,7 @@ impl HasEncoding for AckMessage {
             size_of::<u8>(),
             TagMap::new(&[
                 Tag::new(0x00, "Ack", Encoding::Unit),
-                Tag::new(0x01, "Nack", nack_info_encoding()),
+                Tag::new(0x01, "Nack", NackInfo::encoding()),
                 Tag::new(0xFF, "NackV0", Encoding::Unit),
             ]),
         )

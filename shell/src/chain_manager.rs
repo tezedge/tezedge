@@ -350,7 +350,7 @@ impl ChainManager {
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
-                                        Some(_missing_block) => {
+                                        Some(_) => {
                                             trace!(log, "Received block header");
                                             peer.block_response_last = Instant::now();
 
@@ -379,7 +379,6 @@ impl ChainManager {
                                         }
                                         None => {
                                             warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_header_with_hash.hash));
-                                            ctx.system.stop(received.peer.clone());
                                         }
                                     }
                                 }
