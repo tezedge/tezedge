@@ -171,3 +171,5 @@ Open shell and type this code into the command line and then press Enter:
 
 ```curl localhost:18732/chains/main/blocks/head```
 
+For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
+
