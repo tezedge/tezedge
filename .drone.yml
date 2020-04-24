@@ -1,5 +1,5 @@
 #################################
-# Drone contains 3 pipelines:
+# Drone contains 2 ocaml-node-run pipelines:
 # 1. all-tests-compare-to-master (carthagenet)
 # 2. connect-to-mainnet
 #################################
@@ -68,10 +68,10 @@ steps:
 # run ocaml node with snapshoted data (to save time/resources for waiting to outside tezos world)
 # ocaml node doeas not do bootstrap from network, it has fixed snapshot from: carthagenet_2020-04-24_01:00.full
 # tezos config must be for --network carthagenet
-- name: ocaml-node-run-from-snapshot
+- name: ocaml-node-run
   user: root
   image: tezos/tezos:carthagenet
-  detach: false
+  detach: true
   volumes:
     - name: ocaml-node-data
       path: /home/tezos/data
@@ -81,8 +81,7 @@ steps:
     - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
     - tezos-node config init --data-dir /home/tezos/data
     - tezos-node snapshot import /snapshots/carthagenet_2020-04-24_01:00.full --data-dir /home/tezos/data
-    - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode full --no-bootstrap-peers --connections "2" --disable-testchain
-
+    - tezos-node run --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode full --no-bootstrap-peers --connections "2" --disable-testchain
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
