@@ -32,12 +32,11 @@ name: all-tests-compare-to-master
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 5000
+  TO_BLOCK_HEADER: 1000
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:18732
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
-  OCAML_NODE_P2P_ADDRESS: http://ocaml-node-run:9734
   TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:18732
   OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
   TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
@@ -62,26 +61,17 @@ steps:
     - rm -rf /home/tezos/data/context
     - rm -rf /home/tezos/data/store
     - rm -f /home/tezos/data/lock
-    - rm -f /home/tezos/data/config.json
-    - rm -f /home/tezos/data/version.json
 
-# run ocaml node with snapshoted data (to save time/resources for waiting to outside tezos world)
-# ocaml node doeas not do bootstrap from network, it has fixed snapshot from: carthagenet_2020-04-24_01:00.full
-# tezos config must be for --network carthagenet
 - name: ocaml-node-run
   user: root
-  image: tezos/tezos:carthagenet
+  image: tezos/tezos:v7-release
   detach: true
   volumes:
     - name: ocaml-node-data
       path: /home/tezos/data
-    - name: ocaml-snapshots
-      path: /snapshots
   commands:
     - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
-    - tezos-node config init --data-dir /home/tezos/data
-    - tezos-node snapshot import /snapshots/carthagenet_2020-04-24_01:00.full --data-dir /home/tezos/data
-    - tezos-node run --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode full --no-bootstrap-peers --connections "2" --disable-testchain
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK}
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -90,6 +80,17 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
     - cargo build --release --workspace
+
+- name: tezedge-node-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+  commands:
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
 
 - name: build-tezedge-master
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -116,17 +117,6 @@ steps:
   commands: 
     - cd /tmp/tezedge-cache/tezedge
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
-
-- name: tezedge-node-run
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: tezedge-node-data
-      path: /tmp/tezedge_developer
-  commands: 
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
 
 - name: bootstrapping
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -190,9 +180,6 @@ steps:
     - tezos-node-bootstrap --indexer-test
 
 volumes:
-  - name: ocaml-snapshots
-    host:
-      path: /etc/ocaml-snapshots
   - name: ocaml-node-data
     host:
       path: /etc/ocaml-node
@@ -205,7 +192,6 @@ volumes:
   - name: cache
     host:
       path: /etc/tezedge-ci/cache
-
   - name: indexer-tezedge-data
     temp: {}
   - name: indexer-ocaml-data
@@ -214,116 +200,3 @@ volumes:
 trigger:
   branch:
     - master
-
-############################################################################################################################
-# 2. connect-to-mainnet (just quick bootstrap a few blocks)
-# - runs 2 nodes (current_branch, ocaml_live)
-#
-# - runs tests:
-# -- rpc-test - compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between current_branch and ocaml
-#
-# - triggers on master and on pull request to master
-#
-# - all ports prefixed with '4'
-############################################################################################################################
----
-kind: pipeline
-name: connect-to-mainnet
-# default build goes with: --network "mainnet"
-# integration test is using env variables:
-# - FROM_BLOCK_HEADER - block level,
-# - TO_BLOCK_HEADER - block level (also is used by bootstrap task --bootstrap)
-# -- all headers in interval <FROM_BLOCK_HEADER, TO_BLOCK_HEADER) are checked in test (rpc json compare)
-# - OCAML_NODE_RPC_CONTEXT_ROOT: running ocaml node, e.g.: http://ocaml-node-run:8732
-# - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-node-run:18732
-# the command - tezos-node-bootstrap --bootstrap in the bootstrapping step accepts min. 2 and up to 3 args. You can specify the node urls to be bootstrapped
-# we want to bootstrap all 3 nodes in the master pipeline, so we pass all of them to the bootstrap app
-# in special pipelines, we could omit the master node (only needed for perftest)
-
-environment:
-  NETWORK: mainnet
-  FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 1
-  SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:48732
-  OCAML_NODE_P2P_ADDRESS: http://ocaml-node-run:49734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:48732
-  DATA_DISCRIMINATOR: -connect-to-mainnet
-
-steps:
-  # uncomment this step when a modification to the storage was done and requires a fresh bootstrap
-  - name: cleanup-node-data
-    image: alpine/git
-    user: root
-    volumes:
-      - name: tezedge-node-connect-to-mainnet
-        path: /tmp/tezedge_developer-connect-to-mainnet
-      - name: ocaml-node-data-connect-to-mainnet
-        path: /home/tezos--connect-to-mainnet/data
-    commands:
-      - rm -rf /tmp/tezedge_developer-connect-to-mainnet/light-node
-      - rm -rf /tmp/tezedge_developer-connect-to-mainnet/tezos-node
-      - rm -rf /home/tezos-connect-to-mainnet/data/context
-      - rm -rf /home/tezos-connect-to-mainnet/data/store
-      - rm -f /home/tezos-connect-to-mainnet/data/lock
-
-
-  - name: build-tezedge
-    image: simplestakingcom/tezedge-ci-builder:latest
-    user: root
-    environment:
-      SODIUM_USE_PKG_CONFIG: 1
-    commands:
-      - cargo build --release --workspace
-
-  - name: ocaml-node-run
-    user: root
-    image: tezos/tezos:mainnet
-    detach: true
-    volumes:
-      - name: ocaml-node-data-connect-to-mainnet
-        path: /home/tezos-connect-to-mainnet/data
-    commands:
-      - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos-connect-to-mainnet/data/identity.json
-      - tezos-node run --rpc-addr 0.0.0.0:48732 --net-addr 0.0.0.0:49734 --data-dir /home/tezos-connect-to-mainnet/data --history-mode archive
-
-  - name: tezedge-node-run
-    image: simplestakingcom/tezedge-ci-builder:latest
-    pull: if-not-exists
-    user: root
-    detach: true
-    volumes:
-      - name: tezedge-node-data-connect-to-mainnet
-        path: /tmp/tezedge_developer-connect-to-mainnet
-    commands:
-      - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --tezos-data-dir "/tmp/tezedge_developer-connect-to-mainnet/tezos-node" --bootstrap-db-path "/tmp/tezedge_developer-connect-to-mainnet/light-node" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=49732 --peers "$${OCAML_NODE_P2P_ADDRESS}"
-
-  - name: bootstrapping
-    image: simplestakingcom/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap --bootstrap $${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-  - name: rpc-test
-    image: simplestakingcom/tezedge-ci-builder:latest
-    pull: if-not-exists
-    user: root
-    environment:
-      RUST_BACKTRACE: 1
-      SODIUM_USE_PKG_CONFIG: 1
-      OCAML_BUILD_CHAIN: remote
-      LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
-    commands:
-      - cargo test --verbose --release -- --nocapture --ignored test_rpc_compare
-
-volumes:
-  - name: ocaml-node-data-connect-to-mainnet
-    host:
-      path: /etc/ocaml-node-connect-to-mainnet
-  - name: tezedge-node-data-connect-to-mainnet
-    host:
-      path: /etc/tezedge-node-connect-to-mainnet
-
-trigger:
-  branch:
-    - TODO
