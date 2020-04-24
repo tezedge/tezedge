@@ -10,7 +10,7 @@ use serde::Serialize;
 use crypto::blake2b;
 use crypto::hash::Hash;
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
-use tezos_encoding::binary_writer::BinaryWriter;
+use tezos_encoding::binary_writer;
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::json_writer::JsonWriter;
@@ -141,7 +141,7 @@ impl<T> BinaryMessage for T
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error> {
         match self.cache_reader().get() {
             Some(data) => Ok(data),
-            None => BinaryWriter::new().write(self, &Self::encoding())
+            None => binary_writer::write(self, &Self::encoding())
         }
     }
 

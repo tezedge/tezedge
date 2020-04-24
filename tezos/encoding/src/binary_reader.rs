@@ -342,8 +342,7 @@ mod tests {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::binary_writer::BinaryWriter;
-    use crate::de;
+    use crate::{de, binary_writer};
     use crate::encoding::{Tag, TagMap};
     use crate::ser::Serializer;
     use crate::types::BigInt;
@@ -441,11 +440,10 @@ mod tests {
                 a: num_bigint::BigInt::from(num_mul).into()
             };
 
-            let mut writer = BinaryWriter::new();
             let mut serializer = Serializer::default();
 
             let value_serialized = record.serialize(&mut serializer).unwrap();
-            let record_bytes = writer.write(&record, &record_encoding).unwrap();
+            let record_bytes = binary_writer::write(&record, &record_encoding).unwrap();
 
             let reader = BinaryReader::new();
             let value_deserialized = reader.read(record_bytes, &record_encoding).unwrap();
