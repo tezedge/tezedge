@@ -22,13 +22,13 @@ use tokio::time::timeout;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
+use storage::p2p_message_storage::P2PMessageStorage;
+use storage::persistent::PersistentStorage;
 use tezos_api::identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::*;
-use storage::p2p_message_storage::P2PMessageStorage;
-use storage::persistent::PersistentStorage;
 
 /// Timeout for outgoing connections
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -266,6 +266,14 @@ impl PeerManager {
             ctx.myself().tell(CheckPeerCount, None);
         }
     }
+
+    fn process_potential_peers(&mut self, potential_peers: &[String]) {
+        let sock_addresses = potential_peers.iter()
+            .filter_map(|str_ip_port| str_ip_port.parse().ok())
+            .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
+            .collect::<Vec<_>>();
+        self.potential_peers.extend(sock_addresses);
+    }
 }
 
 impl Actor for PeerManager {
@@ -399,18 +407,19 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 messages.iter()
                     .for_each(|message| if let PeerMessage::Advertise(message) = message {
                         info!(ctx.system.log(), "Received advertise message from peer"; "peer" => received.peer.name());
-                        let sock_addresses = message.id().iter()
-                            .filter_map(|str_ip_port| str_ip_port.parse().ok())
-                            .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
-                            .collect::<Vec<SocketAddr>>();
-                        self.potential_peers.extend(sock_addresses);
+                        self.process_potential_peers(message.id());
                     });
                 self.trigger_check_peer_count(ctx);
             }
-            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure { address }) => {
+            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure { address, potential_peers_to_connect }) => {
                 // received message that bootstrap process failed for the peer
                 info!(ctx.system.log(), "Blacklisting IP because peer failed at bootstrap process"; "ip" => format!("{}", address.ip()));
                 self.ip_blacklist.insert(address.ip());
+
+                if let Some(peers) = potential_peers_to_connect {
+                    self.process_potential_peers(&peers);
+                    self.trigger_check_peer_count(ctx);
+                }
             }
             _ => ()
         }
@@ -449,8 +458,8 @@ impl Receive<ConnectToPeer> for PeerManager {
                         info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
                         system.stop(peer);
                     }
-                    Err(e) => {
-                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
+                    Err(_) => {
+                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name());
                         system.stop(peer);
                     }
                 }

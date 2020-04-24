@@ -65,28 +65,28 @@ pub struct LogStats;
 struct CurrentHead {
     /// Represents local current head. Value here is the same as the
     /// hash of the last applied block.
-    local: Option<BlockHash>,
+    local: Option<Head>,
     /// Remote current head. This represents info about
     /// the current branch with the highest level received from network.
-    remote: Option<RemoteCurrentHead>,
+    remote: Option<Head>,
 }
 
 impl CurrentHead {
     fn need_update_remote_level(&self, new_remote_level: i32) -> bool {
         match &self.remote {
             None => true,
-            Some(current_remote_head) => new_remote_level > current_remote_head.remote_level
+            Some(current_remote_head) => new_remote_level > current_remote_head.level
         }
     }
 }
 
 /// This struct holds info about remote "current" head and level
 #[derive(Clone, Debug)]
-struct RemoteCurrentHead {
-    /// Remote / network remote current head.
-    remote: BlockHash,
-    /// Level of the remote current head.
-    remote_level: i32,
+struct Head {
+    /// BlockHash of head.
+    hash: BlockHash,
+    /// Level of the head.
+    level: i32,
 }
 
 /// Holds various stats with info about internal synchronization.
@@ -310,9 +310,9 @@ impl ChainManager {
 
                                     // if needed, update remote current head
                                     if self.current_head.need_update_remote_level(message.current_branch().current_head().level()) {
-                                        self.current_head.remote = Some(RemoteCurrentHead {
-                                            remote: message.current_branch().current_head().message_hash()?,
-                                            remote_level: message.current_branch().current_head().level(),
+                                        self.current_head.remote = Some(Head {
+                                            hash: message.current_branch().current_head().message_hash()?,
+                                            level: message.current_branch().current_head().level(),
                                         });
                                     }
 
@@ -339,7 +339,7 @@ impl ChainManager {
                                     debug!(log, "Current branch requested by a peer");
                                     if block_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head_local) = &self.current_head.local {
-                                            if let Some(current_head) = block_storage.get(current_head_local)? {
+                                            if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
                                                 let history = block_state.get_history()?;
                                                 let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
                                                 tell_peer(msg.into(), peer);
@@ -350,7 +350,7 @@ impl ChainManager {
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
-                                        Some(_missing_block) => {
+                                        Some(_) => {
                                             trace!(log, "Received block header");
                                             peer.block_response_last = Instant::now();
 
@@ -379,7 +379,6 @@ impl ChainManager {
                                         }
                                         None => {
                                             warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_header_with_hash.hash));
-                                            ctx.system.stop(received.peer.clone());
                                         }
                                     }
                                 }
@@ -395,7 +394,7 @@ impl ChainManager {
                                     debug!(log, "Current head requested");
                                     if block_state.get_chain_id() == message.chain_id() {
                                         if let Some(current_head_local) = &self.current_head.local {
-                                            if let Some(current_head) = block_storage.get(&current_head_local)? {
+                                            if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
                                                 let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
                                                 tell_peer(msg.into(), peer);
                                             }
@@ -471,7 +470,10 @@ impl ChainManager {
     fn process_shell_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
             ShellChannelMsg::BlockApplied(message) => {
-                self.current_head.local = Some(message.header().hash.clone());
+                self.current_head.local = Some(Head {
+                    hash: message.header().hash.clone(),
+                    level: message.header().header.level(),
+                });
                 self.stats.applied_block_level = Some(message.header().header.level());
                 self.stats.applied_block_last = Some(Instant::now());
             }
@@ -493,7 +495,18 @@ impl ChainManager {
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
 
         info!(ctx.system.log(), "Loading current head");
-        self.current_head.local = self.block_meta_storage.load_current_head().expect("Failed to load current head");
+        self.current_head.local = match self.block_meta_storage.load_current_head().expect("Failed to load current head") {
+            Some(hash) => {
+                self.block_storage
+                    .get(&hash)
+                    .expect(&format!("Failed to read head: {}", HashType::BlockHash.bytes_to_string(&hash)))
+                    .map(|block| Head {
+                        hash: block.hash.clone(),
+                        level: block.header.level(),
+                    })
+            }
+            None => None
+        };
 
         info!(ctx.system.log(), "Hydrating completed successfully");
         self.stats.hydrated_state_last = Some(Instant::now());
@@ -581,19 +594,23 @@ impl Receive<LogStats> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
         let block_hash_encoding = HashType::BlockHash;
-        let local = match &self.current_head.local {
-            None => "-none-".to_string(),
-            Some(block) => block_hash_encoding.bytes_to_string(block),
+        let (local, local_level) = match &self.current_head.local {
+            None => ("-none-".to_string(), 0 as i32),
+            Some(head) => (
+                block_hash_encoding.bytes_to_string(&head.hash),
+                head.level
+            )
         };
         let (remote, remote_level) = match &self.current_head.remote {
             None => ("-none-".to_string(), 0 as i32),
-            Some(remote_current_head) => (
-                block_hash_encoding.bytes_to_string(&remote_current_head.remote),
-                remote_current_head.remote_level
+            Some(head) => (
+                block_hash_encoding.bytes_to_string(&head.hash),
+                head.level
             ),
         };
         info!(log, "Head info";
             "local" => local,
+            "local_level" => local_level,
             "remote" => remote,
             "remote_level" => remote_level);
         info!(log, "Blocks and operations info";
@@ -624,20 +641,22 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: DisconnectStalledPeers, _sender: Sender) {
         self.peers.iter()
             .for_each(|(uri, state)| {
+                let block_response_pending = state.block_request_last > state.block_response_last;
+                let operations_response_pending = state.operations_request_last > state.operations_response_last;
                 let should_disconnect = if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
                     warn!(ctx.system.log(), "Peer failed to update its current head"; "peer" => format!("{}", uri));
                     true
-                } else if (state.block_request_last > state.block_response_last) && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
+                } else if block_response_pending && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for block on time"; "peer" => format!("{}", uri), "request_secs" => state.block_request_last.elapsed().as_secs(), "response_secs" => state.block_response_last.elapsed().as_secs());
                     true
-                } else if (state.operations_request_last > state.operations_response_last) && (state.operations_request_last - state.operations_response_last > SILENT_PEER_TIMEOUT) {
+                } else if operations_response_pending && (state.operations_request_last - state.operations_response_last > SILENT_PEER_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for operations on time"; "peer" => format!("{}", uri), "request_secs" => state.operations_request_last.elapsed().as_secs(), "response_secs" => state.operations_response_last.elapsed().as_secs());
                     true
-                } else if (state.queued_block_headers.len() >= BLOCK_HEADERS_BATCH_SIZE) &&  (state.block_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer block queue is full but is not responding"; "peer" => format!("{}", uri), "queued_blocks" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs());
+                } else if block_response_pending && !state.queued_block_headers.is_empty() && (state.block_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer is not providing requested blocks"; "peer" => format!("{}", uri), "queued_blocks" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs());
                     true
-                } else if (state.queued_operations.len() >= OPERATIONS_BATCH_SIZE) &&  (state.operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer operations queue is full but is not responding"; "peer" => format!("{}", uri), "queued_operations" => state.queued_operations.len(), "response_secs" => state.operations_response_last.elapsed().as_secs());
+                } else if operations_response_pending && !state.queued_operations.is_empty() && (state.operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer is not providing requested operations"; "peer" => format!("{}", uri), "queued_operations" => state.queued_operations.len(), "response_secs" => state.operations_response_last.elapsed().as_secs());
                     true
                 } else {
                     false

@@ -1,5 +1,23 @@
+#################################
+# Drone contains 2 ocaml-node-run pipelines:
+# 1. all-tests-compare-to-master (carthagenet)
+# 2. connect-to-mainnet
+#################################
+
+
+############################################################################################################################
+# 1. all-tests-compare-to-master
+# - runs 3 nodes (master, current_branch, ocaml_snapshot)
+#
+# - runs tests:
+# -- rpc-test - compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between current_branch and ocaml_snapshot
+# -- wrk-performance-test - compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between all nodes
+# -- indexer-test - compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between current_branch and ocaml_snapshot
+#
+# - triggers on master and on pull request to master
+############################################################################################################################
 kind: pipeline
-name: default
+name: all-tests-compare-to-master
 # default build goes with: --network "carthagenet"
 # integration test is using env variables:
 # - FROM_BLOCK_HEADER - block level,
@@ -14,7 +32,7 @@ name: default
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 3000
+  TO_BLOCK_HEADER: 1000
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:18732
@@ -44,6 +62,16 @@ steps:
     - rm -rf /home/tezos/data/store
     - rm -f /home/tezos/data/lock
 
+- name: ocaml-node-run
+  user: root
+  image: tezos/tezos:v7-release
+  detach: true
+  volumes:
+    - name: ocaml-node-data
+      path: /home/tezos/data
+  commands:
+    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK}
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -52,6 +80,17 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
     - cargo build --release --workspace
+
+- name: tezedge-node-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+  commands:
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
 
 - name: build-tezedge-master
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -78,28 +117,6 @@ steps:
   commands: 
     - cd /tmp/tezedge-cache/tezedge
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
-
-- name: tezedge-node-run
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: tezedge-node-data
-      path: /tmp/tezedge_developer
-  commands: 
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=39732
-
-- name: ocaml-node-run
-  user: root
-  image: tezos/tezos:carthagenet
-  detach: true
-  volumes:
-    - name: ocaml-node-data
-      path: /home/tezos/data
-  commands:
-    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
-    - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive --disable-testchain
 
 - name: bootstrapping
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -175,7 +192,6 @@ volumes:
   - name: cache
     host:
       path: /etc/tezedge-ci/cache
-      
   - name: indexer-tezedge-data
     temp: {}
   - name: indexer-ocaml-data
