@@ -62,7 +62,7 @@ impl slog::Value for CommitLogError {
 }
 
 type ByteLimit = usize;
-type ItemCount = u16;
+type ItemCount = u32;
 
 /// Precisely identifies location of a record in a commit log.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
