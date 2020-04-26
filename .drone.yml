@@ -51,25 +51,28 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
-    - name: ocaml-node-data
+    - name: ocaml-node-carthage-snapshot-data
       path: /home/tezos/data
   commands:
     - rm -rf /tmp/tezedge_developer/light-node
     - rm -rf /tmp/tezedge_developer/tezos-node
-    - rm -rf /home/tezos/data/context
-    - rm -rf /home/tezos/data/store
-    - rm -f /home/tezos/data/lock
+    - rm -r /home/tezos/data/identity.json
 
+# just run ocaml snapshosted node
 - name: ocaml-node-run
   user: root
   image: tezos/tezos:v7-release
-  detach: true
+  detach: false
   volumes:
-    - name: ocaml-node-data
+    - name: ocaml-node-carthage-snapshot-data
       path: /home/tezos/data
   commands:
+    - rm -f /home/tezos/data/lock
     - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
-    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK}
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers --connections "2"
+    - curl http://127.0.0.1:8732/chains/main/blocks/2
+    - curl http://127.0.0.1:8732/chains/main/blocks/1234
+    - curl http://127.0.0.1:8732/chains/main/blocks/12340
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -152,9 +155,9 @@ steps:
     - tezos-node-bootstrap --indexer-test
 
 volumes:
-  - name: ocaml-node-data
+  - name: ocaml-node-carthage-snapshot-data
     host:
-      path: /etc/ocaml-node
+      path: /etc/ocaml-node-carthage-snapshot-data
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-node
@@ -214,10 +217,11 @@ steps:
     image: tezos/tezos:v7-release
     detach: true
     volumes:
-      - name: ocaml-node-data
+      - name: ocaml-node-carthage-snapshot-data
         path: /home/tezos/data
     commands:
-      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK}
+      - rm -f /home/tezos/data/lock
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers --connections "2"
 
   # no clean up, just run tezos node (bootstrapped in previous pipeline)
   - name: tezedge-node-run
@@ -270,9 +274,9 @@ steps:
       - tezos-node-bootstrap --performance-test $${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 volumes:
-  - name: ocaml-node-data
+  - name: ocaml-node-carthage-snapshot-data
     host:
-      path: /etc/ocaml-node
+      path: /etc/ocaml-node-carthage-snapshot-data
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-node
