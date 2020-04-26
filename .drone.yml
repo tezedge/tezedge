@@ -59,7 +59,7 @@ steps:
 - name: ocaml-node-run
   user: root
   image: tezos/tezos:v7-release
-  detach: false
+  detach: true
   volumes:
     - name: ocaml-node-carthage-snapshot-data
       path: /home/tezos/data
@@ -67,6 +67,11 @@ steps:
     - rm -f /home/tezos/data/lock
     - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers --connections "2"
+
+- name: test-node-data
+  image: alpine/git
+  user: root
+  commands:
     - curl http://127.0.0.1:8732/chains/main/blocks/2
     - curl http://127.0.0.1:8732/chains/main/blocks/1234
     - curl http://127.0.0.1:8732/chains/main/blocks/12340
