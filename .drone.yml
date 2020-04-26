@@ -72,9 +72,9 @@ steps:
   image: appropriate/curl:latest
   user: root
   commands:
-    - curl http://127.0.0.1:8732/chains/main/blocks/2
-    - curl http://127.0.0.1:8732/chains/main/blocks/1234
-    - curl http://127.0.0.1:8732/chains/main/blocks/12340
+    - curl $${OCAML_NODE_RPC_CONTEXT_ROOT}/chains/main/blocks/2
+    - curl $${OCAML_NODE_RPC_CONTEXT_ROOT}/chains/main/blocks/1234
+    - curl $${OCAML_NODE_RPC_CONTEXT_ROOT}/chains/main/blocks/12340
 
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
