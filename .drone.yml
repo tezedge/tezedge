@@ -51,12 +51,9 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
-    - name: ocaml-node-carthage-snapshot-data
-      path: /home/tezos/data
   commands:
     - rm -rf /tmp/tezedge_developer/light-node
     - rm -rf /tmp/tezedge_developer/tezos-node
-    - rm -r /home/tezos/data/identity.json
 
 # just run ocaml snapshosted node
 - name: ocaml-node-run
