@@ -413,12 +413,16 @@ impl Receive<NetworkChannelMsg> for PeerManager {
             }
             NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure { address, potential_peers_to_connect }) => {
                 // received message that bootstrap process failed for the peer
-                info!(ctx.system.log(), "Blacklisting IP because peer failed at bootstrap process"; "ip" => format!("{}", address.ip()));
-                self.ip_blacklist.insert(address.ip());
-
-                if let Some(peers) = potential_peers_to_connect {
-                    self.process_potential_peers(&peers);
-                    self.trigger_check_peer_count(ctx);
+                match potential_peers_to_connect {
+                    Some(peers) => {
+                        info!(ctx.system.log(), "Received list of potential peers in the NACK message"; "ip" => format!("{}", address.ip()), "peers" => format!("{:?}", &peers));
+                        self.process_potential_peers(&peers);
+                        self.trigger_check_peer_count(ctx);
+                    }
+                    None => {
+                        info!(ctx.system.log(), "Blacklisting IP because peer failed at bootstrap process"; "ip" => format!("{}", address.ip()));
+                        self.ip_blacklist.insert(address.ip());
+                    }
                 }
             }
             _ => ()
