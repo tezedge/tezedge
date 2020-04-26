@@ -68,14 +68,6 @@ steps:
     - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers --connections "2"
 
-- name: test-node-data
-  image: appropriate/curl:latest
-  user: root
-  commands:
-    - curl http://ocaml-node-run:8732/chains/main/blocks/2
-    - curl http://ocaml-node-run:8732/chains/main/blocks/1234
-    - curl http://ocaml-node-run:8732/chains/main/blocks/12340
-
 - name: build-tezedge
   image: simplestakingcom/tezedge-ci-builder:latest
   user: root
