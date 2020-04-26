@@ -1,14 +1,19 @@
+#[allow(dead_code)]
+
 use std::cmp::Reverse;
-use std::collections::{HashMap, BinaryHeap};
-use std::sync::{MutexGuard, RwLock, Mutex};
-use tezos_context::channel::ContextAction;
-use crate::rpc_actor::RpcCollectedStateRef;
-use storage::persistent::PersistentStorage;
-use crypto::hash::HashType;
-use storage::{BlockStorage, ContextActionStorage, BlockStorageReader};
-use rayon::iter::ParallelIterator;
+use std::collections::{BinaryHeap, HashMap};
+use std::sync::{Mutex, MutexGuard, RwLock};
+
 use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
+
+use crypto::hash::HashType;
+use storage::{BlockStorage, BlockStorageReader, ContextActionStorage};
+use storage::persistent::PersistentStorage;
+use tezos_context::channel::ContextAction;
+
+use crate::rpc_actor::RpcCollectedStateRef;
 use crate::server::service::get_block_actions_by_hash;
 
 #[derive(Serialize, Deserialize)]
