@@ -69,7 +69,7 @@ steps:
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers --connections "2"
 
 - name: test-node-data
-  image: alpine/git
+  image: appropriate/curl:latest
   user: root
   commands:
     - curl http://127.0.0.1:8732/chains/main/blocks/2
