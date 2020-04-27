@@ -318,7 +318,7 @@ impl Receive<SendMessage> for Peer {
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
-                let _ = store.store_peer_message(msg.message.messages(), true, addr);
+                let _ = store.store_peer_message(msg.message.messages(), false, addr);
                 match timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await {
                     Ok(write_result) => {
                         if let Err(e) = write_result {
@@ -451,7 +451,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
                 Ok(msg) => {
-                    let _ = storage.store_peer_message(msg.messages(), false, peer_addr);
+                    let _ = storage.store_peer_message(msg.messages(), true, peer_addr);
                     let should_broadcast_message = rx_run.load(Ordering::Acquire);
                     if should_broadcast_message {
                         trace!(log, "Message parsed successfully");
