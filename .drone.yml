@@ -235,7 +235,7 @@ steps:
     - cd /tmp/tezedge-cache/tezedge
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
 
-- name: bootstrapping
+- name: bootstrapping-master
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
