@@ -95,7 +95,7 @@ pub struct PeerManager {
     /// Peer count threshold
     threshold: Threshold,
     /// Map of all peers
-    peers: HashMap<ActorUri, PeerRef>,
+    peers: HashMap<ActorUri, PeerState>,
     /// DNS addresses used for bootstrapping
     bootstrap_addresses: Vec<String>,
     /// List of initial peers to connect to
@@ -206,7 +206,7 @@ impl PeerManager {
             }
         } else {
             self.peers.values()
-                .for_each(|peer| peer.tell(SendMessage::new(PeerMessage::Bootstrap.into()), None));
+                .for_each(|peer_state| peer_state.peer_ref.tell(SendMessage::new(PeerMessage::Bootstrap.into()), None));
         }
     }
 
@@ -225,7 +225,7 @@ impl PeerManager {
             self.p2p_msg_storage.clone(),
         ).unwrap();
 
-        self.peers.insert(peer.uri().clone(), peer.clone());
+        self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: socket_address.clone() });
 
         self.network_channel.tell(
             Publish {
@@ -389,7 +389,7 @@ impl Receive<CheckPeerCount> for PeerManager {
             // stop some peers
             self.peers.values()
                 .take(self.peers.len() - self.threshold.high)
-                .for_each(|peer| ctx.system.stop(peer.clone()))
+                .for_each(|peer_state| ctx.system.stop(peer_state.peer_ref.clone()))
         }
 
         self.check_peer_count_last = Some(Instant::now());
@@ -405,9 +405,24 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 // received message containing additional peers to which we can connect in the future
                 let messages = received.message.messages();
                 messages.iter()
-                    .for_each(|message| if let PeerMessage::Advertise(message) = message {
-                        info!(ctx.system.log(), "Received advertise message from peer"; "peer" => received.peer.name());
-                        self.process_potential_peers(message.id());
+                    .for_each(|message| match message {
+                        PeerMessage::Advertise(message) => {
+                            // extract potential peers from the advertise message
+                            info!(ctx.system.log(), "Received advertise message"; "peer" => received.peer.name());
+                            self.process_potential_peers(message.id());
+                        }
+                        PeerMessage::Bootstrap => {
+                            // to a bootstrap message we will respond with list of potential peers
+                            info!(ctx.system.log(), "Received bootstrap message"; "peer" => received.peer.name());
+                            let addresses = self.peers.values()
+                                .into_iter()
+                                .filter(|peer_state| peer_state.peer_ref != received.peer)
+                                .map(|peer_state| peer_state.address)
+                                .collect::<Vec<_>>();
+                            let msg = AdvertiseMessage::new(&addresses);
+                            received.peer.tell(SendMessage::new(PeerMessage::Advertise(msg).into()), None);
+                        }
+                        _ => {}
                     });
                 self.trigger_check_peer_count(ctx);
             }
@@ -530,3 +545,10 @@ fn resolve_dns_name_to_peer_address(address: &str) -> Result<Vec<SocketAddr>, Lo
     Ok(addrs)
 }
 
+/// Holds information about a specific peer.
+struct PeerState {
+    /// Reference to peer actor
+    peer_ref: PeerRef,
+    /// Peer IP address
+    address: SocketAddr
+}

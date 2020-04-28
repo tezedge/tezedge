@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -21,7 +21,7 @@ use crypto::nonce::{self, Nonce, NoncePair};
 use storage::p2p_message_storage::P2PMessageStorage;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
-use tezos_messages::p2p::encoding::ack::NackInfo;
+use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
@@ -184,6 +184,7 @@ pub struct Peer {
     tokio_executor: Handle,
     /// Msg storage
     msg_store: P2PMessageStorage,
+    /// IP address of the remote peer
     remote_addr: SocketAddr,
 }
 
@@ -278,7 +279,7 @@ impl Receive<Bootstrap> for Peer {
 
                     // begin to process incoming messages in a loop
                     let log = system.log().new(slog::o!("peer" => peer_id));
-                    begin_process_incoming(rx, net.rx_run, myself.clone(), network_channel, log, store.clone(), peer_address.clone()).await;
+                    begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address.clone()).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
@@ -286,7 +287,7 @@ impl Receive<Bootstrap> for Peer {
                     info!(system.log(), "Connection to peer failed"; "reason" => &err, "ip" => &peer_address, "peer" => myself.name());
 
                     let potential_peers = match err {
-                        PeerError::NackWithMotiveReceived { nack_info } => Some(nack_info.potential_peers_to_connect),
+                        PeerError::NackWithMotiveReceived { nack_info } => Some(nack_info.potential_peers_to_connect().clone()),
                         _ => None
                     };
 
@@ -310,16 +311,19 @@ impl Receive<SendMessage> for Peer {
     type Msg = PeerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
+        let _ = self.msg_store.store_peer_message(msg.message.messages(), false, self.remote_addr);
+
         let system = ctx.system.clone();
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
-        let mut store = self.msg_store.clone();
-        let addr = self.remote_addr;
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
-                let _ = store.store_peer_message(msg.message.messages(), false, addr);
-                match timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await {
+                let write_result = timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await;
+                // release mutex as soon as possible
+                drop(tx_lock);
+
+                match write_result {
                     Ok(write_result) => {
                         if let Err(e) = write_result {
                             warn!(system.log(), "Failed to send message"; "reason" => e);
@@ -373,13 +377,24 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
     if let Ok(connection_message) = ConnectionMessage::from_bytes(received_connection_msg.content().to_vec()) {
         let _ = storage.store_connection_message(&connection_message, true, addr);
 
-        if !connection_message.versions.iter().any(|version| supported_protocol_version.supports(version)) {
+        let protocol_not_supported = !connection_message.versions.iter().any(|version| supported_protocol_version.supports(version));
+        if protocol_not_supported {
+            // send nack
+            timeout(IO_TIMEOUT, msg_tx.write_message(&BinaryChunk::from_content(&AckMessage::NackV0.as_bytes()?)?)).await??;
+
             return Err(
                 PeerError::UnsupportedProtocol {
                     supported_version: format!("{:?}", &supported_protocol_version),
                     incompatible_versions: format!("{:?}", &connection_message.versions()),
                 }
             );
+        }
+
+        let connecting_to_self = hex::encode(connection_message.public_key) == info.public_key;
+        if connecting_to_self {
+            debug!(log, "Detected self connection");
+            // treat as if nack was received
+            return Err(PeerError::NackWithMotiveReceived {nack_info: NackInfo::new(NackMotive::AlreadyConnected, &vec![])});
         }
     }
 
@@ -444,22 +459,22 @@ fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: boo
 }
 
 /// Start to process incoming data
-async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<AtomicBool>, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger, mut storage: P2PMessageStorage, peer_addr: SocketAddr) {
-    info!(log, "Starting to accept messages");
+async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger, peer_address: SocketAddr) {
+    info!(log, "Starting to accept messages"; "ip" => format!("{:?}", &peer_address));
 
-    while rx_run.load(Ordering::Acquire) {
+    while net.rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
                 Ok(msg) => {
-                    let _ = storage.store_peer_message(msg.messages(), true, peer_addr);
-                    let should_broadcast_message = rx_run.load(Ordering::Acquire);
+                    let should_broadcast_message = net.rx_run.load(Ordering::Acquire);
                     if should_broadcast_message {
-                        trace!(log, "Message parsed successfully");
+                        trace!(log, "Message parsed successfully"; "msg" => format!("{:?}", &msg));
                         event_channel.tell(
                             Publish {
                                 msg: PeerMessageReceived {
                                     peer: myself.clone(),
                                     message: Arc::new(msg),
+                                    peer_address
                                 }.into(),
                                 topic: NetworkChannelTopic::NetworkEvents.into(),
                             }, Some(myself.clone().into()));
@@ -480,4 +495,16 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, rx_run: Arc<Atom
             }
         }
     }
+
+    debug!(log, "Shutting down peer connection"; "ip" => format!("{:?}", &peer_address));
+    let mut tx_lock = net.tx.lock().await;
+    if let Some(tx) = tx_lock.take() {
+        let socket = rx.unsplit(tx);
+        match socket.shutdown(Shutdown::Both) {
+            Ok(()) => debug!(log, "Connection shutdown successful"; "socket" => format!("{:?}", socket)),
+            Err(err) => debug!(log, "Failed to shutdown connection"; "err" => format!("{:?}", err), "socket" => format!("{:?}", socket)),
+        }
+    }
+
+    info!(log, "Stopped to accept messages"; "ip" => format!("{:?}", &peer_address));
 }
