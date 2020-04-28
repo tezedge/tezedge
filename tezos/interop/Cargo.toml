@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop"
-version = "0.0.2-pre07"
+version = "0.0.2-pre08"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -27,3 +27,5 @@ sha2 = "0.8.0"
 [dev-dependencies]
 serial_test = { git = "https://github.com/palfrey/serial_test.git" }
 tezos_context = { path = "../context" }
+tezos_encoding = { path = "../encoding" }
+tezos_messages = { path = "../messages" }

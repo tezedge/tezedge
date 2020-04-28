@@ -19,9 +19,18 @@ pub trait Interchange<T> {
     fn is_empty(&self) -> bool;
 }
 
+fn copy_to_ocaml(bytes: &[u8]) -> Str {
+    let mut arr = Str::new(bytes.len());
+    let data = arr.data_mut();
+    for (n, i) in bytes.iter().enumerate() {
+        data[n] = *i;
+    }
+    arr
+}
+
 impl Interchange<OcamlBytes> for RustBytes {
     fn convert_to(&self) -> OcamlBytes {
-        Str::from(self.as_slice())
+        copy_to_ocaml(self.as_slice())
     }
 
     fn is_empty(&self) -> bool {
@@ -153,28 +162,15 @@ pub fn genesis_result_data(context_hash: RustBytes, chain_id: RustBytes, protoco
     })
 }
 
-pub fn apply_block(
-    chain_id: RustBytes,
-    block_header: RustBytes,
-    predecessor_block_header: RustBytes,
-    operations: Vec<Option<Vec<RustBytes>>>,
-    max_operations_ttl: u16)
+/// Applies block to context
+/// - apply_block_request see [tezos_api::ffi:ApplyBlockRequest]
+pub fn apply_block(apply_block_request: RustBytes)
     -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
 
-        let chain_id: OcamlHash = chain_id.convert_to();
-        let block_header: OcamlBytes = block_header.convert_to();
-        let predecessor_block_header: OcamlBytes = predecessor_block_header.convert_to();
-
         // call ffi
-        match ocaml_function.call_n_exn(vec![
-            chain_id.to_value(),
-            block_header.to_value(),
-            predecessor_block_header.to_value(),
-            operations_to_ocaml(&operations).to_value(),
-            Value::usize(max_operations_ttl as usize),
-        ]) {
+        match ocaml_function.call_exn::<OcamlBytes>(apply_block_request.convert_to()) {
             Ok(validation_result) => {
                 let validation_result: Tuple = validation_result.into();
 
