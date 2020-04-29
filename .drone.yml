@@ -73,6 +73,7 @@ steps:
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
+    - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
 
 - name: bootstrapping-tezedge
@@ -241,6 +242,7 @@ steps:
     - rm -rf tezedge
     - git clone https://github.com/simplestaking/tezedge.git && cd tezedge
     - cd /tmp/tezedge-cache/tezedge
+    - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
 
 # just run rust node bootstrapped before
