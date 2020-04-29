@@ -4,7 +4,7 @@
 use failure::Error;
 
 use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::ack::NackInfo;
+use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]
@@ -40,11 +40,7 @@ fn can_deserialize_nack() -> Result<(), Error> {
 #[test]
 fn can_serialize_nack_with_list() -> Result<(), Error> {
     let message = AckMessage::Nack(
-        NackInfo {
-            motive: 3,
-            potential_peers_to_connect: vec![String::from("127.0.0.1:9832")],
-        }
-    );
+        NackInfo::new(NackMotive::DeprecatedP2pVersion, &vec![String::from("127.0.0.1:9832")]));
     let serialized = hex::encode(message.as_bytes()?);
     let expected = "010003000000120000000e3132372e302e302e313a39383332";
     Ok(assert_eq!(expected, &serialized))
@@ -57,11 +53,7 @@ fn can_deserialize_nack_with_list() -> Result<(), Error> {
     Ok(
         assert_eq!(
             AckMessage::Nack(
-                NackInfo {
-                    motive: 2,
-                    potential_peers_to_connect: vec![String::from("127.0.0.1:9832")],
-                }
-            ),
+                NackInfo::new(NackMotive::UnknownChainName, &vec![String::from("127.0.0.1:9832")])),
             message,
         )
     )

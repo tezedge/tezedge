@@ -11,13 +11,14 @@ use std::time::{Duration, Instant};
 use failure::Error;
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, FnValue, info, trace, warn};
+use slog::{debug, info, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::block_meta_storage::BlockMetaStorageReader;
+use storage::p2p_message_storage::P2PMessageStorage;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -120,6 +121,8 @@ pub struct ChainManager {
     block_meta_storage: Box<dyn BlockMetaStorageReader>,
     /// Operations storage
     operations_storage: Box<dyn OperationsStorageReader>,
+    /// Msg storage
+    p2p_message_storage: P2PMessageStorage,
     /// Holds state of the block chain
     block_state: BlockState,
     /// Holds state of the operations
@@ -165,6 +168,7 @@ impl ChainManager {
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
+            p2p_message_storage: P2PMessageStorage::new(&persistent_storage),
             block_state: BlockState::new(&persistent_storage, &chain_id),
             operations_state: OperationsState::new(&persistent_storage, &chain_id),
             peers: HashMap::new(),
@@ -270,6 +274,7 @@ impl ChainManager {
             block_storage,
             operations_storage,
             stats,
+            p2p_message_storage,
             ..
         } = self;
 
@@ -288,6 +293,7 @@ impl ChainManager {
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 let log = ctx.system.log().new(slog::o!("peer" => received.peer.name().to_string()));
+                let _ = p2p_message_storage.store_peer_message(received.message.messages(), true, received.peer_address).unwrap();
 
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
@@ -454,7 +460,10 @@ impl ChainManager {
                                         }
                                     }
                                 }
-                                _ => trace!(log, "Ignored message"; "message" => FnValue(|_| format!("{:?}", message)))
+                                PeerMessage::Bootstrap => {
+                                    // on bootstrap reset peer state
+                                }
+                                ignored_message => trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
                             }
                         }
                     }
