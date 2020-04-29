@@ -233,8 +233,6 @@ steps:
       path: /tmp/tezedge_developer
     - name: cache
       path: /tmp/tezedge-cache
-    - name: cache
-      path: /tmp/tezedge-cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
