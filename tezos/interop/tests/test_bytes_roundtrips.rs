@@ -8,12 +8,15 @@ use std::{env, thread};
 use ocaml::{List, Tuple, Value};
 use serial_test::serial;
 
-use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockRequest, ApplyBlockRequestBuilder, RustBytes, TezosRuntimeConfiguration};
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
+use tezos_encoding::binary_writer;
 use tezos_interop::ffi;
 use tezos_interop::ffi::{Interchange, OcamlBytes, OcamlHash};
 use tezos_interop::runtime;
 use tezos_interop::runtime::OcamlError;
+use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::encoding::prelude::*;
 
 const CHAIN_ID: &str = "8eceda2f";
 const CONTEXT_HASH: &str = "2f358bab4d28c4ee733ad7f2b01dcf116b33474b8c3a6cb40cccda2bdddd6d72";
@@ -21,6 +24,7 @@ const HEADER_HASH: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f017
 const HEADER: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
 const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000000236663bacdca76094fdb73150092659d463fec94eda44ba4db10973a1ad057ef53a5b3239a1b9c383af803fc275465bd28057d68f3cab46adfd5b2452e863ff0a";
 const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e20737071ed73af4";
+const MAX_OPERATIONS_TTL: i32 = 5;
 
 fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
@@ -157,19 +161,25 @@ fn test_operation_roundtrip(iteration: i32) -> Result<(), failure::Error> {
 fn test_operations_list_list_roundtrip_one() {
     init_test_runtime();
 
-    assert!(test_operations_list_list_roundtrip(1).is_ok())
+    assert!(test_operations_list_list_roundtrip(1, sample_operations(), 4, 1).is_ok());
+    assert!(test_operations_list_list_roundtrip(1, sample_operations2(), 4, 0).is_ok());
+    assert!(test_operations_list_list_roundtrip(1, sample_operations3(), 5, 1).is_ok());
 }
 
-fn test_operations_list_list_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+fn test_operations_list_list_roundtrip_for_bench(iteration: i32) -> Result<(), failure::Error> {
+    Ok(assert!(test_operations_list_list_roundtrip(iteration, sample_operations(), 4, 1).is_ok()))
+}
+
+fn test_operations_list_list_roundtrip(iteration: i32, operations: Vec<Option<Vec<RustBytes>>>, expected_list_count: usize, expected_list_0_count: usize) -> Result<(), failure::Error> {
     let result = runtime::execute(move || {
-        let operations_list_list_ocaml = ffi::operations_to_ocaml(&sample_operations());
+        let operations_list_list_ocaml = ffi::operations_to_ocaml(&operations);
 
         // sent bytes to ocaml
         let roundtrip = ocaml::named_value("operations_list_list_roundtrip").expect("function 'operations_list_list_roundtrip' is not registered");
         let result: Result<Value, ocaml::Error> = roundtrip.call_exn::<List>(operations_list_list_ocaml);
 
         // check
-        assert_eq_operations(List::from(result.unwrap()));
+        assert_eq_operations(List::from(result.unwrap()), expected_list_count, expected_list_0_count);
 
         ()
     });
@@ -188,7 +198,7 @@ fn test_operations_list_list_roundtrip_times() {
     init_test_runtime();
 
     for i in 0..10000 {
-        let result = test_operations_list_list_roundtrip(i);
+        let result = test_operations_list_list_roundtrip(i, sample_operations(), 4, 1);
         if result.is_err() {
             println!("test_operations_list_list_roundtrip_times roundtrip number {} failed!", i);
         }
@@ -255,7 +265,84 @@ fn apply_block_params_roundtrip(chain_id: RustBytes,
         assert_eq_bytes(HEADER, result.get(1).unwrap().into());
 
         // check operations
-        assert_eq_operations(List::from(result.get(2).unwrap()));
+        assert_eq_operations(List::from(result.get(2).unwrap()), 4, 1);
+
+        ()
+    })
+}
+
+#[test]
+#[serial]
+fn test_apply_block_request_roundtrip_one() {
+    init_test_runtime();
+
+    assert!(test_apply_block_request_roundtrip(1).is_ok())
+}
+
+#[test]
+#[serial]
+fn test_apply_block_request_roundtrip_times() {
+    init_test_runtime();
+
+    for i in 0..10000 {
+        let result = test_apply_block_request_roundtrip(i);
+        if result.is_err() {
+            println!("apply_block_params_roundtrip_times roundtrip number {} failed!", i);
+        }
+        assert!(result.is_ok())
+    }
+}
+
+fn test_apply_block_request_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+    // request
+    let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
+        .chain_id(hex::decode(CHAIN_ID).unwrap())
+        .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
+        .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
+        .max_operations_ttl(MAX_OPERATIONS_TTL)
+        .operations(ApplyBlockRequest::to_ops(&block_operations_from_hex(HEADER_HASH, sample_operations_for_request())))
+        .build().unwrap();
+
+    // decode to bytes
+    let request: RustBytes = binary_writer::write(&request, &APPLY_BLOCK_REQUEST_ENCODING)?;
+    Ok(
+        assert!(
+            apply_block_request_roundtrip(request).is_ok(),
+            format!("test_apply_block_params_roundtrip roundtrip iteration: {} failed!", iteration)
+        )
+    )
+}
+
+fn apply_block_request_roundtrip(apply_block_request: RustBytes) -> Result<(), OcamlError> {
+    runtime::execute(move || {
+        // sent bytes to ocaml
+        let roundtrip = ocaml::named_value("apply_block_request_roundtrip").expect("function 'apply_block_request_roundtrip' is not registered");
+
+        let result: Result<Value, ocaml::Error> = roundtrip.call_exn::<OcamlBytes>(
+            apply_block_request.convert_to(),
+        );
+
+        // check
+        let result: Tuple = result.unwrap().into();
+        assert_eq!(5, result.len());
+
+        // check chain_id
+        assert_eq_hash(CHAIN_ID, result.get(0).unwrap().into());
+
+        // check header
+        assert_eq_bytes(HEADER, result.get(1).unwrap().into());
+
+        // check pred_header
+        assert_eq_bytes(HEADER, result.get(2).unwrap().into());
+
+        // check max_operations_ttl
+        let max_operations_ttl: Value = result.get(3).unwrap();
+        let max_operations_ttl: i32 = max_operations_ttl.usize_val() as i32;
+
+        assert_eq!(MAX_OPERATIONS_TTL, max_operations_ttl);
+
+        // check operations
+        assert_eq_operations(List::from(result.get(4).unwrap()), 5, 1);
 
         ()
     })
@@ -306,13 +393,13 @@ fn test_context_callback() {
 
                     assert_eq!(expected_key_cloned.clone(), key);
                     assert_eq!(expected_data_cloned.clone(), value);
-                },
+                }
                 ContextAction::Checkout {
                     context_hash,
                     ..
                 } => {
                     assert_eq!(expected_context_hash_cloned, context_hash);
-                },
+                }
                 _ => panic!("test failed - waiting just 'Set' action!")
             }
         }
@@ -366,11 +453,53 @@ fn call_to_send_context_events(
     }).unwrap()
 }
 
+fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<RustBytes>>) -> Vec<Option<OperationsForBlocksMessage>> {
+    hex_operations
+        .into_iter()
+        .map(|bo| {
+            let ops = bo
+                .into_iter()
+                .map(|op| Operation::from_bytes(op).unwrap())
+                .collect();
+            Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
+        })
+        .collect()
+}
+
 fn sample_operations() -> Vec<Option<Vec<RustBytes>>> {
     vec![
         Some(vec![hex::decode(OPERATION).unwrap()]),
         Some(vec![]),
         Some(vec![]),
+        Some(vec![])
+    ]
+}
+
+fn sample_operations_for_request() -> Vec<Vec<RustBytes>> {
+    vec![
+        vec![hex::decode(OPERATION).unwrap()],
+        vec![],
+        vec![],
+        vec![hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08").unwrap()],
+        vec![]
+    ]
+}
+
+fn sample_operations2() -> Vec<Option<Vec<RustBytes>>> {
+    vec![
+        Some(vec![]),
+        Some(vec![]),
+        Some(vec![]),
+        Some(vec![])
+    ]
+}
+
+fn sample_operations3() -> Vec<Option<Vec<RustBytes>>> {
+    vec![
+        Some(vec![hex::decode(OPERATION).unwrap()]),
+        Some(vec![]),
+        Some(vec![]),
+        Some(vec![hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08").unwrap()]),
         Some(vec![])
     ]
 }
@@ -407,14 +536,16 @@ fn assert_eq_hash_and_header(expected_hash: &str, expected_header: &str, header_
     assert_eq_bytes(expected_header, header_tuple.get(1).unwrap().into());
 }
 
-fn assert_eq_operations(result: List) {
-    assert_eq!(4, result.len());
+fn assert_eq_operations(result: List, expected_list_count: usize, expected_list_0_count: usize) {
+    assert_eq!(expected_list_count, result.len());
 
     let operations_list_0: List = result.hd().unwrap().into();
-    assert_eq!(1, operations_list_0.len());
+    assert_eq!(expected_list_0_count, operations_list_0.len());
 
-    let operation_0_0: OcamlBytes = operations_list_0.hd().unwrap().into();
-    assert_eq!(OPERATION, hex::encode(operation_0_0.convert_to()).as_str());
+    if expected_list_0_count > 0 {
+        let operation_0_0: OcamlBytes = operations_list_0.hd().unwrap().into();
+        assert_eq!(OPERATION, hex::encode(operation_0_0.convert_to()).as_str());
+    }
 }
 
 // run as: cargo bench --tests --nocapture
@@ -446,6 +577,7 @@ mod benches {
     bench_test!(bench_test_chain_id_roundtrip, test_chain_id_roundtrip);
     bench_test!(bench_test_block_header_roundtrip, test_block_header_roundtrip);
     bench_test!(bench_test_block_header_with_hash_roundtrip, test_block_header_with_hash_roundtrip);
-    bench_test!(bench_test_operations_list_list_roundtrip_one, test_operations_list_list_roundtrip);
+    bench_test!(bench_test_operations_list_list_roundtrip_one, test_operations_list_list_roundtrip_for_bench);
     bench_test!(bench_test_apply_block_params_roundtrip_one, test_apply_block_params_roundtrip);
+    bench_test!(bench_test_apply_block_request_roundtrip_one, test_apply_block_request_roundtrip);
 }

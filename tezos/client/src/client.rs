@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockResult, CommitGenesisResult, ContextDataError, GenesisChain, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, GetDataError};
+use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResult, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
 use tezos_api::identity::Identity;
+use tezos_encoding::binary_writer;
 use tezos_interop::ffi;
-use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
 /// Override runtime configuration for OCaml runtime
@@ -74,31 +74,22 @@ pub fn apply_block(
         });
     }
 
-    let block_header = match block_header.as_bytes() {
-        Err(e) => return Err(
-            ApplyBlockError::InvalidBlockHeaderData {
-                message: format!("Block header as_bytes failed: {:?}, block: {:?}", e, block_header)
-            }
-        ),
-        Ok(data) => data
-    };
-    let predecessor_block_header = match predecessor_block_header.as_bytes() {
-        Err(e) => return Err(
-            ApplyBlockError::InvalidBlockHeaderData {
-                message: format!("Block header as_bytes failed: {:?}, block: {:?}", e, predecessor_block_header)
-            }
-        ),
-        Ok(data) => data
-    };
-    let operations = to_bytes(operations)?;
+    // request
+    let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
+        .chain_id(chain_id.clone())
+        .block_header(block_header.clone())
+        .pred_header(predecessor_block_header.clone())
+        .max_operations_ttl(max_operations_ttl as i32)
+        .operations(ApplyBlockRequest::to_ops(operations))
+        .build().unwrap();
 
-    match ffi::apply_block(
-        chain_id.clone(),
-        block_header,
-        predecessor_block_header,
-        operations,
-        max_operations_ttl,
-    ) {
+    // write to bytes
+    let request = match binary_writer::write(&request, &APPLY_BLOCK_REQUEST_ENCODING) {
+        Ok(data) => data,
+        Err(e) => return Err(ApplyBlockError::InvalidApplyBlockRequestData { message: format!("{:?}", e) })
+    };
+
+    match ffi::apply_block(request) {
         Ok(result) => result,
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
@@ -130,30 +121,4 @@ pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: 
             })
         }
     }
-}
-
-pub fn to_bytes(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Result<Vec<Option<Vec<Vec<u8>>>>, ApplyBlockError> {
-    let mut operations = Vec::with_capacity(block_operations.len());
-
-    for block_ops in block_operations {
-        if let Some(bo_ops) = block_ops {
-            let mut operations_by_pass = Vec::new();
-            for bop in bo_ops.operations() {
-                let op: Vec<u8> = match bop.as_bytes() {
-                    Err(e) => return Err(
-                        ApplyBlockError::InvalidOperationsData {
-                            message: format!("Operation as_bytes failed: {:?}, operation: {:?}", e, bop)
-                        }
-                    ),
-                    Ok(op_bytes) => op_bytes
-                };
-                operations_by_pass.push(op);
-            }
-            operations.push(Some(operations_by_pass));
-        } else {
-            operations.push(None);
-        }
-    }
-
-    Ok(operations)
 }

@@ -14,7 +14,7 @@ use serde_json;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "d1ea555743db92d06244f50ff5d2536f5b9a5b6c";
+const GIT_COMMIT_HASH: &str = "e50a101831f1542d028691171c9c78a09cc0b390";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 

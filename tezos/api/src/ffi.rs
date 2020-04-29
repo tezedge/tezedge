@@ -3,9 +3,25 @@
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 
+use derive_builder::Builder;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
-use crypto::hash::ContextHash;
+
+use crypto::hash::{ChainId, ContextHash, HashType};
+use lazy_static::lazy_static;
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_messages::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
+
+lazy_static! {
+    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("max_operations_ttl", Encoding::Int31),
+            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
+    ]);
+}
 
 pub type RustBytes = Vec<u8>;
 
@@ -37,6 +53,46 @@ pub struct TestChain {
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
     pub no_of_ffi_calls_treshold_for_gc: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
+pub struct ApplyBlockRequest {
+    pub chain_id: ChainId,
+    pub block_header: BlockHeader,
+    pub pred_header: BlockHeader,
+    pub max_operations_ttl: i32,
+    pub operations: Vec<Vec<Operation>>,
+    #[serde(skip_serializing)]
+    #[builder(default)]
+    body: BinaryDataCache,
+}
+
+impl ApplyBlockRequest {
+    pub fn to_ops(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
+        let mut operations = Vec::with_capacity(block_operations.len());
+
+        for block_ops in block_operations {
+            if let Some(bo_ops) = block_ops {
+                operations.push(bo_ops.operations().clone());
+            } else {
+                operations.push(vec![]);
+            }
+        }
+
+        operations
+    }
+}
+
+impl CachedData for ApplyBlockRequest {
+    #[inline]
+    fn cache_reader(&self) -> &dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
 }
 
 /// Application block result
@@ -189,12 +245,8 @@ pub enum ApplyBlockError {
     PredecessorMismatch {
         message: String,
     },
-    #[fail(display = "Invalid block header data - message: {}!", message)]
-    InvalidBlockHeaderData {
-        message: String,
-    },
-    #[fail(display = "Invalid operations data - message: {}!", message)]
-    InvalidOperationsData {
+    #[fail(display = "Invalid apply block request data - message: {}!", message)]
+    InvalidApplyBlockRequestData {
         message: String,
     },
 }
