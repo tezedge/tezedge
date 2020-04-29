@@ -35,7 +35,7 @@ name: all-tests
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 1000 # also check parameter --stop=
+  TO_BLOCK_HEADER: 500 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
@@ -133,7 +133,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=1001"]
+  command: ["tzindex", "run", "--stop=501"]
 
 - name: tz-indexer-ocaml
   image: blockwatch/tzindex:latest
@@ -150,7 +150,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=1001"]
+  command: ["tzindex", "run", "--stop=501"]
 
 - name: indexer-test
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -257,6 +257,7 @@ steps:
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
+    - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
 
   # just run ocaml snapshosted node
