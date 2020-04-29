@@ -32,7 +32,7 @@ name: all-tests-compare-to-master
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 1000
+  TO_BLOCK_HEADER: 500
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:18732
@@ -121,7 +121,7 @@ steps:
 - name: bootstrapping
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --bootstrap $${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT}
 
 - name: rpc-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -140,7 +140,7 @@ steps:
   pull: always
   user: root
   commands:
-    - tezos-node-bootstrap --performance-test 
+    - tezos-node-bootstrap --performance-test --level=100 --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
 - name: tz-indexer-tezedge
   image: blockwatch/tzindex:latest
@@ -177,7 +177,7 @@ steps:
 - name: indexer-test
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --indexer-test
+    - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
 
 volumes:
   - name: ocaml-node-data
