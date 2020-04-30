@@ -152,6 +152,8 @@ pub struct ChainManager {
     current_head: CurrentHead,
     /// Internal stats
     stats: Stats,
+    /// Turn off/on saving p2p messages.
+    store_messages: bool,
     /// Indicates that system is shutting down
     shutting_down: bool,
 }
@@ -162,7 +164,7 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 impl ChainManager {
 
     /// Create new actor instance.
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId, store_messages: bool) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(
                 ChainManager::new,
@@ -170,7 +172,8 @@ impl ChainManager {
                         network_channel,
                         shell_channel,
                         persistent_storage.clone(),
-                        chain_id.clone()
+                        chain_id.clone(),
+                        store_messages
                 )
             ),
             ChainManager::name())
@@ -182,7 +185,7 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
+    fn new((network_channel, shell_channel, persistent_storage, chain_id, store_messages): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, bool)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
@@ -198,6 +201,7 @@ impl ChainManager {
                 remote: None,
             },
             shutting_down: false,
+            store_messages,
             stats: Stats {
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
@@ -314,7 +318,9 @@ impl ChainManager {
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 let log = ctx.system.log().new(slog::o!("peer" => received.peer.name().to_string()));
-                let _ = p2p_message_storage.store_peer_message(received.message.messages(), true, received.peer_address).unwrap();
+                if self.store_messages {
+                    let _ = p2p_message_storage.store_peer_message(received.message.messages(), true, received.peer_address).unwrap();
+                }
 
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
@@ -328,7 +334,7 @@ impl ChainManager {
                                                 level: message.current_branch().current_head().level() - 1
                                             })?;
                                     }
-                                    //TODO: refactor to support non zero level in MissingBlock 
+                                    //TODO: refactor to support non zero level in MissingBlock
                                     message.current_branch().history().iter().cloned().rev()
                                         .map(|history_block_hash| block_state.push_missing_block(history_block_hash.into()))
                                         .collect::<Result<Vec<_>, _>>()?;

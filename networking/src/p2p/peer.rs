@@ -194,6 +194,8 @@ pub struct Peer {
     tokio_executor: Handle,
     /// Msg storage
     msg_store: P2PMessageStorage,
+    /// Turn on/off storing of messages
+    store_messages: bool,
     /// IP address of the remote peer
     remote_addr: SocketAddr,
 }
@@ -209,7 +211,8 @@ impl Peer {
                  version: &str,
                  tokio_executor: Handle,
                  socket_address: &SocketAddr,
-                 p2p_msg_store: P2PMessageStorage) -> Result<PeerRef, CreateError>
+                 p2p_msg_store: P2PMessageStorage,
+                 store_messages: bool) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port,
@@ -218,12 +221,12 @@ impl Peer {
             secret_key: secret_key.into(),
             version: version.into(),
         };
-        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address, p2p_msg_store));
+        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address, p2p_msg_store, store_messages));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }
 
-    fn new((event_channel, info, tokio_executor, socket_address, msg_store): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr, P2PMessageStorage)) -> Self {
+    fn new((event_channel, info, tokio_executor, socket_address, msg_store, store_messages): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr, P2PMessageStorage, bool)) -> Self {
         Peer {
             network_channel: event_channel,
             local: info,
@@ -235,6 +238,7 @@ impl Peer {
             tokio_executor,
             msg_store,
             remote_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
+            store_messages,
         }
     }
 }
@@ -261,6 +265,7 @@ impl Receive<Bootstrap> for Peer {
         let system = ctx.system.clone();
         let net = self.net.clone();
         let network_channel = self.network_channel.clone();
+        let store_messages = self.store_messages;
         self.remote_addr = msg.address;
 
         let store = self.msg_store.clone();
@@ -272,7 +277,7 @@ impl Receive<Bootstrap> for Peer {
 
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
-            match bootstrap(msg, info, system.log(), store.clone()).await {
+            match bootstrap(msg, info, system.log(), store.clone(), store_messages).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
@@ -321,8 +326,9 @@ impl Receive<SendMessage> for Peer {
     type Msg = PeerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
-        let _ = self.msg_store.store_peer_message(msg.message.messages(), false, self.remote_addr);
-
+        if self.store_messages {
+            let _ = self.msg_store.store_peer_message(msg.message.messages(), false, self.remote_addr);
+        }
         let system = ctx.system.clone();
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
@@ -353,7 +359,13 @@ impl Receive<SendMessage> for Peer {
 /// Output values of the successful bootstrap process
 struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey);
 
-async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P2PMessageStorage) -> Result<BootstrapOutput, PeerError> {
+async fn bootstrap(
+    msg: Bootstrap,
+    info: Arc<Local>,
+    log: Logger,
+    mut storage: P2PMessageStorage,
+    store_messages: bool
+) -> Result<BootstrapOutput, PeerError> {
     let addr = msg.address;
     let (mut msg_rx, mut msg_tx) = {
         let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");
@@ -370,7 +382,9 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
         vec![supported_protocol_version.clone()]);
-    storage.store_connection_message(&connection_message, false, addr)?;
+    if store_messages {
+        storage.store_connection_message(&connection_message, false, addr)?;
+    }
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
@@ -386,7 +400,9 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
     };
 
     let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content().to_vec())?;
-    storage.store_connection_message(&connection_message, true, addr)?;
+    if store_messages {
+        storage.store_connection_message(&connection_message, true, addr)?;
+    }
 
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_message_bytes, msg.incoming);
@@ -428,12 +444,16 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
-    let _ = storage.store_metadata_message(&metadata, false, addr);
+    if store_messages {
+        let _ = storage.store_metadata_message(&metadata, false, addr);
+    }
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
-    let _ = storage.store_metadata_message(&metadata_received, true, addr);
+    if store_messages {
+        let _ = storage.store_metadata_message(&metadata_received, true, addr);
+    }
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack

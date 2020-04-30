@@ -51,9 +51,10 @@ impl Interchange<RustBytes> for OcamlBytes {
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<Result<(), TezosRuntimeConfigurationError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("change_runtime_configuration").expect("function 'change_runtime_configuration' is not registered");
-        match ocaml_function.call2_exn::<Value, Value>(
+        match ocaml_function.call3_exn::<Value, Value, Value>(
             Value::bool(settings.log_enabled),
             Value::i32(settings.no_of_ffi_calls_treshold_for_gc),
+            Value::bool(settings.debug_mode),
         ) {
             Ok(_) => {
                 Ok(())

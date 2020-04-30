@@ -40,6 +40,8 @@ pub struct Logging {
 pub struct Storage {
     pub bootstrap_db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
+    pub store_p2p_messages: bool,
+    pub store_context_actions: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +76,6 @@ pub struct Environment {
     pub storage: Storage,
     pub identity: Identity,
 
-    pub record: bool,
     pub tezos_network: TezosEnvironment,
     pub enable_testchain: bool,
     pub protocol_runner: PathBuf,
@@ -86,15 +87,15 @@ macro_rules! parse_validator_fn {
     ($t:ident, $err:expr) => {|v| if v.parse::<$t>().is_ok() { Ok(()) } else { Err($err.to_string()) } }
 }
 
-// Creates tezos app 
+// Creates tezos app
 pub fn tezos_app() -> App<'static, 'static> {
     // Default values for arguments are specidied in default configuration file
     //
-    // Flag Required=true must be handled separately as we parse args twice, 
+    // Flag Required=true must be handled separately as we parse args twice,
     // once to see only if confi-file arg is present and second time to parse all args
     //
-    // In case some args are required=true and user provides only config-file, 
-    // first round of parsing would always fail then 
+    // In case some args are required=true and user provides only config-file,
+    // first round of parsing would always fail then
     let app = App::new("Tezos Light Node")
             .version("0.3.1")
             .author("SimpleStaking and the project contributors")
@@ -253,19 +254,24 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .value_name("NUM")
                 .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("record")
-            .long("record")
+        .arg(Arg::with_name("store-p2p-messages")
+            .long("store-p2p-messages")
             .takes_value(true)
             .value_name("BOOL")
-            .help("Flag for turn on/off record mode"));
+            .help("Flag for turn on/off recording of network events"))
+        .arg(Arg::with_name("store-context-actions")
+            .long("store-context-actions")
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Activate recording of context storage actions"));
     app
 }
 
 // Explicitely validates all required parameters
-// Flag Required=true must be handled separately as we parse args twice, 
+// Flag Required=true must be handled separately as we parse args twice,
 // once to see only if confi-file arg is present and second time to parse all args
-// In case some args are required=true and user provides only config-file, 
-// first round of parsing would always fail then 
+// In case some args are required=true and user provides only config-file,
+// first round of parsing would always fail then
 pub fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "tezos-data-dir");
     validate_required_arg(args, "network");
@@ -283,7 +289,6 @@ pub fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "tokio-threads");
     validate_required_arg(args, "identity-file");
     validate_required_arg(args, "identity-expected-pow");
-    validate_required_arg(args, "record");
 
     // "bootstrap-lookup-address", "log-file" and "peers" are not required
 }
@@ -352,7 +357,7 @@ impl Environment {
         let app = tezos_app();
         let args: clap::ArgMatches;
 
-        // First, get cli arguments and find out only if config-file arg is provided   
+        // First, get cli arguments and find out only if config-file arg is provided
         // If config-file argument is present, read all parameters from config-file and merge it with cli arguments
         let temp_args = app.clone().get_matches();
         if temp_args.is_present("config-file") == true {
@@ -477,6 +482,14 @@ impl Environment {
                         .expect("Provided value cannot be converted to path");
                     get_final_path(&data_dir, db_path)
                 },
+                store_p2p_messages: args.value_of("store-p2p-messages")
+                    .unwrap_or("true")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool"),
+                store_context_actions: args.value_of("store-context-actions")
+                    .unwrap_or("true")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool"),
             },
             identity: crate::configuration::Identity {
                 identity_json_file_path: {
@@ -491,10 +504,6 @@ impl Environment {
                     .parse::<f64>()
                     .expect("Provided value cannot be converted to number"),
             },
-            record: args.value_of("record")
-                .unwrap_or("")
-                .parse::<bool>()
-                .expect("Provided value cannot be converted to bool"),
             protocol_runner: args
                 .value_of("protocol-runner")
                 .unwrap_or("")

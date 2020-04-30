@@ -71,7 +71,7 @@ fn test_apply_block_and_check_context() -> Result<(), failure::Error> {
 
     // run context_listener actor
     let actor_system = SystemBuilder::new().name("test_apply_block_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, event_server, log.clone()).expect("Failed to create context event listener");
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, event_server, log.clone(), false).expect("Failed to create context event listener");
 
     // run apply blocks
     let _ = apply_blocks_like_chain_feeder(
@@ -187,6 +187,7 @@ fn apply_blocks_like_chain_feeder(
     log: Logger) -> Result<(), failure::Error> {
     ffi::change_runtime_configuration(
         TezosRuntimeConfiguration {
+            debug_mode: false,
             log_enabled: common::is_ocaml_log_enabled(),
             no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         }

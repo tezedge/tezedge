@@ -30,6 +30,7 @@ fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
     ffi::change_runtime_configuration(
         TezosRuntimeConfiguration {
+            debug_mode: false,
             log_enabled: is_ocaml_log_enabled(),
             no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc(),
         }
