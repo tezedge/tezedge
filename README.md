@@ -100,10 +100,10 @@ We are linking rust code with pre-compiled Tezos shared library. For your conven
 for most of the popular linux distributions:
 
 supported linux distributions:
-* Ubuntu (16.04, 18.04, 18.10, 19.04)
+* Ubuntu (16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10)
 * Debian (9, 10 )
 * OpenSUSE (15.1, 15.2)
-* CentOS (6, 7, 8)
+* CentOS (7, 8)
     
 If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
 
