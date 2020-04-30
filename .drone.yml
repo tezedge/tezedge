@@ -121,8 +121,8 @@ steps:
     - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
   when:
-	ref:
-	- refs/pull/*/head
+    ref:
+    - refs/pull/*/head
 
 - name: rpc-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -188,8 +188,8 @@ steps:
   commands:
     - tezos-node-bootstrap --bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT}
   when:
-	ref:
-	- refs/pull/*/head
+    ref:
+    - refs/pull/*/head
 
 - name: wrk-performance-test--tezedge-vs-ocaml-vs-tezedge_master
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -198,8 +198,8 @@ steps:
   commands:
     - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
   when:
-	ref:
-	- refs/pull/*/head
+    ref:
+    - refs/pull/*/head
 
 volumes:
   - name: ocaml-node-carthage-snapshot-data
