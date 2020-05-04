@@ -47,6 +47,12 @@ pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     /// * `value` - Value to be inserted associated with given key, specified by schema
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
+    /// Delete existing value associated with given key from the database.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    fn delete(&self, key: &S::Key) -> Result<(), DBError>;
+
     /// Insert key value pair into the database, overriding existing value if exists.
     ///
     /// # Arguments
@@ -88,6 +94,15 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.put_cf_opt(cf, &key, &value, &default_write_options())
+            .map_err(DBError::from)
+    }
+
+    fn delete(&self, key: &S::Key) -> Result<(), DBError> {
+        let key = key.encode()?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
+
+        self.delete_cf_opt(cf, &key, &default_write_options())
             .map_err(DBError::from)
     }
 
