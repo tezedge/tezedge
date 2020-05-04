@@ -104,7 +104,7 @@ fn test_storage() -> Result<(), Error> {
     // simulate apply block
     let block = make_test_block_header()?;
     block_storage.put_block_header(&block)?;
-    block_meta_storage.put_block_header(&block, &init_data.chain_id)?;
+    block_meta_storage.put_block_header(&block, &init_data.chain_id, log)?;
     let mut metadata = block_meta_storage.get(&block.hash)?.expect("No metadata was saved");
     assert!(!metadata.is_applied());
 

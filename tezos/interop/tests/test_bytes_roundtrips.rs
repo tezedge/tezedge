@@ -9,7 +9,7 @@ use ocaml::{List, Tuple, Value};
 use serial_test::serial;
 
 use crypto::hash::HashType;
-use tezos_api::ffi::{APPLY_BLOCK_RESPONSE_ENCODING, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, ForkingTestchainData, RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, ForkingTestchainData, RustBytes, TezosRuntimeConfiguration};
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{Interchange, OcamlBytes, OcamlHash};

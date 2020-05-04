@@ -402,7 +402,7 @@ impl ChainManager {
                                             peer.block_response_last = Instant::now();
 
                                             let is_new_block =
-                                                chain_state.process_block_header(&block_header_with_hash)
+                                                chain_state.process_block_header(&block_header_with_hash, log.clone())
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
 
                                             if is_new_block {

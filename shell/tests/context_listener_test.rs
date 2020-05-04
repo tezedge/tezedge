@@ -22,7 +22,7 @@ use storage::persistent::ContextList;
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockRequest, ApplyBlockResponse, CallError, FfiMessage, RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CallError, FfiMessage, RustBytes, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_context::channel::*;
 use tezos_interop::ffi;

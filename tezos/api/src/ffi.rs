@@ -166,13 +166,9 @@ impl fmt::Debug for InitProtocolContextResult {
         };
         let supported_protocol_hashes = self.supported_protocol_hashes
             .iter()
-            .map(|ph| HashType::ContextHash.bytes_to_string(ph))
+            .map(|ph| HashType::ProtocolHash.bytes_to_string(ph))
             .collect::<Vec<String>>();
-
-        f.debug_struct("InitProtocolContextResult")
-            .field("genesis_commit_hash", &genesis_commit_hash)
-            .field("supported_protocol_hashes", &supported_protocol_hashes)
-            .finish()
+        write!(f, "genesis_commit_hash: {}, supported_protocol_hashes: {:?}", &genesis_commit_hash, &supported_protocol_hashes)
     }
 }
 
