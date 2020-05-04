@@ -5,6 +5,7 @@ use std::cmp;
 use std::cmp::Ordering;
 
 use rand::Rng;
+use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
@@ -38,7 +39,7 @@ impl BlockState {
         }
     }
 
-    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: Logger) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(MissingBlock {
             block_hash: block_header.header.predecessor().clone(),
@@ -48,7 +49,7 @@ impl BlockState {
         // store block
         self.block_storage.put_block_header(block_header)?;
         // update meta
-        self.block_meta_storage.put_block_header(block_header, &self.chain_id)?;
+        self.block_meta_storage.put_block_header(block_header, &self.chain_id, log)?;
 
         Ok(())
     }
