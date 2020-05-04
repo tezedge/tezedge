@@ -1,77 +1,66 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::HashType;
 use tezos_api::environment::{self, TezosEnvironment};
-use tezos_api::ffi::{OcamlStorageInitInfo, TezosRuntimeConfiguration};
+use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_interop::ffi;
 
 mod common;
 
-pub const CHAIN_ID: &str = "8eceda2f";
-
 #[test]
-fn test_init_storage_and_change_configuration() {
+fn test_init_protocol_context() {
     // change cfg
     ffi::change_runtime_configuration(
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         }
     ).unwrap().unwrap();
 
-    // init empty storage for test
-    let OcamlStorageInitInfo { chain_id, genesis_block_header_hash, genesis_block_header, current_block_header_hash, .. } = prepare_empty_storage("test_storage_01");
-    assert!(!current_block_header_hash.is_empty());
-    assert!(!genesis_block_header.is_empty());
-    assert_eq!(genesis_block_header_hash, current_block_header_hash);
+    let context_hash_encoding = HashType::ContextHash;
+    let storage_dir = "test_storage_01";
+    let tezos_env = TezosEnvironment::Carthagenet;
 
-    // has current head (genesis)
-    let current_head = ffi::get_current_block_header(chain_id.clone()).unwrap().unwrap();
-    assert!(!current_head.is_empty());
+    // init empty storage for test WITH commit genesis
+    let InitProtocolContextResult {
+        genesis_commit_hash,
+        supported_protocol_hashes
+    } = prepare_protocol_context(storage_dir, &tezos_env, true);
 
-    // get header - genesis
-    let block_header = ffi::get_block_header(chain_id, genesis_block_header_hash).unwrap().unwrap();
+    // check
+    assert!(!supported_protocol_hashes.is_empty());
+    assert!(genesis_commit_hash.is_some());
+    let genesis_commit_hash = genesis_commit_hash.unwrap();
+    assert_eq!(
+        context_hash_encoding.bytes_to_string(&genesis_commit_hash).as_str(),
+        "CoWZVRSM6DdNUpn3mamy7e8rUSxQVWkQCQfJBg7DrTVXUjzGZGCa",
+    );
 
-    // check header found
-    assert!(block_header.is_some());
-    assert_eq!(current_head, block_header.unwrap());
-    assert_eq!(current_head, genesis_block_header);
-}
+    // init the same storage without commit
+    let InitProtocolContextResult {
+        genesis_commit_hash,
+        supported_protocol_hashes
+    } = prepare_protocol_context(storage_dir, &tezos_env, false);
 
-#[test]
-fn test_fn_get_block_header_not_found_return_none() {
-    ffi::change_runtime_configuration(
-        TezosRuntimeConfiguration {
-            log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
-        }
-    ).unwrap().unwrap();
-
-    // init empty storage for test
-    let OcamlStorageInitInfo { chain_id, .. } = prepare_empty_storage("test_storage_02");
-
-    // get unknown header
-    let block_header_hash = hex::decode("3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a").unwrap();
-    let block_header = ffi::get_block_header(chain_id, block_header_hash).unwrap().unwrap();
-
-    // check not found
-    assert!(block_header.is_none());
+    // check
+    assert!(!supported_protocol_hashes.is_empty());
+    assert!(genesis_commit_hash.is_none());
 }
 
 /// Initializes empty dir for ocaml storage
-fn prepare_empty_storage(dir_name: &str) -> OcamlStorageInitInfo {
-    let cfg = environment::TEZOS_ENV.get(&TezosEnvironment::Alphanet).expect("no tezos environment configured");
+fn prepare_protocol_context(dir_name: &str, tezos_env: &TezosEnvironment, commit_genesis: bool) -> InitProtocolContextResult {
+    let cfg = environment::TEZOS_ENV.get(tezos_env).expect("no tezos environment configured");
 
     // init empty storage for test
     let storage_data_dir_path = common::prepare_empty_dir(dir_name);
-    let storage_init_info = ffi::init_storage(
+    let storage_init_info = ffi::init_protocol_context(
         storage_data_dir_path.to_string(),
-        &cfg.genesis,
-        &cfg.protocol_overrides,
-        false
+        cfg.genesis.clone(),
+        cfg.protocol_overrides.clone(),
+        commit_genesis,
+        false,
     ).unwrap().unwrap();
 
-    let expected_chain_id = hex::decode(CHAIN_ID).unwrap();
-    assert_eq!(expected_chain_id, storage_init_info.chain_id);
     storage_init_info
 }

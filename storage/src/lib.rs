@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![feature(const_fn, const_if_match)]
 
+use std::fmt;
 use std::sync::Arc;
 
 use failure::Fail;
@@ -9,16 +10,18 @@ use serde::{Deserialize, Serialize};
 use slog::info;
 use slog::Logger;
 
-use crypto::hash::{BlockHash, ChainId, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TezosEnvironmentConfiguration, TezosEnvironmentError};
+use tezos_api::ffi::{ApplyBlockResult, CommitGenesisResult};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
-pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV};
-pub use crate::block_storage::{BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
-pub use crate::context_action_storage::{ContextActionStorage, ContextActionPrimaryIndexKey, ContextActionRecordValue};
+pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
+pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
+pub use crate::context_action_storage::{ContextActionPrimaryIndexKey, ContextActionRecordValue, ContextActionStorage};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
-use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, PersistentStorage, SchemaError};
+use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
@@ -85,11 +88,13 @@ pub enum StorageError {
     MissingKey,
     #[fail(display = "Column is not valid")]
     InvalidColumn,
-    #[fail(display = "Block hash error")]
-    BlockHashError,
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError {
         error: SequenceError
+    },
+    #[fail(display = "Tezos environment configuration error: {}", error)]
+    TezosEnvironmentError {
+        error: TezosEnvironmentError
     },
 }
 
@@ -117,44 +122,152 @@ impl From<SequenceError> for StorageError {
     }
 }
 
+impl From<TezosEnvironmentError> for StorageError {
+    fn from(error: TezosEnvironmentError) -> Self {
+        StorageError::TezosEnvironmentError { error }
+    }
+}
+
 impl slog::Value for StorageError {
     fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
+/// Struct represent init information about storage on startup
+#[derive(Clone, Serialize, Deserialize)]
+pub struct StorageInitInfo {
+    pub chain_id: ChainId,
+    pub genesis_block_header_hash: BlockHash,
+}
+
+impl fmt::Debug for StorageInitInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let chain_hash_encoding = HashType::ChainId;
+        let block_hash_encoding = HashType::BlockHash;
+        write!(f, "StorageInitInfo {{ chain_id: {}, genesis_block_header_hash: {} }}",
+               chain_hash_encoding.bytes_to_string(&self.chain_id),
+               block_hash_encoding.bytes_to_string(&self.genesis_block_header_hash)
+        )
+    }
+}
+
 /// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
 /// Which means that successor of the genesis block is also genesis block. By combining those
 /// two statements we get cyclic relationship and everything breaks..
-pub fn initialize_storage_with_genesis_block(genesis_hash: &BlockHash, genesis: &BlockHeader, genesis_chain_id: &ChainId, persistent_storage: &PersistentStorage, log: Logger) -> Result<(), StorageError> {
-    let genesis_with_hash = BlockHeaderWithHash {
-        hash: genesis_hash.clone(),
-        header: Arc::new(genesis.clone()),
+///
+/// Genesis header is also "applied", but with special case "commit_genesis", which initialize protocol context.
+/// We must ensure this, because applying next blocks depends on Context (identified by ContextHash) of predecessor.
+///
+/// So when "commit_genesis" event occurrs, we must use Context_hash and create genesis header within.
+/// Commit_genesis also updates block json/additional metadata resolved by protocol.
+pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration, log: Logger) -> Result<StorageInitInfo, StorageError> {
+    let init_data = StorageInitInfo {
+        chain_id: tezos_env.main_chain_id()?,
+        genesis_block_header_hash: tezos_env.genesis_header_hash()?,
     };
-    let mut block_storage = BlockStorage::new(persistent_storage);
-    if block_storage.get(&genesis_with_hash.hash)?.is_none() {
-        info!(log, "Initializing storage with genesis block");
-        block_storage.put_block_header(&genesis_with_hash)?;
-        // TODO: include the data for the other chains as well (mainet, zeronet, etc.)
-        // just for babylonnet for now
-        let genesis_meta_string = "{\"protocol\":\"PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i\",\"next_protocol\":\"PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV\",\"test_chain_status\":{\"status\":\"not_running\"},\"max_operations_ttl\":0,\"max_operation_data_length\":0,\"max_block_header_length\":115,\"max_operation_list_length\":[]}".to_string();
-        let genesis_op_string = "{\"operations\":[]}".to_string();
-        let genesis_prot_string = "".to_string();
-        let block_json_data = BlockJsonDataBuilder::default()
-            .block_header_proto_json(genesis_prot_string)
-            .block_header_proto_metadata_json(genesis_meta_string)
-            .operations_proto_metadata_json(genesis_op_string)
-            .build().unwrap();
-        block_storage.put_block_json_data(&genesis_with_hash.hash, block_json_data)?;
-        let mut block_meta_storage = BlockMetaStorage::new(persistent_storage);
-        block_meta_storage.put(&genesis_with_hash.hash, &block_meta_storage::Meta::genesis_meta(&genesis_with_hash.hash, genesis_chain_id))?;
-        let mut operations_meta_storage = OperationsMetaStorage::new(persistent_storage);
-        operations_meta_storage.put(&genesis_with_hash.hash, &operations_meta_storage::Meta::genesis_meta(genesis_chain_id))?;
-    }
 
-    Ok(())
+    info!(log, "Storage based on data"; "chain_name" => &tezos_env.version, "init_data" => format!("{:?}", &init_data));
+    Ok(init_data)
 }
 
+/// Stores apply result to storage and mark block as applied, if everythnig is ok.
+pub fn store_applied_block_result(
+    block_storage: &mut BlockStorage,
+    block_meta_storage: &mut BlockMetaStorage,
+    block_hash: &BlockHash,
+    block_result: ApplyBlockResult,
+    block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
+
+    // store result data - json and additional data
+    let block_json_data = BlockJsonDataBuilder::default()
+        .block_header_proto_json(block_result.block_header_proto_json)
+        .block_header_proto_metadata_json(block_result.block_header_proto_metadata_json)
+        .operations_proto_metadata_json(block_result.operations_proto_metadata_json)
+        .build().unwrap();
+    block_storage.put_block_json_data(&block_hash, block_json_data.clone())?;
+
+    // store additional data
+    let block_additional_data = BlockAdditionalDataBuilder::default()
+        .max_operations_ttl(block_result.max_operations_ttl)
+        .last_allowed_fork_level(block_result.last_allowed_fork_level)
+        .build().unwrap();
+    block_storage.put_block_additional_data(&block_hash, block_additional_data.clone())?;
+
+    // TODO: check context checksum or context_hash
+
+    // if everything is stored and ok, we can considere this block as applied
+    // mark current head as applied
+    block_metadata.set_is_applied(true);
+    block_meta_storage.put(&block_hash, &block_metadata)?;
+
+    Ok((block_json_data, block_additional_data))
+}
+
+/// Stores commit_genesis result to storage and mark genesis block as applied, if everythnig is ok.
+/// !Important, this rewrites context_hash on stored genesis - because in initialize_storage_with_genesis_block we stored wiht Context_hash_zero
+/// And context hash of block is used for appling of successor
+pub fn store_commit_genesis_result(
+    block_storage: &mut BlockStorage,
+    block_meta_storage: &mut BlockMetaStorage,
+    operations_meta_storage: &mut OperationsMetaStorage,
+    init_storage_data: &StorageInitInfo,
+    bock_result: CommitGenesisResult) -> Result<BlockJsonData, StorageError> {
+
+    // store data for genesis
+    let genesis_block_hash = &init_storage_data.genesis_block_header_hash;
+    let chain_id = &init_storage_data.chain_id;
+
+    // if everything is stored and ok, we can considere genesis block as applied
+    // if storage is empty, initialize with genesis
+    block_meta_storage.put(&genesis_block_hash, &block_meta_storage::Meta::genesis_meta(&genesis_block_hash, chain_id, true))?;
+    operations_meta_storage.put(&genesis_block_hash, &operations_meta_storage::Meta::genesis_meta(chain_id))?;
+
+    // store result data - json and additional data
+    let block_json_data = BlockJsonDataBuilder::default()
+        .block_header_proto_json(bock_result.block_header_proto_json)
+        .block_header_proto_metadata_json(bock_result.block_header_proto_metadata_json)
+        .operations_proto_metadata_json(bock_result.operations_proto_metadata_json)
+        .build().unwrap();
+    block_storage.put_block_json_data(&genesis_block_hash, block_json_data.clone())?;
+
+    Ok(block_json_data)
+}
+
+pub fn initialize_storage_with_genesis_block(
+    block_storage: &mut BlockStorage,
+    init_storage_data: &StorageInitInfo,
+    tezos_env: &TezosEnvironmentConfiguration,
+    context_hash: &ContextHash,
+    log: Logger) -> Result<BlockHeaderWithHash, StorageError> {
+
+    // TODO: check context checksum or context_hash
+
+    // store genesis
+    let genesis_with_hash = BlockHeaderWithHash {
+        hash: init_storage_data.genesis_block_header_hash.clone(),
+        header: Arc::new(tezos_env.genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?),
+    };
+    block_storage.put_block_header(&genesis_with_hash)?;
+
+    // store additional data
+    let genesis_additional_data = tezos_env.genesis_additional_data();
+    let block_additional_data = BlockAdditionalDataBuilder::default()
+        .max_operations_ttl(genesis_additional_data.max_operations_ttl)
+        .last_allowed_fork_level(genesis_additional_data.last_allowed_fork_level)
+        .build().unwrap();
+    block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data.clone())?;
+
+    // context assign
+    block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
+
+    info!(log,
+        "Storage initialized with genesis block";
+        "genesis" => HashType::BlockHash.bytes_to_string(&genesis_with_hash.hash),
+        "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash),
+    );
+    Ok(genesis_with_hash)
+}
 
 pub mod tests_common {
     use std::fs;

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::net::SocketAddr;
+
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,15 @@ pub struct AdvertiseMessage {
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,
+}
+
+impl AdvertiseMessage {
+    pub fn new(addresses: &[SocketAddr]) -> Self {
+        Self {
+            id: addresses.iter().map(|address| format!("{}", address)).collect(),
+            body: Default::default()
+        }
+    }
 }
 
 impl HasEncoding for AdvertiseMessage {

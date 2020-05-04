@@ -10,6 +10,7 @@ use std::io;
 
 use bytes::Buf;
 use failure::{Error, Fail};
+use failure::_core::time::Duration;
 use slog::{FnValue, Logger, o, trace};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
@@ -44,7 +45,7 @@ pub enum StreamError {
     DeserializationError {
         error: BinaryReaderError
     },
-    #[fail(display = "Network error: {}", message)]
+    #[fail(display = "Network error: {}, cause: {}", message, error)]
     NetworkError {
         message: &'static str,
         error: Error,
@@ -90,6 +91,9 @@ pub struct MessageStream {
 
 impl MessageStream {
     fn new(stream: TcpStream) -> MessageStream {
+        let _ = stream.set_linger(Some(Duration::from_secs(2)));
+        let _ = stream.set_nodelay(true);
+
         let (rx, tx) = tokio::io::split(stream);
         MessageStream {
             reader: MessageReader { stream: rx },
@@ -271,5 +275,9 @@ impl EncryptedMessageReader {
     fn nonce_fetch_increment(&mut self) -> Nonce {
         let incremented = self.nonce_remote.increment();
         std::mem::replace(&mut self.nonce_remote, incremented)
+    }
+
+    pub fn unsplit(self, tx: EncryptedMessageWriter) -> TcpStream {
+        self.rx.stream.unsplit(tx.tx.stream)
     }
 }

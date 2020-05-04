@@ -1,30 +1,44 @@
+############################################################################################################################
+# Drone runs:
+# 1. on master commit or pull request to master (carthagenet)
+#   - runs 2 nodes: 1. tezedge node, 2. ocaml node node and compares rpc, indexers, wrk
+# 2. on just pull request to master
+#   - runs third node: from tezedge master and runs wrk-performance-test with all three nodes
+############################################################################################################################
+# Tests:
+# - rpc-test - compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+# - wrk-performance-test - compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+# - indexer-test - compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+############################################################################################################################
+# Command:
+# tezos-node-bootstrap --bootstrap in the bootstrapping step accepts --level=<value> and multiplne --node_<name>=<url> args. You can specify the node urls to be bootstrapped
+############################################################################################################################
+
 kind: pipeline
-name: default
+name: all-tests
 # default build goes with: --network "carthagenet"
 # integration test is using env variables:
-# - FROM_BLOCK_HEADER - block level,
+# - FROM_BLOCK_HEADER - block level, (watch out, if use change this, then check parameter --stop=)
 # - TO_BLOCK_HEADER - block level (also is used by bootstrap task --bootstrap)
+# - WRK_TEST_BLOCK_HEADER - block level for wrk performance test - it checks severel rpc on this block
 # -- all headers in interval <FROM_BLOCK_HEADER, TO_BLOCK_HEADER) are checked in test (rpc json compare)
 # - OCAML_NODE_RPC_CONTEXT_ROOT: running ocaml node, e.g.: http://ocaml-node-run:8732
 # - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-node-run:18732
-# the command - tezos-node-bootstrap --bootstrap in the bootstrapping step accepts min. 2 and up to 3 args. You can specify the node urls to be bootstrapped
-# we want to bootstrap all 3 nodes in the master pipeline, so we pass all of them to the bootstrap app
-# in special pipelines, we could omit the master node (only needed for perftest) 
 
 environment:
   NETWORK: carthagenet
-  FROM_BLOCK_HEADER: 2
-  TO_BLOCK_HEADER: 3000
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 500 # also check parameter --stop=
+  WRK_TEST_BLOCK_HEADER: 500 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
-  TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:18732
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
   TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:18732
+  TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:18732
   OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
   TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
 
 steps:
-# uncomment this step when a modification to the storage was done and requires a fresh bootstrap
 - name: cleanup-node-data
   image: alpine/git
   user: root
@@ -33,38 +47,52 @@ steps:
       path: /tmp/tezedge_developer
     - name: tezedge-master-node-data
       path: /tmp/tezedge_master_developer
-    - name: ocaml-node-data
-      path: /home/tezos/data
   commands:
     - rm -rf /tmp/tezedge_developer/light-node
     - rm -rf /tmp/tezedge_developer/tezos-node
     - rm -rf /tmp/tezedge_master_developer/light-node
     - rm -rf /tmp/tezedge_master_developer/tezos-node
-    - rm -rf /home/tezos/data/context
-    - rm -rf /home/tezos/data/store
-    - rm -f /home/tezos/data/lock
 
-
-- name: build-tezedge
+- name: tezedge-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
   user: root
+  detach: true
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
     - cargo build --release --workspace
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
 
-- name: build-tezedge-master
-  image: simplestakingcom/tezedge-ci-builder:latest
-  user: root
-  volumes:
-    - name: cache
-      path: /tmp/tezedge-cache
+- name: bootstrapping-tezedge
+  image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - cd /tmp/tezedge-cache
-    - rm -rf tezedge
-    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge
-    - cargo build --release --workspace
+    - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
+  # just run ocaml snapshosted node
+- name: ocaml-node-run
+  user: root
+  image: tezos/tezos:v7-release
+  detach: true
+  volumes:
+    - name: ocaml-node-carthage-snapshot-data
+      path: /home/tezos/data
+  commands:
+    - rm -f /home/tezos/data/lock
+    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+- name: bootstrapping-ocaml
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+# now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
+
+# if we are doing pull request, run also master build (async) for wrk total compare
 - name: tezedge-master-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -75,36 +103,18 @@ steps:
       path: /tmp/tezedge_developer
     - name: cache
       path: /tmp/tezedge-cache
-  commands: 
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - cd /tmp/tezedge-cache
+    - rm -rf tezedge
+    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge
     - cd /tmp/tezedge-cache/tezedge
+    - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
-
-- name: tezedge-node-run
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: tezedge-node-data
-      path: /tmp/tezedge_developer
-  commands: 
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=39732
-
-- name: ocaml-node-run
-  user: root
-  image: tezos/tezos:carthagenet
-  detach: true
-  volumes:
-    - name: ocaml-node-data
-      path: /home/tezos/data
-  commands:
-    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
-    - tezos-node run --rpc-addr 0.0.0.0 --net-addr 0.0.0.0:9734 --data-dir /home/tezos/data --history-mode archive --disable-testchain
-
-- name: bootstrapping
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  commands:
-    - tezos-node-bootstrap --bootstrap $${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+  when:
+    ref:
+    - refs/pull/*/head
 
 - name: rpc-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -118,12 +128,12 @@ steps:
   commands:
     - cargo test --verbose --release -- --nocapture --ignored test_rpc_compare
 
-- name: wrk-performance-test
+- name: wrk-performance-test-tezedge-vs-ocaml
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: always
   user: root
   commands:
-    - tezos-node-bootstrap --performance-test 
+    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
 - name: tz-indexer-tezedge
   image: blockwatch/tzindex:latest
@@ -140,6 +150,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
+  command: ["tzindex", "run", "--stop=501"]
 
 - name: tz-indexer-ocaml
   image: blockwatch/tzindex:latest
@@ -156,16 +167,36 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
+  command: ["tzindex", "run", "--stop=501"]
 
 - name: indexer-test
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --indexer-test
+    - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
+
+# this is triggerd just on pull request to master
+- name: bootstrapping-tezedge-master
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT}
+  when:
+    ref:
+    - refs/pull/*/head
+
+- name: wrk-performance-test--tezedge-vs-ocaml-vs-tezedge_master
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: always
+  user: root
+  commands:
+    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+  when:
+    ref:
+    - refs/pull/*/head
 
 volumes:
-  - name: ocaml-node-data
+  - name: ocaml-node-carthage-snapshot-data
     host:
-      path: /etc/ocaml-node
+      path: /etc/ocaml-node-carthage-snapshot-data
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-node
@@ -175,7 +206,6 @@ volumes:
   - name: cache
     host:
       path: /etc/tezedge-ci/cache
-      
   - name: indexer-tezedge-data
     temp: {}
   - name: indexer-ocaml-data

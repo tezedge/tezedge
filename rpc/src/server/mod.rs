@@ -22,6 +22,7 @@ use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
 mod handler;
 mod dev_handler;
 mod service;
+mod service_stats;
 mod router;
 
 /// Server environment parameters

@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
 use failure::Error;
+
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -13,4 +16,15 @@ fn can_deserialize_advertise() -> Result<(), Error> {
     assert_eq!("[fe80::e828:209d:20e:c0ae]:375", &message.id()[0]);
     assert_eq!("234.123.124.91:9876", &message.id()[1]);
     Ok(assert_eq!("123.123.124.21:9876", &message.id()[2]))
+}
+
+#[test]
+fn can_format_ip_address() {
+    let addresses = vec![
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(123, 123, 124, 21)), 9876),
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xfe80, 0xe828, 0x209d, 0x20e, 0xc0ae, 0, 0, 0)), 375)
+    ];
+    let message = AdvertiseMessage::new(&addresses);
+    assert_eq!("123.123.124.21:9876", &message.id()[0]);
+    assert_eq!("[fe80:e828:209d:20e:c0ae::]:375", &message.id()[1]);
 }

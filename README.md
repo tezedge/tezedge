@@ -35,14 +35,14 @@ Quick start
 
 * Docker
 
-Open shell and type this code into the command line and then press Enter:
+**1. Open shell and type this code into the command line and then press Enter**
 
 ```
 git clone https://github.com/simplestaking/tezedge
 cd tezedge
 ```
 
-**1. Download and install Docker and Docker Compose**
+**2. Download and install Docker and Docker Compose**
 
 Open shell and type this code into the command line and then press Enter:
 
@@ -53,7 +53,7 @@ docker-compose up
 
 ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/node_bootstrap.gif)
 
-**2. Open the TezEdge Explorer in your browser** 
+**3. Open the TezEdge Explorer in your browser** 
 
 You can view the status of the node in your browser by entering this address into your browser's URL bar:
 
@@ -100,29 +100,12 @@ We are linking rust code with pre-compiled Tezos shared library. For your conven
 for most of the popular linux distributions:
 
 supported linux distributions:
-* Ubuntu (16.04, 18.04, 18.10, 19.04)
+* Ubuntu (16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10)
 * Debian (9, 10 )
 * OpenSUSE (15.1, 15.2)
-* CentOS (6, 7, 8)
+* CentOS (7, 8)
     
 If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
-
-Services exposed
-----------------
-
-**We have the following services:**
-* Websocket
-* P2P layer
-* RPC
-
-Each service runs on a port as defined in the configuration.
-
-Example of how to call the RPC
-----------------
-
-Open shell and type this code into the command line and then press Enter:
-
-```curl localhost:18732/chains/main/blocks/head/context/constants```
 
 
 Running node manually
@@ -180,3 +163,13 @@ Listening for updates. Node emits statistics on the websocket server, which can 
 ```
 ./run.sh node --websocket-address 0.0.0.0:12345
 ```
+
+Example of how to call the RPC
+----------------
+
+Open shell and type this code into the command line and then press Enter:
+
+```curl localhost:18732/chains/main/blocks/head```
+
+For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
+

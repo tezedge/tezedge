@@ -6,10 +6,10 @@ extern crate test;
 use std::time::Instant;
 use test::Bencher;
 
-use tezos_api::client::TezosStorageInitInfo;
-use tezos_api::ffi::TezosRuntimeConfiguration;
-use tezos_client::client;
 use crypto::hash::ChainId;
+use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
+use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_client::client;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
@@ -22,7 +22,7 @@ fn bench_apply_first_three_block(_: &mut Bencher) {
     ffi::change_runtime_configuration(
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc()
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         }
     ).unwrap().unwrap();
 
@@ -30,69 +30,108 @@ fn bench_apply_first_three_block(_: &mut Bencher) {
 
     // init empty storage for test (not measuring)
     let storage_clocks = Instant::now();
-    let TezosStorageInitInfo { chain_id, .. } = client::init_storage(
-        common::prepare_empty_dir(&format!("bootstrap_test_storage_bench_{}", now.elapsed().as_nanos())),
-        test_data::TEZOS_ENV,
-        false
-    ).unwrap();
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(&format!("bootstrap_test_storage_bench_{}", now.elapsed().as_nanos()));
     let storage_clocks = storage_clocks.elapsed();
-
 
     // apply
     let apply_clocks = Instant::now();
-    let result: Result<(), failure::Error> = apply_first_three_blocks(chain_id);
+    let result: Result<Vec<String>, failure::Error> = apply_first_three_blocks(chain_id, genesis_block_header);
     let apply_clocks = apply_clocks.elapsed();
     assert!(result.is_ok());
 
     println!(
-        "Apply first three blocks done in {:?} (storage init in {:?})!",
+        "\nApply first three blocks done in {:?} (storage init in {:?}) \n{}!",
         apply_clocks,
-        storage_clocks);
+        storage_clocks,
+        result.ok().unwrap().join("\n")
+    );
 }
 
-fn apply_first_three_blocks(chain_id: ChainId) -> Result<(), failure::Error> {
+fn apply_first_three_blocks(chain_id: ChainId, genesis_block_header: BlockHeader) -> Result<Vec<String>, failure::Error> {
+    let mut perf_log = vec![];
 
     // apply first block - level 1
+    let clocks = Instant::now();
     let apply_block_result = client::apply_block(
         &chain_id,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
+        &genesis_block_header,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
         ),
-    );
-    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result?.context_hash);
+        0,
+    )?;
+    perf_log.push(format!("- 1. apply: {:?}", clocks.elapsed()));
+    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
 
     // apply second block - level 2
+    let clocks = Instant::now();
     let apply_block_result = client::apply_block(
         &chain_id,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         ),
-    );
-    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result?.validation_result_message);
+        apply_block_result.max_operations_ttl,
+    )?;
+    perf_log.push(format!("- 2. apply: {:?}", clocks.elapsed()));
+    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", apply_block_result.validation_result_message);
 
     // apply third block - level 3
+    let clocks = Instant::now();
     let apply_block_result = client::apply_block(
         &chain_id,
         &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
+        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
         &test_data::block_operations_from_hex(
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
         ),
-    );
-    Ok(assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result?.validation_result_message))
+        apply_block_result.max_operations_ttl,
+    )?;
+    perf_log.push(format!("- 3. apply: {:?}", clocks.elapsed()));
+    assert_eq!("lvl 3, fit 5, prio 12, 1 ops", apply_block_result.validation_result_message);
+
+    Ok(perf_log)
+}
+
+fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProtocolContextResult) {
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no tezos environment configured");
+
+    let result = client::init_protocol_context(
+        common::prepare_empty_dir(dir_name),
+        tezos_env.genesis.clone(),
+        tezos_env.protocol_overrides.clone(),
+        true,
+        false,
+    ).unwrap();
+
+    let genesis_commit_hash = match result.clone().genesis_commit_hash {
+        None => panic!("we needed commit_genesis and here should be result of it"),
+        Some(cr) => cr
+    };
+
+    (
+        tezos_env.main_chain_id().expect("invalid chain id"),
+        tezos_env.genesis_header(
+            genesis_commit_hash,
+            OPERATION_LIST_LIST_HASH_EMPTY.clone(),
+        ).expect("genesis header error"),
+        result
+    )
 }
 
 mod test_data {
-    use tezos_api::environment::TezosEnvironment;
     use crypto::hash::{ContextHash, HashType};
+    use tezos_api::environment::TezosEnvironment;
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
-    pub const TEZOS_ENV: TezosEnvironment = TezosEnvironment::Alphanet;
+    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Alphanet;
 
     pub fn context_hash(hash: &str) -> ContextHash {
         HashType::ContextHash

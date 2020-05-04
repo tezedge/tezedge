@@ -15,6 +15,11 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
+pub trait BlockMetaStorageReader: Sync + Send {
+    /// Load local head (block with highest level) from dedicated storage
+    fn load_current_head(&self) -> Result<Option<BlockHash>, StorageError>;
+}
+
 #[derive(Clone)]
 pub struct BlockMetaStorage {
     kv: Arc<BlockMetaStorageKV>
@@ -85,6 +90,25 @@ impl BlockMetaStorage {
     }
 }
 
+impl BlockMetaStorageReader for BlockMetaStorage {
+    fn load_current_head(&self) -> Result<Option<BlockHash>, StorageError> {
+        self.iter(IteratorMode::End)
+            .and_then(|meta_iterator|
+                Ok(
+                    meta_iterator
+                        // unwrap a tuple of Result
+                        .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
+                        // we are interested in applied blocks only
+                        .filter(|(_, meta)| meta.is_applied())
+                        // get block with the highest level
+                        .max_by_key(|(_, meta)| meta.level())
+                        // get data for the block
+                        .map(|(block_hash, _)| block_hash)
+                )
+            )
+    }
+}
+
 const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
 const LEN_CHAIN_ID: usize = HashType::ChainId.size();
 
@@ -130,9 +154,9 @@ pub struct Meta {
 
 impl Meta {
     /// Create Metadata for specific genesis block
-    pub fn genesis_meta(genesis_hash: &BlockHash, genesis_chain_id: &ChainId) -> Self {
+    pub fn genesis_meta(genesis_hash: &BlockHash, genesis_chain_id: &ChainId, is_applied: bool) -> Self {
         Meta {
-            is_applied: true, // we consider genesis as already applied
+            is_applied,
             predecessor: Some(genesis_hash.clone()), // this is what we want
             successor: None, // we do not know (yet) successor of the genesis
             level: 0,
@@ -289,7 +313,7 @@ mod tests {
 
         let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
-        let v = Meta::genesis_meta(&k, &chain_id);
+        let v = Meta::genesis_meta(&k, &chain_id, true);
         let mut storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {

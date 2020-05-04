@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Manages chain synchronisation process.
+//! - tries to download most recent header from the other peers
+//! - also supplies downloaded data to other peers
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -9,14 +11,15 @@ use std::time::{Duration, Instant};
 use failure::Error;
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, FnValue, info, trace, warn};
+use slog::{debug, info, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::block_meta_storage::BlockMetaStorageReader;
+use storage::p2p_message_storage::P2PMessageStorage;
 use storage::persistent::PersistentStorage;
-use tezos_api::client::TezosStorageInitInfo;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -63,12 +66,28 @@ pub struct LogStats;
 struct CurrentHead {
     /// Represents local current head. Value here is the same as the
     /// hash of the last applied block.
-    local: BlockHash,
-    /// Remote / network remote current head. This represents info about
+    local: Option<Head>,
+    /// Remote current head. This represents info about
     /// the current branch with the highest level received from network.
-    remote: BlockHash,
-    /// Level of the remote current head.
-    remote_level: i32,
+    remote: Option<Head>,
+}
+
+impl CurrentHead {
+    fn need_update_remote_level(&self, new_remote_level: i32) -> bool {
+        match &self.remote {
+            None => true,
+            Some(current_remote_head) => new_remote_level > current_remote_head.level
+        }
+    }
+}
+
+/// This struct holds info about remote "current" head and level
+#[derive(Clone, Debug)]
+struct Head {
+    /// BlockHash of head.
+    hash: BlockHash,
+    /// Level of the head.
+    level: i32,
 }
 
 /// Holds various stats with info about internal synchronization.
@@ -98,8 +117,12 @@ pub struct ChainManager {
     peers: HashMap<ActorUri, PeerState>,
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
+    /// Block meta storage
+    block_meta_storage: Box<dyn BlockMetaStorageReader>,
     /// Operations storage
     operations_storage: Box<dyn OperationsStorageReader>,
+    /// Msg storage
+    p2p_message_storage: P2PMessageStorage,
     /// Holds state of the block chain
     block_state: BlockState,
     /// Holds state of the operations
@@ -118,10 +141,17 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 impl ChainManager {
 
     /// Create new actor instance.
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, init_info: &TezosStorageInitInfo) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
-            Props::new_args(ChainManager::new, (network_channel, shell_channel, persistent_storage.clone(), init_info.chain_id.clone(),
-                                                CurrentHead { local: init_info.current_block_header_hash.clone(), remote: init_info.genesis_block_header_hash.clone(), remote_level: 0 })),
+            Props::new_args(
+                ChainManager::new,
+                (
+                        network_channel,
+                        shell_channel,
+                        persistent_storage.clone(),
+                        chain_id.clone()
+                )
+            ),
             ChainManager::name())
     }
 
@@ -131,16 +161,21 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((network_channel, shell_channel, persistent_storage, chain_id, current_head): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, CurrentHead)) -> Self {
+    fn new((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
+            p2p_message_storage: P2PMessageStorage::new(&persistent_storage),
             block_state: BlockState::new(&persistent_storage, &chain_id),
             operations_state: OperationsState::new(&persistent_storage, &chain_id),
             peers: HashMap::new(),
-            current_head,
+            current_head: CurrentHead {
+                local: None,
+                remote: None,
+            },
             shutting_down: false,
             stats: Stats {
                 unseen_block_count: 0,
@@ -239,6 +274,7 @@ impl ChainManager {
             block_storage,
             operations_storage,
             stats,
+            p2p_message_storage,
             ..
         } = self;
 
@@ -257,6 +293,7 @@ impl ChainManager {
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 let log = ctx.system.log().new(slog::o!("peer" => received.peer.name().to_string()));
+                let _ = p2p_message_storage.store_peer_message(received.message.messages(), true, received.peer_address).unwrap();
 
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
@@ -278,9 +315,11 @@ impl ChainManager {
                                     let current_head = message.current_branch().current_head();
 
                                     // if needed, update remote current head
-                                    if message.current_branch().current_head().level() > self.current_head.remote_level {
-                                        self.current_head.remote_level = message.current_branch().current_head().level();
-                                        self.current_head.remote = message.current_branch().current_head().message_hash()?;
+                                    if self.current_head.need_update_remote_level(message.current_branch().current_head().level()) {
+                                        self.current_head.remote = Some(Head {
+                                            hash: message.current_branch().current_head().message_hash()?,
+                                            level: message.current_branch().current_head().level(),
+                                        });
                                     }
 
                                     // update peer stats
@@ -305,17 +344,19 @@ impl ChainManager {
                                 PeerMessage::GetCurrentBranch(message) => {
                                     debug!(log, "Current branch requested by a peer");
                                     if block_state.get_chain_id() == &message.chain_id {
-                                        if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let history = block_state.get_history()?;
-                                            let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
-                                            tell_peer(msg.into(), peer);
+                                        if let Some(current_head_local) = &self.current_head.local {
+                                            if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
+                                                let history = block_state.get_history()?;
+                                                let msg = CurrentBranchMessage::new(block_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
+                                                tell_peer(msg.into(), peer);
+                                            }
                                         }
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
-                                        Some(_missing_block) => {
+                                        Some(_) => {
                                             trace!(log, "Received block header");
                                             peer.block_response_last = Instant::now();
 
@@ -344,7 +385,6 @@ impl ChainManager {
                                         }
                                         None => {
                                             warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_header_with_hash.hash));
-                                            ctx.system.stop(received.peer.clone());
                                         }
                                     }
                                 }
@@ -359,9 +399,11 @@ impl ChainManager {
                                 PeerMessage::GetCurrentHead(message) => {
                                     debug!(log, "Current head requested");
                                     if block_state.get_chain_id() == message.chain_id() {
-                                        if let Some(current_head) = block_storage.get(&self.current_head.local)? {
-                                            let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
-                                            tell_peer(msg.into(), peer);
+                                        if let Some(current_head_local) = &self.current_head.local {
+                                            if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
+                                                let msg = CurrentHeadMessage::new(block_state.get_chain_id().clone(), (*current_head.header).clone());
+                                                tell_peer(msg.into(), peer);
+                                            }
                                         }
                                     }
                                 }
@@ -418,7 +460,10 @@ impl ChainManager {
                                         }
                                     }
                                 }
-                                _ => trace!(log, "Ignored message"; "message" => FnValue(|_| format!("{:?}", message)))
+                                PeerMessage::Bootstrap => {
+                                    // on bootstrap reset peer state
+                                }
+                                ignored_message => trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
                             }
                         }
                     }
@@ -434,7 +479,10 @@ impl ChainManager {
     fn process_shell_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
             ShellChannelMsg::BlockApplied(message) => {
-                self.current_head.local = message.header().hash.clone();
+                self.current_head.local = Some(Head {
+                    hash: message.header().hash.clone(),
+                    level: message.header().header.level(),
+                });
                 self.stats.applied_block_level = Some(message.header().header.level());
                 self.stats.applied_block_last = Some(Instant::now());
             }
@@ -451,10 +499,25 @@ impl ChainManager {
     fn hydrate_state(&mut self, ctx: &Context<ChainManagerMsg>) {
         info!(ctx.system.log(), "Hydrating block state");
         self.block_state.hydrate().expect("Failed to hydrate block state");
+
         info!(ctx.system.log(), "Hydrating operations state");
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
-        info!(ctx.system.log(), "Hydrating completed successfully");
 
+        info!(ctx.system.log(), "Loading current head");
+        self.current_head.local = match self.block_meta_storage.load_current_head().expect("Failed to load current head") {
+            Some(hash) => {
+                self.block_storage
+                    .get(&hash)
+                    .expect(&format!("Failed to read head: {}", HashType::BlockHash.bytes_to_string(&hash)))
+                    .map(|block| Head {
+                        hash: block.hash.clone(),
+                        level: block.header.level(),
+                    })
+            }
+            None => None
+        };
+
+        info!(ctx.system.log(), "Hydrating completed successfully");
         self.stats.hydrated_state_last = Some(Instant::now());
     }
 }
@@ -540,7 +603,25 @@ impl Receive<LogStats> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
         let block_hash_encoding = HashType::BlockHash;
-        info!(log, "Head info"; "local" => &block_hash_encoding.bytes_to_string(&self.current_head.local), "remote" => &block_hash_encoding.bytes_to_string(&self.current_head.remote), "remote_level" => self.current_head.remote_level);
+        let (local, local_level) = match &self.current_head.local {
+            None => ("-none-".to_string(), 0 as i32),
+            Some(head) => (
+                block_hash_encoding.bytes_to_string(&head.hash),
+                head.level
+            )
+        };
+        let (remote, remote_level) = match &self.current_head.remote {
+            None => ("-none-".to_string(), 0 as i32),
+            Some(head) => (
+                block_hash_encoding.bytes_to_string(&head.hash),
+                head.level
+            ),
+        };
+        info!(log, "Head info";
+            "local" => local,
+            "local_level" => local_level,
+            "remote" => remote,
+            "remote_level" => remote_level);
         info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,
             "last_block_secs" => self.stats.unseen_block_last.elapsed().as_secs(),
@@ -569,20 +650,22 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: DisconnectStalledPeers, _sender: Sender) {
         self.peers.iter()
             .for_each(|(uri, state)| {
+                let block_response_pending = state.block_request_last > state.block_response_last;
+                let operations_response_pending = state.operations_request_last > state.operations_response_last;
                 let should_disconnect = if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
                     warn!(ctx.system.log(), "Peer failed to update its current head"; "peer" => format!("{}", uri));
                     true
-                } else if (state.block_request_last > state.block_response_last) && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
+                } else if block_response_pending && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for block on time"; "peer" => format!("{}", uri), "request_secs" => state.block_request_last.elapsed().as_secs(), "response_secs" => state.block_response_last.elapsed().as_secs());
                     true
-                } else if (state.operations_request_last > state.operations_response_last) && (state.operations_request_last - state.operations_response_last > SILENT_PEER_TIMEOUT) {
+                } else if operations_response_pending && (state.operations_request_last - state.operations_response_last > SILENT_PEER_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for operations on time"; "peer" => format!("{}", uri), "request_secs" => state.operations_request_last.elapsed().as_secs(), "response_secs" => state.operations_response_last.elapsed().as_secs());
                     true
-                } else if (state.queued_block_headers.len() >= BLOCK_HEADERS_BATCH_SIZE) &&  (state.block_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer block queue is full but is not responding"; "peer" => format!("{}", uri), "queued_blocks" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs());
+                } else if block_response_pending && !state.queued_block_headers.is_empty() && (state.block_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer is not providing requested blocks"; "peer" => format!("{}", uri), "queued_blocks" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs());
                     true
-                } else if (state.queued_operations.len() >= OPERATIONS_BATCH_SIZE) &&  (state.operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer operations queue is full but is not responding"; "peer" => format!("{}", uri), "queued_operations" => state.queued_operations.len(), "response_secs" => state.operations_response_last.elapsed().as_secs());
+                } else if operations_response_pending && !state.queued_operations.is_empty() && (state.operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
+                    warn!(ctx.system.log(), "Peer is not providing requested operations"; "peer" => format!("{}", uri), "queued_operations" => state.queued_operations.len(), "response_secs" => state.operations_response_last.elapsed().as_secs());
                     true
                 } else {
                     false

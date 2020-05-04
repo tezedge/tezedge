@@ -32,6 +32,8 @@ pub enum PeerBootstrapped {
     },
     Failure {
         address: SocketAddr,
+        /// List of potential peers to connect to. Is extracted from `Nack`.
+        potential_peers_to_connect: Option<Vec<String>>,
     },
 }
 
@@ -40,6 +42,7 @@ pub enum PeerBootstrapped {
 pub struct PeerMessageReceived {
     pub peer: PeerRef,
     pub message: Arc<PeerMessageResponse>,
+    pub peer_address: SocketAddr
 }
 
 /// Network channel event message.

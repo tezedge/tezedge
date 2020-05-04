@@ -3,13 +3,30 @@
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 
+use derive_builder::Builder;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
+
+use crypto::hash::{ChainId, ContextHash, HashType};
+use lazy_static::lazy_static;
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_messages::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
+
+lazy_static! {
+    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("max_operations_ttl", Encoding::Int31),
+            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
+    ]);
+}
 
 pub type RustBytes = Vec<u8>;
 
 /// Genesis block information structure
-#[derive(Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct GenesisChain {
     pub time: String,
     pub block: String,
@@ -17,21 +34,10 @@ pub struct GenesisChain {
 }
 
 /// Voted protocol overrides
-#[derive(Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ProtocolOverrides {
     pub forced_protocol_upgrades: Vec<(i32, String)>,
     pub voted_protocol_overrides: Vec<(String, String)>,
-}
-
-/// Storage initialization information for OCaml storage
-#[derive(Debug)]
-pub struct OcamlStorageInitInfo {
-    pub chain_id: RustBytes,
-    pub test_chain: Option<TestChain>,
-    pub genesis_block_header_hash: RustBytes,
-    pub genesis_block_header: RustBytes,
-    pub current_block_header_hash: RustBytes,
-    pub supported_protocol_hashes: Vec<RustBytes>,
 }
 
 /// Test chain information
@@ -46,17 +52,84 @@ pub struct TestChain {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
-    pub no_of_ffi_calls_treshold_for_gc: i32
+    pub no_of_ffi_calls_treshold_for_gc: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
+pub struct ApplyBlockRequest {
+    pub chain_id: ChainId,
+    pub block_header: BlockHeader,
+    pub pred_header: BlockHeader,
+    pub max_operations_ttl: i32,
+    pub operations: Vec<Vec<Operation>>,
+    #[serde(skip_serializing)]
+    #[builder(default)]
+    body: BinaryDataCache,
+}
+
+impl ApplyBlockRequest {
+    pub fn to_ops(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
+        let mut operations = Vec::with_capacity(block_operations.len());
+
+        for block_ops in block_operations {
+            if let Some(bo_ops) = block_ops {
+                operations.push(bo_ops.operations().clone());
+            } else {
+                operations.push(vec![]);
+            }
+        }
+
+        operations
+    }
+}
+
+impl CachedData for ApplyBlockRequest {
+    #[inline]
+    fn cache_reader(&self) -> &dyn CacheReader {
+        &self.body
+    }
+
+    #[inline]
+    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
+        Some(&mut self.body)
+    }
 }
 
 /// Application block result
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ApplyBlockResult {
     pub validation_result_message: String,
     pub context_hash: RustBytes,
     pub block_header_proto_json: String,
     pub block_header_proto_metadata_json: String,
     pub operations_proto_metadata_json: String,
+    pub max_operations_ttl: u16,
+    pub last_allowed_fork_level: i32,
+    pub forking_testchain: bool,
+    pub forking_testchain_data: Option<ForkingTestchainData>,
+}
+
+/// Init protocol context result
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct InitProtocolContextResult {
+    pub supported_protocol_hashes: Vec<RustBytes>,
+    /// Presents only if was genesis commited to context
+    pub genesis_commit_hash: Option<ContextHash>,
+}
+
+/// Commit genesis result
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct CommitGenesisResult {
+    pub block_header_proto_json: String,
+    pub block_header_proto_metadata_json: String,
+    pub operations_proto_metadata_json: String,
+}
+
+/// Forking test chain data
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct ForkingTestchainData {
+    pub genesis: RustBytes,
+    pub chain_id: RustBytes,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
@@ -132,6 +205,27 @@ impl slog::Value for TezosStorageInitError {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum GetDataError {
+    #[fail(display = "Ocaml failed to get data, message: {}!", message)]
+    ReadError {
+        message: String
+    }
+}
+
+impl From<ocaml::Error> for GetDataError {
+    fn from(error: ocaml::Error) -> Self {
+        match error {
+            ocaml::Error::Exception(ffi_error) => {
+                GetDataError::ReadError {
+                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                }
+            }
+            _ => panic!("Get data failed! Reason: {:?}", error)
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum ApplyBlockError {
     #[fail(display = "Incomplete operations, exptected: {}, has actual: {}!", expected, actual)]
@@ -143,14 +237,16 @@ pub enum ApplyBlockError {
     FailedToApplyBlock {
         message: String,
     },
-    #[fail(display = "Unknown predecessor - try to fetch predecessor at first!")]
-    UnknownPredecessor,
-    #[fail(display = "Invalid block header data - message: {}!", message)]
-    InvalidBlockHeaderData {
+    #[fail(display = "Unknown predecessor context - try to apply predecessor at first message: {}!", message)]
+    UnknownPredecessorContext {
         message: String,
     },
-    #[fail(display = "Invalid operations data - message: {}!", message)]
-    InvalidOperationsData {
+    #[fail(display = "Predecessor does not match - message: {}!", message)]
+    PredecessorMismatch {
+        message: String,
+    },
+    #[fail(display = "Invalid apply block request data - message: {}!", message)]
+    InvalidApplyBlockRequestData {
         message: String,
     },
 }
@@ -165,7 +261,12 @@ impl From<ocaml::Error> for ApplyBlockError {
                     },
                     Some(message) => {
                         match message.as_str() {
-                            "UnknownPredecessor" => ApplyBlockError::UnknownPredecessor,
+                            e if e.starts_with("Unknown_predecessor_context") => ApplyBlockError::UnknownPredecessorContext {
+                                message: message.to_string()
+                            },
+                            e if e.starts_with("Predecessor_mismatch") => ApplyBlockError::PredecessorMismatch {
+                                message: message.to_string()
+                            },
                             message => ApplyBlockError::FailedToApplyBlock {
                                 message: message.to_string()
                             }

@@ -931,7 +931,7 @@ dependencies = [
  "indexmap 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-util 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1016,7 +1016,7 @@ dependencies = [
  "net2 0.2.33 (registry+https://github.com/rust-lang/crates.io-index)",
  "pin-project 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "tower-service 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "want 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1201,7 +1201,7 @@ dependencies = [
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
  "tezos_wrapper 0.1.0",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1354,7 +1354,7 @@ dependencies = [
  "storage 0.1.0",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "ws 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1382,7 +1382,7 @@ dependencies = [
  "storage 0.1.0",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1615,8 +1615,8 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre04",
- "tezos_interop_callback 0.0.2-pre04",
+ "tezos_interop 0.0.2-pre09",
+ "tezos_interop_callback 0.0.2-pre09",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -1788,6 +1788,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rayon"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "crossbeam-deque 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rayon-core 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "crossbeam-deque 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-queue 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-utils 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num_cpus 1.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "rdrand"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1894,6 +1916,7 @@ dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "networking 0.1.0",
  "path-tree 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rayon 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "riker 0.3.2 (git+https://github.com/simplestaking/riker.git?branch=slog-support)",
  "rocksdb 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1905,7 +1928,7 @@ dependencies = [
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2084,11 +2107,11 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre04",
- "tezos_interop_callback 0.0.2-pre04",
+ "tezos_interop 0.0.2-pre09",
+ "tezos_interop_callback 0.0.2-pre09",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2237,6 +2260,9 @@ dependencies = [
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slog-async 2.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slog-term 2.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tezos_api 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
  "tezos_messages 0.1.0",
@@ -2352,9 +2378,12 @@ dependencies = [
 name = "tezos_api"
 version = "0.1.0"
 dependencies = [
+ "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "crypto 0.1.0",
+ "derive_builder 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "enum-iterator 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ocaml 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2374,7 +2403,7 @@ dependencies = [
  "serial_test 0.3.2 (git+https://github.com/palfrey/serial_test.git)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre04",
+ "tezos_interop 0.0.2-pre09",
  "tezos_messages 0.1.0",
 ]
 
@@ -2405,7 +2434,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.0.2-pre04"
+version = "0.0.2-pre09"
 dependencies = [
  "colored 1.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2421,12 +2450,14 @@ dependencies = [
  "sha2 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tezos_api 0.1.0",
  "tezos_context 0.0.1",
- "tezos_interop_callback 0.0.2-pre04",
+ "tezos_encoding 0.1.0",
+ "tezos_interop_callback 0.0.2-pre09",
+ "tezos_messages 0.1.0",
 ]
 
 [[package]]
 name = "tezos_interop_callback"
-version = "0.0.2-pre04"
+version = "0.0.2-pre09"
 dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ocaml 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2501,7 +2532,7 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "0.2.18"
+version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bytes 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2540,7 +2571,7 @@ dependencies = [
  "futures-sink 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "pin-project-lite 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2937,6 +2968,8 @@ dependencies = [
 "checksum rand_os 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "7b75f676a1e053fc562eafbb47838d67c84801e38fc1ba459e8f180deabd5071"
 "checksum rand_pcg 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "abf9b09b01790cfe0364f52bf32995ea3c39f4d2dd011eac241d2914146d0b44"
 "checksum rand_xorshift 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cbf7e9e623549b0e21f6e97cf8ecf247c1a8fd2e8a992ae265314300b2455d5c"
+"checksum rayon 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "db6ce3297f9c85e16621bb8cca38a06779ffc31bb8184e1be4bed2be4678a098"
+"checksum rayon-core 1.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "08a89b46efaf957e52b18062fb2f4660f8b8a4dde1807ca002690868ef2c85a9"
 "checksum rdrand 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
 "checksum redox_syscall 0.1.56 (registry+https://github.com/rust-lang/crates.io-index)" = "2439c63f3f6139d1b57529d16bc3b8bb855230c8efcc5d3a896c8bea7c3b1e84"
 "checksum redox_users 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)" = "09b23093265f8d200fa7b4c2c76297f47e681c655f6f1285a8780d6a022f7431"
@@ -2994,7 +3027,7 @@ dependencies = [
 "checksum thread_local 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d40c6d1b69745a6ec6fb1ca717914848da4b44ae29d9b3080cbee91d72a69b14"
 "checksum time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)" = "db8dcfca086c1143c9270ac42a2bbd8a7ee477b78ac8e45b19abfb0cbede4b6f"
 "checksum timeout_io 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2d89ed29f92507ee770ef31f747ec1ad5ba7d8989a9f3489783da7d19a155c60"
-"checksum tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)" = "34ef16d072d2b6dc8b4a56c70f5c5ced1a37752116f8e7c1e80c659aa7cb6713"
+"checksum tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)" = "7d9c43f1bb96970e153bcbae39a65e249ccb942bd9d36dbdf086024920417c9c"
 "checksum tokio-macros 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)" = "f4b1e7ed7d5d4c2af3d999904b0eebe76544897cdbfb2b9684bed2174ab20f7c"
 "checksum tokio-util 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "571da51182ec208780505a32528fc5512a8fe1443ab960b3f2f3ef093cd16930"
 "checksum toml 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "758664fc71a3a69038656bee8b6be6477d2a6c315a6b81f7081f591bffa4111f"

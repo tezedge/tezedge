@@ -5,7 +5,7 @@ rust:
 os:
   - linux
 
-dist: xenial
+dist: focal
 
 sudo: false
 

@@ -21,13 +21,13 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, StorageError, SystemStorage};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageError, StorageInitInfo, SystemStorage};
 use storage::p2p_message_storage::{P2PMessageSecondaryIndex, P2PMessageStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
 use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
-use tezos_api::client::TezosStorageInitInfo;
 use tezos_api::environment;
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
@@ -38,7 +38,7 @@ mod configuration;
 mod identity;
 
 const EXPECTED_POW: f64 = 26.0;
-const DATABASE_VERSION: i64 = 10;
+const DATABASE_VERSION: i64 = 11;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -93,13 +93,35 @@ fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runti
     builder.build().expect("Failed to create tokio runtime")
 }
 
-fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, actor_system: ActorSystem, init_info: TezosStorageInitInfo, persistent_storage: PersistentStorage, protocol_commands: IpcCmdServer, protocol_events: IpcEvtServer, protocol_runner_run: Arc<AtomicBool>, log: Logger) {
+fn block_on_actors(
+    env: &crate::configuration::Environment,
+    tezos_env: &TezosEnvironmentConfiguration,
+    init_storage_data: StorageInitInfo,
+    identity: Identity,
+    actor_system: ActorSystem,
+    persistent_storage: PersistentStorage,
+    protocol_commands: IpcCmdServer,
+    protocol_events: IpcEvtServer,
+    protocol_runner_run: Arc<AtomicBool>,
+    log: Logger) {
+
     let mut tokio_runtime = create_tokio_runtime(env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system)
         .expect("Failed to create shell channel");
+
+    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which send ContextAction, and we need thouse action to process first
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone())
+        .expect("Failed to create context event listener");
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone())
+        .expect("Failed to create chain feeder");
+    // if feeding is started, than run chain manager
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
+        .expect("Failed to create chain manager");
+
+    // and than open p2p and others
     let _ = PeerManager::actor(
         &actor_system,
         network_channel.clone(),
@@ -110,23 +132,14 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
         env.p2p.peer_threshold,
         env.p2p.listener_port,
         identity,
-        environment::TEZOS_ENV
-            .get(&env.tezos_network)
-            .map(|cfg| cfg.version.clone())
-            .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network)),
+        tezos_env.version.clone(),
         persistent_storage.clone())
         .expect("Failed to create peer manager");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_info)
-        .expect("Failed to create chain manager");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_info, protocol_commands, log.clone())
-        .expect("Failed to create chain feeder");
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone())
-        .expect("Failed to create context event listener");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime.handle(), &persistent_storage, &init_info)
+    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime.handle(), &persistent_storage, &init_storage_data)
         .expect("Failed to create RPC server");
     if env.record {
         info!(log, "Running in record mode");
@@ -163,7 +176,7 @@ fn block_on_actors(env: &crate::configuration::Environment, identity: Identity, 
     tokio_runtime.shutdown_timeout(Duration::from_millis(100));
 }
 
-fn check_database_compatibility(db: Arc<rocksdb::DB>, init_info: &TezosStorageInitInfo, log: Logger) -> Result<bool, StorageError> {
+fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironmentConfiguration, log: Logger) -> Result<bool, StorageError> {
     let mut system_info = SystemStorage::new(db.clone());
     let db_version_ok = match system_info.get_db_version()? {
         Some(db_version) => db_version == DATABASE_VERSION,
@@ -173,18 +186,39 @@ fn check_database_compatibility(db: Arc<rocksdb::DB>, init_info: &TezosStorageIn
         }
     };
     if !db_version_ok {
-        error!(log, "Incompatible database version found. Please re-sync your node.");
+        error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
     }
 
-    let chain_id_ok = match system_info.get_chain_id()? {
-        Some(chain_id) => chain_id == init_info.chain_id,
+    let tezos_env_main_chain = tezos_env.main_chain_id().map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
+
+    let (chain_id_ok, previous, requested) = match system_info.get_chain_id()? {
+        Some(chain_id) => {
+            // find previos chain_name
+            let previous = environment::TEZOS_ENV
+                .iter()
+                .find(|(_, v)| {
+                    if let Ok(cid) = v.main_chain_id() {
+                        cid == chain_id
+                    } else {
+                        false
+                    }
+                })
+                .map_or("-unknown-", |(_, v)| &v.version);
+
+            if chain_id == tezos_env_main_chain {
+                (true, previous, &tezos_env.version)
+            } else {
+                (false, previous, &tezos_env.version)
+            }
+        },
         None => {
-            system_info.set_chain_id(&init_info.chain_id)?;
-            true
+            system_info.set_chain_id(&tezos_env_main_chain)?;
+            (true, "-none-", &tezos_env.version)
         }
     };
+
     if !chain_id_ok {
-        error!(log, "Current database was created for another chain. Please re-sync your node.");
+        error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!"; "requested" => requested, "previous" => previous);
     }
 
     Ok(db_version_ok && chain_id_ok)
@@ -193,6 +227,9 @@ fn check_database_compatibility(db: Arc<rocksdb::DB>, init_info: &TezosStorageIn
 fn main() {
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
+    let tezos_env = environment::TEZOS_ENV
+        .get(&env.tezos_network)
+        .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network));
 
     // Creates default logger
     let log = create_logger(&env);
@@ -205,27 +242,17 @@ fn main() {
             log_enabled: env.logging.ocaml_log_enabled,
             no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
         },
-        env.tezos_network,
+        tezos_env.clone(),
         env.enable_testchain,
         &env.storage.tezos_data_dir,
         &env.protocol_runner,
     ));
+
+    // TODO: refactor and move to restarting protocol_runner thread, when generate_identity will be in rust
     let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
         Ok(process) => process,
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "reason" => e), actor_system),
     };
-
-    // setup tezos ocaml runtime
-    let protocol_controller = match protocol_runner_endpoint.commands.accept() {
-        Ok(controller) => controller,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
-    };
-    let tezos_storage_init_info = match protocol_controller.init_protocol() {
-        Ok(res) => res,
-        Err(err) => shutdown_and_exit!(error!(log, "Failed to initialize Tezos OCaml storage"; "reason" => err), actor_system)
-    };
-    debug!(log, "Loaded Tezos constants: {:?}", &tezos_storage_init_info);
-
 
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
     let tezos_identity =
@@ -239,11 +266,20 @@ fn main() {
             }
         } else {
             info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
+
+            // TODO: TE-74 will be replace with rust version
+            // setup tezos ocaml runtime just for generate identity
+            let protocol_controller = match protocol_runner_endpoint.commands.accept() {
+                Ok(controller) => controller,
+                Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
+            };
+
             match protocol_controller.generate_identity(EXPECTED_POW) {
                 Ok(identity) => {
                     info!(log, "Identity successfully generated");
                     match identity::store_identity(&env.identity_json_file_path, &identity) {
                         Ok(()) => {
+                            drop(protocol_controller);
                             info!(log, "Generated identity stored to file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
                             identity
                         }
@@ -253,7 +289,6 @@ fn main() {
                 Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
             }
         };
-    drop(protocol_controller);
 
     let schemas = vec![
         block_storage::BlockPrimaryIndex::descriptor(),
@@ -280,7 +315,7 @@ fn main() {
     };
     debug!(log, "Loaded RocksDB database");
 
-    match check_database_compatibility(rocks_db.clone(), &tezos_storage_init_info, log.clone()) {
+    match check_database_compatibility(rocks_db.clone(), &tezos_env, log.clone()) {
         Ok(false) => shutdown_and_exit!(crit!(log, "Database incompatibility detected"), actor_system),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to verify database compatibility"; "reason" => e), actor_system),
         _ => ()
@@ -336,9 +371,9 @@ fn main() {
         };
 
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
-        match initialize_storage_with_genesis_block(&tezos_storage_init_info.genesis_block_header_hash, &tezos_storage_init_info.genesis_block_header, &tezos_storage_init_info.chain_id, &persistent_storage, log.clone()) {
-            Ok(_) => block_on_actors(&env, tezos_identity, actor_system, tezos_storage_init_info, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log),
-            Err(e) => shutdown_and_exit!(error!(log, "Failed to initialize storage with genesis block. Reason: {}", e), actor_system),
+        match resolve_storage_init_chain_data(&tezos_env,log.clone()) {
+            Ok(init_data) => block_on_actors(&env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log),
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data. Reason: {}", e), actor_system),
         }
     }
 }
