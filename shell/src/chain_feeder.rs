@@ -363,6 +363,7 @@ fn feed_chain_to_protocol(
                                         "max_operations_ttl" => block_additional_data.max_operations_ttl(),
                                         "last_allowed_fork_level" => block_additional_data.last_allowed_fork_level(),
                                     );
+                                    force_apply = false;
                                 } else {
                                     debug!(log,
                                         "Block apply result was stored";
