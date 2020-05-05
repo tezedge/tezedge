@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use failure::{Error, Fail};
 use riker::actors::*;
-use slog::{debug, Logger, warn, trace};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
@@ -242,12 +242,13 @@ fn feed_chain_to_protocol(
             return Err(FeedChainError::UnknownCurrentHeadError);
         }
     };
+    let mut force_apply = false;
 
     // now we can start applying block
     while apply_block_run.load(Ordering::Acquire) {
         match block_meta_storage.get(&current_head_hash)? {
             Some(mut current_head_meta) => {
-                if current_head_meta.is_applied() {
+                if current_head_meta.is_applied() && force_apply == false {
                     // Current head is already applied, so we should move to successor
                     // or in case no successor is available do nothing.
                     match current_head_meta.successor() {
@@ -265,7 +266,27 @@ fn feed_chain_to_protocol(
                             // Good, we have block data available, let's' look is we have all operations
                             // available. If yes we will apply them. If not, we will do nothing.
                             if operations_meta_storage.is_complete(&current_head.hash)? {
-                                debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
+
+                                if force_apply {
+                                    let successor = match current_head_meta.successor() {
+                                        None => "-none-".to_string(),
+                                        Some(block) => block_hash_encoding.bytes_to_string(block)
+                                    };
+                                    let predecessor = match current_head_meta.predecessor() {
+                                        None => "-none-".to_string(),
+                                        Some(block) => block_hash_encoding.bytes_to_string(block)
+                                    };
+                                    info!(log,
+                                        "Applying block (force)";
+                                        "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
+                                        "is_applied" => current_head_meta.is_applied(),
+                                        "level" => current_head_meta.level(),
+                                        "successor" => successor,
+                                        "predecessor" => predecessor,
+                                    );
+                                } else {
+                                    debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
+                                }
                                 let operations = operations_storage.get_operations(&current_head_hash)?
                                     .drain(..)
                                     .map(Some)
@@ -274,8 +295,29 @@ fn feed_chain_to_protocol(
                                 // apply block and it's operations
                                 let (predecessor, predecessor_additional_data) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
                                     None => {
-                                        warn!(log, "No data was found in database for the predecessor, so we try to apply it first"; "predecessor_block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.header.predecessor()));
-                                        current_head_hash = current_head.header.predecessor().clone();
+                                        let predecessor = current_head.header.predecessor().clone();
+                                        let (pred_is_applied, pred_level, pred_successor, pred_predecessor) = block_meta_storage.get(&predecessor)?
+                                            .map_or((false, "-none-".to_string(), "-none-".to_string(), "-none-".to_string()), |pred_meta| {
+                                                let pred_successor = match pred_meta.successor() {
+                                                    None => "-none-".to_string(),
+                                                    Some(block) => block_hash_encoding.bytes_to_string(block)
+                                                };
+                                                let pred_predecessor = match pred_meta.predecessor() {
+                                                    None => "-none-".to_string(),
+                                                    Some(block) => block_hash_encoding.bytes_to_string(block)
+                                                };
+                                                (pred_meta.is_applied(), pred_meta.level().to_string(), pred_successor, pred_predecessor)
+                                            });
+                                        warn!(log,
+                                            "No additional data was found in database for the predecessor, so we try to apply it first";
+                                            "predecessor_block_header_hash" => block_hash_encoding.bytes_to_string(&predecessor),
+                                            "is_applied" => pred_is_applied,
+                                            "level" => pred_level,
+                                            "successor" => pred_successor,
+                                            "predecessor" => pred_predecessor,
+                                        );
+                                        current_head_hash = predecessor;
+                                        force_apply = true;
                                         continue;
                                     }
                                     Some(predecesor_data) => predecesor_data
@@ -288,24 +330,49 @@ fn feed_chain_to_protocol(
                                     &operations,
                                     predecessor_additional_data.max_operations_ttl().clone(),
                                 )?;
-                                debug!(
-                                    log,
-                                    "Block was applied";
-                                    "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
-                                    "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
-                                    "validation_result_message" => &apply_block_result.validation_result_message
-                                );
 
-
+                                if force_apply {
+                                    info!(log,
+                                        "Block was applied (force)";
+                                        "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
+                                        "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
+                                        "validation_result_message" => &apply_block_result.validation_result_message);
+                                } else {
+                                    debug!(log,
+                                        "Block was applied";
+                                        "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
+                                        "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
+                                        "validation_result_message" => &apply_block_result.validation_result_message);
+                                }
 
                                 // store result
-                                let (block_json_data, _) = store_applied_block_result(
+                                let (block_json_data, block_additional_data) = store_applied_block_result(
                                     block_storage,
                                     block_meta_storage,
                                     &current_head.hash,
-                                    apply_block_result,
+                                    apply_block_result.clone(),
                                     &mut current_head_meta,
                                 )?;
+
+                                if force_apply {
+                                    info!(log,
+                                        "Block apply result was stored (force)";
+                                        "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
+                                        "validation_result_message" => &apply_block_result.validation_result_message,
+                                        "is_applied" => current_head_meta.is_applied(),
+                                        "max_operations_ttl" => block_additional_data.max_operations_ttl(),
+                                        "last_allowed_fork_level" => block_additional_data.last_allowed_fork_level(),
+                                    );
+                                } else {
+                                    debug!(log,
+                                        "Block apply result was stored";
+                                        "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
+                                        "validation_result_message" => &apply_block_result.validation_result_message,
+                                        "is_applied" => current_head_meta.is_applied(),
+                                        "max_operations_ttl" => block_additional_data.max_operations_ttl(),
+                                        "last_allowed_fork_level" => block_additional_data.last_allowed_fork_level(),
+                                    );
+                                }
 
                                 // notify listeners
                                 if apply_block_run.load(Ordering::Acquire) {
@@ -324,13 +391,13 @@ fn feed_chain_to_protocol(
                                         current_head_hash = successor_hash.clone();
                                         continue;
                                     }
-                                    None => ( /* successor is not yet available, we do nothing for now */ )
+                                    None => warn!(log, "Successor is not yet available, we do nothing for now"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                                 }
                             } else {
-                                // we don't have all operations available, do nothing
+                                warn!(log, "We don't have all operations available, do nothing"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                             }
                         }
-                        None => ( /* it's possible that data was not yet written do the storage, so don't panic! */ )
+                        None => warn!(log, "It's possible that data was not yet written do the storage, so don't panic!"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                     }
                 }
             }
