@@ -29,7 +29,7 @@ environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 500 # also check parameter --stop=
-  WRK_TEST_BLOCK_HEADER: 500 # also check parameter --stop=
+  WRK_TEST_BLOCK_HEADER: 100
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732

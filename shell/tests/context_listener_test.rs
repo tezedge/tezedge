@@ -3,36 +3,43 @@
 #![feature(test)]
 extern crate test;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
+use jsonpath::Selector;
 use riker::system::SystemBuilder;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use slog::{Drain, Level, Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use shell::context_listener::ContextListener;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, resolve_storage_init_chain_data, store_commit_genesis_result};
 use storage::context::{ContextApi, ContextIndex, TezedgeContext};
+use storage::persistent::ContextList;
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockError, ApplyBlockRequest, ApplyBlockResult, RustBytes, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_context::channel::*;
+use tezos_encoding::binary_reader::BinaryReader;
+use tezos_encoding::de;
 use tezos_interop::ffi;
-use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::prelude::BlockHeader;
+use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_wrapper::service::IpcEvtServer;
 
 #[test]
-fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error> {
+fn test_apply_block_and_check_context() -> Result<(), failure::Error> {
 
     // logger
     let log = create_logger();
 
     // storage
-    let tmp_storage = TmpStorage::create(common::prepare_empty_dir("__shell_context_listener_test_apply_blocks"))?;
+    let storage_db_path = "__shell_context_listener_test_apply_blocks";
+    let context_db_path = "__shell_context_listener_test_apply_blocks_context";
+    let tmp_storage = TmpStorage::create(common::prepare_empty_dir(storage_db_path))?;
     let persistent_storage = tmp_storage.storage();
     let mut block_storage = BlockStorage::new(&persistent_storage);
     let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
@@ -62,15 +69,17 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
     };
 
     // run context_listener actor
-    let actor_system = SystemBuilder::new().name("test_apply_first_three_block_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
+    let actor_system = SystemBuilder::new().name("test_apply_block_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
     let _ = ContextListener::actor(&actor_system, &persistent_storage, event_server, log.clone()).expect("Failed to create context event listener");
 
     // run apply blocks
-    let _ = apply_first_three_blocks_like_chain_feeder(
+    let _ = apply_blocks_like_chain_feeder(
         &mut block_storage,
         &mut block_meta_storage,
         &mut operations_meta_storage,
         tezos_env,
+        storage_db_path,
+        context_db_path,
         log.clone(),
     )?;
     // assert!(result.is_ok());
@@ -90,33 +99,90 @@ fn test_apply_first_three_block_and_check_context() -> Result<(), failure::Error
 
     // check level 0
     if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(0), None), &vec!["protocol".to_string()])? {
-        assert_eq!("Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H", HashType::ProtocolHash.bytes_to_string(&data));
+        assert_eq!("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 0));
     }
 
     // check level 1
     if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(1), None), &vec!["protocol".to_string()])? {
-        assert_eq!("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP", HashType::ProtocolHash.bytes_to_string(&data));
+        assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 1));
     }
 
     // check level 2
     if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(2), None), &vec!["protocol".to_string()])? {
-        assert_eq!("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP", HashType::ProtocolHash.bytes_to_string(&data));
+        assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
     }
 
+    let context_list: ContextList = persistent_storage.context_storage();
+    let list = context_list.read().expect("lock poisoning");
+
+    // check level 131 - total compare
+    let ctxt = list.get(131)?;
+    assert!(ctxt.is_some());
+    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_131.json").expect("context_131.json not found"));
+
+    // check level 181 - total compare
+    let ctxt = list.get(181)?;
+    assert!(ctxt.is_some());
+    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_181.json").expect("context_181.json not found"));
+
+    // check level 553 - total compare
+    let ctxt = list.get(553)?;
+    assert!(ctxt.is_some());
+    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_553.json").expect("context_553.json not found"));
+
+    // check level 834 - total compare
+    let ctxt = list.get(834)?;
+    assert!(ctxt.is_some());
+    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_834.json").expect("context_834.json not found"));
+
+    // check level 1322 - total compare
+    let ctxt = list.get(1322)?;
+    assert!(ctxt.is_some());
+    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_1322.json").expect("context_1322.json not found"));
+
     Ok(())
 }
 
-fn apply_first_three_blocks_like_chain_feeder(
+fn assert_ctxt(ctxt: HashMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: String) {
+    let json: Value = serde_json::from_str(&ocaml_ctxt_as_json).unwrap();
+    for (key, value) in ctxt.iter() {
+        // comparing just data
+        if !key.starts_with("data") {
+            continue;
+        }
+
+        let key_selector = key.replacen("data/", "", 1).replace("/", ".");
+        let selector = Selector::new(&format!("$.{}", key_selector)).unwrap();
+        let ocaml_data: Vec<&str> = selector
+            .find(&json)
+            .map(|t| t.as_str().unwrap())
+            .collect();
+
+        match value {
+            Bucket::Deleted => {
+                assert!(ocaml_data.is_empty())
+            }
+            Bucket::Exists(rust_data) => {
+                let rust_data = &hex::encode(rust_data);
+                assert_eq!(rust_data, ocaml_data[0])
+            }
+        };
+    }
+}
+
+fn apply_blocks_like_chain_feeder(
     block_storage: &mut BlockStorage,
     block_meta_storage: &mut BlockMetaStorage,
     operations_meta_storage: &mut OperationsMetaStorage,
     tezos_env: &TezosEnvironmentConfiguration,
+    _storage_db_path: &str,
+    context_db_path: &str,
     log: Logger) -> Result<(), failure::Error> {
     ffi::change_runtime_configuration(
         TezosRuntimeConfiguration {
@@ -126,11 +192,14 @@ fn apply_first_three_blocks_like_chain_feeder(
     ).unwrap().unwrap();
 
     // init context
-    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, log.clone())?;
-    let (chain_id, .., genesis_context_hash) = init_test_protocol_context(tezos_env, "__shell_context_listener_test_apply_blocks_context");
+    let init_storage_data = resolve_storage_init_chain_data(
+        &tezos_env,
+        log.clone(),
+    )?;
+    let (chain_id, .., genesis_context_hash) = init_test_protocol_context(tezos_env, context_db_path);
 
     // store genesis
-    let genesis_block_header = initialize_storage_with_genesis_block(
+    let _ = initialize_storage_with_genesis_block(
         block_storage,
         &init_storage_data,
         &tezos_env,
@@ -153,64 +222,38 @@ fn apply_first_three_blocks_like_chain_feeder(
         commit_data,
     )?;
 
-    // store and apply first block - level 1
-    let block = BlockHeaderWithHash {
-        hash: HashType::BlockHash.string_to_bytes(&HashType::BlockHash.bytes_to_string(&hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_1)?))?,
-        header: Arc::new(BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?),
-    };
-    block_storage.put_block_header(&block)?;
+    // let's apply stored requests
+    let reader = BinaryReader::new();
+    let mut last_result: Option<ApplyBlockResult> = None;
+    for request in test_data::apply_block_requests_until_1326() {
 
-    let apply_block_result = client::apply_block(
-        &chain_id,
-        &block.header,
-        &genesis_block_header.header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        tezos_env.genesis_additional_data().max_operations_ttl,
-    )?;
-    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
+        // parse request
+        let request: RustBytes = hex::decode(request)?;
+        let decoded_request = reader.read(&request, &APPLY_BLOCK_REQUEST_ENCODING)?;
+        let decoded_request: ApplyBlockRequest = de::from_value(&decoded_request)?;
+        let header = decoded_request.block_header;
 
-    // store and apply second block - level 2
-    let predecessor = block;
-    let block = BlockHeaderWithHash {
-        hash: HashType::BlockHash.string_to_bytes(&HashType::BlockHash.bytes_to_string(&hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_2)?))?,
-        header: Arc::new(BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?),
-    };
-    block_storage.put_block_header(&block)?;
+        // store header to db
+        let block = BlockHeaderWithHash {
+            hash: header.message_hash()?,
+            header: Arc::new(header),
+        };
+        block_storage.put_block_header(&block)?;
 
-    let apply_block_result = client::apply_block(
-        &chain_id,
-        &block.header,
-        &predecessor.header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        apply_block_result.max_operations_ttl,
-    )?;
-    assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
+        // apply request
+        let result = match ffi::apply_block(request) {
+            Ok(result) => result,
+            Err(e) => {
+                Err(ApplyBlockError::FailedToApplyBlock {
+                    message: format!("Unknown OcamlError: {:?}", e)
+                })
+            }
+        };
+        assert!(result.is_ok());
+        last_result = Some(result.unwrap());
+    }
 
-    // store apply third block - level 3
-    let predecessor = block;
-    let block = BlockHeaderWithHash {
-        hash: HashType::BlockHash.string_to_bytes(&HashType::BlockHash.bytes_to_string(&hex::decode(test_data::BLOCK_HEADER_HASH_LEVEL_3)?))?,
-        header: Arc::new(BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?),
-    };
-    block_storage.put_block_header(&block)?;
-
-    let apply_block_result = client::apply_block(
-        &chain_id,
-        &block.header,
-        &predecessor.header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        ),
-        apply_block_result.max_operations_ttl,
-    )?;
-    Ok(assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.validation_result_message))
+    Ok(assert!(last_result.is_some()))
 }
 
 fn init_test_protocol_context(tezos_env: &TezosEnvironmentConfiguration, dir_name: &str) -> (ChainId, BlockHash, ContextHash) {
@@ -242,69 +285,6 @@ fn create_logger() -> Logger {
     let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
 
     Logger::root(drain, slog::o!())
-}
-
-mod test_data {
-    use crypto::hash::{ContextHash, HashType};
-    use tezos_api::environment::TezosEnvironment;
-    use tezos_messages::p2p::binary_message::BinaryMessage;
-    use tezos_messages::p2p::encoding::prelude::*;
-
-    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Alphanet;
-
-    pub fn context_hash(hash: &str) -> ContextHash {
-        HashType::ContextHash
-            .string_to_bytes(hash)
-            .unwrap()
-    }
-
-    // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
-    pub const BLOCK_HEADER_HASH_LEVEL_1: &str = "dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d";
-    pub const BLOCK_HEADER_LEVEL_1: &str = include_str!("../../tezos/client/tests/resources/block_header_level1.bytes");
-    pub const BLOCK_HEADER_LEVEL_1_CONTEXT_HASH: &str = "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE";
-
-    pub fn block_header_level1_operations() -> Vec<Vec<String>> {
-        vec![]
-    }
-
-    // BLwKksYwrxt39exDei7yi47h7aMcVY2kZMZhTwEEoSUwToQUiDV
-    pub const BLOCK_HEADER_HASH_LEVEL_2: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627";
-    pub const BLOCK_HEADER_LEVEL_2: &str = "0000000201dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d000000005c017cd804683625c2445a4e9564bf710c5528fd99a7d150d2a2a323bc22ff9e2710da4f6d0000001100000001000000000800000000000000029bd8c75dec93c276d2d8e8febc3aa6c9471cb2cb42236b3ab4ca5f1f2a0892f6000500000003ba671eef00d6a8bea20a4677fae51268ab6be7bd8cfc373cd6ac9e0a00064efcc404e1fb39409c5df255f7651e3d1bb5d91cb2172b687e5d56ebde58cfd92e1855aaafbf05";
-
-    pub fn block_header_level2_operations() -> Vec<Vec<String>> {
-        vec![
-            vec![],
-            vec![],
-            vec![],
-            vec![]
-        ]
-    }
-
-    // BLTQ5B4T4Tyzqfm3Yfwi26WmdQScr6UXVSE9du6N71LYjgSwbtc
-    pub const BLOCK_HEADER_HASH_LEVEL_3: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f0179caf4b9f673";
-    pub const BLOCK_HEADER_LEVEL_3: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
-
-    pub fn block_header_level3_operations() -> Vec<Vec<String>> {
-        vec![
-            vec!["a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000000236663bacdca76094fdb73150092659d463fec94eda44ba4db10973a1ad057ef53a5b3239a1b9c383af803fc275465bd28057d68f3cab46adfd5b2452e863ff0a".to_string()],
-            vec![],
-            vec![],
-            vec![]
-        ]
-    }
-
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<Option<OperationsForBlocksMessage>> {
-        hex_operations
-            .into_iter()
-            .map(|bo| {
-                let ops = bo
-                    .into_iter()
-                    .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
-                    .collect();
-                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
-            })
-            .collect()
-    }
 }
 
 mod common {
@@ -339,5 +319,55 @@ mod common {
         env::var("OCAML_CALLS_GC")
             .unwrap_or("2000".to_string())
             .parse::<i32>().unwrap()
+    }
+}
+
+mod test_data {
+    use std::{env, io};
+    use std::fs::File;
+    use std::path::Path;
+
+    use tezos_api::environment::TezosEnvironment;
+
+    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
+
+    pub fn apply_block_requests_until_1326() -> Vec<String> {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join("apply_block_request_until_1326.zip");
+        let file = File::open(path).expect("Couldn't open file: tests/resources/apply_block_request_until_1326.zip");
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+
+        let mut requests: Vec<String> = Vec::new();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).unwrap();
+            let mut writer: Vec<u8> = vec![];
+            io::copy(&mut file, &mut writer).unwrap();
+            requests.push(String::from_utf8(writer).expect("error"));
+        }
+
+        requests
+    }
+
+    pub fn read_context_json(file_name: &str) -> Option<String> {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join("ocaml_context_jsons.zip");
+        let file = File::open(path).expect("Couldn't open file: tests/resources/ocaml_context_jsons.zip");
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).unwrap();
+            if file.name().eq(file_name) {
+                let mut writer: Vec<u8> = vec![];
+                io::copy(&mut file, &mut writer).unwrap();
+                return Some(String::from_utf8(writer).expect("error"));
+            }
+        }
+
+        None
     }
 }
