@@ -310,6 +310,7 @@ fn feed_chain_to_protocol(
                                             });
                                         warn!(log,
                                             "No additional data was found in database for the predecessor, so we try to apply it first";
+                                            "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
                                             "predecessor_block_header_hash" => block_hash_encoding.bytes_to_string(&predecessor),
                                             "is_applied" => pred_is_applied,
                                             "level" => pred_level,
