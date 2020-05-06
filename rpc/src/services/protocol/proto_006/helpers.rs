@@ -67,8 +67,8 @@ impl RightsConstants {
     /// * `state` - Current RPC collected state (head).
     #[inline]
     pub(crate) fn parse_rights_constants(context_proto_param: ContextProtocolParam) -> Result<Self, failure::Error> {
-        let dynamic = tezos_messages::protocol::proto_005_2::constants::ParametricConstants::from_bytes(context_proto_param.constants_data)?;
-        let fixed = tezos_messages::protocol::proto_005_2::constants::FIXED;
+        let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(context_proto_param.constants_data)?;
+        let fixed = tezos_messages::protocol::proto_006::constants::FIXED;
 
         Ok(RightsConstants::new(
             dynamic.blocks_per_cycle(),

@@ -19,6 +19,17 @@ use tezos_messages::ts_to_rfc3339;
 use crate::ContextList;
 use crate::rpc_actor::RpcCollectedStateRef;
 
+#[macro_export]
+macro_rules! merge_slices {
+    ( $($x:expr),* ) => {{
+        let mut res = vec![];
+        $(
+            res.extend_from_slice($x);
+        )*
+        res
+    }}
+}
+
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
 pub struct FullBlockInfo {
