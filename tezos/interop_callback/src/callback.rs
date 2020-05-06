@@ -4,6 +4,7 @@
 //! This module provides all the FFI callback functions.
 
 use ocaml::{caml, List, Str, Tuple, Value};
+use ocaml::value::TRUE;
 
 use tezos_context::channel::*;
 
@@ -53,51 +54,58 @@ fn to_string(value: Str) -> Option<String> {
 }
 
 // External callback function for set value to context
-caml!(ml_context_set(context_hash, block_hash, operation_hash, key, value_and_json) {
+caml!(ml_context_set(context_hash, block_hash, operation_hash, keyval_and_json, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
     let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-    let key: ContextKey = List::from(key).convert_to();
 
-    let value_and_json: Tuple = value_and_json.into();
-    let value: ContextValue = OcamlBytes::from(value_and_json.get(0).unwrap()).convert_to();
-    let value_as_json: Option<String> = to_string(value_and_json.get(1).unwrap().into());
+    let keyval_and_json: Tuple = keyval_and_json.into();
+    let key: ContextKey = List::from(keyval_and_json.get(0).unwrap()).convert_to();
+    let value: ContextValue = OcamlBytes::from(keyval_and_json.get(1).unwrap()).convert_to();
+    let json_val: Option<String> = to_string(keyval_and_json.get(2).unwrap().into());
+    let ignored: bool = keyval_and_json.get(3).unwrap().i32_val() == TRUE.i32_val();
 
-    let time_period: Tuple = value_and_json.get(2).unwrap().into();
+    let time_period: Tuple = time_period.into();
     let start_time: f64 = time_period.get(0).unwrap().f64_val();
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
-    context_set(context_hash, block_hash, operation_hash, key, value, value_as_json, start_time, end_time);
+    context_set(context_hash, block_hash, operation_hash, key, value, json_val, ignored, start_time, end_time);
     return Value::unit();
 });
 
 // External callback function for delete key from context
-caml!(ml_context_delete(context_hash, block_hash, operation_hash, key, time_period) {
+caml!(ml_context_delete(context_hash, block_hash, operation_hash, keyval, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
     let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-    let key: ContextKey = List::from(key).convert_to();
+
+    let keyval: Tuple = keyval.into();
+    let key: ContextKey = List::from(keyval.get(0).unwrap()).convert_to();
+    let ignored: bool = keyval.get(1).unwrap().i32_val() == TRUE.i32_val();
 
     let time_period: Tuple = time_period.into();
     let start_time: f64 = time_period.get(0).unwrap().f64_val();
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
-    context_delete(context_hash, block_hash, operation_hash, key, start_time, end_time);
+    context_delete(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
     return Value::unit();
 });
 
 // External callback function for remove_rec key from context
-caml!(ml_context_remove_rec(context_hash, block_hash, operation_hash, key, time_period) {
+caml!(ml_context_remove_rec(context_hash, block_hash, operation_hash, keyval, time_period) {
     let context_hash: Option<ContextHash> = to_hash(context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
     let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-    let key: ContextKey = List::from(key).convert_to();
+
+    let keyval: Tuple = keyval.into();
+    let key: ContextKey = List::from(keyval.get(0).unwrap()).convert_to();
+    let ignored: bool = keyval.get(1).unwrap().i32_val() == TRUE.i32_val();
 
     let time_period: Tuple = time_period.into();
     let start_time: f64 = time_period.get(0).unwrap().f64_val();
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
-    context_remove_rec(context_hash, block_hash, operation_hash, key, start_time, end_time);
+    context_remove_rec(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
     return Value::unit();
 });
 
@@ -110,12 +118,13 @@ caml!(ml_context_copy(context_hash, block_hash, operation_hash, from_to_key, tim
     let from_to_key: Tuple = from_to_key.into();
     let from_key: ContextKey = List::from(from_to_key.get(0).unwrap()).convert_to();
     let to_key: ContextKey = List::from(from_to_key.get(1).unwrap()).convert_to();
+    let ignored: bool = from_to_key.get(2).unwrap().i32_val() == TRUE.i32_val();
 
     let time_period: Tuple = time_period.into();
     let start_time: f64 = time_period.get(0).unwrap().f64_val();
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
-    context_copy(context_hash, block_hash, operation_hash, from_key, to_key, start_time, end_time);
+    context_copy(context_hash, block_hash, operation_hash, from_key, to_key, ignored, start_time, end_time);
     return Value::unit();
 });
 
@@ -212,6 +221,7 @@ fn context_set(
     key: ContextKey,
     value: ContextValue,
     value_as_json: Option<String>,
+    ignored: bool,
     start_time: f64,
     end_time: f64)
 {
@@ -222,6 +232,7 @@ fn context_set(
         key,
         value,
         value_as_json,
+        ignored,
         start_time,
         end_time,
     }).expect("context_set error");
@@ -232,6 +243,7 @@ fn context_delete(
     block_hash: Option<BlockHash>,
     operation_hash: Option<OperationHash>,
     key: ContextKey,
+    ignored: bool,
     start_time: f64,
     end_time: f64)
 {
@@ -240,6 +252,7 @@ fn context_delete(
         block_hash,
         operation_hash,
         key,
+        ignored,
         start_time,
         end_time,
     }).expect("context_delete error");
@@ -250,6 +263,7 @@ fn context_remove_rec(
     block_hash: Option<BlockHash>,
     operation_hash: Option<OperationHash>,
     key: ContextKey,
+    ignored: bool,
     start_time: f64,
     end_time: f64)
 {
@@ -258,6 +272,7 @@ fn context_remove_rec(
         block_hash,
         operation_hash,
         key,
+        ignored,
         start_time,
         end_time,
     }).expect("context_remove_rec error");
@@ -269,6 +284,7 @@ fn context_copy(
     operation_hash: Option<OperationHash>,
     from_key: ContextKey,
     to_key: ContextKey,
+    ignored: bool,
     start_time: f64,
     end_time: f64)
 {
@@ -278,6 +294,7 @@ fn context_copy(
         operation_hash,
         from_key,
         to_key,
+        ignored,
         start_time,
         end_time,
     }).expect("context_copy error");

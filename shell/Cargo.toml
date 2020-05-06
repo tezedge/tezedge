@@ -33,6 +33,7 @@ tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 
 [dev-dependencies]
+jsonpath = "0.1.1"
 slog-async = "2.3"
 slog-term = "2.4"
 tezos_client = { path = "../tezos/client" }

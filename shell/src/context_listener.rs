@@ -130,20 +130,28 @@ fn listen_protocol_events(
                 event_count += 1;
 
                 match &msg {
-                    ContextAction::Set { block_hash: Some(block_hash), key, value, context_hash, .. } => {
-                        context_diff.set(context_hash, key, value)?;
+                    ContextAction::Set { block_hash: Some(block_hash), key, value, context_hash, ignored, .. } => {
+                        if !ignored {
+                            context_diff.set(context_hash, key, value)?;
+                        }
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, context_hash, .. } => {
-                        context.copy_to_diff(context_hash, from_key, key, &mut context_diff)?;
+                    ContextAction::Copy { block_hash: Some(block_hash), to_key: key, from_key, context_hash, ignored, .. } => {
+                        if !ignored {
+                            context.copy_to_diff(context_hash, from_key, key, &mut context_diff)?;
+                        }
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    | ContextAction::Delete { block_hash: Some(block_hash), key, context_hash, .. } => {
-                        context.delete_to_diff(context_hash, key, &mut context_diff)?;
+                    | ContextAction::Delete { block_hash: Some(block_hash), key, context_hash, ignored, .. } => {
+                        if !ignored {
+                            context.delete_to_diff(context_hash, key, &mut context_diff)?;
+                        }
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
-                    | ContextAction::RemoveRecursively { block_hash: Some(block_hash), key, context_hash, .. } => {
-                        context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?;
+                    | ContextAction::RemoveRecursively { block_hash: Some(block_hash), key, context_hash, ignored, .. } => {
+                        if !ignored {
+                            context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?;
+                        }
                         context_action_storage.put_action(&block_hash.clone(), msg)?;
                     }
                     ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash), .. } => {
