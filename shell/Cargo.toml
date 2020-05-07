@@ -39,3 +39,4 @@ slog-term = "2.4"
 tezos_client = { path = "../tezos/client" }
 tezos_interop = { path = "../tezos/interop" }
 tezos_interop_callback = { path = "../tezos/interop_callback" }
+zip = "0.5.5"
