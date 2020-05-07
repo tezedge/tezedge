@@ -7,7 +7,6 @@ use tezos_encoding::{
     types::BigInt,
     encoding::{Encoding, Field, HasEncoding},
 };
-use getset::{CopyGetters, Getters};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use std::collections::HashMap;
