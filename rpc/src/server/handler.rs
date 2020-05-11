@@ -236,13 +236,10 @@ pub async fn delegates_by_activity(_: Request<Body>, params: Params, query: Quer
     let block_id = params.get_str("block_id").unwrap();
 
     if query.contains_key("active") && query.contains_key("inactive") {
-        println!("Serving active and inactive");
         result_option_to_json_response(services::protocol::list_delegates(chain_id, block_id, Activity::Both, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
     } else if query.contains_key("active") {
-        println!("Serving active");
         result_option_to_json_response(services::protocol::list_delegates(chain_id, block_id, Activity::Active, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
     } else if query.contains_key("inactive") {
-        println!("Serving inactive");
         result_option_to_json_response(services::protocol::list_delegates(chain_id, block_id, Activity::Inactive, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
     } else {
         empty()
