@@ -21,7 +21,6 @@ use serde::Serialize;
 use crypto::hash::HashType;
 use storage::{num_from_slice, BlockStorage, BlockStorageReader};
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
-use storage::context::{TezedgeContext};
 use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextIndex, ContextApi};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;

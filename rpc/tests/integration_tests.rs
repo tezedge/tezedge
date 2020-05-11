@@ -95,19 +95,19 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants for
-        // let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
-        //     .expect("Failed to get constants from tezedge");
+        let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
+            .expect("Failed to get constants from tezedge");
 
-        // let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
-        // let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
-        // let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
+        let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
+        let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
+        let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
 
         // // block on level 1
-        // let cycle:i64 = if level == 1 {
-        //     0
-        // } else {
-        //     block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
-        // };
+        let cycle:i64 = if level == 1 {
+            0
+        } else {
+            block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
+        };
 
         // test last level of snapshot
         if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
