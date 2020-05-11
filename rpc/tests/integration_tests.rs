@@ -56,12 +56,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // ---------------------- Please keep one function per test ----------------------
 
         // --------------------------- Tests for each block_id ---------------------------
-        // test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
-        //test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
 
         // voting rpcs
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
@@ -75,23 +69,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates/tz1aWXP237BLwNHJcCD4b3DutCevhqq2T1Z9")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?inactive&active")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/delegates?active&inactive")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1AY1VhuU2UKAdFMeHwLZDktB6mSAJV8T4h")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1UzbgaH7sqcCpfUgPh6bWkgMFdagMVM9dS")).await;
-        // //test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1TL9gVnbUsetnarjxbvu2kYL1ysafcsksw")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1T2V8prXxe2uwanMim7TYHsXMmsrygGbxG")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/contracts/KT1Hk937wj5Y8qzs2cymoaqWVTrHAUJ42cAV")).await;
 
+        test_delegates(level).await;
 
-
-
-
-        // TODO: check listing
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", &block_to_check, "votes/listings")).await;
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants for
@@ -181,7 +165,16 @@ async fn test_contracts(to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", to_block, "context/contracts", contract)).await;
     }
 }
-// KT1P7WsdnB3aqvyLM7dHqLp2HSzKC3Xr7GN4
+
+async fn test_delegates(block: i64) {
+    let delegates: Vec<String> = serde_json::from_value(get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}/{}", "chains/main/blocks", block, "context/delegates?active")).await.expect("Failed to get block from ocaml")).unwrap();
+
+    println!("Number of delegates up to block {}: {}", block, delegates.len());
+
+    for delegate in delegates {  
+        test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", block, "context/delegates", delegate)).await;
+    }
+}
 
 async fn test_rpc_compare_json(rpc_path: &str) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
