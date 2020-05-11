@@ -147,7 +147,6 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     }
     if let Some(Bucket::Exists(data)) =  context.get_key(&context_index, &change_key)? {
         change = from_zarith(&data)?;
-        println!("Change: {}", change.to_str_radix(10));
     } else {
         change = ToBigInt::to_bigint(&0).unwrap();
     }
@@ -207,6 +206,7 @@ fn get_delegate_context_data(context_proto_params: ContextProtocolParam, context
     let mut delegated_contracts: DelegatedContracts = Default::default();
     if let Some(contracts) = context.get_by_key_prefix(&context_index, &delegated_contracts_key_prefix)? {
         let mut delegated_contracts_raw = contracts.into_iter()
+            .filter(|(_, v)| if let Bucket::Exists(_) = v { true } else { false })
             .map(|(k, _)| k.to_string())
             .collect::<DelegatedContracts>();
         delegated_contracts_raw.sort();
@@ -271,7 +271,6 @@ pub(crate) fn get_delegate(context_proto_params: ContextProtocolParam, _chain_id
     let roll_count = get_roll_count(block_level, pkh, &context)?;
     
     let staking_balance: BigInt;
-    println!("Roll count: {}", &roll_count);
     staking_balance = tokens_per_roll * roll_count + delegate_data.change();
 
     // delegated balance
