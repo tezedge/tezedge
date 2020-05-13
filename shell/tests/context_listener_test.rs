@@ -4,6 +4,7 @@
 extern crate test;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
@@ -181,7 +182,7 @@ fn apply_blocks_like_chain_feeder(
     block_meta_storage: &mut BlockMetaStorage,
     operations_meta_storage: &mut OperationsMetaStorage,
     tezos_env: &TezosEnvironmentConfiguration,
-    _storage_db_path: &str,
+    storage_db_path: &str,
     context_db_path: &str,
     log: Logger) -> Result<(), failure::Error> {
     ffi::change_runtime_configuration(
@@ -192,8 +193,12 @@ fn apply_blocks_like_chain_feeder(
     ).unwrap().unwrap();
 
     // init context
+    let storage_db_path_buf = PathBuf::from(storage_db_path);
+    let context_db_path_buf = PathBuf::from(context_db_path);
     let init_storage_data = resolve_storage_init_chain_data(
         &tezos_env,
+        &storage_db_path_buf,
+        &context_db_path_buf,
         log.clone(),
     )?;
     let (chain_id, .., genesis_context_hash) = init_test_protocol_context(tezos_env, context_db_path);
