@@ -25,6 +25,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
+use std::path::PathBuf;
 
 pub mod persistent;
 pub mod operations_storage;
@@ -152,22 +153,22 @@ impl fmt::Debug for StorageInitInfo {
     }
 }
 
-/// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
-/// Which means that successor of the genesis block is also genesis block. By combining those
-/// two statements we get cyclic relationship and everything breaks..
-///
-/// Genesis header is also "applied", but with special case "commit_genesis", which initialize protocol context.
-/// We must ensure this, because applying next blocks depends on Context (identified by ContextHash) of predecessor.
-///
-/// So when "commit_genesis" event occurrs, we must use Context_hash and create genesis header within.
-/// Commit_genesis also updates block json/additional metadata resolved by protocol.
-pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration, log: Logger) -> Result<StorageInitInfo, StorageError> {
+/// Resolve main chain id and genesis header from configuration
+pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration, storage_db_path: &PathBuf, context_db_path: &PathBuf, log: Logger) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
         chain_id: tezos_env.main_chain_id()?,
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
     };
 
-    info!(log, "Storage based on data"; "chain_name" => &tezos_env.version, "init_data" => format!("{:?}", &init_data));
+    info!(
+        log,
+        "Storage based on data";
+        "chain_name" => &tezos_env.version,
+        "init_data.chain_id" => format!("{:?}", HashType::ChainId.bytes_to_string(&init_data.chain_id)),
+        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.bytes_to_string(&init_data.genesis_block_header_hash)),
+        "storage_db_path" => format!("{:?}", storage_db_path),
+        "context_db_path" => format!("{:?}", context_db_path)
+    );
     Ok(init_data)
 }
 
@@ -234,6 +235,15 @@ pub fn store_commit_genesis_result(
     Ok(block_json_data)
 }
 
+/// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
+/// Which means that successor of the genesis block is also genesis block. By combining those
+/// two statements we get cyclic relationship and everything breaks..
+///
+/// Genesis header is also "applied", but with special case "commit_genesis", which initialize protocol context.
+/// We must ensure this, because applying next blocks depends on Context (identified by ContextHash) of predecessor.
+///
+/// So when "commit_genesis" event occurrs, we must use Context_hash and create genesis header within.
+/// Commit_genesis also updates block json/additional metadata resolved by protocol.
 pub fn initialize_storage_with_genesis_block(
     block_storage: &mut BlockStorage,
     init_storage_data: &StorageInitInfo,

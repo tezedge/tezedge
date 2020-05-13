@@ -17,6 +17,7 @@ use storage::context::{ContextApi, ContextDiff, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
+use crypto::hash::HashType;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -125,7 +126,15 @@ fn listen_protocol_events(
             Ok(ContextAction::Shutdown) => break,
             Ok(msg) => {
                 if event_count % 100 == 0 {
-                    debug!(log, "Received protocol event"; "count" => event_count);
+                    debug!(
+                        log,
+                        "Received protocol event";
+                        "count" => event_count,
+                        "context_hash" => match &context_diff.predecessor_index.context_hash {
+                            None => "-none-".to_string(),
+                            Some(c) => HashType::ContextHash.bytes_to_string(c)
+                        }
+                    );
                 }
                 event_count += 1;
 
@@ -159,6 +168,7 @@ fn listen_protocol_events(
                     }
                     ContextAction::Checkout { context_hash, .. } => {
                         context_diff = context.checkout(context_hash)?;
+                        event_count = 0;
                     }
                     ContextAction::Mem { block_hash: Some(block_hash), .. }
                     | ContextAction::DirMem { block_hash: Some(block_hash), .. }

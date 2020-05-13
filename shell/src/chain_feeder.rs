@@ -288,7 +288,13 @@ fn feed_chain_to_protocol(
                                     &operations,
                                     predecessor_additional_data.max_operations_ttl().clone(),
                                 )?;
-                                debug!(log, "Block was applied";"block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash), "validation_result_message" => &apply_block_result.validation_result_message);
+                                debug!(
+                                    log,
+                                    "Block was applied";
+                                    "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
+                                    "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
+                                    "validation_result_message" => &apply_block_result.validation_result_message
+                                );
 
 
 

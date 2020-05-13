@@ -44,6 +44,7 @@ const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
 /// After this interval we will rehydrate state if no new blocks are applied
 const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
+const BLOCK_HASH_ENCODING: HashType = HashType::BlockHash;
 
 /// Message commands [`ChainManager`] to disconnect stalled peers.
 #[derive(Clone, Debug)]
@@ -79,6 +80,20 @@ impl CurrentHead {
             Some(current_remote_head) => new_remote_level > current_remote_head.level
         }
     }
+
+    fn local_debug_info(&self) -> (String, i32) {
+        match &self.local {
+            None => ("-none-".to_string(), 0 as i32),
+            Some(head) => head.to_debug_info()
+        }
+    }
+
+    fn remote_debug_info(&self) -> (String, i32) {
+        match &self.remote {
+            None => ("-none-".to_string(), 0 as i32),
+            Some(head) => head.to_debug_info()
+        }
+    }
 }
 
 /// This struct holds info about remote "current" head and level
@@ -88,6 +103,12 @@ struct Head {
     hash: BlockHash,
     /// Level of the head.
     level: i32,
+}
+
+impl Head {
+    fn to_debug_info(&self) -> (String, i32) {
+        (BLOCK_HASH_ENCODING.bytes_to_string(&self.hash), self.level)
+    }
 }
 
 /// Holds various stats with info about internal synchronization.
@@ -384,7 +405,7 @@ impl ChainManager {
                                             }
                                         }
                                         None => {
-                                            warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_header_with_hash.hash));
+                                            warn!(log, "Received unexpected block header"; "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_header_with_hash.hash));
                                         }
                                     }
                                 }
@@ -414,7 +435,7 @@ impl ChainManager {
                                             let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
                                                 peer.operations_response_last = Instant::now();
-                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_hash));
+                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
 
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // update stats
@@ -438,7 +459,7 @@ impl ChainManager {
                                                     peer.queued_operations.remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.bytes_to_string(&block_hash));
+                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
@@ -508,7 +529,7 @@ impl ChainManager {
             Some(hash) => {
                 self.block_storage
                     .get(&hash)
-                    .expect(&format!("Failed to read head: {}", HashType::BlockHash.bytes_to_string(&hash)))
+                    .expect(&format!("Failed to read head: {}", BLOCK_HASH_ENCODING.bytes_to_string(&hash)))
                     .map(|block| Head {
                         hash: block.hash.clone(),
                         level: block.header.level(),
@@ -517,7 +538,14 @@ impl ChainManager {
             None => None
         };
 
-        info!(ctx.system.log(), "Hydrating completed successfully");
+
+        let (local_head, local_head_level) = self.current_head.local_debug_info();
+        info!(
+            ctx.system.log(),
+            "Hydrating completed successfully";
+            "local_head" => local_head,
+            "local_head_level" => local_head_level,
+        );
         self.stats.hydrated_state_last = Some(Instant::now());
     }
 }
@@ -602,21 +630,8 @@ impl Receive<LogStats> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
-        let block_hash_encoding = HashType::BlockHash;
-        let (local, local_level) = match &self.current_head.local {
-            None => ("-none-".to_string(), 0 as i32),
-            Some(head) => (
-                block_hash_encoding.bytes_to_string(&head.hash),
-                head.level
-            )
-        };
-        let (remote, remote_level) = match &self.current_head.remote {
-            None => ("-none-".to_string(), 0 as i32),
-            Some(head) => (
-                block_hash_encoding.bytes_to_string(&head.hash),
-                head.level
-            ),
-        };
+        let (local, local_level) = &self.current_head.local_debug_info();
+        let (remote, remote_level) = &self.current_head.remote_debug_info();
         info!(log, "Head info";
             "local" => local,
             "local_level" => local_level,
