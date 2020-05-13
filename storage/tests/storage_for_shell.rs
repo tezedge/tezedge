@@ -21,7 +21,9 @@ fn test_storage() -> Result<(), Error> {
     let log = create_logger();
 
     // storage
-    let tmp_storage = TmpStorage::create(test_storage_dir_path("__storage_for_shell"))?;
+    let context_dir = PathBuf::from("__storage_for_shell");
+    let tmp_storage_dir = test_storage_dir_path("__storage_for_shell");
+    let tmp_storage = TmpStorage::create(tmp_storage_dir.clone())?;
     let mut block_storage = BlockStorage::new(tmp_storage.storage());
     let mut block_meta_storage = BlockMetaStorage::new(tmp_storage.storage());
     let mut operations_meta_storage = OperationsMetaStorage::new(tmp_storage.storage());
@@ -46,7 +48,7 @@ fn test_storage() -> Result<(), Error> {
     };
 
     // initialize empty storage
-    let init_data = resolve_storage_init_chain_data(&tezos_env, log.clone());
+    let init_data = resolve_storage_init_chain_data(&tezos_env, &tmp_storage_dir, &context_dir, log.clone());
     assert!(init_data.is_ok());
 
     let init_data = init_data.unwrap();

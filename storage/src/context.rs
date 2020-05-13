@@ -101,7 +101,7 @@ fn replace_key(key: &String, matched: &Vec<String>, replacer: &Vec<String>) -> S
 /// Struct points to context commmit hash or index, which is checkouted
 pub struct ContextIndex {
     level: Option<usize>,
-    context_hash: Option<ContextHash>,
+    pub context_hash: Option<ContextHash>,
 }
 
 impl ContextIndex {
@@ -112,7 +112,7 @@ impl ContextIndex {
 
 /// Stuct which hold diff againts predecessor's context
 pub struct ContextDiff {
-    predecessor_index: ContextIndex,
+    pub predecessor_index: ContextIndex,
     diff: ContextMap,
 }
 

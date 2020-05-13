@@ -346,7 +346,7 @@ pub struct ProtocolController<'a> {
 /// Methods also handle things such as timeouts and also checks is correct response type is received.
 impl<'a> ProtocolController<'a> {
     const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
-    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(90);
+    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(180);
 
     /// Apply block
     pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResult, ProtocolServiceError> {
