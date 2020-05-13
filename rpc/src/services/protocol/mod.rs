@@ -36,6 +36,7 @@ use tezos_messages::protocol::{
 use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id};
 use crate::rpc_actor::RpcCollectedStateRef;
 
+mod proto_001;
 mod proto_005_2;
 mod proto_006;
 
@@ -79,8 +80,20 @@ pub(crate) fn check_and_get_baking_rights(
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
-        proto_001_constants::PROTOCOL_HASH
-        | proto_002_constants::PROTOCOL_HASH
+        proto_001_constants::PROTOCOL_HASH => {
+            proto_001::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                list,
+                persistent_storage,
+            )
+        }
+        proto_002_constants::PROTOCOL_HASH
         | proto_003_constants::PROTOCOL_HASH
         | proto_004_constants::PROTOCOL_HASH
         | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
@@ -152,8 +165,19 @@ pub(crate) fn check_and_get_endorsing_rights(
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
-        proto_001_constants::PROTOCOL_HASH
-        | proto_002_constants::PROTOCOL_HASH
+        proto_001_constants::PROTOCOL_HASH => {
+            proto_001::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                list,
+                persistent_storage,
+            )
+        }
+        proto_002_constants::PROTOCOL_HASH
         | proto_003_constants::PROTOCOL_HASH
         | proto_004_constants::PROTOCOL_HASH
         | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
