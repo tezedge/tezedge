@@ -27,6 +27,6 @@ sha2 = "0.8.0"
 
 [dev-dependencies]
 crypto = { path = "../../crypto" }
-serial_test = { git = "https://github.com/palfrey/serial_test.git" }
 tezos_context = { path = "../context" }
 tezos_messages = { path = "../messages" }
+serial_test = "0.4"

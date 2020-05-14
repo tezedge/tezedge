@@ -9,7 +9,7 @@ chrono = "0.4"
 erased-serde = "0.3"
 failure = "0.1"
 rand = "0.7.3"
-riker = { git = "https://github.com/simplestaking/riker.git", branch = "slog-support" }
+riker = "0.4"
 rocksdb = "0.13"
 ws = "*"
 tokio = "0.2"

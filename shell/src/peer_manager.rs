@@ -136,8 +136,9 @@ impl PeerManager {
                  identity: Identity,
                  protocol_version: String,
     ) -> Result<PeerManagerRef, CreateError> {
-        sys.actor_of(
-            Props::new_args(PeerManager::new, (
+        sys.actor_of_props::<PeerManager>(
+            PeerManager::name(),
+            Props::new_args((
                 network_channel,
                 shell_channel,
                 tokio_executor,
@@ -147,35 +148,13 @@ impl PeerManager {
                 listener_port,
                 identity,
                 protocol_version)),
-            PeerManager::name())
+            )
     }
 
     /// The `PeerManager` is intended to serve as a singleton actor so that's why
     /// we won't support multiple names per instance.
     fn name() -> &'static str {
         "peer-manager"
-    }
-
-    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
-           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self {
-        PeerManager {
-            network_channel,
-            shell_channel,
-            tokio_executor,
-            bootstrap_addresses,
-            initial_peers,
-            threshold,
-            listener_port,
-            identity,
-            protocol_version,
-            rx_run: Arc::new(AtomicBool::new(true)),
-            potential_peers: HashSet::new(),
-            peers: HashMap::new(),
-            ip_blacklist: HashSet::new(),
-            discovery_last: None,
-            check_peer_count_last: None,
-            shutting_down: false,
-        }
     }
 
     /// Try to discover new remote peers to connect
@@ -265,6 +244,32 @@ impl PeerManager {
             .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
             .collect::<Vec<_>>();
         self.potential_peers.extend(sock_addresses);
+    }
+}
+
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)> for PeerManager {
+
+    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
+                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self
+    {
+        PeerManager {
+            network_channel,
+            shell_channel,
+            tokio_executor,
+            bootstrap_addresses,
+            initial_peers,
+            threshold,
+            listener_port,
+            identity,
+            protocol_version,
+            rx_run: Arc::new(AtomicBool::new(true)),
+            potential_peers: HashSet::new(),
+            peers: HashMap::new(),
+            ip_blacklist: HashSet::new(),
+            discovery_last: None,
+            check_peer_count_last: None,
+            shutting_down: false,
+        }
     }
 }
 

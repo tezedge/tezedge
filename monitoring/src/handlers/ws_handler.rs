@@ -29,7 +29,17 @@ impl WebsocketHandler {
         "websocket_handler"
     }
 
-    fn new(address: SocketAddr) -> Self {
+    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr, log: Logger) -> Result<WebsocketHandlerRef, CreateError> {
+        info!(log, "Starting websocket server"; "address" => address);
+
+        sys.actor_of_props::<WebsocketHandler>(
+            Self::name(),
+            Props::new_args(address))
+    }
+}
+
+impl ActorFactoryArgs<SocketAddr> for WebsocketHandler {
+    fn create_args(address: SocketAddr) -> Self {
         let connected_clients = Arc::new(AtomicUsize::new(0));
         let ws_server = WebSocket::new(WsServer::new(connected_clients.clone()))
             .expect("Unable to create websocket server");
@@ -45,15 +55,6 @@ impl WebsocketHandler {
             broadcaster,
             connected_clients,
         }
-    }
-
-    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr, log: Logger) -> Result<WebsocketHandlerRef, CreateError> {
-        info!(log, "Starting websocket server"; "address" => address);
-
-        sys.actor_of(
-            Props::new_args(Self::new, address),
-            Self::name(),
-        )
     }
 }
 

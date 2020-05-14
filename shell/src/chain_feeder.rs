@@ -69,7 +69,7 @@ impl ChainFeeder {
             let init_storage_data = init_storage_data.clone();
             let tezos_env = tezos_env.clone();
 
-            thread::spawn(move || {
+            thread::spawn(move || -> Result<(), Error>{
                 let mut block_storage = BlockStorage::new(&persistent_storage);
                 let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let operations_storage = OperationsStorage::new(&persistent_storage);
@@ -95,9 +95,10 @@ impl ChainFeeder {
             })
         };
 
-        let myself = sys.actor_of(
-            Props::new_args(ChainFeeder::new, (shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
-            ChainFeeder::name())?;
+        let myself = sys.actor_of_props::<ChainFeeder>(
+            ChainFeeder::name(),
+            Props::new_args((shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread)))))
+        )?;
 
         Ok(myself)
     }
@@ -106,14 +107,6 @@ impl ChainFeeder {
     /// we won't support multiple names per instance.
     fn name() -> &'static str {
         "chain-feeder"
-    }
-
-    fn new((shell_channel, block_applier_run, block_applier_thread): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)) -> Self {
-        ChainFeeder {
-            shell_channel,
-            block_applier_run,
-            block_applier_thread,
-        }
     }
 
     fn process_shell_channel_message(&mut self, _ctx: &Context<ChainFeederMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
@@ -125,6 +118,16 @@ impl ChainFeeder {
         }
 
         Ok(())
+    }
+}
+
+impl ActorFactoryArgs<(ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)> for ChainFeeder {
+    fn create_args((shell_channel, block_applier_run, block_applier_thread): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)) -> Self {
+        ChainFeeder {
+            shell_channel,
+            block_applier_run,
+            block_applier_thread,
+        }
     }
 }
 

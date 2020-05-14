@@ -214,12 +214,14 @@ impl Peer {
             secret_key: secret_key.into(),
             version: version.into(),
         };
-        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address));
+        let props = Props::new_args::<Peer, _>((network_channel, Arc::new(info), tokio_executor, *socket_address));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
-        sys.actor_of(props, &format!("peer-{}", actor_id))
+        sys.actor_of_props(&format!("peer-{}", actor_id), props)
     }
+}
 
-    fn new((event_channel, info, tokio_executor, socket_address): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr)) -> Self {
+impl ActorFactoryArgs<(NetworkChannelRef, Arc<Local>, Handle, SocketAddr)> for Peer {
+    fn create_args((event_channel, info, tokio_executor, socket_address): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr)) -> Self {
         Peer {
             network_channel: event_channel,
             local: info,

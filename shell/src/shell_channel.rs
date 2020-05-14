@@ -100,19 +100,21 @@ pub type ShellChannelRef = ChannelRef<ShellChannelMsg>;
 
 impl ShellChannel {
     pub fn actor(fact: &impl ActorRefFactory) -> Result<ShellChannelRef, CreateError> {
-        fact.actor_of(Props::new(ShellChannel::new), ShellChannel::name())
+        fact.actor_of::<ShellChannel>(ShellChannel::name())
     }
 
     fn name() -> &'static str {
         "shell-event-channel"
     }
-
-    fn new() -> Self {
-        ShellChannel(Channel::new())
-    }
 }
 
 type ChannelCtx<Msg> = Context<ChannelMsg<Msg>>;
+
+impl ActorFactory for ShellChannel {
+    fn create() -> Self {
+        ShellChannel(Channel::default())
+    }
+}
 
 impl Actor for ShellChannel {
     type Msg = ChannelMsg<ShellChannelMsg>;
