@@ -39,6 +39,7 @@ use crate::rpc_actor::RpcCollectedStateRef;
 
 mod proto_001;
 mod proto_002;
+mod proto_003;
 mod proto_005_2;
 mod proto_006;
 
@@ -110,8 +111,20 @@ pub(crate) fn check_and_get_baking_rights(
                 persistent_storage,
             )
         }
-        proto_003_constants::PROTOCOL_HASH
-        | proto_004_constants::PROTOCOL_HASH
+        proto_003_constants::PROTOCOL_HASH => {
+            proto_003::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_004_constants::PROTOCOL_HASH
         | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::rights_service::check_and_get_baking_rights(
@@ -207,8 +220,19 @@ pub(crate) fn check_and_get_endorsing_rights(
                 persistent_storage,
             )
         }
-        proto_003_constants::PROTOCOL_HASH
-        | proto_004_constants::PROTOCOL_HASH
+        proto_003_constants::PROTOCOL_HASH => {
+            proto_003::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_004_constants::PROTOCOL_HASH
         | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::rights_service::check_and_get_endorsing_rights(
