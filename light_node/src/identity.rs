@@ -15,6 +15,11 @@ pub enum IdentityError {
     IoError {
         reason: io::Error
     },
+    #[fail(display = "Service error: {}, e: {}", message, error)]
+    ServiceError {
+        error: failure::Error,
+        message: &'static str,
+    },
     #[fail(display = "Identity serialization error: {}", reason)]
     SerializationError {
         reason: serde_json::Error
@@ -45,7 +50,7 @@ pub fn load_identity<P: AsRef<Path>>(identity_json_file_path: P) -> Result<Ident
     Ok(identity)
 }
 
-// Stores provided identity into the file specified by path
+/// Stores provided identity into the file specified by path
 pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
     let identity_json = serde_json::to_string(identity).map_err(|err| IdentityError::SerializationError { reason: err })?;
     fs::write(&path, &identity_json)?;
