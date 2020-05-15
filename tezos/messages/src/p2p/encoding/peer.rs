@@ -5,8 +5,8 @@ use std::mem::size_of;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use lazy_static::lazy_static;
 
+use lazy_static::lazy_static;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
@@ -126,3 +126,4 @@ into_peer_message!(GetCurrentHeadMessage, GetCurrentHead);
 into_peer_message!(CurrentHeadMessage, CurrentHead);
 into_peer_message!(GetOperationsForBlocksMessage, GetOperationsForBlocks);
 into_peer_message!(OperationsForBlocksMessage, OperationsForBlocks);
+into_peer_message!(GetOperationsMessage, GetOperations);

@@ -18,7 +18,7 @@ use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageError, StorageInitInfo, SystemStorage};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageError, StorageInitInfo, SystemStorage};
 use storage::p2p_message_storage::{P2PMessageSecondaryIndex, P2PMessageStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
@@ -35,8 +35,7 @@ use crate::identity::IdentityError;
 mod configuration;
 mod identity;
 
-const DATABASE_VERSION: i64 = 12;
-const EXPECTED_POW: f64 = 26.0;
+const DATABASE_VERSION: i64 = 13;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -314,6 +313,7 @@ fn main() {
         Lane::descriptor(),
         ListValue::descriptor(),
         Sequences::descriptor(),
+        MempoolStorage::descriptor(),
     ];
     let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
         Ok(db) => Arc::new(db),
