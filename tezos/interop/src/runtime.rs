@@ -13,7 +13,7 @@ use std::task::{Context, Poll, Waker};
 use std::thread;
 
 use futures::executor::LocalPool;
-use ocaml::core::callback::caml_startup;
+use ocaml::core::callback::{caml_shutdown, caml_startup};
 
 use lazy_static::lazy_static;
 
@@ -33,6 +33,8 @@ fn start_ocaml_runtime() {
         caml_startup(argv);
     }
 }
+
+
 
 /// Ocaml execution error
 pub struct OcamlError;
@@ -212,4 +214,13 @@ pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
         T: 'static + Send
 {
     LocalPool::new().run_until(spawn(f))
+}
+
+/// Tries to shutdown ocaml runtime gracefully - give chance to close resources, trigger GC finalization...
+///
+/// https://caml.inria.fr/pub/docs/manual-ocaml/intfc.html#sec467
+pub fn shutdown() {
+    unsafe {
+        caml_shutdown();
+    }
 }
