@@ -1,13 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::env;
+use std::ffi::OsString;
 use std::fs;
+use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::env;
-
-use std::io::{self, BufRead};
-use std::ffi::OsString;
 
 use clap::{App, Arg};
 
@@ -44,6 +43,12 @@ pub struct Storage {
 }
 
 #[derive(Debug, Clone)]
+pub struct Identity {
+    pub identity_json_file_path: PathBuf,
+    pub expected_pow: f64,
+}
+
+#[derive(Debug, Clone)]
 pub enum LogFormat {
     Json,
     Simple,
@@ -67,9 +72,9 @@ pub struct Environment {
     pub rpc: Rpc,
     pub logging: Logging,
     pub storage: Storage,
+    pub identity: Identity,
 
     pub record: bool,
-    pub identity_json_file_path: PathBuf,
     pub tezos_network: TezosEnvironment,
     pub enable_testchain: bool,
     pub protocol_runner: PathBuf,
@@ -129,6 +134,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("identity-expected-pow")
+            .long("identity-expected-pow")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Expected power of identity for node. It is used to generate new identity. Default: 26.0")
+            .validator(parse_validator_fn!(f64, "Value must be a valid f64 number for expected_pow")))
         .arg(Arg::with_name("bootstrap-db-path")
             .long("bootstrap-db-path")
             .takes_value(true)
@@ -271,6 +282,7 @@ pub fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "ffi-calls-gc-threshold");
     validate_required_arg(args, "tokio-threads");
     validate_required_arg(args, "identity-file");
+    validate_required_arg(args, "identity-expected-pow");
     validate_required_arg(args, "record");
 
     // "bootstrap-lookup-address", "log-file" and "peers" are not required
@@ -466,12 +478,18 @@ impl Environment {
                     get_final_path(&data_dir, db_path)
                 },
             },
-            identity_json_file_path: {
-                let identity_path = args.value_of("identity-file")
-                    .unwrap_or("")
-                    .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path");
-                get_final_path(&data_dir, identity_path)
+            identity: crate::configuration::Identity {
+                identity_json_file_path: {
+                    let identity_path = args.value_of("identity-file")
+                        .unwrap_or("")
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path");
+                    get_final_path(&data_dir, identity_path)
+                },
+                expected_pow: args.value_of("identity-expected-pow")
+                    .unwrap_or("26.0")
+                    .parse::<f64>()
+                    .expect("Provided value cannot be converted to number"),
             },
             record: args.value_of("record")
                 .unwrap_or("")

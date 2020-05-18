@@ -33,11 +33,11 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
+use crate::identity::IdentityError;
 
 mod configuration;
 mod identity;
 
-const EXPECTED_POW: f64 = 26.0;
 const DATABASE_VERSION: i64 = 12;
 
 macro_rules! shutdown_and_exit {
@@ -224,6 +224,45 @@ fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironme
     Ok(db_version_ok && chain_id_ok)
 }
 
+fn ensure_identity(identity_cfg: &crate::configuration::Identity, protocol_runner_endpoint: &mut ProtocolRunnerEndpoint, log: Logger) -> Result<Identity, IdentityError> {
+    if identity_cfg.identity_json_file_path.exists() {
+        identity::load_identity(&identity_cfg.identity_json_file_path)
+    } else {
+        info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
+
+        // TODO: TE-74 will be replace with rust version without protocol_runner
+        // setup tezos ocaml runtime just for generate identity
+        let protocol_controller = match protocol_runner_endpoint.commands.accept() {
+            Ok(controller) => controller,
+            Err(e) => {
+                error!(log, "Failed to create protocol controller. Reason: {:?}", e);
+                return Err(IdentityError::ServiceError {
+                    error: e.into(),
+                    message: "Failed to create protocol controller",
+                });
+            },
+        };
+
+        match protocol_controller.generate_identity(identity_cfg.expected_pow) {
+            Ok(identity) => {
+                info!(log, "Identity successfully generated");
+                match identity::store_identity(&identity_cfg.identity_json_file_path, &identity) {
+                    Ok(()) => {
+                        drop(protocol_controller);
+                        info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
+                        Ok(identity)
+                    }
+                    Err(e) => Err(e)
+                }
+            }
+            Err(e) => return Err(IdentityError::ServiceError {
+                error: e.into(),
+                message: "Failed to store generated identity",
+            })
+        }
+    }
+}
+
 fn main() {
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
@@ -255,40 +294,13 @@ fn main() {
     };
 
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    let tezos_identity =
-        if env.identity_json_file_path.exists() {
-            match identity::load_identity(&env.identity_json_file_path) {
-                Ok(identity) => {
-                    info!(log, "Identity loaded from file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
-                    identity
-                }
-                Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
-            }
-        } else {
-            info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => EXPECTED_POW);
-
-            // TODO: TE-74 will be replace with rust version
-            // setup tezos ocaml runtime just for generate identity
-            let protocol_controller = match protocol_runner_endpoint.commands.accept() {
-                Ok(controller) => controller,
-                Err(e) => shutdown_and_exit!(error!(log, "Failed to create protocol controller. Reason: {:?}", e), actor_system),
-            };
-
-            match protocol_controller.generate_identity(EXPECTED_POW) {
-                Ok(identity) => {
-                    info!(log, "Identity successfully generated");
-                    match identity::store_identity(&env.identity_json_file_path, &identity) {
-                        Ok(()) => {
-                            drop(protocol_controller);
-                            info!(log, "Generated identity stored to file"; "file" => env.identity_json_file_path.clone().into_os_string().into_string().unwrap());
-                            identity
-                        }
-                        Err(e) => shutdown_and_exit!(error!(log, "Failed to store generated identity"; "reason" => e), actor_system),
-                    }
-                }
-                Err(e) => shutdown_and_exit!(error!(log, "Failed to generate identity"; "reason" => e), actor_system),
-            }
-        };
+    let tezos_identity = match ensure_identity(&env.identity, &mut protocol_runner_endpoint, log.clone()) {
+        Ok(identity) => {
+            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.clone().into_os_string().into_string().unwrap());
+            identity
+        }
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
+    };
 
     let schemas = vec![
         block_storage::BlockPrimaryIndex::descriptor(),
