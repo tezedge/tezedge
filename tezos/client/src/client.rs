@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResult, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+use tezos_api::ffi::{
+    ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
+    CommitGenesisResult,
+    ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError,
+    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
+};
 use tezos_api::identity::Identity;
-use tezos_encoding::binary_writer;
 use tezos_interop::ffi;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -64,7 +68,7 @@ pub fn apply_block(
     block_header: &BlockHeader,
     predecessor_block_header: &BlockHeader,
     operations: &Vec<Option<OperationsForBlocksMessage>>,
-    max_operations_ttl: u16) -> Result<ApplyBlockResult, ApplyBlockError> {
+    max_operations_ttl: u16) -> Result<ApplyBlockResponse, ApplyBlockError> {
 
     // check operations count by validation_pass
     if (block_header.validation_pass() as usize) != operations.len() {
@@ -80,17 +84,11 @@ pub fn apply_block(
         .block_header(block_header.clone())
         .pred_header(predecessor_block_header.clone())
         .max_operations_ttl(max_operations_ttl as i32)
-        .operations(ApplyBlockRequest::to_ops(operations))
+        .operations(ApplyBlockRequest::convert_operations(operations))
         .build().unwrap();
 
-    // write to bytes
-    let request = match binary_writer::write(&request, &APPLY_BLOCK_REQUEST_ENCODING) {
-        Ok(data) => data,
-        Err(e) => return Err(ApplyBlockError::InvalidApplyBlockRequestData { message: format!("{:?}", e) })
-    };
-
     match ffi::apply_block(request) {
-        Ok(result) => result,
+        Ok(result) => result.map_err(|e|ApplyBlockError::from(e)),
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
                 message: format!("Unknown OcamlError: {:?}", e)

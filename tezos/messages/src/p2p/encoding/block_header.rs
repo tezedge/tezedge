@@ -12,6 +12,19 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
+pub type Fitness = Vec<Vec<u8>>;
+
+pub fn fitness_encoding() -> Encoding {
+    Encoding::Split(Arc::new(|schema_type|
+        match schema_type {
+            SchemaType::Json => Encoding::dynamic(Encoding::list(Encoding::Bytes)),
+            SchemaType::Binary => Encoding::dynamic(Encoding::list(
+                Encoding::dynamic(Encoding::list(Encoding::Uint8))
+            ))
+        }
+    ))
+}
+
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct BlockHeaderMessage {
     #[get = "pub"]
@@ -31,7 +44,7 @@ impl HasEncoding for BlockHeaderMessage {
 
 impl CachedData for BlockHeaderMessage {
     #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
+    fn cache_reader(&self) -> &dyn CacheReader {
         &self.body
     }
 
@@ -61,7 +74,7 @@ impl GetBlockHeadersMessage {
     pub fn new(get_block_headers: Vec<BlockHash>) -> Self {
         GetBlockHeadersMessage {
             get_block_headers,
-            body: Default::default()
+            body: Default::default(),
         }
     }
 }
@@ -76,7 +89,7 @@ impl HasEncoding for GetBlockHeadersMessage {
 
 impl CachedData for GetBlockHeadersMessage {
     #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
+    fn cache_reader(&self) -> &dyn CacheReader {
         &self.body
     }
 
@@ -102,7 +115,7 @@ pub struct BlockHeader {
     #[get = "pub"]
     operations_hash: OperationListListHash,
     #[get = "pub"]
-    fitness: Vec<Vec<u8>>,
+    fitness: Fitness,
     #[get = "pub"]
     context: ContextHash,
     #[get = "pub"]
@@ -122,14 +135,7 @@ impl HasEncoding for BlockHeader {
             Field::new("timestamp", Encoding::Timestamp),
             Field::new("validation_pass", Encoding::Uint8),
             Field::new("operations_hash", Encoding::Hash(HashType::OperationListListHash)),
-            Field::new("fitness", Encoding::Split(Arc::new(|schema_type|
-                match schema_type {
-                    SchemaType::Json => Encoding::dynamic(Encoding::list(Encoding::Bytes)),
-                    SchemaType::Binary => Encoding::dynamic(Encoding::list(
-                        Encoding::dynamic(Encoding::list(Encoding::Uint8))
-                    ))
-                }
-            ))),
+            Field::new("fitness", fitness_encoding()),
             Field::new("context", Encoding::Hash(HashType::ContextHash)),
             Field::new("protocol_data", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
@@ -143,7 +149,7 @@ impl HasEncoding for BlockHeader {
 
 impl CachedData for BlockHeader {
     #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
+    fn cache_reader(&self) -> &dyn CacheReader {
         &self.body
     }
 

@@ -166,13 +166,21 @@ fn listen_protocol_events(
 
                 match &msg {
                     ContextAction::Set { key, value, context_hash, ignored, .. } =>
-                        if !ignored { context_diff.set(context_hash, key, value)?; }
+                        if !ignored {
+                            context_diff.set(context_hash, key, value)?;
+                        }
                     ContextAction::Copy { to_key: key, from_key, context_hash, ignored, .. } =>
-                        if !ignored { context.copy_to_diff(context_hash, from_key, key, &mut context_diff)?; }
+                        if !ignored {
+                            context.copy_to_diff(context_hash, from_key, key, &mut context_diff)?;
+                        }
                     ContextAction::Delete { key, context_hash, ignored, .. } =>
-                        if !ignored { context.delete_to_diff(context_hash, key, &mut context_diff)?; }
+                        if !ignored {
+                            context.delete_to_diff(context_hash, key, &mut context_diff)?;
+                        }
                     ContextAction::RemoveRecursively { key, context_hash, ignored, .. } =>
-                        if !ignored { context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?; }
+                        if !ignored {
+                            context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?;
+                        }
                     ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash), .. } =>
                         context.commit(block_hash, parent_context_hash, new_context_hash, &context_diff)?,
                     ContextAction::Checkout { context_hash, .. } => {

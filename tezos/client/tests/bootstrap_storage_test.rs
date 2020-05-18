@@ -81,7 +81,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         ),
-        apply_block_result.max_operations_ttl,
+        apply_block_result.max_operations_ttl as u16,
     ).unwrap();
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
     assert_eq!(2, apply_block_result.max_operations_ttl);
@@ -95,7 +95,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
         ),
-        apply_block_result.max_operations_ttl,
+        apply_block_result.max_operations_ttl as u16,
     ).unwrap();
     assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.validation_result_message);
     assert_eq!(3, apply_block_result.max_operations_ttl);

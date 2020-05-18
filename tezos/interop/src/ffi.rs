@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use ocaml::{List, Str, ToValue, Tuple, Value};
-use ocaml::value::TRUE;
 use serde_json;
 
 use tezos_api::ffi::*;
@@ -46,6 +45,40 @@ impl Interchange<RustBytes> for OcamlBytes {
     fn is_empty(&self) -> bool {
         self.is_empty()
     }
+}
+
+/// Calls ffi function like request/response
+pub fn call<REQUEST, RESPONSE>(ffi_fn_name: String, request: REQUEST)
+                               -> Result<Result<RESPONSE, CallError>, OcamlError>
+    where
+        REQUEST: FfiMessage + 'static,
+        RESPONSE: FfiMessage + 'static {
+    runtime::execute(move || {
+        let ocaml_function = ocaml::named_value(&ffi_fn_name).expect(&format!("function '{}' is not registered", &ffi_fn_name));
+
+        // write to bytes
+        let request = match request.as_rust_bytes(REQUEST::encoding()) {
+            Ok(data) => data,
+            Err(e) => return Err(CallError::InvalidRequestData { message: format!("{:?}", e) })
+        };
+
+        // call ffi
+        match ocaml_function.call_exn::<OcamlBytes>(request.convert_to()) {
+            Ok(response) => {
+                let response: OcamlBytes = response.into();
+                let response: RustBytes = response.convert_to();
+
+                let response = RESPONSE::from_rust_bytes(response, RESPONSE::encoding())
+                    .map_err(|error| CallError::InvalidResponseData {
+                        message: format!("{}", error)
+                    })?;
+                Ok(response)
+            }
+            Err(e) => {
+                Err(CallError::from(e))
+            }
+        }
+    })
 }
 
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<Result<(), TezosRuntimeConfigurationError>, OcamlError> {
@@ -165,53 +198,8 @@ pub fn genesis_result_data(context_hash: RustBytes, chain_id: RustBytes, protoco
 
 /// Applies block to context
 /// - apply_block_request see [tezos_api::ffi:ApplyBlockRequest]
-pub fn apply_block(apply_block_request: RustBytes)
-    -> Result<Result<ApplyBlockResult, ApplyBlockError>, OcamlError> {
-    runtime::execute(move || {
-        let ocaml_function = ocaml::named_value("apply_block").expect("function 'apply_block' is not registered");
-
-        // call ffi
-        match ocaml_function.call_exn::<OcamlBytes>(apply_block_request.convert_to()) {
-            Ok(validation_result) => {
-                let validation_result: Tuple = validation_result.into();
-
-                let validation_result_message: Str = validation_result.get(0).unwrap().into();
-                let context_hash: OcamlHash = validation_result.get(1).unwrap().into();
-                let block_header_proto_json: Str = validation_result.get(2).unwrap().into();
-                let block_header_proto_metadata_json: Str = validation_result.get(3).unwrap().into();
-                let operations_proto_metadata_json: Str = validation_result.get(4).unwrap().into();
-                let max_operations_ttl: u16 = validation_result.get(5).unwrap().usize_val() as u16;
-                let last_allowed_fork_level: i32 = validation_result.get(6).unwrap().int32_val();
-                let forking_testchain = validation_result.get(7).unwrap().usize_val() == TRUE.usize_val();
-                let forking_testchain_data: Option<ForkingTestchainData> = if forking_testchain {
-                    let test_chain: Tuple = validation_result.get(8).unwrap().into();
-                    let genesis: OcamlHash = test_chain.get(0).unwrap().into();
-                    let chain_id: OcamlHash = test_chain.get(1).unwrap().into();
-                    Some(ForkingTestchainData {
-                        genesis: genesis.convert_to(),
-                        chain_id: chain_id.convert_to(),
-                    })
-                } else {
-                    None
-                };
-
-                Ok(ApplyBlockResult {
-                    validation_result_message: validation_result_message.as_str().to_string(),
-                    context_hash: context_hash.convert_to(),
-                    block_header_proto_json: block_header_proto_json.as_str().to_string(),
-                    block_header_proto_metadata_json: block_header_proto_metadata_json.as_str().to_string(),
-                    operations_proto_metadata_json: operations_proto_metadata_json.as_str().to_string(),
-                    max_operations_ttl,
-                    last_allowed_fork_level,
-                    forking_testchain,
-                    forking_testchain_data,
-                })
-            }
-            Err(e) => {
-                Err(ApplyBlockError::from(e))
-            }
-        }
-    })
+pub fn apply_block(apply_block_request: ApplyBlockRequest) -> Result<Result<ApplyBlockResponse, CallError>, OcamlError> {
+    call(String::from("apply_block"), apply_block_request)
 }
 
 pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
