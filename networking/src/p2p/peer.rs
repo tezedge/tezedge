@@ -380,7 +380,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         let protocol_not_supported = !connection_message.versions.iter().any(|version| supported_protocol_version.supports(version));
         if protocol_not_supported {
             // send nack
-            timeout(IO_TIMEOUT, msg_tx.write_message(&BinaryChunk::from_content(&AckMessage::NackV0.as_bytes()?)?)).await??;
+            // timeout(IO_TIMEOUT, msg_tx.write_message(&BinaryChunk::from_content(&AckMessage::NackV0.as_bytes()?)?)).await??;
 
             return Err(
                 PeerError::UnsupportedProtocol {
