@@ -9,6 +9,8 @@ use crate::{BlockStorage, BlockStorageReader, StorageError};
 use crate::persistent::{ContextList, ContextMap};
 use crate::skip_list::{Bucket, SkipListError};
 
+use std::time::Instant;
+
 /// Possible errors for context
 #[derive(Debug, Fail)]
 pub enum ContextError {
@@ -242,7 +244,7 @@ impl ContextApi for TezedgeContext {
         // at first remove keys from temp diff
         let context_map_diff = &mut context_diff.diff;
         context_map_diff.retain(|k, v| {
-            if key_starts_with(k, key_prefix_to_remove) == true {
+            if key_starts_with(k, key_prefix_to_remove) {
                 match v {
                     Bucket::Deleted => true, // deleted stays in diff, because of previous delete from parent context, see bellow
                     _ => false
@@ -252,6 +254,18 @@ impl ContextApi for TezedgeContext {
                 true
             }
         });
+        // let mut context_map_diff: ContextMap = context_diff.diff.clone().into_iter()
+        //     .filter(|(k, v)| {
+        //         if key_starts_with(k, key_prefix_to_remove) {
+        //             match v {
+        //                 Bucket::Deleted => true,
+        //                 _ => false
+        //             }
+        //         } else {
+        //             true
+        //         }
+        //     })
+        //     .collect();
 
         // remove all keys with prefix from actual/parent context
         let context = self.get_by_key_prefix(&context_diff.predecessor_index, key_prefix_to_remove)?;
@@ -269,19 +283,27 @@ impl ContextApi for TezedgeContext {
         ensure_eq_context_hash!(context_hash, &context_diff);
 
         // get keys from actual/parent context
-        let mut final_context_to_copy = self.get_by_key_prefix(&context_diff.predecessor_index, from_key)?.unwrap_or(ContextMap::default());
+        let start = Instant::now();
+        let final_context_to_copy = self.get_by_key_prefix(&context_diff.predecessor_index, from_key)?.unwrap_or(ContextMap::default());
+        let duration = start.elapsed().as_millis();
+        // println!("[Copy] Get keys from parent context duration: {}ms", duration);
 
         // merge the same keys from diff to final context
-        for (key, bucket) in &context_diff.diff {
-            if key_starts_with(key, from_key) == true {
+        let start = Instant::now();
+        for (key, bucket) in &final_context_to_copy {
+            if key_starts_with(key, from_key) {
                 match bucket {
-                    Bucket::Exists(_) => final_context_to_copy.insert(key.clone(), bucket.clone()),
-                    | Bucket::Deleted => final_context_to_copy.remove(key),
+                    Bucket::Exists(_) => context_diff.diff.insert(key.clone(), bucket.clone()),
+                    | Bucket::Deleted => context_diff.diff.remove(key),
                 };
             }
         }
+        
+        let duration = start.elapsed().as_millis();
+        // println!("[Copy] Merge the same keys from diff to final context duration: {}ms", duration);
 
         // now we can copy to_key destination
+        let start = Instant::now();
         for (key, bucket) in final_context_to_copy {
             match bucket {
                 Bucket::Exists(_) => {
@@ -292,6 +314,8 @@ impl ContextApi for TezedgeContext {
                 _ => ()
             };
         }
+        let duration = start.elapsed().as_millis();
+        // println!("[Copy] copy to_key destination duration: {}ms", duration);
 
         Ok(())
     }
