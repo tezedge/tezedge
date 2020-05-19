@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryFrom;
 use std::net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -19,6 +18,7 @@ use crypto::crypto_box::precompute;
 use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
 use storage::p2p_message_storage::P2PMessageStorage;
+use storage::StorageError;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
@@ -66,6 +66,10 @@ enum PeerError {
     DeserializationError {
         error: BinaryReaderError
     },
+    #[fail(display = "Failed to store message: {}", error)]
+    StorageError {
+        error: StorageError
+    },
 }
 
 impl From<tezos_encoding::ser::Error> for PeerError {
@@ -95,6 +99,12 @@ impl From<StreamError> for PeerError {
 impl From<BinaryChunkError> for PeerError {
     fn from(error: BinaryChunkError) -> Self {
         PeerError::NetworkError { error: error.into(), message: "Binary chunk error" }
+    }
+}
+
+impl From<StorageError> for PeerError {
+    fn from(error: StorageError) -> Self {
+        PeerError::StorageError { error }
     }
 }
 
@@ -360,7 +370,7 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
         vec![supported_protocol_version.clone()]);
-    let _ = storage.store_connection_message(&connection_message, false, addr);
+    storage.store_connection_message(&connection_message, false, addr)?;
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
@@ -370,40 +380,19 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
     };
 
     // receive connection message
-    let received_connection_msg = match timeout(IO_TIMEOUT, msg_rx.read_message()).await? {
+    let received_connection_message_bytes = match timeout(IO_TIMEOUT, msg_rx.read_message()).await? {
         Ok(msg) => msg,
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
-    if let Ok(connection_message) = ConnectionMessage::from_bytes(received_connection_msg.content().to_vec()) {
-        let _ = storage.store_connection_message(&connection_message, true, addr);
 
-        let protocol_not_supported = !connection_message.versions.iter().any(|version| supported_protocol_version.supports(version));
-        if protocol_not_supported {
-            // send nack
-            // timeout(IO_TIMEOUT, msg_tx.write_message(&BinaryChunk::from_content(&AckMessage::NackV0.as_bytes()?)?)).await??;
-
-            return Err(
-                PeerError::UnsupportedProtocol {
-                    supported_version: format!("{:?}", &supported_protocol_version),
-                    incompatible_versions: format!("{:?}", &connection_message.versions()),
-                }
-            );
-        }
-
-        let connecting_to_self = hex::encode(connection_message.public_key) == info.public_key;
-        if connecting_to_self {
-            debug!(log, "Detected self connection");
-            // treat as if nack was received
-            return Err(PeerError::NackWithMotiveReceived {nack_info: NackInfo::new(NackMotive::AlreadyConnected, &vec![])});
-        }
-    }
+    let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content().to_vec())?;
+    storage.store_connection_message(&connection_message, true, addr)?;
 
     // generate local and remote nonce
-    let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_msg, msg.incoming);
+    let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_message_bytes, msg.incoming);
 
     // convert received bytes from remote peer into `ConnectionMessage`
-    let received_connection_msg: ConnectionMessage = ConnectionMessage::try_from(received_connection_msg)?;
-    let peer_public_key = received_connection_msg.public_key();
+    let peer_public_key = connection_message.public_key();
     let peer_id = HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer_public_key);
     debug!(log, "Received peer public key"; "public_key" => &peer_id);
 
@@ -416,6 +405,26 @@ async fn bootstrap(msg: Bootstrap, info: Arc<Local>, log: Logger, mut storage: P
     // from now on all messages will be encrypted
     let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, peer_id.clone(), log.clone());
     let mut msg_rx = EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, peer_id, log.clone());
+
+    let protocol_not_supported = !connection_message.versions().iter().any(|version| supported_protocol_version.supports(version));
+    if protocol_not_supported {
+        // send nack
+        timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::NackV0)).await??;
+
+        return Err(
+            PeerError::UnsupportedProtocol {
+                supported_version: format!("{:?}", &supported_protocol_version),
+                incompatible_versions: format!("{:?}", &connection_message.versions()),
+            }
+        );
+    }
+
+    let connecting_to_self = hex::encode(connection_message.public_key()) == info.public_key;
+    if connecting_to_self {
+        debug!(log, "Detected self connection");
+        // treat as if nack was received
+        return Err(PeerError::NackWithMotiveReceived {nack_info: NackInfo::new(NackMotive::AlreadyConnected, &vec![])});
+    }
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
