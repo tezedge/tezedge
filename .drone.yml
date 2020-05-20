@@ -15,6 +15,103 @@
 ############################################################################################################################
 
 kind: pipeline
+name: connection-from-different-network-test
+
+environment:
+  NETWORK: carthagenet
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 0
+  SODIUM_USE_PKG_CONFIG: 1
+  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
+  TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-node-mainnet-run:18732
+
+steps:
+- name: cleanup-node-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+    - name: tezedge-master-node-data
+      path: /tmp/tezedge_master_developer
+  commands:
+    - rm -rf /tmp/tezedge_developer/light-node
+    - rm -rf /tmp/tezedge_developer/tezos-node
+    - rm -rf /tmp/tezedge_master_developer/light-node
+    - rm -rf /tmp/tezedge_master_developer/tezos-node
+
+- name: tezedge-node-mainnet-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: tezedge-master-node-data
+      path: /tmp/tezedge_developer
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/tezedge_ip.txt
+    - cargo build --release --workspace
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network mainnet --identity-file "/drone/src/docker/identities/identity_tezedge_master.json"
+
+- name: bootstrapping-tezedge-not-fixed
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT}
+
+  # just run ocaml snapshosted node
+- name: ocaml-node-carthage-run
+  user: root
+  image: tezos/tezos:v7.1
+  detach: true
+  volumes:
+    - name: cache
+      path: /tmp/tezedge-cache
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/ocaml_ip.txt
+    - mkdir /home/tezos/data/
+    - cp /drone/src/docker/identities/identity_ocaml.json /home/tezos/data/identity.json
+    - rm -f /home/tezos/data/config.json
+    - tezos-node config init --data-dir /home/tezos/data --network carthagenet
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network carthagenet
+
+- name: ocaml-node-carthage-connect-to-tezedge
+  user: root
+  image: tezos/tezos:v7.0-rc1
+  detach: true
+  volumes:
+    - name: cache
+      path: /tmp/tezedge-cache
+  commands:
+    - sleep 20
+    - tezos-admin-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 connect address `cat /tmp/tezedge-cache/tezedge_ip.txt`:9732
+
+- name: bootstrapping-ocaml
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=1000 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+volumes:
+  - name: tezedge-node-data
+    host:
+      path: /etc/tezedge-node
+  - name: tezedge-master-node-data
+    host:
+      path: /etc/tezedge-master-node
+  - name: cache
+    host:
+      path: /etc/tezedge-ci/cache
+
+trigger:
+  branch:
+    - master
+
+---
+kind: pipeline
 name: all-tests
 # default build goes with: --network "carthagenet"
 # integration test is using env variables:
@@ -214,3 +311,6 @@ volumes:
 trigger:
   branch:
     - master
+
+depends_on:
+- connection-from-different-network-test
