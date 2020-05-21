@@ -9,8 +9,6 @@ use crate::{BlockStorage, BlockStorageReader, StorageError};
 use crate::persistent::{ContextList, ContextMap};
 use crate::skip_list::{Bucket, SkipListError};
 
-use std::time::Instant;
-
 /// Possible errors for context
 #[derive(Debug, Fail)]
 pub enum ContextError {
@@ -235,7 +233,16 @@ impl ContextApi for TezedgeContext {
 
     fn delete_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_delete: &Vec<String>, context_diff: &mut ContextDiff) -> Result<(), ContextError> {
         ensure_eq_context_hash!(context_hash, &context_diff);
-        self.remove_recursively_to_diff(context_hash, key_prefix_to_delete, context_diff)
+        // self.remove_recursively_to_diff(context_hash, key_prefix_to_delete, context_diff)
+        let context_map_diff = &mut context_diff.diff;
+        let context = self.get_by_key_prefix(&context_diff.predecessor_index, key_prefix_to_delete)?;
+        if context.is_some() {
+            let context = context.unwrap();
+            for key in context.keys() {
+                context_map_diff.insert(key.clone(), Bucket::Deleted);
+            }
+        }
+        Ok(())
     }
 
     fn remove_recursively_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_remove: &Vec<String>, context_diff: &mut ContextDiff) -> Result<(), ContextError> {
@@ -254,18 +261,6 @@ impl ContextApi for TezedgeContext {
                 true
             }
         });
-        // let mut context_map_diff: ContextMap = context_diff.diff.clone().into_iter()
-        //     .filter(|(k, v)| {
-        //         if key_starts_with(k, key_prefix_to_remove) {
-        //             match v {
-        //                 Bucket::Deleted => true,
-        //                 _ => false
-        //             }
-        //         } else {
-        //             true
-        //         }
-        //     })
-        //     .collect();
 
         // remove all keys with prefix from actual/parent context
         let context = self.get_by_key_prefix(&context_diff.predecessor_index, key_prefix_to_remove)?;
@@ -275,6 +270,7 @@ impl ContextApi for TezedgeContext {
                 context_map_diff.insert(key.clone(), Bucket::Deleted);
             }
         }
+        
 
         Ok(())
     }
@@ -283,39 +279,21 @@ impl ContextApi for TezedgeContext {
         ensure_eq_context_hash!(context_hash, &context_diff);
 
         // get keys from actual/parent context
-        let start = Instant::now();
         let final_context_to_copy = self.get_by_key_prefix(&context_diff.predecessor_index, from_key)?.unwrap_or(ContextMap::default());
-        let duration = start.elapsed().as_millis();
-        // println!("[Copy] Get keys from parent context duration: {}ms", duration);
 
         // merge the same keys from diff to final context
-        let start = Instant::now();
         for (key, bucket) in &final_context_to_copy {
             if key_starts_with(key, from_key) {
                 match bucket {
-                    Bucket::Exists(_) => context_diff.diff.insert(key.clone(), bucket.clone()),
-                    | Bucket::Deleted => context_diff.diff.remove(key),
+                    Bucket::Exists(_) => {
+                        let destination_key = replace_key(&key, from_key, to_key);
+                        context_diff.diff.insert(destination_key, bucket.clone());
+                        ()
+                    }
+                    _ => ()
                 };
             }
         }
-        
-        let duration = start.elapsed().as_millis();
-        // println!("[Copy] Merge the same keys from diff to final context duration: {}ms", duration);
-
-        // now we can copy to_key destination
-        let start = Instant::now();
-        for (key, bucket) in final_context_to_copy {
-            match bucket {
-                Bucket::Exists(_) => {
-                    let destination_key = replace_key(&key, from_key, to_key);
-                    context_diff.diff.insert(destination_key, bucket.clone());
-                    ()
-                }
-                _ => ()
-            };
-        }
-        let duration = start.elapsed().as_millis();
-        // println!("[Copy] copy to_key destination duration: {}ms", duration);
 
         Ok(())
     }
