@@ -80,10 +80,71 @@ pub struct ParametricConstants {
     endorsement_reward: Option<BigInt>,
     cost_per_byte: Option<BigInt>,
     hard_storage_limit_per_operation: Option<BigInt>,
-    test_chain_duration: i64,
+    test_chain_duration: Option<i64>,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,
+}
+
+impl ParametricConstants {
+    /// Merge the default values with the values set in context DB 
+    pub fn create_with_default(context_param_constants: Self) -> Self {
+        let mut param: Self = Default::default();
+
+        if context_param_constants.block_security_deposit.is_some() {
+            param.set_block_security_deposit(context_param_constants.block_security_deposit);
+        }
+        if context_param_constants.endorsement_security_deposit.is_some() {
+            param.set_endorsement_security_deposit(context_param_constants.endorsement_security_deposit);
+        }
+        if context_param_constants.block_reward.is_some() {
+            param.set_block_reward(context_param_constants.block_reward);
+        }
+        if context_param_constants.endorsement_reward.is_some() {
+            param.set_endorsement_reward(context_param_constants.endorsement_reward);
+        }
+
+        param
+    }
+}
+
+impl Default for ParametricConstants {
+    fn default() -> Self {
+        Self {
+            preserved_cycles: Some(5),
+            blocks_per_cycle: Some(4096),
+            blocks_per_commitment: Some(32),
+            blocks_per_roll_snapshot: Some(256),
+            blocks_per_voting_period: Some(32768),
+            time_between_blocks: Some(vec![60 as i64, 75 as i64]),
+            endorsers_per_block: Some(32),
+            hard_gas_limit_per_operation: Some(num_bigint::BigInt::from(800_000).into()),
+            hard_gas_limit_per_block: Some(num_bigint::BigInt::from(8_000_000).into()),
+            proof_of_work_threshold: Some(70_368_744_177_663),
+            tokens_per_roll: Some(num_bigint::BigInt::from(8_000_000_000 as i64).into()),
+            michelson_maximum_type_size: Some(1000),
+            seed_nonce_revelation_tip: Some(num_bigint::BigInt::from(125000).into()),
+            origination_size: Some(257),
+            
+            // can me modified
+            block_security_deposit: Some(num_bigint::BigInt::from(512000000).into()),
+            
+            // can me modified
+            endorsement_security_deposit: Some(num_bigint::BigInt::from(64000000).into()),
+            
+            // can me modified
+            block_reward: Some(num_bigint::BigInt::from(16000000).into()),
+
+            // can me modified
+            endorsement_reward: Some(num_bigint::BigInt::from(2000000).into()),
+
+            cost_per_byte: Some(num_bigint::BigInt::from(1000).into()),
+            hard_storage_limit_per_operation: Some(num_bigint::BigInt::from(60000).into()),
+            test_chain_duration: Some(32768 as i64 * 60 as i64),
+
+            body: Default::default()
+        }
+    }
 }
 
 impl ToRpcJsonMap for ParametricConstants {
@@ -149,9 +210,9 @@ impl ToRpcJsonMap for ParametricConstants {
         if let Some(hard_storage_limit_per_operation) = &self.hard_storage_limit_per_operation {
             ret.insert("hard_storage_limit_per_operation", UniversalValue::big_num(hard_storage_limit_per_operation.clone()));
         }
-        // if let Some() = self. {
-            
-        // }
+        if let Some(test_chain_duration) = self.test_chain_duration {
+            ret.insert("test_chain_duration", UniversalValue::i64(test_chain_duration)); 
+        }
         ret
     }
 }

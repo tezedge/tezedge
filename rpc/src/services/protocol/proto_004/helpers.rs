@@ -163,9 +163,10 @@ impl RightsContextData {
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
         let last_roll = {
-            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![last_roll_key])? {
+            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![last_roll_key.clone()])? {
                 num_from_slice!(data, 0, i32)
             } else { // key not found - prepare error for later processing
+                println!("{}", last_roll_key);
                 return Err(format_err!("last_roll"));
             }
         };
