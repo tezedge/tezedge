@@ -9,7 +9,12 @@ use ocaml::{List, Tuple, Value};
 use serial_test::serial;
 
 use crypto::hash::HashType;
-use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, ForkingTestchainData, RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    Applied, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
+    BeginConstructionRequest, BeginConstructionRequestBuilder,
+    Errored, FfiMessage, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
+    RustBytes, TezosRuntimeConfiguration, ValidateOperationResponse, ValidateOperationResult, ValidateOperationResultBuilder,
+};
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{Interchange, OcamlBytes, OcamlHash};
@@ -336,6 +341,80 @@ fn test_apply_block_response_roundtrip(iteration: i32) -> Result<(), failure::Er
     Ok(())
 }
 
+roundtrip_test!(test_validate_operation_response_roundtrip_calls, test_validate_operation_response_roundtrip, 10000);
+
+fn test_validate_operation_response_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+    let operation_hash = HashType::OperationHash.string_to_bytes("oobuLSAcTvomrF2dFPCp5mLxABSD8o65v6wL79ihJY75dkUkhdd")?;
+
+    // validation result
+    let result: ValidateOperationResult = ValidateOperationResultBuilder::default()
+        .applied(vec![
+            Applied {
+                hash: operation_hash.clone(),
+                protocol_data_json: "hello".to_string(),
+            }
+        ])
+        .refused(vec![])
+        .branch_refused(vec![
+            Errored {
+                hash: operation_hash.clone(),
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "protocol_data_json".to_string(),
+                    error_json: "error_list_json".to_string(),
+                },
+            }
+        ])
+        .branch_delayed(vec![
+            Errored {
+                hash: operation_hash.clone(),
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "".to_string(),
+                    error_json: "error".to_string(),
+                },
+            }
+        ])
+        .build().unwrap();
+
+    // prevalidator
+    let prevalidator = PrevalidatorWrapper {
+        chain_id: HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?,
+        protocol: HashType::ProtocolHash.string_to_bytes("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP")?,
+    };
+
+    // response
+    let orig_validation_response: ValidateOperationResponse = ValidateOperationResponse {
+        result,
+        prevalidator,
+    };
+
+
+    Ok(
+        assert!(
+            bytes_encoding_roundtrip(orig_validation_response, String::from("validate_operation_response_roundtrip")).is_ok(),
+            format!("test_validate_operation_response_roundtrip roundtrip iteration: {} failed!", iteration)
+        )
+    )
+}
+
+roundtrip_test!(test_begin_construction_request_roundtrip_calls, test_begin_construction_request_roundtrip, 10000);
+
+fn test_begin_construction_request_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+
+    // validation result
+    let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
+        .chain_id(HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?)
+        .predecessor(BlockHeader::from_bytes(hex::decode(HEADER)?)?)
+        .protocol_data(vec![])
+        .build().unwrap();
+
+    Ok(
+        assert!(
+            bytes_encoding_roundtrip(request, String::from("begin_construction_request_roundtrip")).is_ok(),
+            format!("test_begin_construction_request_roundtrip roundtrip iteration: {} failed!", iteration)
+        )
+    )
+}
+
 #[test]
 #[serial]
 fn test_context_callback() {
@@ -569,4 +648,6 @@ mod benches {
     bench_test!(bench_test_apply_block_params_roundtrip_one, test_apply_block_params_roundtrip);
     bench_test!(bench_test_apply_block_request_roundtrip_one, test_apply_block_request_roundtrip);
     bench_test!(bench_test_apply_block_response_roundtrip_one, test_apply_block_response_roundtrip);
+    bench_test!(bench_test_begin_construction_request_roundtrip_one, test_begin_construction_request_roundtrip);
+    bench_test!(bench_test_validate_operation_response_roundtrip_one, test_validate_operation_response_roundtrip);
 }

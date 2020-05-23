@@ -220,6 +220,16 @@ pub fn apply_block(apply_block_request: ApplyBlockRequest) -> Result<Result<Appl
     call(String::from("apply_block"), apply_block_request)
 }
 
+/// Begin construction initializes prevalidator and context for new operations based on current head
+pub fn begin_construction(request: BeginConstructionRequest) -> Result<Result<PrevalidatorWrapper, CallError>, OcamlError> {
+    call(String::from("begin_construction"), request)
+}
+
+/// Validate operation - used with prevalidator for validation of operation
+pub fn validate_operation(request: ValidateOperationRequest) -> Result<Result<ValidateOperationResponse, CallError>, OcamlError> {
+    call(String::from("validate_operation"), request)
+}
+
 pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("generate_identity").expect("function 'generate_identity' is not registered");

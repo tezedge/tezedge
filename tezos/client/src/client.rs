@@ -4,9 +4,12 @@
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult,
-    PatchContext, ProtocolOverrides, TezosGenerateIdentityError,
+    BeginConstructionError, BeginConstructionRequest, BeginConstructionRequestBuilder,
+    CommitGenesisResult,
+    ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult,
+    PatchContext, PrevalidatorWrapper, ProtocolOverrides, TezosGenerateIdentityError,
     TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
+    ValidateOperationError, ValidateOperationRequest, ValidateOperationRequestBuilder, ValidateOperationResponse,
 };
 use tezos_api::identity::Identity;
 use tezos_interop::ffi;
@@ -94,6 +97,52 @@ pub fn apply_block(
         Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Begin construction
+pub fn begin_construction(
+    chain_id: &ChainId,
+    predecessor_block_header: &BlockHeader,
+    protocol_data: Vec<u8>,
+) -> Result<PrevalidatorWrapper, BeginConstructionError> {
+
+    // request
+    let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
+        .chain_id(chain_id.clone())
+        .predecessor(predecessor_block_header.clone())
+        .protocol_data(protocol_data)
+        .build().unwrap();
+
+    match ffi::begin_construction(request) {
+        Ok(result) => result.map_err(|e| BeginConstructionError::from(e)),
+        Err(e) => {
+            Err(BeginConstructionError::FailedToBeginConstruction {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Validate operation
+pub fn validate_operation(
+    prevalidator: &PrevalidatorWrapper,
+    operation: &Operation,
+) -> Result<ValidateOperationResponse, ValidateOperationError> {
+
+    // request
+    let request: ValidateOperationRequest = ValidateOperationRequestBuilder::default()
+        .prevalidator(prevalidator.clone())
+        .operation(operation.clone())
+        .build().unwrap();
+
+    match ffi::validate_operation(request) {
+        Ok(result) => result.map_err(|e| ValidateOperationError::from(e)),
+        Err(e) => {
+            Err(ValidateOperationError::FailedToValidateOperation {
                 message: format!("Unknown OcamlError: {:?}", e)
             })
         }
