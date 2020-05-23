@@ -10,10 +10,7 @@ use slog::{crit, debug, Drain, error, info, Logger};
 
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
-use monitoring::{listener::{
-    EventPayloadStorage,
-    EventStorage, NetworkChannelListener,
-}, Monitor, WebsocketHandler};
+use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
@@ -39,6 +36,7 @@ mod configuration;
 mod identity;
 
 const DATABASE_VERSION: i64 = 12;
+const EXPECTED_POW: f64 = 26.0;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -112,13 +110,13 @@ fn block_on_actors(
     let shell_channel = ShellChannel::actor(&actor_system)
         .expect("Failed to create shell channel");
 
-    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which send ContextAction, and we need thouse action to process first
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone())
+    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone(), env.storage.store_context_actions)
         .expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
     // if feeding is started, than run chain manager
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, env.storage.store_p2p_messages)
         .expect("Failed to create chain manager");
 
     // and than open p2p and others
@@ -133,7 +131,8 @@ fn block_on_actors(
         env.p2p.listener_port,
         identity,
         tezos_env.version.clone(),
-        persistent_storage.clone())
+        persistent_storage.clone(),
+        env.storage.store_p2p_messages)
         .expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -141,10 +140,6 @@ fn block_on_actors(
         .expect("Failed to create monitor actor");
     let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime.handle(), &persistent_storage, &init_storage_data)
         .expect("Failed to create RPC server");
-    if env.record {
-        info!(log, "Running in record mode");
-        let _ = NetworkChannelListener::actor(&actor_system, persistent_storage.kv(), network_channel.clone());
-    }
 
     tokio_runtime.block_on(async move {
         use std::thread;
@@ -280,6 +275,7 @@ fn main() {
         TezosRuntimeConfiguration {
             log_enabled: env.logging.ocaml_log_enabled,
             no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+            debug_mode: env.storage.store_context_actions,
         },
         tezos_env.clone(),
         env.enable_testchain,
@@ -309,8 +305,6 @@ fn main() {
         BlockMetaStorage::descriptor(),
         OperationsStorage::descriptor(),
         OperationsMetaStorage::descriptor(),
-        EventPayloadStorage::descriptor(),
-        EventStorage::descriptor(),
         context_action_storage::ContextActionPrimaryIndex::descriptor(),
         context_action_storage::ContextActionByContractIndex::descriptor(),
         SystemStorage::descriptor(),

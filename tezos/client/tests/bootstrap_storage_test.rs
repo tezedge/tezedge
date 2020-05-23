@@ -16,6 +16,7 @@ fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(
         TezosRuntimeConfiguration {
+            debug_mode: false,
             log_enabled: common::is_ocaml_log_enabled(),
             no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         }

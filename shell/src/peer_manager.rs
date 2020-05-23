@@ -123,6 +123,8 @@ pub struct PeerManager {
     shutting_down: bool,
     /// Storage
     p2p_msg_storage: P2PMessageStorage,
+    /// Flag to turn on/off messages storing
+    store_messages: bool,
 }
 
 /// Reference to [peer manager](PeerManager) actor.
@@ -140,6 +142,7 @@ impl PeerManager {
                  identity: Identity,
                  protocol_version: String,
                  ps: PersistentStorage,
+                 store_p2p_messages: bool,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(PeerManager::new, (
@@ -152,7 +155,8 @@ impl PeerManager {
                 listener_port,
                 identity,
                 protocol_version,
-                ps)),
+                ps,
+                store_p2p_messages)),
             PeerManager::name())
     }
 
@@ -162,8 +166,8 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, ps):
-           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, PersistentStorage)) -> Self {
+    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, ps, store_messages):
+           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, PersistentStorage, bool)) -> Self {
         PeerManager {
             network_channel,
             shell_channel,
@@ -182,6 +186,7 @@ impl PeerManager {
             check_peer_count_last: None,
             shutting_down: false,
             p2p_msg_storage: P2PMessageStorage::new(&ps),
+            store_messages
         }
     }
 
@@ -223,6 +228,7 @@ impl PeerManager {
             self.tokio_executor.clone(),
             socket_address,
             self.p2p_msg_storage.clone(),
+            self.store_messages,
         ).unwrap();
 
         self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: socket_address.clone() });

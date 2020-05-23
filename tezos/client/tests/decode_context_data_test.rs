@@ -32,6 +32,7 @@ fn key(key_as_string: &str) -> Vec<String> {
 fn test_fn_decode_context_data() {
     client::change_runtime_configuration(
         TezosRuntimeConfiguration {
+            debug_mode: false,
             log_enabled: is_ocaml_log_enabled(),
             no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc(),
         }

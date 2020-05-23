@@ -581,6 +581,8 @@ mod tests {
             block_hash: None,
             operation_hash: None,
             key: to_key(key),
+            value: Vec::new(),
+            value_as_json: None,
             start_time: 0 as f64,
             end_time: 0 as f64,
         };
