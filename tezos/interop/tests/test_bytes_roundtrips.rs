@@ -8,9 +8,9 @@ use std::{env, thread};
 use ocaml::{List, Tuple, Value};
 use serial_test::serial;
 
-use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockRequest, ApplyBlockRequestBuilder, RustBytes, TezosRuntimeConfiguration};
+use crypto::hash::HashType;
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, RustBytes, TezosRuntimeConfiguration};
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
-use tezos_encoding::binary_writer;
 use tezos_interop::ffi;
 use tezos_interop::ffi::{Interchange, OcamlBytes, OcamlHash};
 use tezos_interop::runtime;
@@ -35,6 +35,47 @@ fn init_test_runtime() {
             no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc(),
         }
     ).unwrap().unwrap();
+}
+
+macro_rules! roundtrip_test {
+        ($test_name:ident, $test_fn:expr, $counts:expr) => {
+            #[test]
+            #[serial]
+            fn $test_name() {
+                init_test_runtime();
+
+                for i in 0..$counts {
+                    let result = $test_fn(i);
+                    if result.is_err() {
+                        println!("$test_fn roundtrip number {} failed!", i);
+                    }
+                    assert!(result.is_ok())
+                }
+            }
+        };
+}
+
+// fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, encoding: &'static Encoding, ffi_fn_name: String) -> Result<(), OcamlError> {
+fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_name: String) -> Result<(), OcamlError> {
+    runtime::execute(move || {
+        // sent bytes to ocaml
+        let roundtrip = ocaml::named_value(&ffi_fn_name).expect(&format!("function '{}' is not registered", &ffi_fn_name));
+
+        let data_as_rust_bytes: RustBytes = orig_data.as_rust_bytes(MSG::encoding()).expect("failed to convert");
+
+        let result: Result<Value, ocaml::Error> = roundtrip.call_exn::<OcamlBytes>(
+            data_as_rust_bytes.convert_to(),
+        );
+
+        // check
+        let result: OcamlBytes = result.expect("failed to call ffi").into();
+        let result: RustBytes = result.convert_to();
+
+        let result = MSG::from_rust_bytes(result, MSG::encoding()).expect("failed to convert in ffi");
+        assert_eq!(orig_data, result);
+
+        ()
+    })
 }
 
 #[test]
@@ -207,27 +248,7 @@ fn test_operations_list_list_roundtrip_times() {
     }
 }
 
-#[test]
-#[serial]
-fn test_apply_block_params_roundtrip_one() {
-    init_test_runtime();
-
-    assert!(test_apply_block_params_roundtrip(1).is_ok())
-}
-
-#[test]
-#[serial]
-fn test_apply_block_params_roundtrip_times() {
-    init_test_runtime();
-
-    for i in 0..10000 {
-        let result = test_apply_block_params_roundtrip(i);
-        if result.is_err() {
-            println!("apply_block_params_roundtrip_times roundtrip number {} failed!", i);
-        }
-        assert!(result.is_ok())
-    }
-}
+roundtrip_test!(test_apply_block_params_roundtrip_calls, test_apply_block_params_roundtrip, 10000);
 
 fn test_apply_block_params_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let chain_id = hex::decode(CHAIN_ID).unwrap();
@@ -272,27 +293,7 @@ fn apply_block_params_roundtrip(chain_id: RustBytes,
     })
 }
 
-#[test]
-#[serial]
-fn test_apply_block_request_roundtrip_one() {
-    init_test_runtime();
-
-    assert!(test_apply_block_request_roundtrip(1).is_ok())
-}
-
-#[test]
-#[serial]
-fn test_apply_block_request_roundtrip_times() {
-    init_test_runtime();
-
-    for i in 0..10000 {
-        let result = test_apply_block_request_roundtrip(i);
-        if result.is_err() {
-            println!("apply_block_params_roundtrip_times roundtrip number {} failed!", i);
-        }
-        assert!(result.is_ok())
-    }
-}
+roundtrip_test!(test_apply_block_request_roundtrip_calls, test_apply_block_request_roundtrip, 10000);
 
 fn test_apply_block_request_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     // request
@@ -301,52 +302,39 @@ fn test_apply_block_request_roundtrip(iteration: i32) -> Result<(), failure::Err
         .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
         .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
         .max_operations_ttl(MAX_OPERATIONS_TTL)
-        .operations(ApplyBlockRequest::to_ops(&block_operations_from_hex(HEADER_HASH, sample_operations_for_request())))
+        .operations(ApplyBlockRequest::convert_operations(&block_operations_from_hex(HEADER_HASH, sample_operations_for_request())))
         .build().unwrap();
 
-    // decode to bytes
-    let request: RustBytes = binary_writer::write(&request, &APPLY_BLOCK_REQUEST_ENCODING)?;
     Ok(
         assert!(
-            apply_block_request_roundtrip(request).is_ok(),
+            bytes_encoding_roundtrip(request, String::from("apply_block_request_roundtrip")).is_ok(),
             format!("test_apply_block_params_roundtrip roundtrip iteration: {} failed!", iteration)
         )
     )
 }
 
-fn apply_block_request_roundtrip(apply_block_request: RustBytes) -> Result<(), OcamlError> {
-    runtime::execute(move || {
-        // sent bytes to ocaml
-        let roundtrip = ocaml::named_value("apply_block_request_roundtrip").expect("function 'apply_block_request_roundtrip' is not registered");
+roundtrip_test!(test_apply_block_response_roundtrip_calls, test_apply_block_response_roundtrip, 10000);
 
-        let result: Result<Value, ocaml::Error> = roundtrip.call_exn::<OcamlBytes>(
-            apply_block_request.convert_to(),
-        );
+fn test_apply_block_response_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+    // request
+    let response: ApplyBlockResponse = ApplyBlockResponse {
+        validation_result_message: "validation_result_message".to_string(),
+        context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
+        block_header_proto_json: "block_header_proto_json".to_string(),
+        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
+        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        max_operations_ttl: 6,
+        last_allowed_fork_level: 8,
+        forking_testchain: true,
+        forking_testchain_data: None,
+    };
 
-        // check
-        let result: Tuple = result.unwrap().into();
-        assert_eq!(5, result.len());
-
-        // check chain_id
-        assert_eq_hash(CHAIN_ID, result.get(0).unwrap().into());
-
-        // check header
-        assert_eq_bytes(HEADER, result.get(1).unwrap().into());
-
-        // check pred_header
-        assert_eq_bytes(HEADER, result.get(2).unwrap().into());
-
-        // check max_operations_ttl
-        let max_operations_ttl: Value = result.get(3).unwrap();
-        let max_operations_ttl: i32 = max_operations_ttl.usize_val() as i32;
-
-        assert_eq!(MAX_OPERATIONS_TTL, max_operations_ttl);
-
-        // check operations
-        assert_eq_operations(List::from(result.get(4).unwrap()), 5, 1);
-
-        ()
-    })
+    Ok(
+        assert!(
+            bytes_encoding_roundtrip(response, String::from("apply_block_response_roundtrip")).is_ok(),
+            format!("test_apply_block_response_roundtrip roundtrip iteration: {} failed!", iteration)
+        )
+    )
 }
 
 #[test]
@@ -581,4 +569,5 @@ mod benches {
     bench_test!(bench_test_operations_list_list_roundtrip_one, test_operations_list_list_roundtrip_for_bench);
     bench_test!(bench_test_apply_block_params_roundtrip_one, test_apply_block_params_roundtrip);
     bench_test!(bench_test_apply_block_request_roundtrip_one, test_apply_block_request_roundtrip);
+    bench_test!(bench_test_apply_block_response_roundtrip_one, test_apply_block_response_roundtrip);
 }

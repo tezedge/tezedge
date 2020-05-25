@@ -23,6 +23,7 @@ fn bench_apply_first_three_block(_: &mut Bencher) {
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
             no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+            debug_mode: false,
         }
     ).unwrap().unwrap();
 
@@ -76,7 +77,7 @@ fn apply_first_three_blocks(chain_id: ChainId, genesis_block_header: BlockHeader
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         ),
-        apply_block_result.max_operations_ttl,
+        apply_block_result.max_operations_ttl as u16,
     )?;
     perf_log.push(format!("- 2. apply: {:?}", clocks.elapsed()));
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", apply_block_result.validation_result_message);
@@ -91,7 +92,7 @@ fn apply_first_three_blocks(chain_id: ChainId, genesis_block_header: BlockHeader
             test_data::BLOCK_HEADER_HASH_LEVEL_3,
             test_data::block_header_level3_operations(),
         ),
-        apply_block_result.max_operations_ttl,
+        apply_block_result.max_operations_ttl as u16,
     )?;
     perf_log.push(format!("- 3. apply: {:?}", clocks.elapsed()));
     assert_eq!("lvl 3, fit 5, prio 12, 1 ops", apply_block_result.validation_result_message);

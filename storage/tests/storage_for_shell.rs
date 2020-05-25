@@ -11,7 +11,7 @@ use crypto::hash::{chain_id_from_block_hash, ContextHash, HashType};
 use storage::*;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{ApplyBlockResult, CommitGenesisResult, GenesisChain, ProtocolOverrides};
+use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -109,7 +109,7 @@ fn test_storage() -> Result<(), Error> {
     assert!(!metadata.is_applied());
 
     // save apply result
-    let apply_result = ApplyBlockResult {
+    let apply_result = ApplyBlockResponse {
         last_allowed_fork_level: 5,
         max_operations_ttl: 6,
         context_hash: HashType::ContextHash.string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?.clone(),
@@ -135,9 +135,9 @@ fn test_storage() -> Result<(), Error> {
 
     // check additional
     let (_, data) = block_storage.get_with_additional_data(&block.hash)?.expect("No additional data was saved");
-    assert_eq!(data.max_operations_ttl(), apply_result.max_operations_ttl);
+    assert_eq!(data.max_operations_ttl(), apply_result.max_operations_ttl as u16);
     assert_eq!(data.last_allowed_fork_level(), apply_result.last_allowed_fork_level);
-    assert_eq!(block_additional_data.max_operations_ttl(), apply_result.max_operations_ttl);
+    assert_eq!(block_additional_data.max_operations_ttl(), apply_result.max_operations_ttl as u16);
     assert_eq!(block_additional_data.last_allowed_fork_level(), apply_result.last_allowed_fork_level);
 
     // check json

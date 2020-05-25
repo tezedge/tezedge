@@ -1,29 +1,42 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt::Debug;
+
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 
 use derive_builder::Builder;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 
-use crypto::hash::{ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use lazy_static::lazy_static;
+use tezos_encoding::{binary_writer, ser};
+use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
+use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_messages::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
 
-lazy_static! {
-    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
-            Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
-            Field::new("max_operations_ttl", Encoding::Int31),
-            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
-    ]);
-}
-
 pub type RustBytes = Vec<u8>;
+
+/// Trait for binary encoding messages for ffi.
+pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
+    #[inline]
+    fn as_rust_bytes(&self, encoding: &Encoding) -> Result<RustBytes, ser::Error> {
+        binary_writer::write(&self, &encoding)
+    }
+
+    /// Create new struct from bytes.
+    /// #[inline]
+    fn from_rust_bytes(buf: RustBytes, encoding: &Encoding) -> Result<Self, BinaryReaderError> {
+        let value = BinaryReader::new().read(buf, encoding)?;
+        let value: Self = deserialize_from_value(&value)?;
+        Ok(value)
+    }
+
+    fn encoding() -> &'static Encoding;
+}
 
 /// Genesis block information structure
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -56,20 +69,17 @@ pub struct TezosRuntimeConfiguration {
     pub debug_mode: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct ApplyBlockRequest {
     pub chain_id: ChainId,
     pub block_header: BlockHeader,
     pub pred_header: BlockHeader,
     pub max_operations_ttl: i32,
     pub operations: Vec<Vec<Operation>>,
-    #[serde(skip_serializing)]
-    #[builder(default)]
-    body: BinaryDataCache,
 }
 
 impl ApplyBlockRequest {
-    pub fn to_ops(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
+    pub fn convert_operations(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
         let mut operations = Vec::with_capacity(block_operations.len());
 
         for block_ops in block_operations {
@@ -84,30 +94,59 @@ impl ApplyBlockRequest {
     }
 }
 
-impl CachedData for ApplyBlockRequest {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
+lazy_static! {
+    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
+        Field::new("max_operations_ttl", Encoding::Int31),
+        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
+    ]);
+}
 
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
+impl FfiMessage for ApplyBlockRequest {
+    fn encoding() -> &'static Encoding {
+        &APPLY_BLOCK_REQUEST_ENCODING
     }
 }
 
 /// Application block result
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub struct ApplyBlockResult {
+pub struct ApplyBlockResponse {
     pub validation_result_message: String,
-    pub context_hash: RustBytes,
+    pub context_hash: ContextHash,
     pub block_header_proto_json: String,
     pub block_header_proto_metadata_json: String,
     pub operations_proto_metadata_json: String,
-    pub max_operations_ttl: u16,
+    pub max_operations_ttl: i32,
     pub last_allowed_fork_level: i32,
     pub forking_testchain: bool,
     pub forking_testchain_data: Option<ForkingTestchainData>,
+}
+
+lazy_static! {
+    pub static ref FORKING_TESTCHAIN_DATA_ENCODING: Encoding = Encoding::Obj(vec![
+        Field::new("genesis", Encoding::Hash(HashType::BlockHash)),
+        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+    ]);
+
+    pub static ref APPLY_BLOCK_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
+        Field::new("validation_result_message", Encoding::String),
+        Field::new("context_hash", Encoding::Hash(HashType::ContextHash)),
+        Field::new("block_header_proto_json", Encoding::String),
+        Field::new("block_header_proto_metadata_json", Encoding::String),
+        Field::new("operations_proto_metadata_json", Encoding::String),
+        Field::new("max_operations_ttl", Encoding::Int31),
+        Field::new("last_allowed_fork_level", Encoding::Int32),
+        Field::new("forking_testchain", Encoding::Bool),
+        Field::new("forking_testchain_data", Encoding::option(FORKING_TESTCHAIN_DATA_ENCODING.clone())),
+    ]);
+}
+
+impl FfiMessage for ApplyBlockResponse {
+    fn encoding() -> &'static Encoding {
+        &APPLY_BLOCK_RESPONSE_ENCODING
+    }
 }
 
 /// Init protocol context result
@@ -129,8 +168,44 @@ pub struct CommitGenesisResult {
 /// Forking test chain data
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ForkingTestchainData {
-    pub genesis: RustBytes,
-    pub chain_id: RustBytes,
+    pub genesis: BlockHash,
+    pub chain_id: ChainId,
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+pub enum CallError {
+    #[fail(display = "Failed to call - message: {:?}!", parsed_error_message)]
+    FailedToCall {
+        parsed_error_message: Option<String>,
+    },
+    #[fail(display = "Invalid request data - message: {}!", message)]
+    InvalidRequestData {
+        message: String,
+    },
+    #[fail(display = "Invalid response data - message: {}!", message)]
+    InvalidResponseData {
+        message: String,
+    },
+}
+
+impl From<ocaml::Error> for CallError {
+    fn from(error: ocaml::Error) -> Self {
+        match error {
+            ocaml::Error::Exception(ffi_error) => {
+                match parse_error_message(ffi_error) {
+                    None => CallError::FailedToCall {
+                        parsed_error_message: None
+                    },
+                    Some(message) => {
+                        CallError::FailedToCall {
+                            parsed_error_message: Some(message)
+                        }
+                    }
+                }
+            }
+            _ => panic!("Unhandled ocaml error occurred for apply block! Error: {:?}", error)
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
@@ -246,17 +321,17 @@ pub enum ApplyBlockError {
     PredecessorMismatch {
         message: String,
     },
-    #[fail(display = "Invalid apply block request data - message: {}!", message)]
-    InvalidApplyBlockRequestData {
+    #[fail(display = "Invalid request/response data - message: {}!", message)]
+    InvalidRequestResponseData {
         message: String,
     },
 }
 
-impl From<ocaml::Error> for ApplyBlockError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<CallError> for ApplyBlockError {
+    fn from(error: CallError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
-                match parse_error_message(ffi_error) {
+            CallError::FailedToCall { parsed_error_message } => {
+                match parsed_error_message {
                     None => ApplyBlockError::FailedToApplyBlock {
                         message: "unknown".to_string()
                     },
@@ -275,7 +350,12 @@ impl From<ocaml::Error> for ApplyBlockError {
                     }
                 }
             }
-            _ => panic!("Unhandled ocaml error occurred for apply block! Error: {:?}", error)
+            CallError::InvalidRequestData { message } => ApplyBlockError::InvalidRequestResponseData {
+                message
+            },
+            CallError::InvalidResponseData { message } => ApplyBlockError::InvalidRequestResponseData {
+                message
+            },
         }
     }
 }

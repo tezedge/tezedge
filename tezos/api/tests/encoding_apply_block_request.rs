@@ -20,7 +20,7 @@ fn can_serde() -> Result<(), Error> {
         .pred_header(BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap())
         .max_operations_ttl(2)
         .operations(
-            ApplyBlockRequest::to_ops(
+            ApplyBlockRequest::convert_operations(
                 &test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_3,
                     test_data::block_header_level3_operations(),

@@ -70,7 +70,7 @@ struct GenerateIdentityParams {
 /// This event message is generated as a response to the `ProtocolMessage` command.
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
-    ApplyBlockResult(Result<ApplyBlockResult, ApplyBlockError>),
+    ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
@@ -349,7 +349,7 @@ impl<'a> ProtocolController<'a> {
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(180);
 
     /// Apply block
-    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResult, ProtocolServiceError> {
+    pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(ApplyBlockParams {
             chain_id: chain_id.clone(),

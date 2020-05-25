@@ -14,7 +14,7 @@ pub trait ProtocolApi {
         block_header: &BlockHeader,
         predecessor_block_header: &BlockHeader,
         operations: &Vec<Option<OperationsForBlocksMessage>>,
-        max_operations_ttl: u16) -> Result<ApplyBlockResult, ApplyBlockError>;
+        max_operations_ttl: u16) -> Result<ApplyBlockResponse, ApplyBlockError>;
 
     /// Change tezos runtime configuration
     fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError>;

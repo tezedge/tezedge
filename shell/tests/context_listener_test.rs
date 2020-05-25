@@ -22,11 +22,9 @@ use storage::persistent::ContextList;
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockError, ApplyBlockRequest, ApplyBlockResult, RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::{APPLY_BLOCK_REQUEST_ENCODING, ApplyBlockRequest, ApplyBlockResponse, CallError, FfiMessage, RustBytes, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_context::channel::*;
-use tezos_encoding::binary_reader::BinaryReader;
-use tezos_encoding::de;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_wrapper::service::IpcEvtServer;
@@ -229,15 +227,13 @@ fn apply_blocks_like_chain_feeder(
     )?;
 
     // let's apply stored requests
-    let reader = BinaryReader::new();
-    let mut last_result: Option<ApplyBlockResult> = None;
+    let mut last_result: Option<ApplyBlockResponse> = None;
     for request in test_data::apply_block_requests_until_1326() {
 
         // parse request
         let request: RustBytes = hex::decode(request)?;
-        let decoded_request = reader.read(&request, &APPLY_BLOCK_REQUEST_ENCODING)?;
-        let decoded_request: ApplyBlockRequest = de::from_value(&decoded_request)?;
-        let header = decoded_request.block_header;
+        let request = ApplyBlockRequest::from_rust_bytes(request, &APPLY_BLOCK_REQUEST_ENCODING)?;
+        let header = request.block_header.clone();
 
         // store header to db
         let block = BlockHeaderWithHash {
@@ -250,8 +246,8 @@ fn apply_blocks_like_chain_feeder(
         let result = match ffi::apply_block(request) {
             Ok(result) => result,
             Err(e) => {
-                Err(ApplyBlockError::FailedToApplyBlock {
-                    message: format!("Unknown OcamlError: {:?}", e)
+                Err(CallError::FailedToCall {
+                    parsed_error_message: Some(format!("Unknown OcamlError: {:?}", e))
                 })
             }
         };

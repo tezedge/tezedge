@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![feature(const_fn, const_if_match)]
 
+use std::convert::TryInto;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TezosEnvironmentConfiguration, TezosEnvironmentError};
-use tezos_api::ffi::{ApplyBlockResult, CommitGenesisResult};
+use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
@@ -189,7 +190,7 @@ pub fn store_applied_block_result(
     block_storage: &mut BlockStorage,
     block_meta_storage: &mut BlockMetaStorage,
     block_hash: &BlockHash,
-    block_result: ApplyBlockResult,
+    block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
 
     // store result data - json and additional data
@@ -202,7 +203,7 @@ pub fn store_applied_block_result(
 
     // store additional data
     let block_additional_data = BlockAdditionalDataBuilder::default()
-        .max_operations_ttl(block_result.max_operations_ttl)
+        .max_operations_ttl(block_result.max_operations_ttl.try_into().unwrap())
         .last_allowed_fork_level(block_result.last_allowed_fork_level)
         .build().unwrap();
     block_storage.put_block_additional_data(&block_hash, block_additional_data.clone())?;

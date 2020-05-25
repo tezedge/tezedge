@@ -1692,8 +1692,8 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre12",
- "tezos_interop_callback 0.0.2-pre12",
+ "tezos_interop 0.0.2-pre14",
+ "tezos_interop_callback 0.0.2-pre14",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
 ]
@@ -2190,8 +2190,8 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre12",
- "tezos_interop_callback 0.0.2-pre12",
+ "tezos_interop 0.0.2-pre14",
+ "tezos_interop_callback 0.0.2-pre14",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
  "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2505,7 +2505,7 @@ dependencies = [
  "serial_test 0.3.2 (git+https://github.com/palfrey/serial_test.git)",
  "tezos_api 0.1.0",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre12",
+ "tezos_interop 0.0.2-pre14",
  "tezos_messages 0.1.0",
 ]
 
@@ -2536,9 +2536,10 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.0.2-pre12"
+version = "0.0.2-pre14"
 dependencies = [
  "colored 1.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crypto 0.1.0",
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "fs_extra 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2553,13 +2554,13 @@ dependencies = [
  "tezos_api 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop_callback 0.0.2-pre12",
+ "tezos_interop_callback 0.0.2-pre14",
  "tezos_messages 0.1.0",
 ]
 
 [[package]]
 name = "tezos_interop_callback"
-version = "0.0.2-pre12"
+version = "0.0.2-pre14"
 dependencies = [
  "hex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ocaml 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
