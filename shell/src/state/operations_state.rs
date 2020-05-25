@@ -66,7 +66,7 @@ impl OperationsState {
         self.operations_meta_storage.is_complete(message.operations_for_block().hash())
     }
 
-    pub fn drain_missing_operations(&mut self, n: usize, level_max: i32) -> Vec<MissingOperations> {
+    pub fn drain_missing_block_operations(&mut self, n: usize, level_max: i32) -> Vec<MissingOperations> {
         (0..cmp::min(self.missing_operations_for_blocks.len(), n))
             .filter_map(|_| {
                 if self.missing_operations_for_blocks.peek().filter(|operations| operations.level <= level_max).is_some() {
@@ -78,7 +78,7 @@ impl OperationsState {
             .collect()
     }
 
-    pub fn push_missing_operations<Q: Iterator<Item=MissingOperations>>(&mut self, missing_operations: Q) -> Result<(), StorageError>{
+    pub fn push_missing_block_operations<Q: Iterator<Item=MissingOperations>>(&mut self, missing_operations: Q) -> Result<(), StorageError>{
         for missing_operation in missing_operations {
             if !self.operations_meta_storage.is_complete(&missing_operation.block_hash)? {
                 self.missing_operations_for_blocks.push(missing_operation);
@@ -88,7 +88,7 @@ impl OperationsState {
     }
 
     #[inline]
-    pub fn has_missing_operations(&self) -> bool {
+    pub fn has_missing_block_operations(&self) -> bool {
         !self.missing_operations_for_blocks.is_empty()
     }
 

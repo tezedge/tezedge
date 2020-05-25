@@ -3,6 +3,7 @@
 #![feature(const_fn, const_if_match)]
 
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use failure::Fail;
@@ -19,13 +20,13 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
 pub use crate::context_action_storage::{ContextActionPrimaryIndexKey, ContextActionRecordValue, ContextActionStorage};
+pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
-use std::path::PathBuf;
 
 pub mod persistent;
 pub mod operations_storage;
@@ -33,6 +34,7 @@ pub mod operations_meta_storage;
 pub mod block_storage;
 pub mod block_meta_storage;
 pub mod context_action_storage;
+pub mod mempool_storage;
 pub mod p2p_message_storage;
 pub mod system_storage;
 pub mod skip_list;
@@ -97,11 +99,21 @@ pub enum StorageError {
     TezosEnvironmentError {
         error: TezosEnvironmentError
     },
+    #[fail(display = "Message hash error: {}", error)]
+    MessageHashError {
+        error: MessageHashError
+    }
 }
 
 impl From<DBError> for StorageError {
     fn from(error: DBError) -> Self {
         StorageError::DBError { error }
+    }
+}
+
+impl From<MessageHashError> for StorageError {
+    fn from(error: MessageHashError) -> Self {
+        StorageError::MessageHashError { error }
     }
 }
 
@@ -287,6 +299,7 @@ pub mod tests_common {
     use failure::Error;
 
     use crate::block_storage;
+    use crate::mempool_storage::MempoolStorage;
     use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
     use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
@@ -320,6 +333,7 @@ pub mod tests_common {
                 DatabaseBackedSkipList::descriptor(),
                 Lane::descriptor(),
                 ListValue::descriptor(),
+                MempoolStorage::descriptor(),
             ])?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),

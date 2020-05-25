@@ -124,6 +124,16 @@ impl<K, V> BincodeEncoded for HashMap<K, V>
 {}
 
 /// Create number from a bytes
+///
+/// ```rust
+/// use storage::num_from_slice;
+///
+/// let mut bytes = vec![];
+/// let num: u64 = 45_165_489;
+/// bytes.extend(&num.to_be_bytes());
+/// assert_eq!(num, num_from_slice!(bytes, 0, u64));
+///
+/// ```
 #[macro_export(local_inner_macros)]
 macro_rules! num_from_slice {
     ($buf:expr, $from_idx:expr, $num:ident) => {{

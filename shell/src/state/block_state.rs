@@ -13,7 +13,7 @@ use storage::persistent::PersistentStorage;
 use crate::collections::{BlockData, UniqueBlockData};
 
 /// Holds state of all known blocks
-pub struct BlockState {
+pub struct BlockchainState {
     /// persistent block storage
     block_storage: BlockStorage,
     ///persistent block metadata storage
@@ -28,9 +28,9 @@ pub struct BlockState {
     chain_id: ChainId,
 }
 
-impl BlockState {
+impl BlockchainState {
     pub fn new(persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Self {
-        BlockState {
+        BlockchainState {
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
             missing_blocks: UniqueBlockData::new(),

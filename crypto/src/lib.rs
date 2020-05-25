@@ -1,6 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(concat_idents, const_fn, const_if_match)]
+#![feature(const_fn, const_if_match)]
 
 #[macro_use]
 pub mod blake2b;

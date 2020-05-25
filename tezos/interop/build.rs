@@ -14,7 +14,7 @@ use serde_json;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "51a4dacdc8ec139b9ed61f7dd97deec1d7d40a9b";
+const GIT_COMMIT_HASH: &str = "32e3a3293b512f332dbb01934a6acd9e82f23b4d";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
@@ -55,6 +55,7 @@ fn get_remote_lib() -> RemoteLib {
         }
         OSType::OpenSUSE => match platform.version.as_str() {
             "15.1" | "15.2" => Some("libtezos-ffi-opensuse15.1.so"),
+            v if v.len() == 8 && v.chars().all(char::is_numeric) => Some("libtezos-ffi-opensuse_tumbleweed.so"),
             _ => None
         }
         OSType::CentOS => match platform.version.chars().next().unwrap() {
