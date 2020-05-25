@@ -177,7 +177,7 @@ impl RightsContextData {
         } else {
             let cycle_of_rolls = requested_cycle - (preserved_cycles as i64) - 2;
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
-            (cycle_of_rolls * (blocks_per_cycle as i64)) + (((roll_snapshot + 1) as i64) * (blocks_per_roll_snapshot as i64)) - 1
+            (cycle_of_rolls * (blocks_per_cycle as i64)) + (((roll_snapshot + 1) as i64) * (blocks_per_roll_snapshot as i64))
         };
         // let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
@@ -208,8 +208,9 @@ impl RightsContextData {
         //     .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
         //     .collect();
         let context_index = ContextIndex::new(Some(snapshot_level), None);
+        println!("Snapshot level: {}", snapshot_level);
 
-        let rolls = if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/current".to_string()])? {
+        let rolls = if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/current/".to_string()])? {
             val
         } else {
             bail!("No rolls found in context")
@@ -221,10 +222,25 @@ impl RightsContextData {
         for (key, value) in rolls.into_iter() {
             let roll_num = key.split('/').last().unwrap();
 
+            if roll_num.parse::<i32>().unwrap() == 35249 {
+                println!("Key: {} | Val: {:?}", key, value);
+            }
+
             // the values are public keys
             if let Bucket::Exists(pk) = value {
-                let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk)?.to_string();
+                let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk.clone())?.to_string();
                 //let delegate = hex::encode(pk);
+                // if delegate.eq(&"tz1f8uLERkLmF1HtDWyRcq3xEVcKB4kfcAn6".to_string()) {
+                //     println!("PK: {}", hex::encode(&pk));
+                //     println!("tz1f8uLERkLmF1HtDWyRcq3xEVcKB4kfcAn6");
+                //     println!("Roll num: {} | Key: {}", &roll_num, key);
+                // }
+                // if delegate.eq(&"tz1SYq214SCBy9naR6cvycQsYcUGpBqQAE8d".to_string()) {
+                //     println!("PK: {}", hex::encode(&pk));
+                //     println!("tz1SYq214SCBy9naR6cvycQsYcUGpBqQAE8d");
+                //     println!("Roll num: {} | Key: {}", &roll_num, key);
+                // }
+
                 roll_owners.insert(roll_num.parse().unwrap(), delegate);
             } else {
                 continue;  // If the value is Deleted then is skipped and it go to the next iteration

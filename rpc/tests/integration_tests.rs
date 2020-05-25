@@ -141,6 +141,25 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     }
 }
 
+async fn test_all_protos_mainnet() {
+    let proto_starts = vec![/*1, */28082, 204761/*, 458752*/];
+
+    for start in proto_starts {
+        for level in start - 50..start + 50 {
+            if level < 1 { 
+                continue;
+            }
+            test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
+            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
+            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
+        }
+    }
+
+    // test 100 blocks the switch block being in the middle
+
+}
+
 async fn test_rpc_compare_json(rpc_path: &str) {
     let _ = test_rpc_compare_json_and_return_if_eq(rpc_path).await;
 }

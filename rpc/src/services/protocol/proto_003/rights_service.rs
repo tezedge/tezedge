@@ -155,19 +155,28 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
     let rolls_map = context_data.rolls();
     let display_level: i32 = (*parameters.display_level()).try_into()?;
 
+    println!("Last roll: {}", last_roll);
+
     for priority in 0..max_priority {
         // draw the rolls for the requested parameters
         let delegate_to_assign;
         // TODO: priority can overflow in the ocaml code, do a priority % i32::max_value()
         let mut state = init_prng(&context_data, &constants, BAKING_USE_STRING, level.try_into()?, priority.try_into()?)?;
+        let roll_num;
 
         loop {
             let (random_num, sequence) = get_prng_number(state, last_roll)?;
 
             if let Some(d) = rolls_map.get(&random_num) {
                 delegate_to_assign = d;
+                
+                // debug
+                roll_num = random_num.clone();
+                // end of debug
+
                 break;
             } else {
+                println!("prio: {} | roll: {} -> no delegate", priority, random_num);
                 state = sequence;
             }
         }
@@ -200,6 +209,9 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
             )
         );
         assigned.insert(delegate_to_assign);
+        if priority == 0 {
+            println!("[Debug] 0 prio -> roll_num: {} | delegate: {:?}", roll_num, SignaturePublicKeyHash::from_b58_hash(&delegate_to_assign)?.to_string());
+        }
     }
     Ok(())
 }

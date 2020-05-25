@@ -137,6 +137,7 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
             use crate::protocol::proto_002::constants::{ParametricConstants, FIXED};
             println!("{:?}", bytes);
             let context_param = ParametricConstants::from_bytes(bytes.to_vec())?;
+            println!("{:?}", context_param);
             
             let param = ParametricConstants::create_with_default(context_param);
 

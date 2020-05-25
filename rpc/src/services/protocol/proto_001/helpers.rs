@@ -10,7 +10,8 @@ use getset::Getters;
 
 use crypto::blake2b;
 use storage::num_from_slice;
-use storage::persistent::{ContextList, ContextMap, PersistentStorage};
+use storage::persistent::PersistentStorage;
+use storage::context::{TezedgeContext, ContextIndex, ContextApi};
 use storage::skip_list::Bucket;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -119,7 +120,7 @@ impl RightsContextData {
     /// * `list` - Context list handler.
     ///
     /// Return RightsContextData.
-    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, list: ContextList) -> Result<Self, failure::Error> {
+    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, context: TezedgeContext) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
         let preserved_cycles = *constants.preserved_cycles();
@@ -137,12 +138,13 @@ impl RightsContextData {
         };
 
         // get context list of block_id level as ContextMap
-        let current_context = Self::get_context_as_hashmap(block_level.try_into()?, list.clone())?;
+        // let current_context = Self::get_context_as_hashmap(block_level.try_into()?, list.clone())?;
+        let context_index = ContextIndex::new(Some(block_level.try_into()?), None);
 
         // get index of roll snapshot
         let roll_snapshot: i16 = {
             let snapshot_key = format!("data/cycle/{}/roll_snapshot", requested_cycle);
-            if let Some(Bucket::Exists(data)) = current_context.get(&snapshot_key) {
+            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![snapshot_key])? {
                 num_from_slice!(data, 0, i16)
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("roll_snapshot"));
@@ -151,7 +153,7 @@ impl RightsContextData {
 
         let random_seed_key = format!("data/cycle/{}/random_seed", requested_cycle);
         let random_seed = {
-            if let Some(Bucket::Exists(data)) = current_context.get(&random_seed_key) {
+            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![random_seed_key])? {
                 data
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("random_seed"));
@@ -161,9 +163,10 @@ impl RightsContextData {
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
         let last_roll = {
-            if let Some(Bucket::Exists(data)) = current_context.get(&last_roll_key) {
+            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![last_roll_key.clone()])? {
                 num_from_slice!(data, 0, i32)
             } else { // key not found - prepare error for later processing
+                println!("{}", last_roll_key);
                 return Err(format_err!("last_roll"));
             }
         };
@@ -177,10 +180,10 @@ impl RightsContextData {
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
             (cycle_of_rolls * (blocks_per_cycle as i64)) + (((roll_snapshot + 1) as i64) * (blocks_per_roll_snapshot as i64)) - 1
         };
-        let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
+        // let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = Self::get_context_rolls(roll_context)? {
+        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, snapshot_level.try_into()?)? {
             rolls
         } else {
             return Err(format_err!("rolls"));
@@ -200,16 +203,23 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(context: ContextMap) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        let data: ContextMap = context.into_iter()
-            // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
-            .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
-            .collect();
+    fn get_context_rolls(context: &TezedgeContext, snapshot_level: usize) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+        // let data: ContextMap = context.into_iter()
+        //     // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
+        //     .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
+        //     .collect();
+        let context_index = ContextIndex::new(Some(snapshot_level), None);
+
+        let rolls = if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/current".to_string()])? {
+            val
+        } else {
+            bail!("No rolls found in context")
+        };
 
         let mut roll_owners: HashMap<i32, String> = HashMap::new();
 
         // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
-        for (key, value) in data.into_iter() {
+        for (key, value) in rolls.into_iter() {
             let roll_num = key.split('/').last().unwrap();
 
             // the values are public keys
@@ -222,27 +232,6 @@ impl RightsContextData {
             }
         }
         Ok(Some(roll_owners))
-    }
-
-    /// Get list of rollers from context list selected by snapshot level
-    ///
-    /// # Arguments
-    ///
-    /// * `level` - level to select from context list
-    /// * `list` - context list handler
-    ///
-    /// Return context list for given level as HashMap
-    fn get_context_as_hashmap(level: usize, list: ContextList) -> Result<ContextMap, failure::Error> {
-        // get the whole context
-        let context = {
-            let reader = list.read().unwrap();
-            if let Ok(Some(ctx)) = reader.get(level) {
-                ctx
-            } else {
-                bail!("Context not found")
-            }
-        };
-        Ok(context)
     }
 }
 

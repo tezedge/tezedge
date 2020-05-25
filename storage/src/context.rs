@@ -235,12 +235,12 @@ impl ContextApi for TezedgeContext {
         ensure_eq_context_hash!(context_hash, &context_diff);
         // self.remove_recursively_to_diff(context_hash, key_prefix_to_delete, context_diff)
         let context_map_diff = &mut context_diff.diff;
-        let context = self.get_by_key_prefix(&context_diff.predecessor_index, key_prefix_to_delete)?;
+        let context = self.get_key(&context_diff.predecessor_index, key_prefix_to_delete)?;
         if context.is_some() {
-            let context = context.unwrap();
-            for key in context.keys() {
-                context_map_diff.insert(key.clone(), Bucket::Deleted);
-            }
+            context_map_diff.insert(key_prefix_to_delete.join("/"), Bucket::Deleted);
+            // for key in context.keys() {
+            //     context_map_diff.insert(key.clone(), Bucket::Deleted);
+            // }
         }
         Ok(())
     }

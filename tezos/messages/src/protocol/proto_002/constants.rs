@@ -131,10 +131,10 @@ impl Default for ParametricConstants {
             endorsement_security_deposit: Some(num_bigint::BigInt::from(0).into()),
             
             // can me modified
-            block_reward: Some(num_bigint::BigInt::from(0).into()),
+            block_reward: Some(num_bigint::BigInt::from(16000000).into()),
 
             // can me modified
-            endorsement_reward: Some(num_bigint::BigInt::from(0).into()),
+            endorsement_reward: Some(num_bigint::BigInt::from(2000000).into()),
 
             cost_per_byte: Some(num_bigint::BigInt::from(1000).into()),
             hard_storage_limit_per_operation: Some(num_bigint::BigInt::from(60000).into()),
