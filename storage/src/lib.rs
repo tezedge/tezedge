@@ -36,7 +36,6 @@ pub mod block_storage;
 pub mod block_meta_storage;
 pub mod context_action_storage;
 pub mod mempool_storage;
-pub mod p2p_message_storage;
 pub mod system_storage;
 pub mod skip_list;
 pub mod context;

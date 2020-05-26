@@ -55,18 +55,3 @@ pub async fn dev_stats_memory(_: Request<Body>, _: Params, _: Query, env: RpcSer
         }
     }
 }
-
-pub async fn p2p_messages(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let start = params.get_str("offset").unwrap();
-    let end = params.get_str("count").unwrap();
-
-    result_to_json_response(service::retrieve_p2p_messages(start, end, env.persistent_storage()), env.log())
-}
-
-pub async fn  p2p_host_messages(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let start = params.get_str("offset").unwrap();
-    let end = params.get_str("count").unwrap();
-    let host = params.get_str("host").unwrap();
-
-    result_to_json_response(service::retrieve_host_p2p_messages(start, end, host, env.persistent_storage()), env.log())
-}

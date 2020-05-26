@@ -19,7 +19,6 @@ use shell::context_listener::ContextListener;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageError, StorageInitInfo, SystemStorage};
-use storage::p2p_message_storage::{P2PMessageSecondaryIndex, P2PMessageStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
 use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
@@ -101,7 +100,6 @@ fn block_on_actors(
     protocol_events: IpcEvtServer,
     protocol_runner_run: Arc<AtomicBool>,
     log: Logger) {
-
     let mut tokio_runtime = create_tokio_runtime(env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -115,7 +113,7 @@ fn block_on_actors(
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
     // if feeding is started, than run chain manager
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, env.storage.store_p2p_messages)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
         .expect("Failed to create chain manager");
 
     // and than open p2p and others
@@ -130,9 +128,7 @@ fn block_on_actors(
         env.p2p.listener_port,
         identity,
         tezos_env.version.clone(),
-        persistent_storage.clone(),
-        env.storage.store_p2p_messages)
-        .expect("Failed to create peer manager");
+    ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
@@ -204,7 +200,7 @@ fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironme
             } else {
                 (false, previous, &tezos_env.version)
             }
-        },
+        }
         None => {
             system_info.set_chain_id(&tezos_env_main_chain)?;
             (true, "-none-", &tezos_env.version)
@@ -234,7 +230,7 @@ fn ensure_identity(identity_cfg: &crate::configuration::Identity, protocol_runne
                     error: e.into(),
                     message: "Failed to create protocol controller",
                 });
-            },
+            }
         };
 
         match protocol_controller.generate_identity(identity_cfg.expected_pow) {
@@ -308,8 +304,6 @@ fn main() {
         context_action_storage::ContextActionByContractIndex::descriptor(),
         SystemStorage::descriptor(),
         DatabaseBackedSkipList::descriptor(),
-        P2PMessageStorage::descriptor(),
-        P2PMessageSecondaryIndex::descriptor(),
         Lane::descriptor(),
         ListValue::descriptor(),
         Sequences::descriptor(),

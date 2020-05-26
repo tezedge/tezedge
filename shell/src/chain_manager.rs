@@ -19,7 +19,6 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Pee
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::block_meta_storage::BlockMetaStorageReader;
-use storage::p2p_message_storage::P2PMessageStorage;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::MempoolOperationType;
@@ -152,8 +151,6 @@ pub struct ChainManager {
     block_meta_storage: Box<dyn BlockMetaStorageReader>,
     /// Operations storage
     operations_storage: Box<dyn OperationsStorageReader>,
-    /// Msg storage
-    p2p_message_storage: P2PMessageStorage,
     /// Mempool operation storage
     mempool_storage: MempoolStorage,
     /// Holds state of the blockchain
@@ -164,8 +161,6 @@ pub struct ChainManager {
     current_head: CurrentHead,
     /// Internal stats
     stats: Stats,
-    /// Turn off/on saving p2p messages.
-    store_messages: bool,
     /// Indicates that system is shutting down
     shutting_down: bool,
 }
@@ -174,19 +169,17 @@ pub struct ChainManager {
 pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
-
     /// Create new actor instance.
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId, store_messages: bool) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(
                 ChainManager::new,
                 (
-                        network_channel,
-                        shell_channel,
-                        persistent_storage.clone(),
-                        chain_id.clone(),
-                        store_messages
-                )
+                    network_channel,
+                    shell_channel,
+                    persistent_storage.clone(),
+                    chain_id.clone()
+                ),
             ),
             ChainManager::name())
     }
@@ -197,14 +190,13 @@ impl ChainManager {
         "chain-manager"
     }
 
-    fn new((network_channel, shell_channel, persistent_storage, chain_id, store_messages): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, bool)) -> Self {
+    fn new((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
-            p2p_message_storage: P2PMessageStorage::new(&persistent_storage),
             mempool_storage: MempoolStorage::new(&persistent_storage),
             chain_state: BlockchainState::new(&persistent_storage, &chain_id),
             operations_state: OperationsState::new(&persistent_storage, &chain_id),
@@ -214,7 +206,6 @@ impl ChainManager {
                 remote: None,
             },
             shutting_down: false,
-            store_messages,
             stats: Stats {
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
@@ -338,7 +329,6 @@ impl ChainManager {
             block_storage,
             operations_storage,
             stats,
-            p2p_message_storage,
             mempool_storage,
             current_head,
             ..
@@ -359,9 +349,6 @@ impl ChainManager {
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 let log = ctx.system.log().new(slog::o!("peer" => received.peer.name().to_string()));
-                if self.store_messages {
-                    let _ = p2p_message_storage.store_peer_message(received.message.messages(), true, received.peer_address).unwrap();
-                }
 
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
@@ -371,9 +358,9 @@ impl ChainManager {
                                     debug!(log, "Received current branch");
                                     if message.current_branch().current_head().level() > 0 {
                                         chain_state.push_missing_block(MissingBlock {
-                                                block_hash: message.current_branch().current_head().predecessor().clone(),
-                                                level: message.current_branch().current_head().level() - 1
-                                            })?;
+                                            block_hash: message.current_branch().current_head().predecessor().clone(),
+                                            level: message.current_branch().current_head().level() - 1,
+                                        })?;
                                     }
                                     //TODO: refactor to support non zero level in MissingBlock
                                     message.current_branch().history().iter().cloned().rev()
@@ -590,7 +577,7 @@ impl ChainManager {
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
                 unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
-            },
+            }
             _ => ()
         }
 
@@ -795,7 +782,7 @@ impl Receive<CheckChainCompleteness> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
         if self.shutting_down {
-            return
+            return;
         }
 
         match self.check_chain_completeness(ctx) {

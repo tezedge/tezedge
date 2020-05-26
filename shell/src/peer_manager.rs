@@ -22,8 +22,6 @@ use tokio::time::timeout;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
-use storage::p2p_message_storage::P2PMessageStorage;
-use storage::persistent::PersistentStorage;
 use tezos_api::identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -121,10 +119,6 @@ pub struct PeerManager {
     check_peer_count_last: Option<Instant>,
     /// Indicates that system is shutting down
     shutting_down: bool,
-    /// Storage
-    p2p_msg_storage: P2PMessageStorage,
-    /// Flag to turn on/off messages storing
-    store_messages: bool,
 }
 
 /// Reference to [peer manager](PeerManager) actor.
@@ -141,8 +135,6 @@ impl PeerManager {
                  listener_port: u16,
                  identity: Identity,
                  protocol_version: String,
-                 ps: PersistentStorage,
-                 store_p2p_messages: bool,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of(
             Props::new_args(PeerManager::new, (
@@ -154,9 +146,7 @@ impl PeerManager {
                 threshold,
                 listener_port,
                 identity,
-                protocol_version,
-                ps,
-                store_p2p_messages)),
+                protocol_version)),
             PeerManager::name())
     }
 
@@ -166,8 +156,8 @@ impl PeerManager {
         "peer-manager"
     }
 
-    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, ps, store_messages):
-           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, PersistentStorage, bool)) -> Self {
+    fn new((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
+           (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self {
         PeerManager {
             network_channel,
             shell_channel,
@@ -185,8 +175,6 @@ impl PeerManager {
             discovery_last: None,
             check_peer_count_last: None,
             shutting_down: false,
-            p2p_msg_storage: P2PMessageStorage::new(&ps),
-            store_messages
         }
     }
 
@@ -226,9 +214,7 @@ impl PeerManager {
             &self.identity.proof_of_work_stamp,
             &self.protocol_version,
             self.tokio_executor.clone(),
-            socket_address,
-            self.p2p_msg_storage.clone(),
-            self.store_messages,
+            socket_address
         ).unwrap();
 
         self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: socket_address.clone() });

@@ -11,8 +11,6 @@ use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
 use storage::block_storage::BlockJsonData;
-use storage::p2p_message_storage::P2PMessageStorage;
-use storage::p2p_message_storage::rpc_message::P2PRpcMessage;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
@@ -332,25 +330,6 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
 
 
     Ok(Some(rolls))
-}
-
-pub(crate) fn retrieve_p2p_messages(start: &str, count: &str, persistent_storage: &PersistentStorage) -> Result<Vec<P2PRpcMessage>, failure::Error> {
-    let p2p_store = P2PMessageStorage::new(persistent_storage);
-    let start = start.parse().unwrap();
-    let count = count.parse().unwrap();
-    if let Ok(data) = p2p_store.get_range(start, count) {
-        Ok(data)
-    } else {
-        Ok(Default::default())
-    }
-}
-
-pub(crate) fn retrieve_host_p2p_messages(start: &str, end: &str, host: &str, persistent_storage: &PersistentStorage) -> Result<Vec<P2PRpcMessage>, failure::Error> {
-    let p2p_store = P2PMessageStorage::new(persistent_storage);
-    let start = start.parse().unwrap();
-    let end = end.parse().unwrap();
-    let host = host.parse().unwrap();
-    Ok(p2p_store.get_range_for_host(host, start, end)?)
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
