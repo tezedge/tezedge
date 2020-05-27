@@ -29,7 +29,6 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use crate::identity::IdentityError;
 
 mod configuration;
 mod identity;
@@ -214,45 +213,6 @@ fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironme
     Ok(db_version_ok && chain_id_ok)
 }
 
-fn ensure_identity(identity_cfg: &crate::configuration::Identity, protocol_runner_endpoint: &mut ProtocolRunnerEndpoint, log: Logger) -> Result<Identity, IdentityError> {
-    if identity_cfg.identity_json_file_path.exists() {
-        identity::load_identity(&identity_cfg.identity_json_file_path)
-    } else {
-        info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
-
-        // TODO: TE-74 will be replace with rust version without protocol_runner
-        // setup tezos ocaml runtime just for generate identity
-        let protocol_controller = match protocol_runner_endpoint.commands.accept() {
-            Ok(controller) => controller,
-            Err(e) => {
-                error!(log, "Failed to create protocol controller. Reason: {:?}", e);
-                return Err(IdentityError::ServiceError {
-                    error: e.into(),
-                    message: "Failed to create protocol controller",
-                });
-            }
-        };
-
-        match protocol_controller.generate_identity(identity_cfg.expected_pow) {
-            Ok(identity) => {
-                info!(log, "Identity successfully generated");
-                match identity::store_identity(&identity_cfg.identity_json_file_path, &identity) {
-                    Ok(()) => {
-                        drop(protocol_controller);
-                        info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
-                        Ok(identity)
-                    }
-                    Err(e) => Err(e)
-                }
-            }
-            Err(e) => return Err(IdentityError::ServiceError {
-                error: e.into(),
-                message: "Failed to store generated identity",
-            })
-        }
-    }
-}
-
 fn main() {
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
@@ -265,27 +225,8 @@ fn main() {
 
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
-    // tezos protocol runner endpoint
-    let mut protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration {
-            log_enabled: env.logging.ocaml_log_enabled,
-            no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
-            debug_mode: env.storage.store_context_actions,
-        },
-        tezos_env.clone(),
-        env.enable_testchain,
-        &env.storage.tezos_data_dir,
-        &env.protocol_runner,
-    ));
-
-    // TODO: refactor and move to restarting protocol_runner thread, when generate_identity will be in rust
-    let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
-        Ok(process) => process,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "reason" => e), actor_system),
-    };
-
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    let tezos_identity = match ensure_identity(&env.identity, &mut protocol_runner_endpoint, log.clone()) {
+    let tezos_identity = match identity::ensure_identity(&env.identity, log.clone()) {
         Ok(identity) => {
             info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.clone().into_os_string().into_string().unwrap());
             identity
@@ -323,6 +264,23 @@ fn main() {
         _ => ()
     }
 
+    // tezos protocol runner endpoint
+    let protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
+        TezosRuntimeConfiguration {
+            log_enabled: env.logging.ocaml_log_enabled,
+            no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+            debug_mode: env.storage.store_context_actions,
+        },
+        tezos_env.clone(),
+        env.enable_testchain,
+        &env.storage.tezos_data_dir,
+        &env.protocol_runner,
+    ));
+
+    let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
+        Ok(process) => process,
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "reason" => e), actor_system),
+    };
 
     let ProtocolRunnerEndpoint {
         runner: protocol_runner,
