@@ -23,6 +23,7 @@ pub type RustBytes = Vec<u8>;
 
 /// Trait for binary encoding messages for ffi.
 pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
+
     #[inline]
     fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
         binary_writer::write(&self, Self::encoding())
