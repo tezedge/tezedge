@@ -37,6 +37,4 @@ jsonpath = "0.1.1"
 slog-async = "2.3"
 slog-term = "2.4"
 tezos_client = { path = "../tezos/client" }
-tezos_interop = { path = "../tezos/interop" }
-tezos_interop_callback = { path = "../tezos/interop_callback" }
 zip = "0.5.5"

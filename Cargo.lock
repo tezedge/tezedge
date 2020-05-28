@@ -2191,8 +2191,6 @@ dependencies = [
  "tezos_client 0.1.0",
  "tezos_context 0.0.1",
  "tezos_encoding 0.1.0",
- "tezos_interop 0.0.2-pre14",
- "tezos_interop_callback 0.0.2-pre14",
  "tezos_messages 0.1.0",
  "tezos_wrapper 0.1.0",
  "tokio 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",

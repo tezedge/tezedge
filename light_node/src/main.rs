@@ -27,7 +27,7 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
-use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint, ExecutableProtocolRunner};
 
 use crate::configuration::LogFormat;
 
@@ -99,7 +99,7 @@ fn block_on_actors(
     log: Logger) {
 
     // tezos protocol runner endpoint for applying blocks to chain
-    let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::new(
+    let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
         "apply_blocks_protocol_runner_endpoint",
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
