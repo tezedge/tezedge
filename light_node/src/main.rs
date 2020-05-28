@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use riker::actors::*;
@@ -26,7 +26,7 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
-use tezos_wrapper::service::{IpcCmdServer, IpcEvtServer, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
+use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
 
@@ -95,10 +95,37 @@ fn block_on_actors(
     identity: Identity,
     actor_system: ActorSystem,
     persistent_storage: PersistentStorage,
-    protocol_commands: IpcCmdServer,
-    protocol_events: IpcEvtServer,
-    protocol_runner_run: Arc<AtomicBool>,
     log: Logger) {
+
+    // tezos protocol runner endpoint for applying blocks to chain
+    let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::new(
+        "apply_blocks_protocol_runner_endpoint",
+        ProtocolEndpointConfiguration::new(
+            TezosRuntimeConfiguration {
+                log_enabled: env.logging.ocaml_log_enabled,
+                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+                debug_mode: env.storage.store_context_actions,
+            },
+            tezos_env.clone(),
+            env.enable_testchain,
+            &env.storage.tezos_data_dir,
+            &env.protocol_runner,
+        ),
+        log.clone(),
+    );
+    let (apply_blocks_protocol_runner_endpoint_run_feature, apply_block_protocol_events, apply_block_protocol_commands) = match apply_blocks_protocol_runner_endpoint.start_in_restarting_mode() {
+        Ok(run_feature) => {
+            info!(log, "Protocol runner started successfully"; "endpoint" => apply_blocks_protocol_runner_endpoint.name);
+            let ProtocolRunnerEndpoint {
+                events: apply_block_protocol_events,
+                commands: apply_block_protocol_commands,
+                ..
+            } = apply_blocks_protocol_runner_endpoint;
+            (run_feature, apply_block_protocol_events, apply_block_protocol_commands)
+        }
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => apply_blocks_protocol_runner_endpoint.name, "reason" => e), actor_system),
+    };
+
     let mut tokio_runtime = create_tokio_runtime(env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -107,9 +134,9 @@ fn block_on_actors(
         .expect("Failed to create shell channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone(), env.storage.store_context_actions)
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_block_protocol_events, log.clone(), env.storage.store_context_actions)
         .expect("Failed to create context event listener");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone())
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
     // if feeding is started, than run chain manager
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
@@ -142,8 +169,8 @@ fn block_on_actors(
         signal::ctrl_c().await.expect("Failed to listen for ctrl-c event");
         info!(log, "ctrl-c received!");
 
-        // disable protocol runner auto-restarting feature
-        protocol_runner_run.store(false, Ordering::Release);
+        // disable/stop protocol runner for applying blocks feature
+        apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
         info!(log, "Sending shutdown notification to actors");
         shell_channel.tell(
@@ -264,61 +291,6 @@ fn main() {
         _ => ()
     }
 
-    // tezos protocol runner endpoint
-    let protocol_runner_endpoint = ProtocolRunnerEndpoint::new(ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration {
-            log_enabled: env.logging.ocaml_log_enabled,
-            no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
-            debug_mode: env.storage.store_context_actions,
-        },
-        tezos_env.clone(),
-        env.enable_testchain,
-        &env.storage.tezos_data_dir,
-        &env.protocol_runner,
-    ));
-
-    let mut protocol_runner_process = match protocol_runner_endpoint.runner.spawn() {
-        Ok(process) => process,
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "reason" => e), actor_system),
-    };
-
-    let ProtocolRunnerEndpoint {
-        runner: protocol_runner,
-        commands: protocol_commands,
-        events: protocol_events,
-    } = protocol_runner_endpoint;
-
-    let protocol_runner_run = Arc::new(AtomicBool::new(true));
-    {
-        use std::thread;
-
-        let log = log.clone();
-        let run = protocol_runner_run.clone();
-
-        let _ = thread::spawn(move || {
-            while run.load(Ordering::Acquire) {
-                if !ProtocolRunner::is_running(&mut protocol_runner_process) {
-                    info!(log, "Starting protocol runner process");
-                    protocol_runner_process = match protocol_runner.spawn() {
-                        Ok(process) => {
-                            info!(log, "Protocol runner started successfully");
-                            process
-                        }
-                        Err(e) => {
-                            crit!(log, "Failed to spawn protocol runner process"; "reason" => e);
-                            break;
-                        }
-                    };
-                }
-                thread::sleep(Duration::from_secs(1));
-            }
-
-            if ProtocolRunner::is_running(&mut protocol_runner_process) {
-                ProtocolRunner::terminate(protocol_runner_process);
-            }
-        });
-    }
-
     let schemas = vec![
         BlockStorage::descriptor()
     ];
@@ -331,7 +303,7 @@ fn main() {
 
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
         match resolve_storage_init_chain_data(&tezos_env, &env.storage.bootstrap_db_path, &env.storage.tezos_data_dir, log.clone()) {
-            Ok(init_data) => block_on_actors(&env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, protocol_commands, protocol_events, protocol_runner_run, log),
+            Ok(init_data) => block_on_actors(&env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data. Reason: {}", e), actor_system),
         }
     }
