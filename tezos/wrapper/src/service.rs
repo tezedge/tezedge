@@ -306,10 +306,6 @@ impl IpcEvtServer {
         let (rx, _) = self.0.accept()?;
         Ok(rx)
     }
-
-    pub fn client_path(&self) -> PathBuf {
-        self.0.client().path().to_path_buf()
-    }
 }
 
 struct IpcIO {
@@ -446,23 +442,22 @@ impl Drop for ProtocolController<'_> {
 }
 
 /// Endpoint consists of a protocol runner and IPC communication (command and event channels).
-pub struct ProtocolRunnerEndpoint {
+pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
     pub name: String,
-    runner: ProtocolRunner,
+    runner: Runner,
     log: Logger,
 
     pub commands: IpcCmdServer,
     pub events: IpcEvtServer,
 }
 
-impl ProtocolRunnerEndpoint {
-    pub fn new(name: &str, configuration: ProtocolEndpointConfiguration, log: Logger) -> ProtocolRunnerEndpoint {
-        let protocol_runner_path = configuration.executable_path.clone();
+impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
+    pub fn new(name: &str, configuration: ProtocolEndpointConfiguration, log: Logger) -> ProtocolRunnerEndpoint<Runner> {
         let evt_server = IpcEvtServer::new();
-        let cmd_server = IpcCmdServer::new(configuration);
+        let cmd_server = IpcCmdServer::new(configuration.clone());
         ProtocolRunnerEndpoint {
             name: name.to_string(),
-            runner: ProtocolRunner::new(&protocol_runner_path, cmd_server.0.client().path(), evt_server.0.client().path()),
+            runner: Runner::new(configuration, cmd_server.0.client().path(), evt_server.0.client().path()),
             commands: cmd_server,
             events: evt_server,
             log,
@@ -490,7 +485,7 @@ impl ProtocolRunnerEndpoint {
             // watchdog thread, which checks if sub-process is running, if not, than starts new one
             thread::spawn(move || {
                 while run.load(Ordering::Acquire) {
-                    if !ProtocolRunner::is_running(&mut protocol_runner_process) {
+                    if !Runner::is_running(&mut protocol_runner_process) {
                         info!(log, "Restarting protocol runner process"; "endpoint" => name.clone());
                         protocol_runner_process = match runner.spawn() {
                             Ok(process) => {
@@ -507,8 +502,8 @@ impl ProtocolRunnerEndpoint {
                 }
                 debug!(log, "Protocol runner stopped restarting_mode"; "endpoint" => name.clone());
 
-                if ProtocolRunner::is_running(&mut protocol_runner_process) {
-                    ProtocolRunner::terminate(protocol_runner_process);
+                if Runner::is_running(&mut protocol_runner_process) {
+                    Runner::terminate(protocol_runner_process);
                 }
             })
         };
@@ -519,24 +514,26 @@ impl ProtocolRunnerEndpoint {
 
 /// Control protocol runner sub-process.
 #[derive(Clone)]
-pub struct ProtocolRunner {
+pub struct ExecutableProtocolRunner {
     sock_cmd_path: PathBuf,
     sock_evt_path: PathBuf,
     executable_path: PathBuf,
 }
 
-impl ProtocolRunner {
+impl ExecutableProtocolRunner {
     const PROCESS_WAIT_TIMEOUT: Duration = Duration::from_secs(4);
+}
 
-    pub fn new<P: AsRef<Path>>(executable_path: P, sock_cmd_path: &Path, sock_evt_path: &Path) -> Self {
-        ProtocolRunner {
+impl ProtocolRunner for ExecutableProtocolRunner {
+    fn new(configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: &Path) -> Self {
+        ExecutableProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
             sock_evt_path: sock_evt_path.to_path_buf(),
-            executable_path: executable_path.as_ref().to_path_buf(),
+            executable_path: configuration.executable_path.clone(),
         }
     }
 
-    pub fn spawn(&self) -> Result<Child, ProtocolServiceError> {
+    fn spawn(&self) -> Result<Child, ProtocolServiceError> {
         let process = Command::new(&self.executable_path)
             .arg("--sock-cmd")
             .arg(&self.sock_cmd_path)
@@ -547,7 +544,7 @@ impl ProtocolRunner {
         Ok(process)
     }
 
-    pub fn terminate(mut process: Child) {
+    fn terminate(mut process: Child) {
         match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
             Some(_) => (),
             None => {
@@ -557,7 +554,7 @@ impl ProtocolRunner {
         };
     }
 
-    pub fn is_running(process: &mut Child) -> bool {
+    fn is_running(process: &mut Child) -> bool {
         match process.try_wait() {
             Ok(None) => true,
             _ => false,
@@ -565,3 +562,12 @@ impl ProtocolRunner {
     }
 }
 
+pub trait ProtocolRunner: Clone + Send {
+    fn new(configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: &Path) -> Self;
+
+    fn spawn(&self) -> Result<Child, ProtocolServiceError>;
+
+    fn terminate(process: Child);
+
+    fn is_running(process: &mut Child) -> bool;
+}

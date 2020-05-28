@@ -81,7 +81,7 @@ pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: Logge
             }
             Err(e) => return Err(IdentityError::ServiceError {
                 error: e.into(),
-                message: "Failed to store generated identity",
+                message: "Failed to generate identity",
             })
         }
     }
