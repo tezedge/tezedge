@@ -61,7 +61,7 @@ fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_na
         // sent bytes to ocaml
         let roundtrip = ocaml::named_value(&ffi_fn_name).expect(&format!("function '{}' is not registered", &ffi_fn_name));
 
-        let data_as_rust_bytes: RustBytes = orig_data.as_rust_bytes(MSG::encoding()).expect("failed to convert");
+        let data_as_rust_bytes: RustBytes = orig_data.as_rust_bytes().expect("failed to convert");
 
         let result: Result<Value, ocaml::Error> = roundtrip.call_exn::<OcamlBytes>(
             data_as_rust_bytes.convert_to(),
@@ -71,7 +71,7 @@ fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_na
         let result: OcamlBytes = result.expect("failed to call ffi").into();
         let result: RustBytes = result.convert_to();
 
-        let result = MSG::from_rust_bytes(result, MSG::encoding()).expect("failed to convert in ffi");
+        let result = MSG::from_rust_bytes(result).expect("failed to convert in ffi");
         assert_eq!(orig_data, result);
 
         ()

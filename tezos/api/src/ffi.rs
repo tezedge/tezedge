@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
 use std::fmt::Debug;
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
@@ -10,7 +11,7 @@ use failure::Fail;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, ProtocolHash};
 use lazy_static::lazy_static;
 use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
@@ -23,14 +24,14 @@ pub type RustBytes = Vec<u8>;
 /// Trait for binary encoding messages for ffi.
 pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
     #[inline]
-    fn as_rust_bytes(&self, encoding: &Encoding) -> Result<RustBytes, ser::Error> {
-        binary_writer::write(&self, &encoding)
+    fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
+        binary_writer::write(&self, Self::encoding())
     }
 
     /// Create new struct from bytes.
-    /// #[inline]
-    fn from_rust_bytes(buf: RustBytes, encoding: &Encoding) -> Result<Self, BinaryReaderError> {
-        let value = BinaryReader::new().read(buf, encoding)?;
+    #[inline]
+    fn from_rust_bytes(buf: RustBytes) -> Result<Self, BinaryReaderError> {
+        let value = BinaryReader::new().read(buf, Self::encoding())?;
         let value: Self = deserialize_from_value(&value)?;
         Ok(value)
     }
@@ -150,11 +151,29 @@ impl FfiMessage for ApplyBlockResponse {
 }
 
 /// Init protocol context result
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct InitProtocolContextResult {
-    pub supported_protocol_hashes: Vec<RustBytes>,
+    pub supported_protocol_hashes: Vec<ProtocolHash>,
     /// Presents only if was genesis commited to context
     pub genesis_commit_hash: Option<ContextHash>,
+}
+
+impl fmt::Debug for InitProtocolContextResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let genesis_commit_hash = match &self.genesis_commit_hash {
+            Some(hash) => HashType::ContextHash.bytes_to_string(hash),
+            None => "-none-".to_string()
+        };
+        let supported_protocol_hashes = self.supported_protocol_hashes
+            .iter()
+            .map(|ph| HashType::ContextHash.bytes_to_string(ph))
+            .collect::<Vec<String>>();
+
+        f.debug_struct("InitProtocolContextResult")
+            .field("genesis_commit_hash", &genesis_commit_hash)
+            .field("supported_protocol_hashes", &supported_protocol_hashes)
+            .finish()
+    }
 }
 
 /// Commit genesis result

@@ -232,7 +232,7 @@ fn apply_blocks_like_chain_feeder(
 
         // parse request
         let request: RustBytes = hex::decode(request)?;
-        let request = ApplyBlockRequest::from_rust_bytes(request, &APPLY_BLOCK_REQUEST_ENCODING)?;
+        let request = ApplyBlockRequest::from_rust_bytes(request)?;
         let header = request.block_header.clone();
 
         // store header to db
