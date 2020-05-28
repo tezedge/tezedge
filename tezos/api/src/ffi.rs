@@ -22,15 +22,16 @@ pub type RustBytes = Vec<u8>;
 
 /// Trait for binary encoding messages for ffi.
 pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
+
     #[inline]
-    fn as_rust_bytes(&self, encoding: &Encoding) -> Result<RustBytes, ser::Error> {
-        binary_writer::write(&self, &encoding)
+    fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
+        binary_writer::write(&self, Self::encoding())
     }
 
     /// Create new struct from bytes.
-    /// #[inline]
-    fn from_rust_bytes(buf: RustBytes, encoding: &Encoding) -> Result<Self, BinaryReaderError> {
-        let value = BinaryReader::new().read(buf, encoding)?;
+    #[inline]
+    fn from_rust_bytes(buf: RustBytes) -> Result<Self, BinaryReaderError> {
+        let value = BinaryReader::new().read(buf, Self::encoding())?;
         let value: Self = deserialize_from_value(&value)?;
         Ok(value)
     }

@@ -57,7 +57,7 @@ pub fn call<REQUEST, RESPONSE>(ffi_fn_name: String, request: REQUEST)
         let ocaml_function = ocaml::named_value(&ffi_fn_name).expect(&format!("function '{}' is not registered", &ffi_fn_name));
 
         // write to bytes
-        let request = match request.as_rust_bytes(REQUEST::encoding()) {
+        let request = match request.as_rust_bytes() {
             Ok(data) => data,
             Err(e) => return Err(CallError::InvalidRequestData { message: format!("{:?}", e) })
         };
@@ -68,7 +68,7 @@ pub fn call<REQUEST, RESPONSE>(ffi_fn_name: String, request: REQUEST)
                 let response: OcamlBytes = response.into();
                 let response: RustBytes = response.convert_to();
 
-                let response = RESPONSE::from_rust_bytes(response, RESPONSE::encoding())
+                let response = RESPONSE::from_rust_bytes(response)
                     .map_err(|error| CallError::InvalidResponseData {
                         message: format!("{}", error)
                     })?;
