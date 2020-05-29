@@ -6,12 +6,12 @@
 use std::cmp;
 use std::mem::size_of;
 
-use bitvec::{Bits, BitVec};
+use bit_vec::BitVec;
 use byteorder::{BigEndian, WriteBytesExt};
 use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
-use crate::bit_utils::BitTrim;
+use crate::bit_utils::{Bits, BitTrim};
 use crate::encoding::{Encoding, Field, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
@@ -428,7 +428,7 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
         // At the beginning we have to process first 6 bits because we have to indicate
         // continuation of bit chunks and to set one bit to indicate numeric sign (0-positive, 1-negative).
         // Then the algorithm continues by processing 7 bit chunks.
-        let mut bits: BitVec<bitvec::BigEndian, u8> = bytes.into();
+        let mut bits = BitVec::from_bytes(&bytes);
         bits = bits.trim_left();
 
         let mut n: u8 = if negative { 0xC0 } else { 0x80 };

@@ -11,7 +11,7 @@
 ///
 /// It can be then easily awaited in rust:
 ///
-/// ```
+/// ```rust, no_run
 /// use tezos_interop::runtime::OcamlResult;
 /// use tezos_interop::runtime;
 /// use ocaml::{Str};
