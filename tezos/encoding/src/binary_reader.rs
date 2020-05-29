@@ -3,13 +3,13 @@
 
 //! Tezos binary data reader.
 
-use bitvec::{Bits, BitVec};
+use bit_vec::BitVec;
 use bytes::Buf;
 use bytes::buf::ext::BufExt;
 use failure::Fail;
 use serde::de::Error as SerdeError;
 
-use crate::bit_utils::{BitReverse, BitTrim, ToBytes};
+use crate::bit_utils::{BitReverse, Bits, BitTrim, ToBytes};
 use crate::de;
 use crate::encoding::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
@@ -245,7 +245,7 @@ impl BinaryReader {
                     }
                     Ok(Value::String(format!("{:x}", num)))
                 } else {
-                    let mut bits: BitVec<bitvec::BigEndian, u8> = BitVec::new();
+                    let mut bits = BitVec::new();
                     for bit_idx in 0..6 {
                         bits.push(byte.get(bit_idx));
                     }
@@ -281,7 +281,7 @@ impl BinaryReader {
                 }
             }
             Encoding::Mutez => {
-                let mut bits: BitVec<bitvec::BigEndian, u8> = BitVec::new();
+                let mut bits = BitVec::new();
 
                 let mut has_next_byte = true;
                 while has_next_byte {
@@ -342,7 +342,7 @@ mod tests {
 
     use serde::{Deserialize, Serialize};
 
-    use crate::{de, binary_writer};
+    use crate::{binary_writer, de};
     use crate::encoding::{Tag, TagMap};
     use crate::ser::Serializer;
     use crate::types::BigInt;
