@@ -46,6 +46,8 @@ lazy_static! {
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum ProtocolMessage {
     ApplyBlockCall(ApplyBlockParams),
+    BeginConstructionCall(BeginConstructionParams),
+    ValidateOperationCall(ValidateOperationParams),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
     GenesisResultDataCall(GenesisResultDataParams),
@@ -60,6 +62,18 @@ struct ApplyBlockParams {
     predecessor_block_header: BlockHeader,
     operations: Vec<Option<OperationsForBlocksMessage>>,
     max_operations_ttl: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BeginConstructionParams {
+    chain_id: ChainId,
+    block_header: BlockHeader,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ValidateOperationParams {
+    prevalidator: PrevalidatorWrapper,
+    operation: Operation,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -91,6 +105,8 @@ struct GenerateIdentityParams {
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
+    BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
+    ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
@@ -131,6 +147,20 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                     params.max_operations_ttl,
                 );
                 tx.send(&NodeMessage::ApplyBlockResult(res))?;
+            }
+            ProtocolMessage::BeginConstructionCall(params) => {
+                let res = Proto::begin_construction(
+                    &params.chain_id,
+                    &params.block_header,
+                );
+                tx.send(&NodeMessage::BeginConstructionResult(res))?;
+            }
+            ProtocolMessage::ValidateOperationCall(params) => {
+                let res = Proto::validate_operation(
+                    &params.prevalidator,
+                    &params.operation,
+                );
+                tx.send(&NodeMessage::ValidateOperationResponse(res))?;
             }
             ProtocolMessage::ChangeRuntimeConfigurationCall(params) => {
                 let res = Proto::change_runtime_configuration(params);
@@ -179,6 +209,14 @@ pub enum ProtocolError {
     #[fail(display = "Apply block error: {}", reason)]
     ApplyBlockError {
         reason: ApplyBlockError
+    },
+    #[fail(display = "Begin construction error: {}", reason)]
+    BeginConstructionError {
+        reason: BeginConstructionError
+    },
+    #[fail(display = "Validate operation error: {}", reason)]
+    ValidateOperationError {
+        reason: ValidateOperationError
     },
     /// Error in configuration.
     #[fail(display = "OCaml runtime configuration error: {}", reason)]
@@ -357,6 +395,8 @@ impl<'a> ProtocolController<'a> {
     const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(180);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
+    const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
+    const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
 
     /// Apply block
     pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResponse, ProtocolServiceError> {
@@ -375,6 +415,42 @@ impl<'a> ProtocolController<'a> {
         io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
             NodeMessage::ApplyBlockResult(result) => result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into()),
+            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+        }
+    }
+
+    /// Begin construction
+    pub fn begin_construction(&self, chain_id: &Vec<u8>, block_header: &BlockHeader) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::BeginConstructionCall(BeginConstructionParams {
+            chain_id: chain_id.clone(),
+            block_header: block_header.clone(),
+        }))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx.set_read_timeout(Some(Self::BEGIN_CONSTRUCTION_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::BeginConstructionResult(result) => result.map_err(|err| ProtocolError::BeginConstructionError { reason: err }.into()),
+            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+        }
+    }
+
+    /// Validate operation
+    pub fn validate_operation(&self, prevalidator: &PrevalidatorWrapper, operation: &Operation) -> Result<ValidateOperationResponse, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::ValidateOperationCall(ValidateOperationParams {
+            prevalidator: prevalidator.clone(),
+            operation: operation.clone(),
+        }))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx.set_read_timeout(Some(Self::VALIDATE_OPERATION_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::ValidateOperationResponse(result) => result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }

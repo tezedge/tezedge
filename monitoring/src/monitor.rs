@@ -268,6 +268,7 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.chain_monitor.process_block_operations(msg.level as usize);
 
             },
+            ShellChannelMsg::MempoolOperationReceived(_) => (),
             ShellChannelMsg::ShuttingDown(_) => ()
         }
     }

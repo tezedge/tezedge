@@ -6,9 +6,10 @@
 use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, OperationHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -43,18 +44,31 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
+#[derive(Clone, Debug)]
+pub struct MempoolOperationReceived {
+    pub operation_hash: OperationHash,
+    pub operation_type: MempoolOperationType,
+}
+
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
     BlockApplied(BlockApplied),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
+    MempoolOperationReceived(MempoolOperationReceived),
     ShuttingDown(ShuttingDown),
 }
 
 impl From<BlockApplied> for ShellChannelMsg {
     fn from(msg: BlockApplied) -> Self {
         ShellChannelMsg::BlockApplied(msg)
+    }
+}
+
+impl From<MempoolOperationReceived> for ShellChannelMsg {
+    fn from(msg: MempoolOperationReceived) -> Self {
+        ShellChannelMsg::MempoolOperationReceived(msg)
     }
 }
 

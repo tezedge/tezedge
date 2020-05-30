@@ -25,7 +25,7 @@ use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::Head;
-use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockchainState, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
 use crate::subscription::*;
@@ -485,10 +485,11 @@ impl ChainManager {
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         let peer_current_mempool = message.current_mempool();
 
+                                        // all operations (known_valid + pending) should be added to pending and validated afterwards
                                         // enqueue mempool operations for retrieval
                                         peer_current_mempool.known_valid().iter().cloned()
                                             .for_each(|operation_hash| {
-                                                peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::KnownValid));
+                                                peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::Pending));
                                             });
                                         peer_current_mempool.pending().iter().cloned()
                                             .for_each(|operation_hash| {
@@ -505,10 +506,20 @@ impl ChainManager {
                                         Some((op_type, op_ttl)) => {
                                             // store mempool operation
                                             peer.mempool_operations_response_last = Instant::now();
-                                            mempool_storage.put(op_type, message.clone(), op_ttl)?;
+                                            mempool_storage.put(op_type.clone(), message.clone(), op_ttl)?;
 
                                             // trigger CheckMempoolCompleteness
                                             ctx.myself().tell(CheckMempoolCompleteness, None);
+
+                                            // notify others that new block was received
+                                            shell_channel.tell(
+                                                Publish {
+                                                    msg: MempoolOperationReceived {
+                                                        operation_hash: message.operation().message_hash()?.clone(),
+                                                        operation_type: op_type.clone(),
+                                                    }.into(),
+                                                    topic: ShellChannelTopic::ShellEvents.into(),
+                                                }, Some(ctx.myself().into()));
                                         }
                                         None => debug!(log, "Unexpected mempool operation received")
                                     }

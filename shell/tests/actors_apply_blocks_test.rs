@@ -29,7 +29,9 @@ use tezos_api::ffi::{ApplyBlockRequest, FfiMessage, RustBytes, TezosRuntimeConfi
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
 use tezos_messages::p2p::encoding::operations_for_blocks;
-use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint, ExecutableProtocolRunner};
+use std::sync::atomic::Ordering;
+use shell::mempool_prevalidator::MempoolPrevalidator;
 
 mod common;
 
@@ -58,14 +60,15 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
     let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, log.clone())
         .expect("Failed to resolve init storage chain data");
 
-    // protocol runner endpoint
-    let protocol_runner = PathBuf::from("no_executable_protocol_runnner");
-    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<common::TestProtocolRunner>::new(
+    // apply block protocol runner endpoint
+    let apply_protocol_runner = PathBuf::from("/opt/tezos-env/tezos-rs/tezedge/target/release/protocol-runner");
+    let apply_protocol_runner = PathBuf::from("/drone/src/target/release/protocol-runner");
+    let mut apply_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
         "test_protocol_runner_endpoint",
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
-                log_enabled: false,
-                no_of_ffi_calls_treshold_for_gc: 50,
+                log_enabled: common::is_ocaml_log_enabled(),
+                no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
                 debug_mode: false,
             },
             tezos_env.clone(),
@@ -77,23 +80,70 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
         ),
         log.clone(),
     );
-    let (protocol_commands, protocol_events) = match protocol_runner_endpoint.start() {
-        Ok(_) => {
+    let (apply_restarting_feature, apply_protocol_commands, apply_protocol_events) = match apply_protocol_runner_endpoint.start_in_restarting_mode() {
+        Ok(restarting_feature) => {
             let ProtocolRunnerEndpoint {
                 commands,
                 events,
                 ..
-            } = protocol_runner_endpoint;
-            (commands, events)
+            } = apply_protocol_runner_endpoint;
+            (restarting_feature, commands, events)
+        }
+        Err(e) => panic!("Error to start test protocol runner: {:?}", e)
+    };
+
+    // mempool protocol runner endpoint
+    let mempool_protocol_runner = PathBuf::from("/opt/tezos-env/tezos-rs/tezedge/target/release/protocol-runner");
+    let mempool_protocol_runner = PathBuf::from("/drone/src/target/release/protocol-runner");
+    let mempool_protocol_endpoint_configuration = ProtocolEndpointConfiguration::new(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+            debug_mode: false,
+        },
+        tezos_env.clone(),
+        false,
+        &context_db_path,
+        &mempool_protocol_runner,
+        log_level,
+        false,
+    );
+
+    // create and start protocol endpoint
+    let mut mempool_protocol_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
+        "test_mempool_prevalidator_protocol_runner_endpoint",
+        mempool_protocol_endpoint_configuration,
+        log.clone(),
+    );
+    let (mempool_restarting_feature, mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name) = match mempool_protocol_endpoint.start_in_restarting_mode() {
+        Ok(restarting_feature) => {
+            let ProtocolRunnerEndpoint {
+                commands,
+                name,
+                ..
+            } = mempool_protocol_endpoint;
+            (restarting_feature, commands, name)
         }
         Err(e) => panic!("Error to start test protocol runner: {:?}", e)
     };
 
     // run actor's
-    let actor_system = SystemBuilder::new().name("test_apply_block_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
+    let actor_system = SystemBuilder::new().name("test_actors_apply_blocks_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone()).expect("Failed to create chain feeder");
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
+
+    thread::sleep(Duration::from_secs(15));
+
+    let _ = MempoolPrevalidator::actor(
+        &actor_system,
+        shell_channel.clone(),
+        &persistent_storage,
+        &init_storage_data,
+        &tezos_env,
+        (mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name),
+        log.clone(),
+    ).expect("Failed to create chain feeder");
 
     // prepare data for apply blocks and wait for current head
     assert!(
@@ -116,7 +166,10 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
             topic: ShellChannelTopic::ShellCommands.into(),
         }, None,
     );
-    thread::sleep(Duration::from_secs(2));
+    thread::sleep(Duration::from_secs(1));
+    mempool_restarting_feature.store(false, Ordering::Release);
+    apply_restarting_feature.store(false, Ordering::Release);
+    thread::sleep(Duration::from_secs(1));
     let _ = actor_system.shutdown();
 
     // check context

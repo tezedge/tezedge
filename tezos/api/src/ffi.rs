@@ -163,10 +163,21 @@ impl FfiMessage for ApplyBlockResponse {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
+}
+
+impl fmt::Debug for PrevalidatorWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let chain_hash_encoding = HashType::ChainId;
+        let protocol_hash_encoding = HashType::ProtocolHash;
+        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}]",
+               chain_hash_encoding.bytes_to_string(&self.chain_id),
+               protocol_hash_encoding.bytes_to_string(&self.protocol)
+        )
+    }
 }
 
 lazy_static! {
@@ -250,19 +261,39 @@ pub struct OperationProtocolDataJsonWithErrorListJson {
     pub error_json: ErrorListJson,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct Applied {
     pub hash: OperationHash,
     pub protocol_data_json: OperationProtocolDataJson,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+impl fmt::Debug for Applied {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let operation_hash_encoding = HashType::OperationHash;
+        write!(f, "Applied[hash: {}, protocol_data_json: {}]",
+               operation_hash_encoding.bytes_to_string(&self.hash),
+               &self.protocol_data_json
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct Errored {
     pub hash: OperationHash,
     pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+impl fmt::Debug for Errored {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let operation_hash_encoding = HashType::OperationHash;
+        write!(f, "Errored[hash: {}, protocol_data_json_with_error_json: {:?}]",
+               operation_hash_encoding.bytes_to_string(&self.hash),
+               &self.protocol_data_json_with_error_json
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq, Default)]
 pub struct ValidateOperationResult {
     pub applied: Vec<Applied>,
     pub refused: Vec<Errored>,

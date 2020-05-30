@@ -11,9 +11,9 @@ use serial_test::serial;
 use crypto::hash::HashType;
 use tezos_api::ffi::{
     Applied, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    BeginConstructionRequest, BeginConstructionRequestBuilder,
-    Errored, FfiMessage, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
-    RustBytes, TezosRuntimeConfiguration, ValidateOperationResponse, ValidateOperationResult, ValidateOperationResultBuilder,
+    BeginConstructionRequest, BeginConstructionRequestBuilder, Errored, FfiMessage, ForkingTestchainData, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, RustBytes,
+    TezosRuntimeConfiguration,
+    ValidateOperationResponse, ValidateOperationResult, ValidateOperationResultBuilder,
 };
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
 use tezos_interop::ffi;

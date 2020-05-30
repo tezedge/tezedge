@@ -10,7 +10,7 @@ use std::thread::JoinHandle;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, Logger, warn};
+use slog::{crit, debug, Logger, warn, info};
 
 use crypto::hash::HashType;
 use storage::{BlockStorage, ContextActionStorage};
@@ -63,7 +63,7 @@ impl ContextListener {
                         &log,
                         store_context_action,
                     ) {
-                        Ok(()) => debug!(log, "Context listener finished"),
+                        Ok(()) => info!(log, "Context listener finished"),
                         Err(err) => {
                             if listener_run.load(Ordering::Acquire) {
                                 crit!(log, "Error process context event"; "reason" => format!("{:?}", err))
@@ -142,9 +142,9 @@ fn listen_protocol_events(
     log: &Logger,
     store_context_actions: bool,
 ) -> Result<(), Error> {
-    debug!(log, "Waiting for connection from protocol runner");
+    info!(log, "Waiting for connection from protocol runner");
     let mut rx = event_server.accept()?;
-    debug!(log, "Received connection from protocol runner. Starting to process context events.");
+    info!(log, "Received connection from protocol runner. Starting to process context events.");
 
     let mut event_count = 0;
 
