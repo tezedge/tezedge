@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Flags --store-p2p-messages=BOOL and --store-context-actions=BOOL. If these flags are set to false,
+- Flags --store-context-actions=BOOL. If these flags are set to false,
 the node will persist less data to disk, which increases runtime speed. 
  
 ## [0.0.1] - 2020-03-31
