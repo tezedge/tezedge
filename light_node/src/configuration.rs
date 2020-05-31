@@ -40,7 +40,6 @@ pub struct Logging {
 pub struct Storage {
     pub bootstrap_db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
-    pub store_p2p_messages: bool,
     pub store_context_actions: bool,
 }
 
@@ -254,11 +253,6 @@ pub fn tezos_app() -> App<'static, 'static> {
                 .value_name("NUM")
                 .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
                 .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("store-p2p-messages")
-            .long("store-p2p-messages")
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Flag for turn on/off recording of network events"))
         .arg(Arg::with_name("store-context-actions")
             .long("store-context-actions")
             .takes_value(true)
@@ -482,10 +476,6 @@ impl Environment {
                         .expect("Provided value cannot be converted to path");
                     get_final_path(&data_dir, db_path)
                 },
-                store_p2p_messages: args.value_of("store-p2p-messages")
-                    .unwrap_or("true")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool"),
                 store_context_actions: args.value_of("store-context-actions")
                     .unwrap_or("true")
                     .parse::<bool>()

@@ -17,7 +17,6 @@ use tokio::time::timeout;
 use crypto::crypto_box::precompute;
 use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
-use storage::p2p_message_storage::P2PMessageStorage;
 use storage::StorageError;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
@@ -192,10 +191,6 @@ pub struct Peer {
     net: Network,
     /// Tokio task executor
     tokio_executor: Handle,
-    /// Msg storage
-    msg_store: P2PMessageStorage,
-    /// Turn on/off storing of messages
-    store_messages: bool,
     /// IP address of the remote peer
     remote_addr: SocketAddr,
 }
@@ -210,9 +205,7 @@ impl Peer {
                  proof_of_work_stamp: &str,
                  version: &str,
                  tokio_executor: Handle,
-                 socket_address: &SocketAddr,
-                 p2p_msg_store: P2PMessageStorage,
-                 store_messages: bool) -> Result<PeerRef, CreateError>
+                 socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port,
@@ -221,12 +214,12 @@ impl Peer {
             secret_key: secret_key.into(),
             version: version.into(),
         };
-        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address, p2p_msg_store, store_messages));
+        let props = Props::new_args(Peer::new, (network_channel, Arc::new(info), tokio_executor, *socket_address));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of(props, &format!("peer-{}", actor_id))
     }
 
-    fn new((event_channel, info, tokio_executor, socket_address, msg_store, store_messages): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr, P2PMessageStorage, bool)) -> Self {
+    fn new((event_channel, info, tokio_executor, socket_address): (NetworkChannelRef, Arc<Local>, Handle, SocketAddr)) -> Self {
         Peer {
             network_channel: event_channel,
             local: info,
@@ -236,9 +229,7 @@ impl Peer {
                 socket_address,
             },
             tokio_executor,
-            msg_store,
             remote_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
-            store_messages,
         }
     }
 }
@@ -265,10 +256,8 @@ impl Receive<Bootstrap> for Peer {
         let system = ctx.system.clone();
         let net = self.net.clone();
         let network_channel = self.network_channel.clone();
-        let store_messages = self.store_messages;
         self.remote_addr = msg.address;
 
-        let store = self.msg_store.clone();
         self.tokio_executor.spawn(async move {
             async fn setup_net(net: &Network, tx: EncryptedMessageWriter) {
                 net.rx_run.store(true, Ordering::Release);
@@ -277,7 +266,7 @@ impl Receive<Bootstrap> for Peer {
 
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
-            match bootstrap(msg, info, system.log(), store.clone(), store_messages).await {
+            match bootstrap(msg, info, system.log()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
@@ -310,7 +299,7 @@ impl Receive<Bootstrap> for Peer {
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Failure {
                             address: peer_address,
-                            potential_peers_to_connect: potential_peers
+                            potential_peers_to_connect: potential_peers,
                         }.into(),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
@@ -326,9 +315,6 @@ impl Receive<SendMessage> for Peer {
     type Msg = PeerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
-        if self.store_messages {
-            let _ = self.msg_store.store_peer_message(msg.message.messages(), false, self.remote_addr);
-        }
         let system = ctx.system.clone();
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
@@ -363,10 +349,7 @@ async fn bootstrap(
     msg: Bootstrap,
     info: Arc<Local>,
     log: Logger,
-    mut storage: P2PMessageStorage,
-    store_messages: bool
 ) -> Result<BootstrapOutput, PeerError> {
-    let addr = msg.address;
     let (mut msg_rx, mut msg_tx) = {
         let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");
         let msg_reader: MessageStream = stream.into();
@@ -382,9 +365,6 @@ async fn bootstrap(
         &info.proof_of_work_stamp,
         &Nonce::random().get_bytes(),
         vec![supported_protocol_version.clone()]);
-    if store_messages {
-        storage.store_connection_message(&connection_message, false, addr)?;
-    }
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
@@ -400,9 +380,6 @@ async fn bootstrap(
     };
 
     let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content().to_vec())?;
-    if store_messages {
-        storage.store_connection_message(&connection_message, true, addr)?;
-    }
 
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_message_bytes, msg.incoming);
@@ -439,21 +416,15 @@ async fn bootstrap(
     if connecting_to_self {
         debug!(log, "Detected self connection");
         // treat as if nack was received
-        return Err(PeerError::NackWithMotiveReceived {nack_info: NackInfo::new(NackMotive::AlreadyConnected, &vec![])});
+        return Err(PeerError::NackWithMotiveReceived { nack_info: NackInfo::new(NackMotive::AlreadyConnected, &vec![]) });
     }
 
     // send metadata
     let metadata = MetadataMessage::new(false, false);
-    if store_messages {
-        let _ = storage.store_metadata_message(&metadata, false, addr);
-    }
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
-    if store_messages {
-        let _ = storage.store_metadata_message(&metadata_received, true, addr);
-    }
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
     // send ack
@@ -503,7 +474,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
                                 msg: PeerMessageReceived {
                                     peer: myself.clone(),
                                     message: Arc::new(msg),
-                                    peer_address
+                                    peer_address,
                                 }.into(),
                                 topic: NetworkChannelTopic::NetworkEvents.into(),
                             }, Some(myself.clone().into()));
