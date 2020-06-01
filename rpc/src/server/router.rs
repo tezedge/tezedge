@@ -32,8 +32,8 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
 
     // Tezedge dev and support rpc
     routes.handle("/dev/chains/main/blocks", dev_handler::dev_blocks);
-    routes.handle("/dev/chains/main/blocks/:block_id/actions", dev_handler::dev_block_actions);
-    routes.handle("/dev/chains/main/actions/contracts/:contract_id", dev_handler::dev_contract_actions);
+    routes.handle("/dev/chains/main/actions/blocks/:block_hash", dev_handler::dev_action_cursor);
+    routes.handle("/dev/chains/main/actions/contracts/:contract_address", dev_handler::dev_action_cursor);
     routes.handle("/dev/context/:id", dev_handler::dev_context);
     routes.handle("/stats/memory", dev_handler::dev_stats_memory);
     //routes.handle("/stats/storage", dev_handler::dev_stats_storage);

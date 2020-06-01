@@ -4,8 +4,10 @@
 use std::cmp::Ordering;
 use std::mem;
 use std::ops::Range;
+use std::str::FromStr;
 use std::sync::Arc;
 
+use failure::Fail;
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
@@ -14,7 +16,7 @@ use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError, BincodeEncoded};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
@@ -26,21 +28,25 @@ pub enum ContextHashType {
 
 pub struct ContextActionFilters {
     pub hash: (ContextHashType, Vec<u8>),
-    pub action_type: Option<ContextActionType>,
+    pub action_type: Option<Vec<ContextActionType>>,
 }
 
 impl ContextActionFilters {
-    pub fn with_block_hash(mut self, block_hash: Vec<u8>) -> Self {
-        self.hash = (ContextHashType::Block, block_hash);
-        self
+    pub fn with_block_hash(block_hash: Vec<u8>) -> Self {
+        Self {
+            hash: (ContextHashType::Block, block_hash),
+            action_type: None,
+        }
     }
 
-    pub fn with_contract_id(mut self, contract_hash: Vec<u8>) -> Self {
-        self.hash = (ContextHashType::Contract, contract_hash);
-        self
+    pub fn with_contract_id(contract_hash: Vec<u8>) -> Self {
+        Self {
+            hash: (ContextHashType::Contract, contract_hash),
+            action_type: None,
+        }
     }
 
-    pub fn with_action_type(mut self, action_type: ContextActionType) -> Self {
+    pub fn with_action_types(mut self, action_type: Vec<ContextActionType>) -> Self {
         self.action_type = Some(action_type);
         self
     }
@@ -96,15 +102,11 @@ impl ContextActionStorage {
     pub fn load_cursor(&self, cursor_id: Option<SequenceNumber>, limit: Option<usize>, cursor_filters: ContextActionFilters) -> Result<Vec<ContextActionRecordValue>, StorageError> {
         let (addr_type, hash) = cursor_filters.hash;
         if let ContextHashType::Block = addr_type {
-            let mut base_iterator = self.context_by_block_index.get_by_block_hash_iterator(&hash, cursor_id)?.peekable();
+            let base_iterator = self.context_by_block_index.get_by_block_hash_iterator(&hash, cursor_id)?;
             if let Some(action_type) = cursor_filters.action_type {
-                if let Some(index) = base_iterator.peek() {
-                    let type_iterator = self.context_by_type_index.get_by_action_type_iterator(action_type, Some(index.clone()))?;
-                    let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
-                    self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
-                } else {
-                    Ok(Default::default())
-                }
+                let type_iterator = self.context_by_type_index.get_by_action_types_iterator(&action_type, None)?;
+                let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
+                self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
             } else {
                 if let Some(limit) = limit {
                     self.load_indexes(base_iterator.take(limit))
@@ -116,7 +118,7 @@ impl ContextActionStorage {
             let mut base_iterator = self.context_by_contract_index.get_by_contract_address_iterator(&hash, cursor_id)?.peekable();
             if let Some(action_type) = cursor_filters.action_type {
                 if let Some(index) = base_iterator.peek() {
-                    let type_iterator = self.context_by_type_index.get_by_action_type_iterator(action_type, Some(index.clone()))?;
+                    let type_iterator = self.context_by_type_index.get_by_action_types_iterator(&action_type, Some(index.clone()))?;
                     let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
                     self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
                 } else {
@@ -408,7 +410,7 @@ impl KeyValueSchema for ContextActionByContractIndex {
         let mut cf_opts = Options::default();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByContractIndexKey::LEN_CONTRACT_ADDRESS));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
-        cf_opts.set_comparator("reverse_id", ContextActionByContractIndexKey::reverse_id_comparator);
+        // cf_opts.set_comparator("reverse_id", ContextActionByContractIndexKey::reverse_id_comparator);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
@@ -424,6 +426,7 @@ pub struct ContextActionByContractIndexKey {
     id: SequenceNumber,
 }
 
+#[allow(dead_code)]
 impl ContextActionByContractIndexKey {
     const LEN_CONTRACT_ADDRESS: usize = 22;
     const LEN_ID: usize = mem::size_of::<SequenceNumber>();
@@ -447,11 +450,12 @@ impl ContextActionByContractIndexKey {
     fn from_contract_address_prefix(contract_address: &[u8]) -> Self {
         Self {
             contract_address: contract_address.to_vec(),
-            id: std::u64::MAX,
+            id: 0,
         }
     }
 
     /// Comparator that sorts records in a descending order.
+    #[allow(dead_code)]
     fn reverse_id_comparator(a: &[u8], b: &[u8]) -> Ordering {
         assert_eq!(a.len(), b.len(), "Cannot compare keys of mismatching length");
         assert_eq!(a.len(), Self::LEN_TOTAL, "Key is expected to have exactly {} bytes", Self::LEN_TOTAL);
@@ -573,6 +577,17 @@ impl ContextActionByTypeIndex {
         Ok(self.kv.prefix_iterator(&iterate_from_key)?
             .filter_map(|(key, _)| key.map(|id_key| id_key.id).ok()))
     }
+
+    #[inline]
+    fn get_by_action_types_iterator<'a>(&'a self, action_types: &'a [ContextActionType], cursor_id: Option<SequenceNumber>) -> Result<impl Iterator<Item=u64> + 'a, StorageError> {
+        use itertools::kmerge_by;
+        let mut ret = Vec::with_capacity(action_types.len());
+        for action_type in action_types {
+            ret.push(self.get_by_action_type_iterator(*action_type, cursor_id)?);
+        }
+        let cmp = |a: &u64, b: &u64| a > b;
+        Ok(kmerge_by(ret.into_iter(), cmp))
+    }
 }
 
 impl KeyValueSchema for ContextActionByTypeIndex {
@@ -581,9 +596,9 @@ impl KeyValueSchema for ContextActionByTypeIndex {
 
     fn descriptor() -> ColumnFamilyDescriptor {
         let mut cf_opts = Options::default();
-        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByTypeIndexKey::LEN_TYPE));
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(mem::size_of::<ContextActionType>()));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
-        cf_opts.set_comparator("reverse_id", ContextActionByTypeIndexKey::reverse_id_comparator);
+        // cf_opts.set_comparator("reverse_id", ContextActionByTypeIndexKey::reverse_id_comparator);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
@@ -611,26 +626,29 @@ impl ContextActionByTypeIndexKey {
     }
 
     fn from_action_type_prefix(action_type: ContextActionType) -> Self {
-        Self::new(action_type, std::u64::MAX)
+        Self::new(action_type, std::u64::MIN)
     }
 
+    #[allow(dead_code)]
     fn reverse_id_comparator(a: &[u8], b: &[u8]) -> Ordering {
         assert_eq!(a.len(), b.len(), "Cannot compare keys of mismatching length");
         assert_eq!(a.len(), Self::LEN_TOTAL, "Key is expected to have exactly {} bytes", Self::LEN_TOTAL);
 
-        for idx in 0..Self::LEN_TYPE {
-            match a[idx].cmp(&b[idx]) {
-                Ordering::Greater => return Ordering::Greater,
-                Ordering::Less => return Ordering::Less,
-                Ordering::Equal => ()
+        let range = 0..Self::LEN_TYPE;
+        for (a, b) in a[range.clone()].iter().zip(&b[range]) {
+            match a.cmp(b) {
+                Ordering::Greater => return Ordering::Less,
+                Ordering::Less => return Ordering::Greater,
+                Ordering::Equal => continue,
             }
         }
 
-        for idx in Self::LEN_TYPE.. {
-            match a[idx].cmp(&b[idx]) {
+        let range = Self::LEN_TYPE..;
+        for (a, b) in a[range.clone()].iter().zip(&b[range]) {
+            match a.cmp(b) {
                 Ordering::Greater => return Ordering::Less,
                 Ordering::Less => return Ordering::Greater,
-                Ordering::Equal => ()
+                Ordering::Equal => continue,
             }
         }
 
@@ -717,6 +735,30 @@ impl ContextActionType {
     }
 }
 
+#[derive(Debug, Clone, Fail)]
+#[fail(display = "invalid context action type: {}", _0)]
+pub struct ParseContextActionType(String);
+
+impl FromStr for ContextActionType {
+    type Err = ParseContextActionType;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "Set" => Ok(Self::Set),
+            "Delete" => Ok(Self::Delete),
+            "RemoveRecursively" => Ok(Self::RemoveRecursively),
+            "Copy" => Ok(Self::Copy),
+            "Checkout" => Ok(Self::Checkout),
+            "Commit" => Ok(Self::Commit),
+            "Mem" => Ok(Self::Mem),
+            "DirMem" => Ok(Self::DirMem),
+            "Get" => Ok(Self::Get),
+            "Fold" => Ok(Self::Fold),
+            x => Err(ParseContextActionType(x.to_string()))
+        }
+    }
+}
+
 pub mod sorted_intersect {
     use std::cmp::Ordering;
 
@@ -779,7 +821,7 @@ pub mod sorted_intersect {
     }
 
     fn heapify<Item: Ord>(heap: &mut Vec<(Item, usize)>) {
-        heap.sort_by(|(a, _), (b, _)| a.cmp(b));
+        heap.sort_by(|(a, _), (b, _)| b.cmp(a));
     }
 
     fn fill_heap<'a, Item: Ord, Inner: 'a + Iterator<Item=Item>, Outer: Iterator<Item=&'a mut Inner>>(iters: Outer, heap: &mut Vec<(Inner::Item, usize)>) -> bool {

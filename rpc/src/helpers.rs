@@ -18,6 +18,7 @@ use tezos_messages::ts_to_rfc3339;
 
 use crate::ContextList;
 use crate::rpc_actor::RpcCollectedStateRef;
+use storage::context_action_storage::ContextActionType;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -171,6 +172,7 @@ pub struct PagedResult<C: Serialize> {
     limit: usize,
 }
 
+#[allow(dead_code)]
 impl<C> PagedResult<C>
     where
         C: Serialize
@@ -184,8 +186,10 @@ impl<C> PagedResult<C>
 /// Struct is defining Error message response, there are different keys is these messages so only needed one are defined for each message
 #[derive(Serialize, Debug, Clone)]
 pub struct RpcErrorMsg {
-    kind: String, // "permanent"
-    id: String, // "proto.005-PsBabyM1.seed.unknown_seed"
+    kind: String,
+    // "permanent"
+    id: String,
+    // "proto.005-PsBabyM1.seed.unknown_seed"
     #[serde(skip_serializing_if = "Option::is_none")]
     missing_key: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -288,6 +292,13 @@ pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &Pe
     };
 
     Ok(block_hash)
+}
+
+#[inline]
+pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
+    action_types.split(",")
+        .filter_map(|x: &str| x.parse().ok())
+        .collect()
 }
 
 /// Return block timestamp in epoch time format by block level
