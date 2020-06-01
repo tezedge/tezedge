@@ -14,7 +14,7 @@ use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActi
 use storage::block_storage::BlockJsonData;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
-use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use storage::context::{TezedgeContext, ContextIndex};
 use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
