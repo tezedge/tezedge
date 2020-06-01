@@ -228,6 +228,17 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!("Unexpected option value {:X}", is_present_byte)).into())
                 }
             }
+            Encoding::OptionalField(_) => {
+                let is_present_byte = safe!(buf, get_u8, u8);
+                match is_present_byte {
+                    types::BYTE_FIELD_SOME => {
+                        let v = self.decode_value(buf, encoding.try_unwrap_option_encoding())?;
+                        Ok(Value::Option(Some(Box::new(v))))
+                    }
+                    types::BYTE_FIELD_NONE => Ok(Value::Option(None)),
+                    _ => Err(de::Error::custom(format!("Unexpected option value {:X}", is_present_byte)).into())
+                }
+            }
             Encoding::Obj(schema_inner) => {
                 Ok(self.decode_record(buf, schema_inner)?)
             }
