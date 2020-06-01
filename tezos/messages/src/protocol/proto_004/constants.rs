@@ -88,7 +88,7 @@ pub struct ParametricConstants {
 
 impl ParametricConstants {
     /// Merge the default values with the values set in context DB 
-    pub fn create_with_default(context_param_constants: Self) -> Self {
+    pub fn create_with_default_and_merge(context_param_constants: Self) -> Self {
         let mut param: Self = Default::default();
 
         if context_param_constants.block_security_deposit.is_some() {

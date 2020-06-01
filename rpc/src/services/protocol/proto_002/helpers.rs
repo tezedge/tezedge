@@ -70,7 +70,7 @@ impl RightsConstants {
     pub(crate) fn parse_rights_constants(context_proto_param: ContextProtocolParam) -> Result<Self, failure::Error> {
         let dynamic = tezos_messages::protocol::proto_002::constants::ParametricConstants::from_bytes(context_proto_param.constants_data)?;
         // in proto 001, the constants are hard coded but a few exceptions modifiable in the context
-        let dynamic_all = tezos_messages::protocol::proto_002::constants::ParametricConstants::create_with_default(dynamic);
+        let dynamic_all = tezos_messages::protocol::proto_002::constants::ParametricConstants::create_with_default_and_merge(dynamic);
         let fixed = tezos_messages::protocol::proto_002::constants::FIXED;
 
         // TODO: fix unwraps()
