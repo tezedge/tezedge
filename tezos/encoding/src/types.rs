@@ -39,6 +39,10 @@ pub const BYTE_VAL_FALSE: u8 = 0;
 pub const BYTE_VAL_SOME: u8 = 1;
 /// Represents `None` value in binary format.
 pub const BYTE_VAL_NONE: u8 = 0;
+/// TE-172 - Represents 'Optional field' in binary format.
+pub const BYTE_FIELD_SOME: u8 = 0xFF;
+/// TE-172 - Represents `None` for 'Optional field' in binary format.
+pub const BYTE_FIELD_NONE: u8 = 0;
 
 /// Represents data in the intermediate form.
 ///

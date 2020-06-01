@@ -309,6 +309,24 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                 _ => Err(Error::encoding_mismatch(encoding, value))
             }
         }
+        Encoding::OptionalField(option_encoding) => {
+            match value {
+                Value::Option(ref wrapped_value) => {
+                    match wrapped_value {
+                        Some(option_value) => {
+                            data.put_u8(types::BYTE_FIELD_SOME);
+                            let bytes_sz = encode_value(data, option_value, option_encoding)?;
+                            Ok(size_of::<u8>() + bytes_sz)
+                        }
+                        None => {
+                            data.put_u8(types::BYTE_FIELD_NONE);
+                            Ok(size_of::<u8>())
+                        }
+                    }
+                }
+                _ => Err(Error::encoding_mismatch(encoding, value))
+            }
+        }
         Encoding::Dynamic(dynamic_encoding) => {
             let data_len_before_write = data.len();
             // put 0 as a placeholder
@@ -795,6 +813,46 @@ mod tests {
 
         let record: Option<Record> = None;
         let writer_result = write(&record, &Encoding::option(record_encoding)).unwrap();
+        let expected_writer_result = hex::decode("00").unwrap();
+        assert_eq!(expected_writer_result, writer_result);
+    }
+
+    #[test]
+    fn can_serialize_optional_field_some() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            pub arg: Option<String>,
+        }
+
+        let record_schema = vec![
+            Field::new("arg", Encoding::option_field(Encoding::String)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record = Record {
+            arg: Some("arg".to_string()),
+        };
+        let writer_result = write(&record, &record_encoding).unwrap();
+        let expected_writer_result = hex::decode("ff00000003617267").unwrap();
+        assert_eq!(expected_writer_result, writer_result);
+    }
+
+    #[test]
+    fn can_serialize_optional_field_none() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            pub arg: Option<String>,
+        }
+
+        let record_schema = vec![
+            Field::new("arg", Encoding::option_field(Encoding::String)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record = Record {
+            arg: None,
+        };
+        let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("00").unwrap();
         assert_eq!(expected_writer_result, writer_result);
     }
