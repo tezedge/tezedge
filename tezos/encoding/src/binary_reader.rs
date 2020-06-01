@@ -28,7 +28,7 @@ pub enum BinaryReaderError {
         bytes: usize
     },
     /// Generic deserialization error.
-    #[fail(display = "Message de-serialization error")]
+    #[fail(display = "Message de-serialization error: {:?}", error)]
     DeserializationError {
         error: crate::de::Error
     },
@@ -499,5 +499,53 @@ mod tests {
 
         let connection_message_deserialized: ConnectionMessage = de::from_value(&value).unwrap();
         assert_eq!(connection_message, connection_message_deserialized);
+    }
+
+    #[test]
+    fn can_deserialize_option_some() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Record {
+            pub forking_block_hash: Vec<u8>,
+        }
+
+        let record_schema = vec![
+            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record = Some(
+            Record {
+                forking_block_hash: hex::decode("2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap(),
+            }
+        );
+
+        let message_buf = hex::decode("012253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(message_buf, &Encoding::option(record_encoding)).unwrap();
+
+        let record_deserialized: Option<Record> = de::from_value(&value).unwrap();
+        assert_eq!(record, record_deserialized);
+    }
+
+    #[test]
+    fn can_deserialize_option_none() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Record {
+            pub forking_block_hash: Vec<u8>,
+        }
+
+        let record_schema = vec![
+            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record: Option<Record> = None;
+
+        let message_buf = hex::decode("00").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(message_buf, &Encoding::option(record_encoding)).unwrap();
+
+        let record_deserialized: Option<Record> = de::from_value(&value).unwrap();
+        assert_eq!(record, record_deserialized);
     }
 }

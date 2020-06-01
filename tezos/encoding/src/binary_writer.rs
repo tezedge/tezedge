@@ -708,7 +708,7 @@ mod tests {
         let writer_result = write(&record, &record_encoding);
         assert!(writer_result.is_ok());
 
-        let expected_writer_result = hex::decode("00000020ff0000000500000020000000080000000c00000022ffa1aaeac40b4028ae147ae147ae0200000012000000014100010001000000014200020000").expect("Failed to decode");
+        let expected_writer_result = hex::decode("00000020ff0000000500000020000000080000000c0000002201a1aaeac40b4028ae147ae147ae0200000012000000014100010001000000014200020000").expect("Failed to decode");
         assert_eq!(expected_writer_result, writer_result.unwrap());
     }
 
@@ -756,6 +756,46 @@ mod tests {
         let writer_result = write(&connection_message, &connection_message_encoding).expect("Writer failed");
 
         let expected_writer_result = hex::decode("0bb9eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000014100010001000000014200020000").expect("Failed to decode");
+        assert_eq!(expected_writer_result, writer_result);
+    }
+
+    #[test]
+    fn can_serialize_option_some() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            pub forking_block_hash: Vec<u8>,
+        }
+
+        let record_schema = vec![
+            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record = Some(
+            Record {
+                forking_block_hash: hex::decode("2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap(),
+            }
+        );
+        let writer_result = write(&record, &Encoding::option(record_encoding)).unwrap();
+        let expected_writer_result = hex::decode("012253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap();
+        assert_eq!(expected_writer_result, writer_result);
+    }
+
+    #[test]
+    fn can_serialize_option_none() {
+        #[derive(Serialize, Debug)]
+        struct Record {
+            pub forking_block_hash: Vec<u8>,
+        }
+
+        let record_schema = vec![
+            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record: Option<Record> = None;
+        let writer_result = write(&record, &Encoding::option(record_encoding)).unwrap();
+        let expected_writer_result = hex::decode("00").unwrap();
         assert_eq!(expected_writer_result, writer_result);
     }
 }

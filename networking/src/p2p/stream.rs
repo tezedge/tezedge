@@ -41,7 +41,7 @@ pub enum StreamError {
     SerializationError {
         error: tezos_encoding::ser::Error
     },
-    #[fail(display = "Message de-serialization error")]
+    #[fail(display = "Message de-serialization error: {:?}", error)]
     DeserializationError {
         error: BinaryReaderError
     },

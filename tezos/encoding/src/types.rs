@@ -36,7 +36,7 @@ pub const BYTE_VAL_TRUE: u8 = 0xFF;
 /// Represents `false` value in binary format.
 pub const BYTE_VAL_FALSE: u8 = 0;
 /// Represents `Some(x)` value in binary format.
-pub const BYTE_VAL_SOME: u8 = 0xFF;
+pub const BYTE_VAL_SOME: u8 = 1;
 /// Represents `None` value in binary format.
 pub const BYTE_VAL_NONE: u8 = 0;
 

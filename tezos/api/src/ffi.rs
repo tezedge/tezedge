@@ -126,8 +126,8 @@ pub struct ApplyBlockResponse {
 
 lazy_static! {
     pub static ref FORKING_TESTCHAIN_DATA_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("genesis", Encoding::Hash(HashType::BlockHash)),
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+        Field::new("forking_block_hash", Encoding::Hash(HashType::BlockHash)),
+        Field::new("test_chain_id", Encoding::Hash(HashType::ChainId)),
     ]);
 
     pub static ref APPLY_BLOCK_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
@@ -168,8 +168,8 @@ pub struct CommitGenesisResult {
 /// Forking test chain data
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ForkingTestchainData {
-    pub genesis: BlockHash,
-    pub chain_id: ChainId,
+    pub forking_block_hash: BlockHash,
+    pub test_chain_id: ChainId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
