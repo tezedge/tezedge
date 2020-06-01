@@ -8,7 +8,6 @@ edition = "2018"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-hex = "0.4"
 ocaml = "0.9.3"
 # local dependencies
 tezos_context = { path = "../context" }
