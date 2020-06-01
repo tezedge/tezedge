@@ -172,7 +172,7 @@ impl RightsContextData {
         } else {
             let cycle_of_rolls = requested_cycle - (preserved_cycles as i64) - 2;
             // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
-            (cycle_of_rolls * (blocks_per_cycle as i64)) + (((roll_snapshot + 1) as i64) * (blocks_per_roll_snapshot as i64)) - 1
+            (cycle_of_rolls * (blocks_per_cycle as i64)) + (((roll_snapshot + 1) as i64) * (blocks_per_roll_snapshot as i64))
         };
         let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
