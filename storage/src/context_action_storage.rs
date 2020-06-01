@@ -6,7 +6,6 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 
-use getset::{CopyGetters, Getters};
 use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
 use serde::{Deserialize, Serialize};
 
@@ -15,30 +14,62 @@ use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
-use crate::persistent::{CommitLogSchema, CommitLogWithSchema, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage, SchemaError};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError, BincodeEncoded};
 use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
-use crate::persistent::commit_log::fold_consecutive_locations;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
 
-pub type ContextActionStorageCommitLog = dyn CommitLogWithSchema<ContextActionStorage> + Sync + Send;
+pub enum ContextHashType {
+    Block,
+    Contract,
+}
+
+pub struct ContextActionFilters {
+    pub hash: (ContextHashType, Vec<u8>),
+    pub action_type: Option<ContextActionType>,
+}
+
+impl ContextActionFilters {
+    pub fn with_block_hash(mut self, block_hash: Vec<u8>) -> Self {
+        self.hash = (ContextHashType::Block, block_hash);
+        self
+    }
+
+    pub fn with_contract_id(mut self, contract_hash: Vec<u8>) -> Self {
+        self.hash = (ContextHashType::Contract, contract_hash);
+        self
+    }
+
+    pub fn with_action_type(mut self, action_type: ContextActionType) -> Self {
+        self.action_type = Some(action_type);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.action_type.is_none()
+    }
+}
+
+pub type ContextActionStorageKV = dyn KeyValueStoreWithSchema<ContextActionStorage> + Sync + Send;
 
 /// Holds all actions received from a tezos context.
 /// Action is created every time a context is modified.
 pub struct ContextActionStorage {
-    context_primary_index: ContextActionPrimaryIndex,
+    context_by_block_index: ContextActionByBlockHashIndex,
     context_by_contract_index: ContextActionByContractIndex,
-    clog: Arc<ContextActionStorageCommitLog>,
+    context_by_type_index: ContextActionByTypeIndex,
+    kv: Arc<ContextActionStorageKV>,
     generator: Arc<SequenceGenerator>,
 }
 
 impl ContextActionStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            context_primary_index: ContextActionPrimaryIndex::new(persistent_storage.kv()),
-            context_by_contract_index: ContextActionByContractIndex::new(persistent_storage.kv()),
-            clog: persistent_storage.clog(),
+            kv: persistent_storage.kv(),
             generator: persistent_storage.seq().generator(Self::name()),
+            context_by_block_index: ContextActionByBlockHashIndex::new(persistent_storage.kv()),
+            context_by_contract_index: ContextActionByContractIndex::new(persistent_storage.kv()),
+            context_by_type_index: ContextActionByTypeIndex::new(persistent_storage.kv()),
         }
     }
 
@@ -46,52 +77,82 @@ impl ContextActionStorage {
     pub fn put_action(&mut self, block_hash: &BlockHash, action: ContextAction) -> Result<(), StorageError> {
         // generate ID
         let id = self.generator.next()?;
-        let value = ContextActionRecordValue::new(action, id);
-        // store into commit log
-        let location = self.clog.append(&value)?;
-        // populate indexes
-        let primary_idx_res = self.context_primary_index.put(&ContextActionPrimaryIndexKey::new(block_hash, id), &location);
-        let contract_idx_res = extract_contract_addresses(&value).iter()
-            .map(|contract_address| self.context_by_contract_index.put(&ContextActionByContractIndexKey::new(contract_address, id), &location))
-            .collect::<Result<(), _>>();
-        primary_idx_res.and(contract_idx_res)
+        let action = ContextActionRecordValue::new(action, id);
+        // Store action
+        self.kv.put(&id, &action)?;
+        // Populate indexes
+        self.context_by_block_index.put(&ContextActionByBlockHashKey::new(block_hash, id))?;
+
+        if let Some(action_type) = ContextActionType::extract_type(action.action()) {
+            self.context_by_type_index.put(&ContextActionByTypeIndexKey::new(action_type, id))?;
+        }
+
+        extract_contract_addresses(&action).iter()
+            .map(|contract_address| self.context_by_contract_index.put(&ContextActionByContractIndexKey::new(contract_address, id)))
+            .collect::<Result<(), _>>()
+    }
+
+    #[inline]
+    pub fn load_cursor(&self, cursor_id: Option<SequenceNumber>, limit: Option<usize>, cursor_filters: ContextActionFilters) -> Result<Vec<ContextActionRecordValue>, StorageError> {
+        let (addr_type, hash) = cursor_filters.hash;
+        if let ContextHashType::Block = addr_type {
+            let mut base_iterator = self.context_by_block_index.get_by_block_hash_iterator(&hash, cursor_id)?.peekable();
+            if let Some(action_type) = cursor_filters.action_type {
+                if let Some(index) = base_iterator.peek() {
+                    let type_iterator = self.context_by_type_index.get_by_action_type_iterator(action_type, Some(index.clone()))?;
+                    let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
+                    self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
+                } else {
+                    Ok(Default::default())
+                }
+            } else {
+                if let Some(limit) = limit {
+                    self.load_indexes(base_iterator.take(limit))
+                } else {
+                    self.load_indexes(base_iterator)
+                }
+            }
+        } else {
+            let mut base_iterator = self.context_by_contract_index.get_by_contract_address_iterator(&hash, cursor_id)?.peekable();
+            if let Some(action_type) = cursor_filters.action_type {
+                if let Some(index) = base_iterator.peek() {
+                    let type_iterator = self.context_by_type_index.get_by_action_type_iterator(action_type, Some(index.clone()))?;
+                    let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
+                    self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
+                } else {
+                    Ok(Default::default())
+                }
+            } else {
+                if let Some(limit) = limit {
+                    self.load_indexes(base_iterator.take(limit))
+                } else {
+                    self.load_indexes(base_iterator)
+                }
+            }
+        }
     }
 
     #[inline]
     pub fn get_by_block_hash(&self, block_hash: &BlockHash) -> Result<Vec<ContextActionRecordValue>, StorageError> {
-        self.context_primary_index.get_by_block_hash(block_hash)
-            .and_then(|locations| self.get_records_by_locations(&locations))
+        self.context_by_block_index.get_by_block_hash(block_hash)
+            .and_then(|idx| self.load_indexes(idx.into_iter()))
     }
 
     #[inline]
     pub fn get_by_contract_address(&self, contract_address: &ContractAddress, from_id: Option<SequenceNumber>, limit: usize) -> Result<Vec<ContextActionRecordValue>, StorageError> {
         self.context_by_contract_index.get_by_contract_address(contract_address, from_id, limit)
-            .and_then(|locations| self.get_records_by_locations(&locations))
+            .and_then(|idx| self.load_indexes(idx.into_iter()))
     }
 
-    /// Retrieve record value from commit log or return error if value is not present.
-    #[inline]
-    fn get_record_by_location(&self, location: &Location) -> Result<ContextActionRecordValue, StorageError> {
-        self.clog.get(location).map_err(StorageError::from).or(Err(StorageError::MissingKey))
-    }
-
-    /// Retrieve record values in batch
-    fn get_records_by_locations(&self, locations: &[Location]) -> Result<Vec<ContextActionRecordValue>, StorageError> {
-        match locations.len() {
-            0 => Ok(Vec::with_capacity(0)),
-            1 => Ok(vec![self.get_record_by_location(&locations[0])?]),
-            _ => {
-                let records = fold_consecutive_locations(locations)
-                    .iter()
-                    .map(|range| self.clog.get_range(range).map_err(StorageError::from))
-                    .collect::<Result<Vec<Vec<_>>, _>>()?;
-                Ok(records.into_iter().flatten().collect())
-            }
-        }
+    fn load_indexes<'a, Idx: Iterator<Item=u64> + 'a>(&'a self, indexes: Idx) -> Result<Vec<ContextActionRecordValue>, StorageError> {
+        Ok(indexes.filter_map(|id| {
+            self.kv.get(&id).ok().flatten()
+        }).collect())
     }
 }
 
-impl CommitLogSchema for ContextActionStorage {
+impl KeyValueSchema for ContextActionStorage {
+    type Key = SequenceNumber;
     type Value = ContextActionRecordValue;
 
     #[inline]
@@ -100,13 +161,23 @@ impl CommitLogSchema for ContextActionStorage {
     }
 }
 
-#[derive(Getters, CopyGetters, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ContextActionRecordValue {
-    #[get = "pub"]
-    action: ContextAction,
-    #[get_copy = "pub"]
-    id: SequenceNumber,
+    pub action: ContextAction,
+    pub id: SequenceNumber,
 }
+
+impl ContextActionRecordValue {
+    pub fn id(&self) -> SequenceNumber {
+        self.id
+    }
+
+    pub fn action(&self) -> &ContextAction {
+        &self.action
+    }
+}
+
+impl BincodeEncoded for ContextActionRecordValue {}
 
 impl ContextActionRecordValue {
     pub fn new(action: ContextAction, id: SequenceNumber) -> Self {
@@ -117,9 +188,6 @@ impl ContextActionRecordValue {
         self.action
     }
 }
-
-/// Codec for `ContextRecordValue`
-impl crate::persistent::BincodeEncoded for ContextActionRecordValue { }
 
 fn extract_contract_addresses(value: &ContextActionRecordValue) -> Vec<ContractAddress> {
     let contract_addresses = match &value.action {
@@ -158,7 +226,7 @@ fn action_key_to_contract_address(key: &[String]) -> Option<ContractAddress> {
 
         // check if case 1.
         let contract_id = hex::decode(&key[9]).ok();
-        let contract_id_len = contract_id.map_or(0,|cid| cid.len());
+        let contract_id_len = contract_id.map_or(0, |cid| cid.len());
         if contract_id_len == ContextActionByContractIndexKey::LEN_CONTRACT_ADDRESS {
             return hex::decode(&key[9]).ok();
         };
@@ -183,56 +251,63 @@ fn action_key_to_contract_address(key: &[String]) -> Option<ContractAddress> {
 /// * auto increment ID
 ///
 /// This allows for fast search of context actions belonging to a block.
-pub struct ContextActionPrimaryIndex {
-    kv: Arc<ContextActionPrimaryIndexKV>,
+pub struct ContextActionByBlockHashIndex {
+    kv: Arc<ContextActionBlockHashIndexKV>,
 }
 
-pub type ContextActionPrimaryIndexKV = dyn KeyValueStoreWithSchema<ContextActionPrimaryIndex> + Sync + Send;
+pub type ContextActionBlockHashIndexKV = dyn KeyValueStoreWithSchema<ContextActionByBlockHashIndex> + Sync + Send;
 
-impl ContextActionPrimaryIndex {
-    fn new(kv: Arc<ContextActionPrimaryIndexKV>) -> Self {
+impl ContextActionByBlockHashIndex {
+    fn new(kv: Arc<ContextActionBlockHashIndexKV>) -> Self {
         Self { kv }
     }
 
     #[inline]
-    fn put(&mut self, key: &ContextActionPrimaryIndexKey, value: &Location) -> Result<(), StorageError> {
-        self.kv.put(key, value)
+    fn put(&mut self, key: &ContextActionByBlockHashKey) -> Result<(), StorageError> {
+        self.kv.put(key, &())
             .map_err(StorageError::from)
     }
 
     #[inline]
-    fn get_by_block_hash(&self, block_hash: &BlockHash) -> Result<Vec<Location>, StorageError> {
-        let key = ContextActionPrimaryIndexKey::from_block_hash_prefix(block_hash);
-        self.kv.prefix_iterator(&key)?
-            .map(|(_, value)| value.map_err(StorageError::from))
-            .collect()
+    fn get_by_block_hash(&self, block_hash: &BlockHash) -> Result<Vec<SequenceNumber>, StorageError> {
+        Ok(self.get_by_block_hash_iterator(block_hash, None)?.collect())
+    }
+
+    #[inline]
+    fn get_by_block_hash_iterator<'a>(&'a self, block_hash: &BlockHash, cursor_id: Option<SequenceNumber>) -> Result<impl Iterator<Item=SequenceNumber> + 'a, StorageError> {
+        let key = cursor_id.map_or_else(
+            || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash),
+            |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),
+        );
+        Ok(self.kv.prefix_iterator(&key)?
+            .filter_map(|(key, _)| key.and_then(|k| Ok(k.id)).ok()))
     }
 }
 
-impl KeyValueSchema for ContextActionPrimaryIndex {
-    type Key = ContextActionPrimaryIndexKey;
-    type Value = Location;
+impl KeyValueSchema for ContextActionByBlockHashIndex {
+    type Key = ContextActionByBlockHashKey;
+    type Value = ();
 
     fn descriptor() -> ColumnFamilyDescriptor {
         let mut cf_opts = Options::default();
-        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionPrimaryIndexKey::LEN_BLOCK_HASH));
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByBlockHashKey::LEN_BLOCK_HASH));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
     fn name() -> &'static str {
-        "context_action_storage"
+        "context_action_block_hash_index"
     }
 }
 
 /// Key for a specific action stored in a database.
 #[derive(PartialEq, Debug)]
-pub struct ContextActionPrimaryIndexKey {
+pub struct ContextActionByBlockHashKey {
     block_hash: BlockHash,
     id: SequenceNumber,
 }
 
-impl ContextActionPrimaryIndexKey {
+impl ContextActionByBlockHashKey {
     const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
     const LEN_ID: usize = mem::size_of::<SequenceNumber>();
     const LEN_TOTAL: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID;
@@ -260,12 +335,12 @@ impl ContextActionPrimaryIndexKey {
 /// Decoder for `ContextPrimaryIndexKey`
 ///
 /// * bytes layout `[block_hash(32)][id(8)]`
-impl Decoder for ContextActionPrimaryIndexKey {
+impl Decoder for ContextActionByBlockHashKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if Self::LEN_TOTAL == bytes.len() {
             let block_hash = vec_from_slice(bytes, Self::IDX_BLOCK_HASH, Self::LEN_BLOCK_HASH);
             let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
-            Ok(ContextActionPrimaryIndexKey { block_hash, id })
+            Ok(Self { block_hash, id })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -275,7 +350,7 @@ impl Decoder for ContextActionPrimaryIndexKey {
 /// Encoder for `ContextPrimaryIndexKey`
 ///
 /// * bytes layout `[block_hash(32)][id(8)]`
-impl Encoder for ContextActionPrimaryIndexKey {
+impl Encoder for ContextActionByBlockHashKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = Vec::with_capacity(Self::LEN_TOTAL);
         result.extend(&self.block_hash);
@@ -306,25 +381,28 @@ impl ContextActionByContractIndex {
     }
 
     #[inline]
-    fn put(&mut self, key: &ContextActionByContractIndexKey, value: &Location) -> Result<(), StorageError> {
-        self.kv.put(key, value).map_err(StorageError::from)
+    fn put(&mut self, key: &ContextActionByContractIndexKey) -> Result<(), StorageError> {
+        self.kv.put(key, &()).map_err(StorageError::from)
     }
 
     #[inline]
-    fn get_by_contract_address(&self, contract_address: &ContractAddress, from_id: Option<SequenceNumber>, limit: usize) -> Result<Vec<Location>, StorageError> {
-        let iterate_from_key = from_id
-            .map_or_else(|| ContextActionByContractIndexKey::from_contract_address_prefix(contract_address), |from_id| ContextActionByContractIndexKey::new(contract_address, from_id));
+    fn get_by_contract_address(&self, contract_address: &ContractAddress, from_id: Option<SequenceNumber>, limit: usize) -> Result<Vec<SequenceNumber>, StorageError> {
+        Ok(self.get_by_contract_address_iterator(contract_address, from_id)?.take(limit).collect())
+    }
 
-        self.kv.prefix_iterator(&iterate_from_key)?
-            .take(limit)
-            .map(|(_, value)| value.map_err(StorageError::from))
-            .collect()
+    #[inline]
+    fn get_by_contract_address_iterator<'a>(&'a self, contract_address: &ContractAddress, cursor_id: Option<SequenceNumber>) -> Result<impl Iterator<Item=SequenceNumber> + 'a, StorageError> {
+        let iterate_from_key = cursor_id
+            .map_or_else(|| ContextActionByContractIndexKey::from_contract_address_prefix(contract_address), |cursor_id| ContextActionByContractIndexKey::new(contract_address, cursor_id));
+
+        Ok(self.kv.prefix_iterator(&iterate_from_key)?
+            .filter_map(|(key, _)| key.map(|index_key| index_key.id).ok()))
     }
 }
 
 impl KeyValueSchema for ContextActionByContractIndex {
     type Key = ContextActionByContractIndexKey;
-    type Value = Location;
+    type Value = ();
 
     fn descriptor() -> ColumnFamilyDescriptor {
         let mut cf_opts = Options::default();
@@ -466,6 +544,270 @@ pub fn contract_id_to_contract_address_for_index(contract_id: &str) -> Result<Co
     };
 
     Ok(contract_address)
+}
+
+/// Type index
+pub struct ContextActionByTypeIndex {
+    kv: Arc<ContextActionByTypeIndexKV>,
+}
+
+pub type ContextActionByTypeIndexKV = dyn KeyValueStoreWithSchema<ContextActionByTypeIndex> + Sync + Send;
+
+impl ContextActionByTypeIndex {
+    fn new(kv: Arc<ContextActionByTypeIndexKV>) -> Self {
+        Self { kv }
+    }
+
+    #[inline]
+    fn put(&self, key: &ContextActionByTypeIndexKey) -> Result<(), StorageError> {
+        self.kv.put(key, &()).map_err(StorageError::from)
+    }
+
+    #[inline]
+    fn get_by_action_type_iterator<'a>(&'a self, action_type: ContextActionType, cursor_id: Option<SequenceNumber>) -> Result<impl Iterator<Item=u64> + 'a, StorageError> {
+        let iterate_from_key = cursor_id.map_or_else(
+            || ContextActionByTypeIndexKey::from_action_type_prefix(action_type),
+            |cursor_id| ContextActionByTypeIndexKey::new(action_type, cursor_id),
+        );
+
+        Ok(self.kv.prefix_iterator(&iterate_from_key)?
+            .filter_map(|(key, _)| key.map(|id_key| id_key.id).ok()))
+    }
+}
+
+impl KeyValueSchema for ContextActionByTypeIndex {
+    type Key = ContextActionByTypeIndexKey;
+    type Value = ();
+
+    fn descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = Options::default();
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByTypeIndexKey::LEN_TYPE));
+        cf_opts.set_memtable_prefix_bloom_ratio(0.2);
+        cf_opts.set_comparator("reverse_id", ContextActionByTypeIndexKey::reverse_id_comparator);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    fn name() -> &'static str {
+        "context_by_type_storage"
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct ContextActionByTypeIndexKey {
+    pub action_type: ContextActionType,
+    pub id: SequenceNumber,
+}
+
+impl ContextActionByTypeIndexKey {
+    const LEN_TYPE: usize = mem::size_of::<ContextActionType>();
+    const LEN_ID: usize = mem::size_of::<SequenceNumber>();
+    const LEN_TOTAL: usize = Self::LEN_TYPE + Self::LEN_ID;
+
+    pub fn new(action_type: ContextActionType, id: SequenceNumber) -> Self {
+        Self {
+            action_type,
+            id,
+        }
+    }
+
+    fn from_action_type_prefix(action_type: ContextActionType) -> Self {
+        Self::new(action_type, std::u64::MAX)
+    }
+
+    fn reverse_id_comparator(a: &[u8], b: &[u8]) -> Ordering {
+        assert_eq!(a.len(), b.len(), "Cannot compare keys of mismatching length");
+        assert_eq!(a.len(), Self::LEN_TOTAL, "Key is expected to have exactly {} bytes", Self::LEN_TOTAL);
+
+        for idx in 0..Self::LEN_TYPE {
+            match a[idx].cmp(&b[idx]) {
+                Ordering::Greater => return Ordering::Greater,
+                Ordering::Less => return Ordering::Less,
+                Ordering::Equal => ()
+            }
+        }
+
+        for idx in Self::LEN_TYPE.. {
+            match a[idx].cmp(&b[idx]) {
+                Ordering::Greater => return Ordering::Less,
+                Ordering::Less => return Ordering::Greater,
+                Ordering::Equal => ()
+            }
+        }
+
+        Ordering::Equal
+    }
+}
+
+/// Decoder for `ContextActionByTypeIndexKey`
+///
+/// * bytes layout `[action_type(2)][id(8)]`
+impl Decoder for ContextActionByTypeIndexKey {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        if Self::LEN_TOTAL == bytes.len() {
+            let action_type: u16 = num_from_slice!(bytes, 0, u16);
+            let action_type = ContextActionType::from_u16(action_type);
+            let id = num_from_slice!(bytes, 2, SequenceNumber);
+            if let Some(action_type) = action_type {
+                Ok(Self { action_type, id })
+            } else {
+                Err(SchemaError::DecodeError)
+            }
+        } else {
+            Err(SchemaError::DecodeError)
+        }
+    }
+}
+
+impl Encoder for ContextActionByTypeIndexKey {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        let mut result = Vec::with_capacity(Self::LEN_TOTAL);
+        result.extend_from_slice(&(self.action_type as u16).to_be_bytes());
+        result.extend_from_slice(&self.id.to_be_bytes());
+        assert_eq!(result.len(), Self::LEN_TOTAL, "Result length mismatch");
+        Ok(result)
+    }
+}
+
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub enum ContextActionType {
+    Set = 0x1 << 0,
+    Delete = 0x1 << 1,
+    RemoveRecursively = 0x1 << 2,
+    Copy = 0x1 << 3,
+    Checkout = 0x1 << 4,
+    Commit = 0x1 << 5,
+    Mem = 0x1 << 6,
+    DirMem = 0x1 << 7,
+    Get = 0x1 << 8,
+    Fold = 0x1 << 9,
+}
+
+impl ContextActionType {
+    pub fn extract_type(value: &ContextAction) -> Option<Self> {
+        match value {
+            ContextAction::Set { .. } => Some(Self::Set),
+            ContextAction::Delete { .. } => Some(Self::Delete),
+            ContextAction::RemoveRecursively { .. } => Some(Self::RemoveRecursively),
+            ContextAction::Copy { .. } => Some(Self::Copy),
+            ContextAction::Checkout { .. } => Some(Self::Checkout),
+            ContextAction::Commit { .. } => Some(Self::Commit),
+            ContextAction::Mem { .. } => Some(Self::Mem),
+            ContextAction::DirMem { .. } => Some(Self::DirMem),
+            ContextAction::Get { .. } => Some(Self::Get),
+            ContextAction::Fold { .. } => Some(Self::Fold),
+            _ => None
+        }
+    }
+
+    pub fn from_u16(value: u16) -> Option<Self> {
+        match value {
+            x if x == Self::Set as u16 => Some(Self::Set),
+            x if x == Self::Delete as u16 => Some(Self::Delete),
+            x if x == Self::RemoveRecursively as u16 => Some(Self::RemoveRecursively),
+            x if x == Self::Copy as u16 => Some(Self::Copy),
+            x if x == Self::Checkout as u16 => Some(Self::Checkout),
+            x if x == Self::Commit as u16 => Some(Self::Commit),
+            x if x == Self::Mem as u16 => Some(Self::Mem),
+            x if x == Self::DirMem as u16 => Some(Self::DirMem),
+            x if x == Self::Get as u16 => Some(Self::Get),
+            x if x == Self::Fold as u16 => Some(Self::Fold),
+            _ => None,
+        }
+    }
+}
+
+pub mod sorted_intersect {
+    use std::cmp::Ordering;
+
+    pub fn sorted_intersect<I>(mut iters: Vec<I>, limit: usize) -> Vec<I::Item>
+        where
+            I: Iterator,
+            I::Item: Ord,
+    {
+        let mut ret = Default::default();
+        if iters.len() == 0 {
+            return ret;
+        } else if iters.len() == 1 {
+            let iter = iters.iter_mut().next().unwrap();
+            ret.extend(iter.take(limit));
+            return ret;
+        }
+        let mut heap = Vec::with_capacity(iters.len());
+        // Fill the heap with values
+        if !fill_heap(iters.iter_mut(), &mut heap) {
+            // Hit an exhausted iterator, finish
+            return ret;
+        }
+
+        while ret.len() < limit {
+            if is_hit(&heap) {
+                // We hit intersected item
+                if let Some((item, _)) = heap.pop() {
+                    // Push it into the intersect values
+                    ret.push(item);
+                    // Clear the rest of the heap
+                    heap.clear();
+                    // Build a new heap from new values
+                    if !fill_heap(iters.iter_mut(), &mut heap) {
+                        // Hit an exhausted iterator, finish
+                        return ret;
+                    }
+                } else {
+                    // Hit an exhausted iterator, finish
+                    return ret;
+                }
+            } else {
+                // Remove max element from the heap
+                if let Some((_, iter_num)) = heap.pop() {
+                    if let Some(item) = iters[iter_num].next() {
+                        // Insert replacement from the corresponding iterator to heap
+                        heap.push((item, iter_num));
+                        heapify(&mut heap);
+                    } else {
+                        // Hit an exhausted iterator, finish
+                        return ret;
+                    }
+                } else {
+                    // Hit an exhausted iterator, finish
+                    return ret;
+                }
+            }
+        }
+
+        ret
+    }
+
+    fn heapify<Item: Ord>(heap: &mut Vec<(Item, usize)>) {
+        heap.sort_by(|(a, _), (b, _)| a.cmp(b));
+    }
+
+    fn fill_heap<'a, Item: Ord, Inner: 'a + Iterator<Item=Item>, Outer: Iterator<Item=&'a mut Inner>>(iters: Outer, heap: &mut Vec<(Inner::Item, usize)>) -> bool {
+        for (i, iter) in iters.enumerate() {
+            let value = iter.next();
+            if let Some(value) = value {
+                heap.push((value, i))
+            } else {
+                return false;
+            }
+        }
+        heapify(heap);
+        true
+    }
+
+    fn is_hit<Item: Ord>(heap: &Vec<(Item, usize)>) -> bool {
+        let value = heap.iter().next().map(|(value, _)|
+            heap.iter().fold((value, true), |(a, eq), (b, _)| {
+                (b, eq & (a.cmp(b) == Ordering::Equal))
+            })
+        );
+
+        if let Some((_, true)) = value {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]
