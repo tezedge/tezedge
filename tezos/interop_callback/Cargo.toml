@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop_callback"
-version = "0.0.2-pre14"
+version = "0.0.2"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -8,7 +8,6 @@ edition = "2018"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-hex = "0.4"
 ocaml = "0.9.3"
 # local dependencies
 tezos_context = { path = "../context" }

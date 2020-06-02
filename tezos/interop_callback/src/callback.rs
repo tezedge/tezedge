@@ -35,7 +35,6 @@ impl Interchange<ContextKey> for List {
     }
 }
 
-// Str means hash as hex string
 fn to_hash(hash: Str) -> Option<Hash> {
     if hash.len() <= 0 {
         None
