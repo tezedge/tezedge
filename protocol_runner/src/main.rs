@@ -14,16 +14,17 @@ use slog::*;
 use tezos_context::channel;
 use tezos_interop::runtime;
 
-fn create_logger() -> Logger {
-    // TODO: TE-165 fix level
-    let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
+fn create_logger(log_level: Level) -> Logger {
+    let drain = slog_async::Async::new(
+        slog_term::FullFormat::new(
+            slog_term::TermDecorator::new().build()
+        ).build().fuse()
+    ).build().filter_level(log_level).fuse();
 
     Logger::root(drain, slog::o!())
 }
 
 fn main() {
-    let log = create_logger();
-
     let matches = App::new("Protocol Runner")
         .version("1.0")
         .author("Tomas Sedlak <tomas.sedlak@simplestaking.com>")
@@ -44,18 +45,39 @@ fn main() {
             .takes_value(true)
             .empty_values(false)
             .required(true))
+        .arg(Arg::with_name("endpoint")
+            .long("endpoint")
+            .value_name("STRING")
+            .help("Name of the endpoint, which spawned runner")
+            .takes_value(true)
+            .empty_values(false)
+            .required(true))
+        .arg(Arg::with_name("log-level")
+            .long("log-level")
+            .takes_value(true)
+            .value_name("LEVEL")
+            .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
+            .help("Set log level"))
         .get_matches();
 
     let cmd_socket_path = matches.value_of("sock-cmd").expect("Missing sock-cmd value");
     let evt_socket_path = matches.value_of("sock-evt").expect("Missing sock-evt value").to_string();
+    let endpoint_name = matches.value_of("endpoint").expect("Missing endpoint value").to_string();
+    let log_level = matches.value_of("log-level")
+        .unwrap_or("info")
+        .parse::<slog::Level>()
+        .expect("Was expecting one value from slog::Level");
+
+    let log = create_logger(log_level);
 
     {
         let log = log.clone();
+        let endpoint_name = endpoint_name.clone();
         ctrlc::set_handler(move || {
             // do nothing and wait for parent process to send termination command
-            debug!(log, "Shutting down ocaml runtime");
+            debug!(log, "Shutting down ocaml runtime"; "endpoint" => &endpoint_name);
             runtime::shutdown();
-            debug!(log, "Ocaml runtime shutdown complete");
+            debug!(log, "Ocaml runtime shutdown complete"; "endpoint" => &endpoint_name);
         }).expect("Error setting Ctrl-C handler");
     }
 
@@ -64,13 +86,14 @@ fn main() {
     // is reading them and then sends them to the Rust node via IPC channel.
     let event_thread = {
         let log = log.clone();
+        let endpoint_name = endpoint_name.clone();
         channel::enable_context_channel();
         thread::spawn(move || {
             for _ in 0..5 {
                 match tezos_wrapper::service::process_protocol_events(&evt_socket_path) {
                     Ok(()) => break,
                     Err(err) => {
-                        warn!(log, "Error while processing protocol events"; "reason" => format!("{:?}", err));
+                        warn!(log, "Error while processing protocol events"; "endpoint" => &endpoint_name, "reason" => format!("{:?}", err));
                         thread::sleep(Duration::from_secs(1));
                     }
                 }
@@ -80,7 +103,7 @@ fn main() {
 
     // Process commands from from the Rust node. Most commands are instructions for the Tezos protocol
     if let Err(err) = tezos_wrapper::service::process_protocol_commands::<crate::tezos::NativeTezosLib, _>(cmd_socket_path) {
-        error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", err));
+        error!(log, "Error while processing protocol commands"; "endpoint" => &endpoint_name, "reason" => format!("{:?}", err));
     }
 
     event_thread.join().expect("Failed to join event thread");

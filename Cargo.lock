@@ -2394,8 +2394,6 @@ dependencies = [
  "tezos_client",
  "tezos_context",
  "tezos_encoding",
- "tezos_interop",
- "tezos_interop_callback",
  "tezos_messages",
  "tezos_wrapper",
  "tokio",

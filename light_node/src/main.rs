@@ -110,6 +110,7 @@ fn block_on_actors(
             env.enable_testchain,
             &env.storage.tezos_data_dir,
             &env.protocol_runner,
+            env.logging.level,
         ),
         log.clone(),
     );

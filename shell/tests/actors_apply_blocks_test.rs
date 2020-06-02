@@ -38,7 +38,8 @@ use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunner, Prot
 fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
 
     // logger
-    let log = create_logger();
+    let log_level = Level::Info;
+    let log = create_logger(log_level.clone());
 
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
@@ -72,6 +73,7 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
             false,
             &context_db_path,
             &protocol_runner,
+            log_level,
         ),
         log.clone(),
     );
@@ -101,6 +103,7 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
             &mut operations_storage,
             &mut operations_meta_storage,
             tezos_env,
+            log.clone(),
         ).is_ok()
     );
 
@@ -211,7 +214,8 @@ fn apply_blocks_with_chain_feeder(
     block_meta_storage: &mut BlockMetaStorage,
     operations_storage: &mut OperationsStorage,
     operations_meta_storage: &mut OperationsMetaStorage,
-    tezos_env: &TezosEnvironmentConfiguration) -> Result<(), failure::Error> {
+    tezos_env: &TezosEnvironmentConfiguration,
+    log: Logger) -> Result<(), failure::Error> {
     let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
     // let's insert stored requests to database
@@ -228,7 +232,7 @@ fn apply_blocks_with_chain_feeder(
             header: Arc::new(header),
         };
         block_storage.put_block_header(&block)?;
-        block_meta_storage.put_block_header(&block, &chain_id)?;
+        block_meta_storage.put_block_header(&block, &chain_id, log.clone())?;
         operations_meta_storage.put_block_header(&block, &chain_id)?;
 
         // store operations to db
@@ -247,7 +251,7 @@ fn apply_blocks_with_chain_feeder(
         let head = block_meta_storage.load_current_head()?;
         match head {
             None => (),
-            Some(h) => {
+            Some((h, _)) => {
                 let meta = block_meta_storage.get(&h)?;
                 if let Some(m) = meta {
                     let header = block_storage.get(&h).expect("failed to read current head").expect("current head not found");
@@ -271,8 +275,12 @@ fn apply_blocks_with_chain_feeder(
 #[derive(Serialize, Deserialize, Debug)]
 struct NoopMessage;
 
-fn create_logger() -> Logger {
-    let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
+fn create_logger(log_leval: Level) -> Logger {
+    let drain = slog_async::Async::new(
+        slog_term::FullFormat::new(
+            slog_term::TermDecorator::new().build()
+        ).build().fuse()
+    ).build().filter_level(log_leval).fuse();
 
     Logger::root(drain, slog::o!())
 }
@@ -282,13 +290,15 @@ fn create_logger() -> Logger {
 pub struct TestProtocolRunner {
     sock_cmd_path: PathBuf,
     sock_evt_path: PathBuf,
+    endpoint_name: String,
 }
 
 impl ProtocolRunner for TestProtocolRunner {
-    fn new(_configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: &Path) -> Self {
+    fn new(_configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: &Path, endpoint_name: String) -> Self {
         TestProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
             sock_evt_path: sock_evt_path.to_path_buf(),
+            endpoint_name,
         }
     }
 
@@ -297,13 +307,14 @@ impl ProtocolRunner for TestProtocolRunner {
         // run context_event callback listener
         let _ = {
             let sock_evt_path = self.sock_evt_path.clone();
+            let endpoint_name = self.endpoint_name.clone();
             // enable context event to receive
             enable_context_channel();
             thread::spawn(move || {
                 match tezos_wrapper::service::process_protocol_events(&sock_evt_path) {
                     Ok(()) => (),
                     Err(err) => {
-                        println!("Error while processing protocol events. Reason: {}", format!("{:?}", err))
+                        println!("Error while processing protocol events, endpoint: {}, Reason: {}", &endpoint_name, format!("{:?}", err))
                     }
                 }
             })
@@ -312,9 +323,10 @@ impl ProtocolRunner for TestProtocolRunner {
         // Process commands from from the Rust node. Most commands are instructions for the Tezos protocol
         let _ = {
             let sock_cmd_path = self.sock_cmd_path.clone();
+            let endpoint_name = self.endpoint_name.clone();
             thread::spawn(move || {
                 if let Err(err) = tezos_wrapper::service::process_protocol_commands::<crate::tezos::NativeTezosLib, _>(&sock_cmd_path) {
-                    println!("Error while processing protocol commands, Reason: {}", format!("{:?}", err));
+                    println!("Error while processing protocol commands, endpoint: {}, Reason: {}", &endpoint_name, format!("{:?}", err));
                 }
             })
         };
