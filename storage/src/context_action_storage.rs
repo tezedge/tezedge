@@ -170,6 +170,10 @@ pub struct ContextActionRecordValue {
 }
 
 impl ContextActionRecordValue {
+    pub fn new(action: ContextAction, id: SequenceNumber) -> Self {
+        Self { action, id }
+    }
+
     pub fn id(&self) -> SequenceNumber {
         self.id
     }
@@ -177,17 +181,27 @@ impl ContextActionRecordValue {
     pub fn action(&self) -> &ContextAction {
         &self.action
     }
+
+    pub fn into_action(self) -> ContextAction {
+        self.action
+    }
 }
 
 impl BincodeEncoded for ContextActionRecordValue {}
 
-impl ContextActionRecordValue {
-    pub fn new(action: ContextAction, id: SequenceNumber) -> Self {
-        Self { action, id }
-    }
+#[derive(Serialize, Deserialize)]
+pub struct ContextActionJson {
+    #[serde(flatten)]
+    pub action: ContextAction,
+    pub id: SequenceNumber,
+}
 
-    pub fn into_action(self) -> ContextAction {
-        self.action
+impl From<ContextActionRecordValue> for ContextActionJson {
+    fn from(rv: ContextActionRecordValue) -> Self {
+        Self {
+            action: rv.action,
+            id: rv.id,
+        }
     }
 }
 

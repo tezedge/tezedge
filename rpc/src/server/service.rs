@@ -19,12 +19,11 @@ use tezos_messages::protocol::RpcJsonMap;
 use crate::ContextList;
 use crate::helpers::{BlockHeaderInfo, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types};
 use crate::rpc_actor::RpcCollectedStateRef;
-use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters};
+use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson};
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Cycle
-{
+pub struct Cycle {
     #[serde(skip_serializing_if = "Option::is_none")]
     last_roll: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,24 +65,30 @@ pub(crate) fn get_block_actions_by_hash(context_action_storage: &ContextActionSt
         .map_err(|e| e.into())
 }
 
-pub(crate) fn get_block_actions_cursor(block_id: &str, cursor_id: Option<u64>, limit: Option<usize>, action_types: Option<&str>, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<ContextActionRecordValue>, failure::Error> {
+pub(crate) fn get_block_actions_cursor(block_id: &str, cursor_id: Option<u64>, limit: Option<usize>, action_types: Option<&str>, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<ContextActionJson>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
     let mut filters = ContextActionFilters::with_block_hash(block_hash);
     if let Some(action_types) = action_types {
         filters = filters.with_action_types(get_action_types(action_types));
     }
-    Ok(context_action_storage.load_cursor(cursor_id, limit, filters)?)
+    let values = context_action_storage.load_cursor(cursor_id, limit, filters)?
+        .into_iter().map(|value| ContextActionJson::from(value))
+        .collect();
+    Ok(values)
 }
 
-pub(crate) fn get_contract_actions_cursor(contract_address: &str, cursor_id: Option<u64>, limit: Option<usize>, action_types: Option<&str>, persistent_storage: &PersistentStorage) -> Result<Vec<ContextActionRecordValue>, failure::Error> {
+pub(crate) fn get_contract_actions_cursor(contract_address: &str, cursor_id: Option<u64>, limit: Option<usize>, action_types: Option<&str>, persistent_storage: &PersistentStorage) -> Result<Vec<ContextActionJson>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
     let contract_address = contract_id_to_contract_address_for_index(contract_address)?;
     let mut filters = ContextActionFilters::with_contract_id(contract_address);
     if let Some(action_types) = action_types {
         filters = filters.with_action_types(get_action_types(action_types));
     }
-    Ok(context_action_storage.load_cursor(cursor_id, limit, filters)?)
+    let values = context_action_storage.load_cursor(cursor_id, limit, filters)?
+        .into_iter().map(|value| ContextActionJson::from(value))
+        .collect();
+    Ok(values)
 }
 
 /// Get actions for a specific contract in ascending order.
