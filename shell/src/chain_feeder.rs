@@ -235,7 +235,7 @@ fn feed_chain_to_protocol(
     )?;
 
     // now resolve where to start apply next blocks (at least genesis should be there)
-    let mut current_head_hash: BlockHash = match &block_meta_storage.load_current_head()? {
+    let (mut current_head_hash, ..) : (BlockHash, _) = match &block_meta_storage.load_current_head()? {
         Some(block) => block.clone(),
         None => {
             // this should not happen here, we applied at least genesis before

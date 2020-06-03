@@ -7,6 +7,7 @@ use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
@@ -17,7 +18,7 @@ pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sy
 
 pub trait BlockMetaStorageReader: Sync + Send {
     /// Load local head (block with highest level) from dedicated storage
-    fn load_current_head(&self) -> Result<Option<BlockHash>, StorageError>;
+    fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError>;
 }
 
 #[derive(Clone)]
@@ -91,7 +92,7 @@ impl BlockMetaStorage {
 }
 
 impl BlockMetaStorageReader for BlockMetaStorage {
-    fn load_current_head(&self) -> Result<Option<BlockHash>, StorageError> {
+    fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError> {
         self.iter(IteratorMode::End)
             .and_then(|meta_iterator|
                 Ok(
@@ -103,7 +104,7 @@ impl BlockMetaStorageReader for BlockMetaStorage {
                         // get block with the highest level
                         .max_by_key(|(_, meta)| meta.level())
                         // get data for the block
-                        .map(|(block_hash, _)| block_hash)
+                        .map(|(block_hash, meta)| (block_hash, meta.level()))
                 )
             )
     }
@@ -147,7 +148,7 @@ pub struct Meta {
     #[set = "pub"]
     is_applied: bool,
     #[get_copy = "pub"]
-    level: i32,
+    level: Level,
     #[get = "pub"]
     chain_id: ChainId,
 }

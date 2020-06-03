@@ -150,7 +150,7 @@ fn test_storage() -> Result<(), Error> {
     assert_eq!(block_json_data.operations_proto_metadata_json(), &apply_result.operations_proto_metadata_json);
 
     // load current head - should be changeg
-    let current_head = block_meta_storage.load_current_head()?.expect("Current header should be set");
+    let (current_head, ..) = block_meta_storage.load_current_head()?.expect("Current header should be set");
     assert_eq!(current_head, block.hash);
 
     Ok(())
