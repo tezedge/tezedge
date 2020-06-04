@@ -3,13 +3,17 @@
 
 //! Shell channel is used to transmit high level shell messages.
 
+use std::collections::HashMap;
+
 use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, OperationHash};
+use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
+use tezos_api::ffi::ValidateOperationResult;
 use tezos_messages::p2p::encoding::operation::MempoolOperationType;
+use tezos_messages::p2p::encoding::prelude::Operation;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -44,10 +48,18 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
+// Notify actors that operations should by validated by mempool
 #[derive(Clone, Debug)]
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
     pub operation_type: MempoolOperationType,
+}
+
+#[derive(Clone, Debug)]
+pub struct MempoolCurrentState {
+    pub protocol: Option<ProtocolHash>,
+    pub result: ValidateOperationResult,
+    pub operations: HashMap<OperationHash, Operation>,
 }
 
 /// Shell channel event message.
@@ -57,6 +69,7 @@ pub enum ShellChannelMsg {
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
+    MempoolValidationResultChanged(MempoolCurrentState),
     ShuttingDown(ShuttingDown),
 }
 
@@ -69,6 +82,12 @@ impl From<BlockApplied> for ShellChannelMsg {
 impl From<MempoolOperationReceived> for ShellChannelMsg {
     fn from(msg: MempoolOperationReceived) -> Self {
         ShellChannelMsg::MempoolOperationReceived(msg)
+    }
+}
+
+impl From<MempoolCurrentState> for ShellChannelMsg {
+    fn from(msg: MempoolCurrentState) -> Self {
+        ShellChannelMsg::MempoolValidationResultChanged(msg)
     }
 }
 

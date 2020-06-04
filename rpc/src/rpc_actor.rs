@@ -10,7 +10,7 @@ use slog::{Logger, warn};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use shell::shell_channel::{BlockApplied, MempoolCurrentState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::PersistentStorage;
 use storage::StorageInitInfo;
 
@@ -29,6 +29,8 @@ pub struct RpcCollectedState {
     current_head: Option<BlockApplied>,
     #[get = "pub(crate)"]
     chain_id: ChainId,
+    #[get = "pub(crate)"]
+    mempool_current_state: Option<MempoolCurrentState>,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -54,6 +56,7 @@ impl RpcServer {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(persistent_storage, &sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
+            mempool_current_state: None,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
@@ -113,6 +116,10 @@ impl Receive<ShellChannelMsg> for RpcServer {
                     None => current_head_ref.current_head = Some(block)
                 }
             }
+            ShellChannelMsg::MempoolValidationResultChanged(result) => {
+                let current_state = &mut *self.state.write().unwrap();
+                current_state.mempool_current_state = Some(result);
+            }
             _ => (/* Not yet implemented, do nothing */),
         }
     }
@@ -135,7 +142,7 @@ fn load_current_head(persistent_storage: &PersistentStorage, log: &Logger) -> Op
                     None
                 }
             }
-        },
+        }
         Ok(None) => None,
         Err(e) => {
             warn!(log, "Error reading current head from database."; "reason" => format!("{}", e));

@@ -511,7 +511,7 @@ impl ChainManager {
                                             // trigger CheckMempoolCompleteness
                                             ctx.myself().tell(CheckMempoolCompleteness, None);
 
-                                            // notify others that new block was received
+                                            // notify others that new operation was received
                                             shell_channel.tell(
                                                 Publish {
                                                     msg: MempoolOperationReceived {

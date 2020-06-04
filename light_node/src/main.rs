@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use riker::actors::*;
-use slog::{crit, debug, Drain, error, info, Logger, Level};
+use slog::{crit, debug, Drain, error, info, Logger};
 
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
@@ -196,7 +196,6 @@ fn block_on_actors(
         .expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {
-        use std::thread;
         use tokio::signal;
 
         signal::ctrl_c().await.expect("Failed to listen for ctrl-c event");

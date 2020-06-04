@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 
@@ -300,6 +301,71 @@ pub struct ValidateOperationResult {
     pub branch_refused: Vec<Errored>,
     pub branch_delayed: Vec<Errored>,
     // TODO: outedate?
+}
+
+impl ValidateOperationResult {
+    /// Merges result with new one, and returns `true/false` if something was changed
+    pub fn merge(&mut self, new_result: &ValidateOperationResult) -> bool {
+        let mut changed = self.merge_applied(&new_result.applied);
+        changed |= self.merge_refused(&new_result.refused);
+        changed |= self.merge_branch_refused(&new_result.branch_refused);
+        changed |= self.merge_branch_delayed(&new_result.branch_delayed);
+        changed
+    }
+
+    fn merge_applied(&mut self, new_items: &Vec<Applied>) -> bool {
+        let mut changed = false;
+        let mut added = false;
+        let mut m = HashMap::new();
+
+        for a in &self.applied {
+            m.insert(a.hash.clone(), a.clone());
+        }
+        for na in new_items {
+            match m.insert(na.hash.clone(), na.clone()) {
+                Some(_) => changed |= true,
+                None => added |= true,
+            };
+        }
+
+        if added || changed {
+            self.applied = m.values().cloned().collect();
+        }
+        added || changed
+    }
+
+    fn merge_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+        Self::merge_errored(&mut self.refused, new_items)
+    }
+
+    fn merge_branch_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+        Self::merge_errored(&mut self.branch_refused, new_items)
+    }
+
+    fn merge_branch_delayed(&mut self, new_items: &Vec<Errored>) -> bool {
+        Self::merge_errored(&mut self.branch_delayed, new_items)
+    }
+
+    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &Vec<Errored>) -> bool {
+        let mut changed = false;
+        let mut added = false;
+        let mut m = HashMap::new();
+
+        for a in old_items.into_iter() {
+            m.insert(a.hash.clone(), (*a).clone());
+        }
+        for na in new_items {
+            match m.insert(na.hash.clone(), na.clone()) {
+                Some(_) => changed |= true,
+                None => added |= true,
+            };
+        }
+
+        if added || changed {
+            *old_items = m.values().cloned().collect();
+        }
+        added || changed
+    }
 }
 
 lazy_static! {

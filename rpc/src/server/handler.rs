@@ -13,13 +13,13 @@ use crate::{
     empty,
     encoding::{
         base_types::*,
-        monitor::BootstrapInfo
+        monitor::BootstrapInfo,
     },
     make_json_response,
     result_option_to_json_response,
     result_to_json_response,
     ServiceResult,
-    services
+    services,
 };
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::server::service;
@@ -185,4 +185,17 @@ pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: Rpc
     let block_id = params.get_str("block_id").unwrap();
 
     result_to_json_response(services::protocol::get_votes_listings(chain_id, block_id, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+}
+
+pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+
+    if chain_id == "main" {
+        result_to_json_response(
+            services::mempool_services::get_pending_operations(env.persistent_storage(), env.state(), env.log()),
+            env.log(),
+        )
+    } else {
+        unimplemented!("not implemented yet")
+    }
 }

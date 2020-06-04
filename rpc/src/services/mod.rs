@@ -4,3 +4,4 @@
 //! This module provides rpc services and exposes also protocol rpc services.
 
 pub mod protocol;
+pub mod mempool_services;

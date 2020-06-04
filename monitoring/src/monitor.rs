@@ -268,8 +268,10 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.chain_monitor.process_block_operations(msg.level as usize);
 
             },
+            ShellChannelMsg::ShuttingDown(_) => (),
+            // TODO: TE-173: mempool stats
             ShellChannelMsg::MempoolOperationReceived(_) => (),
-            ShellChannelMsg::ShuttingDown(_) => ()
+            ShellChannelMsg::MempoolValidationResultChanged(_) => (),
         }
     }
 }
