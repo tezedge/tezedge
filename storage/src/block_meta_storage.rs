@@ -5,8 +5,10 @@ use std::sync::Arc;
 
 use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
+use slog::{Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
@@ -17,7 +19,7 @@ pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sy
 
 pub trait BlockMetaStorageReader: Sync + Send {
     /// Load local head (block with highest level) from dedicated storage
-    fn load_current_head(&self) -> Result<Option<BlockHash>, StorageError>;
+    fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError>;
 }
 
 #[derive(Clone)]
@@ -31,11 +33,30 @@ impl BlockMetaStorage {
     }
 
     /// Create new metadata record in storage from given block header
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: Logger) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {
-                meta.predecessor = Some(block_header.header.predecessor().clone());
+                let block_predecessor = block_header.header.predecessor().clone();
+
+                // log if predecessor was changed - can happen?
+                match &mut meta.predecessor {
+                    None => (),
+                    Some(stored_predecessor) => {
+                        if *stored_predecessor != block_predecessor {
+                            let block_hash_encoding = HashType::BlockHash;
+                            warn!(
+                                log, "Rewriting predecessor";
+                                "block_hash" => block_hash_encoding.bytes_to_string(&block_header.hash),
+                                "stored_predecessor" => block_hash_encoding.bytes_to_string(&stored_predecessor),
+                                "new_predecessor" => block_hash_encoding.bytes_to_string(&block_predecessor)
+                            );
+                        }
+                        ()
+                    }
+                };
+
+                meta.predecessor = Some(block_predecessor);
                 self.put(&block_header.hash, &meta)?;
             },
             None => {
@@ -53,7 +74,27 @@ impl BlockMetaStorage {
         // create/update record for block predecessor
         match self.get(&block_header.header.predecessor())?.as_mut() {
             Some(meta) => {
-                meta.successor = Some(block_header.hash.clone());
+                let block_hash = block_header.hash.clone();
+
+                // log if successor was changed on the predecessor - can happen / reorg?
+                match &mut meta.successor {
+                    None => (),
+                    Some(stored_successor) => {
+                        if *stored_successor != block_hash {
+                            let block_hash_encoding = HashType::BlockHash;
+                            warn!(
+                                log, "Rewriting successor";
+                                "block_hash" => block_hash_encoding.bytes_to_string(&block_header.hash),
+                                "block_hash_predecessor" => block_hash_encoding.bytes_to_string(&block_header.header.predecessor()),
+                                "stored_successor" => block_hash_encoding.bytes_to_string(&stored_successor),
+                                "new_successor" => block_hash_encoding.bytes_to_string(&block_hash)
+                            );
+                        }
+                        ()
+                    }
+                };
+
+                meta.successor = Some(block_hash);
                 self.put(block_header.header.predecessor(), &meta)?;
             },
             None => {
@@ -91,7 +132,7 @@ impl BlockMetaStorage {
 }
 
 impl BlockMetaStorageReader for BlockMetaStorage {
-    fn load_current_head(&self) -> Result<Option<BlockHash>, StorageError> {
+    fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError> {
         self.iter(IteratorMode::End)
             .and_then(|meta_iterator|
                 Ok(
@@ -103,7 +144,7 @@ impl BlockMetaStorageReader for BlockMetaStorage {
                         // get block with the highest level
                         .max_by_key(|(_, meta)| meta.level())
                         // get data for the block
-                        .map(|(block_hash, _)| block_hash)
+                        .map(|(block_hash, meta)| (block_hash, meta.level()))
                 )
             )
     }
@@ -147,7 +188,7 @@ pub struct Meta {
     #[set = "pub"]
     is_applied: bool,
     #[get_copy = "pub"]
-    level: i32,
+    level: Level,
     #[get = "pub"]
     chain_id: ChainId,
 }

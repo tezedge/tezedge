@@ -122,7 +122,7 @@ fn load_current_head(persistent_storage: &PersistentStorage, log: Logger) -> Opt
 
     let block_meta_storage = BlockMetaStorage::new(persistent_storage);
     match block_meta_storage.load_current_head() {
-        Ok(Some(block_hash)) => {
+        Ok(Some((block_hash, ..))) => {
             let block_applied = BlockStorage::new(persistent_storage)
                 .get_with_json_data(&block_hash)
                 .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));

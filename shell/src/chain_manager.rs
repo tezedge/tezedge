@@ -24,6 +24,7 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::Head;
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockchainState, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
@@ -102,21 +103,6 @@ impl CurrentHead {
             None => ("-none-".to_string(), 0 as i32),
             Some(head) => head.to_debug_info()
         }
-    }
-}
-
-/// This struct holds info about remote "current" head and level
-#[derive(Clone, Debug)]
-struct Head {
-    /// BlockHash of head.
-    hash: BlockHash,
-    /// Level of the head.
-    level: i32,
-}
-
-impl Head {
-    fn to_debug_info(&self) -> (String, i32) {
-        (BLOCK_HASH_ENCODING.bytes_to_string(&self.hash), self.level)
     }
 }
 
@@ -416,7 +402,7 @@ impl ChainManager {
                                             peer.block_response_last = Instant::now();
 
                                             let is_new_block =
-                                                chain_state.process_block_header(&block_header_with_hash)
+                                                chain_state.process_block_header(&block_header_with_hash, log.clone())
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
 
                                             if is_new_block {
@@ -592,19 +578,8 @@ impl ChainManager {
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
 
         info!(ctx.system.log(), "Loading current head");
-        self.current_head.local = match self.block_meta_storage.load_current_head().expect("Failed to load current head") {
-            Some(hash) => {
-                self.block_storage
-                    .get(&hash)
-                    .expect(&format!("Failed to read head: {}", BLOCK_HASH_ENCODING.bytes_to_string(&hash)))
-                    .map(|block| Head {
-                        hash: block.hash.clone(),
-                        level: block.header.level(),
-                    })
-            }
-            None => None
-        };
-
+        self.current_head.local = self.block_meta_storage.load_current_head().expect("Failed to load current head")
+            .map(|(hash, level)| Head { hash, level });
 
         let (local_head, local_head_level) = self.current_head.local_debug_info();
         info!(

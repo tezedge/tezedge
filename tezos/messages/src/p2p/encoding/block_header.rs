@@ -13,6 +13,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
 pub type Fitness = Vec<Vec<u8>>;
+pub type Level = i32;
 
 pub fn fitness_encoding() -> Encoding {
     Encoding::Split(Arc::new(|schema_type|
@@ -103,7 +104,7 @@ impl CachedData for GetBlockHeadersMessage {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Builder, Getters, CopyGetters)]
 pub struct BlockHeader {
     #[get_copy = "pub"]
-    level: i32,
+    level: Level,
     #[get_copy = "pub"]
     proto: u8,
     #[get = "pub"]
