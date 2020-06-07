@@ -42,10 +42,6 @@ pub struct RpcServer {
 impl RpcServer {
     pub fn name() -> &'static str { "rpc-server" }
 
-    fn new((shell_channel, state): (ShellChannelRef, RpcCollectedStateRef)) -> Self {
-        Self { shell_channel, state }
-    }
-
     pub fn actor(
         sys: &ActorSystem,
         shell_channel: ShellChannelRef,
@@ -59,9 +55,9 @@ impl RpcServer {
             current_head: load_current_head(persistent_storage, sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
         }));
-        let actor_ref = sys.actor_of(
-            Props::new_args(Self::new, (shell_channel, shared_state.clone())),
+        let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
+            Props::new_args((shell_channel, shared_state.clone())),
         )?;
 
         // spawn RPC JSON server
@@ -77,6 +73,12 @@ impl RpcServer {
         }
 
         Ok(actor_ref)
+    }
+}
+
+impl ActorFactoryArgs<(ShellChannelRef, RpcCollectedStateRef)> for RpcServer {
+    fn create_args((shell_channel, state): (ShellChannelRef, RpcCollectedStateRef)) -> Self {
+        Self { shell_channel, state }
     }
 }
 

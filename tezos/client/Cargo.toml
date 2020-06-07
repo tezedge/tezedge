@@ -15,4 +15,4 @@ tezos_messages = { path = "../messages" }
 enum-iterator = "0.5.0"
 failure = "0.1"
 hex = "0.4"
-serial_test = { git = "https://github.com/palfrey/serial_test.git" }
+serial_test = "0.4"

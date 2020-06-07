@@ -92,19 +92,21 @@ pub type NetworkChannelRef = ChannelRef<NetworkChannelMsg>;
 
 impl NetworkChannel {
     pub fn actor(fact: &impl ActorRefFactory) -> Result<NetworkChannelRef, CreateError> {
-        fact.actor_of(Props::new(NetworkChannel::new), NetworkChannel::name())
+        fact.actor_of::<NetworkChannel>(NetworkChannel::name())
     }
 
     fn name() -> &'static str {
         "network-event-channel"
     }
-
-    fn new() -> Self {
-        NetworkChannel(Channel::new())
-    }
 }
 
 type ChannelCtx<Msg> = Context<ChannelMsg<Msg>>;
+
+impl ActorFactory for NetworkChannel {
+    fn create() -> Self {
+        NetworkChannel(Channel::default())
+    }
+}
 
 impl Actor for NetworkChannel {
     type Msg = ChannelMsg<NetworkChannelMsg>;

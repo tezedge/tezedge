@@ -157,50 +157,16 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 impl ChainManager {
     /// Create new actor instance.
     pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
-        sys.actor_of(
-            Props::new_args(
-                ChainManager::new,
-                (
-                    network_channel,
-                    shell_channel,
-                    persistent_storage.clone(),
-                    chain_id.clone()
-                ),
-            ),
-            ChainManager::name())
+        sys.actor_of_props::<ChainManager>(
+            ChainManager::name(),
+            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone()))
+        )
     }
 
     /// The `ChainManager` is intended to serve as a singleton actor so that's why
     /// we won't support multiple names per instance.
     fn name() -> &'static str {
         "chain-manager"
-    }
-
-    fn new((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
-        ChainManager {
-            network_channel,
-            shell_channel,
-            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
-            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
-            operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
-            mempool_storage: MempoolStorage::new(&persistent_storage),
-            chain_state: BlockchainState::new(&persistent_storage, &chain_id),
-            operations_state: OperationsState::new(&persistent_storage, &chain_id),
-            peers: HashMap::new(),
-            current_head: CurrentHead {
-                local: None,
-                remote: None,
-            },
-            shutting_down: false,
-            stats: Stats {
-                unseen_block_count: 0,
-                unseen_block_last: Instant::now(),
-                unseen_block_operations_last: Instant::now(),
-                applied_block_last: None,
-                applied_block_level: None,
-                hydrated_state_last: None,
-            },
-        }
     }
 
     fn check_mempool_completeness(&mut self, _ctx: &Context<ChainManagerMsg>) {
@@ -589,6 +555,35 @@ impl ChainManager {
             "local_head_level" => local_head_level,
         );
         self.stats.hydrated_state_last = Some(Instant::now());
+    }
+}
+
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)> for ChainManager {
+    fn create_args((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
+        ChainManager {
+            network_channel,
+            shell_channel,
+            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
+            operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
+            mempool_storage: MempoolStorage::new(&persistent_storage),
+            chain_state: BlockchainState::new(&persistent_storage, &chain_id),
+            operations_state: OperationsState::new(&persistent_storage, &chain_id),
+            peers: HashMap::new(),
+            current_head: CurrentHead {
+                local: None,
+                remote: None,
+            },
+            shutting_down: false,
+            stats: Stats {
+                unseen_block_count: 0,
+                unseen_block_last: Instant::now(),
+                unseen_block_operations_last: Instant::now(),
+                applied_block_last: None,
+                applied_block_level: None,
+                hydrated_state_last: None,
+            },
+        }
     }
 }
 
