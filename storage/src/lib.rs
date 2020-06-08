@@ -19,7 +19,7 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
-pub use crate::context_action_storage::{ContextActionPrimaryIndexKey, ContextActionRecordValue, ContextActionStorage};
+pub use crate::context_action_storage::{ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage};
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
@@ -101,7 +101,7 @@ pub enum StorageError {
     #[fail(display = "Message hash error: {}", error)]
     MessageHashError {
         error: MessageHashError
-    }
+    },
 }
 
 impl From<DBError> for StorageError {
@@ -314,18 +314,19 @@ pub mod tests_common {
                 BlockMetaStorage::descriptor(),
                 OperationsStorage::descriptor(),
                 OperationsMetaStorage::descriptor(),
-                context_action_storage::ContextActionPrimaryIndex::descriptor(),
+                context_action_storage::ContextActionByBlockHashIndex::descriptor(),
                 context_action_storage::ContextActionByContractIndex::descriptor(),
+                context_action_storage::ContextActionByTypeIndex::descriptor(),
                 SystemStorage::descriptor(),
                 Sequences::descriptor(),
                 DatabaseBackedSkipList::descriptor(),
                 Lane::descriptor(),
                 ListValue::descriptor(),
                 MempoolStorage::descriptor(),
+                ContextActionStorage::descriptor()
             ])?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),
-                ContextActionStorage::descriptor(),
             ])?;
 
             Ok(Self {

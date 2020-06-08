@@ -123,6 +123,8 @@ impl<K, V> BincodeEncoded for HashMap<K, V>
           V: Serialize + for<'a> Deserialize<'a>
 {}
 
+impl BincodeEncoded for () {}
+
 /// Create number from a bytes
 ///
 /// ```rust

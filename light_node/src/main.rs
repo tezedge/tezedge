@@ -300,8 +300,10 @@ fn main() {
         BlockMetaStorage::descriptor(),
         OperationsStorage::descriptor(),
         OperationsMetaStorage::descriptor(),
-        context_action_storage::ContextActionPrimaryIndex::descriptor(),
+        context_action_storage::ContextActionByBlockHashIndex::descriptor(),
         context_action_storage::ContextActionByContractIndex::descriptor(),
+        context_action_storage::ContextActionByTypeIndex::descriptor(),
+        ContextActionStorage::descriptor(),
         SystemStorage::descriptor(),
         DatabaseBackedSkipList::descriptor(),
         Lane::descriptor(),
@@ -360,8 +362,7 @@ fn main() {
     }
 
     let schemas = vec![
-        BlockStorage::descriptor(),
-        ContextActionStorage::descriptor()
+        BlockStorage::descriptor()
     ];
 
     {

@@ -18,16 +18,31 @@ pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServi
     result_to_json_response(service::get_blocks(every_nth_level, &from_block_id, limit, env.persistent_storage(), env.state()), env.log())
 }
 
+#[allow(dead_code)]
 pub async fn dev_block_actions(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let block_id = params.get_str("block_id").unwrap();
+    let block_id = params.get_str("block_hash").unwrap();
     result_to_json_response(service::get_block_actions(block_id, env.persistent_storage(), env.state()), env.log())
 }
 
+#[allow(dead_code)]
 pub async fn dev_contract_actions(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let contract_id = params.get_str("contract_id").unwrap();
+    let contract_id = params.get_str("contract_address").unwrap();
     let from_id = query.get_u64("from_id");
     let limit = query.get_usize("limit").unwrap_or(50);
     result_to_json_response(service::get_contract_actions(contract_id, from_id, limit, env.persistent_storage()), env.log())
+}
+
+pub async fn dev_action_cursor(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let cursor_id = query.get_u64("cursor_id");
+    let limit = query.get_u64("limit").map(|limit| limit as usize);
+    let action_types = query.get_str("action_types");
+    result_to_json_response(if let Some(block_hash) = params.get_str("block_hash") {
+        service::get_block_actions_cursor(block_hash, cursor_id, limit, action_types, env.persistent_storage(), env.state())
+    } else if let Some(contract_address) = params.get_str("contract_address") {
+        service::get_contract_actions_cursor(contract_address, cursor_id, limit, action_types, env.persistent_storage())
+    } else {
+        unreachable!()
+    }, env.log())
 }
 
 pub async fn dev_context(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
