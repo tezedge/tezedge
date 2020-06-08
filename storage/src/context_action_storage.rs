@@ -874,7 +874,6 @@ mod tests {
 
     use super::*;
 
-    #[test]
     fn context_record_contract_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = ContextActionByContractIndexKey {
             contract_address: hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?,
@@ -885,29 +884,26 @@ mod tests {
         Ok(assert_eq!(expected, decoded))
     }
 
-    #[test]
     fn context_record_key_encoded_equals_decoded() -> Result<(), Error> {
-        let expected = ContextActionPrimaryIndexKey {
+        let expected = ContextActionByBlockHashKey {
             block_hash: vec![43; HashType::BlockHash.size()],
             id: 6548654,
         };
         let encoded_bytes = expected.encode()?;
-        let decoded = ContextActionPrimaryIndexKey::decode(&encoded_bytes)?;
+        let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
     }
 
-    #[test]
     fn context_record_key_blank_operation_encoded_equals_decoded() -> Result<(), Error> {
-        let expected = ContextActionPrimaryIndexKey {
+        let expected = ContextActionByBlockHashKey {
             block_hash: vec![43; HashType::BlockHash.size()],
             id: 176105218,
         };
         let encoded_bytes = expected.encode()?;
-        let decoded = ContextActionPrimaryIndexKey::decode(&encoded_bytes)?;
+        let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
         Ok(assert_eq!(expected, decoded))
     }
 
-    #[test]
     fn reverse_id_comparator_correct_order() -> Result<(), Error> {
         let a = ContextActionByContractIndexKey {
             contract_address: hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?,
@@ -921,7 +917,6 @@ mod tests {
         Ok(assert_eq!(Ordering::Less, ContextActionByContractIndexKey::reverse_id_comparator(&a, &b)))
     }
 
-    #[test]
     fn test_contract_id_to_address() -> Result<(), failure::Error> {
         let result = contract_id_to_contract_address_for_index("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?;
         assert_eq!(result, hex::decode("0000cf49f66b9ea137e11818f2a78b4b6fc9895b4e50")?);
@@ -941,7 +936,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
     fn extract_contract_address() -> Result<(), Error> {
 
         // ok
