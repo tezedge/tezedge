@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use riker::actors::*;
 
+use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
 use super::peer::PeerRef;
@@ -29,6 +30,7 @@ pub enum PeerBootstrapped {
     Success {
         peer: PeerRef,
         peer_id: String,
+        peer_metadata: MetadataMessage,
     },
     Failure {
         address: SocketAddr,
@@ -42,7 +44,7 @@ pub enum PeerBootstrapped {
 pub struct PeerMessageReceived {
     pub peer: PeerRef,
     pub message: Arc<PeerMessageResponse>,
-    pub peer_address: SocketAddr
+    pub peer_address: SocketAddr,
 }
 
 /// Network channel event message.

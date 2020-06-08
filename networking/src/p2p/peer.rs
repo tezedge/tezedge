@@ -271,8 +271,8 @@ impl Receive<Bootstrap> for Peer {
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
             match bootstrap(msg, info, &system.log()).await {
-                Ok(BootstrapOutput(rx, tx, public_key)) => {
-                    debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
+                Ok(BootstrapOutput(rx, tx, public_key, metadata)) => {
+                    debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "metadata" => format!("{:?}", &metadata));
                     setup_net(&net, tx).await;
 
                     let peer_id = HashType::CryptoboxPublicKeyHash.bytes_to_string(&public_key);
@@ -281,6 +281,7 @@ impl Receive<Bootstrap> for Peer {
                         msg: PeerBootstrapped::Success {
                             peer: myself.clone(),
                             peer_id: peer_id.clone(),
+                            peer_metadata: metadata,
                         }.into(),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
@@ -347,7 +348,7 @@ impl Receive<SendMessage> for Peer {
 }
 
 /// Output values of the successful bootstrap process
-struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey);
+struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey, MetadataMessage);
 
 async fn bootstrap(
     msg: Bootstrap,
@@ -440,7 +441,7 @@ async fn bootstrap(
     match ack_received {
         AckMessage::Ack => {
             debug!(log, "Received ACK");
-            Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key.clone()))
+            Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key.clone(), metadata_received))
         }
         AckMessage::NackV0 => {
             debug!(log, "Received NACK");
