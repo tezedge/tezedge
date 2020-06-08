@@ -3,7 +3,6 @@
 #![feature(const_fn, const_if_match)]
 
 use std::convert::TryInto;
-use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -152,17 +151,6 @@ impl slog::Value for StorageError {
 pub struct StorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,
-}
-
-impl fmt::Debug for StorageInitInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let chain_hash_encoding = HashType::ChainId;
-        let block_hash_encoding = HashType::BlockHash;
-        write!(f, "StorageInitInfo {{ chain_id: {}, genesis_block_header_hash: {} }}",
-               chain_hash_encoding.bytes_to_string(&self.chain_id),
-               block_hash_encoding.bytes_to_string(&self.genesis_block_header_hash)
-        )
-    }
 }
 
 /// Resolve main chain id and genesis header from configuration

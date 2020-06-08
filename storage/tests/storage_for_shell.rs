@@ -104,7 +104,7 @@ fn test_storage() -> Result<(), Error> {
     // simulate apply block
     let block = make_test_block_header()?;
     block_storage.put_block_header(&block)?;
-    block_meta_storage.put_block_header(&block, &init_data.chain_id)?;
+    block_meta_storage.put_block_header(&block, &init_data.chain_id, log)?;
     let mut metadata = block_meta_storage.get(&block.hash)?.expect("No metadata was saved");
     assert!(!metadata.is_applied());
 
@@ -150,7 +150,7 @@ fn test_storage() -> Result<(), Error> {
     assert_eq!(block_json_data.operations_proto_metadata_json(), &apply_result.operations_proto_metadata_json);
 
     // load current head - should be changeg
-    let current_head = block_meta_storage.load_current_head()?.expect("Current header should be set");
+    let (current_head, ..) = block_meta_storage.load_current_head()?.expect("Current header should be set");
     assert_eq!(current_head, block.hash);
 
     Ok(())

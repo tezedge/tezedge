@@ -12,12 +12,12 @@ use failure::Error;
 use riker::actors::*;
 use slog::{crit, debug, Logger, warn};
 
+use crypto::hash::HashType;
 use storage::{BlockStorage, ContextActionStorage};
 use storage::context::{ContextApi, ContextDiff, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
-use crypto::hash::HashType;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -51,7 +51,7 @@ impl ContextListener {
             let listener_run = listener_run.clone();
             let persistent_storage = persistent_storage.clone();
 
-            thread::spawn(move || {
+            thread::spawn(move || -> Result<(), Error> {
                 let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), context_storage));
                 let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
@@ -76,9 +76,10 @@ impl ContextListener {
             })
         };
 
-        let myself = sys.actor_of(
-            Props::new_args(ContextListener::new, (listener_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
-            ContextListener::name())?;
+        let myself = sys.actor_of_props::<ContextListener>(
+            ContextListener::name(),
+            Props::new_args((listener_run, Arc::new(Mutex::new(Some(block_applier_thread)))))
+        )?;
 
         Ok(myself)
     }
@@ -88,11 +89,13 @@ impl ContextListener {
     fn name() -> &'static str {
         "context-listener"
     }
+}
 
-    fn new((block_applier_run, block_applier_thread): (Arc<AtomicBool>, SharedJoinHandle)) -> Self {
+impl ActorFactoryArgs<(Arc<AtomicBool>, SharedJoinHandle)> for ContextListener {
+    fn create_args((listener_run, listener_thread): (Arc<AtomicBool>, SharedJoinHandle)) -> Self {
         ContextListener {
-            listener_run: block_applier_run,
-            listener_thread: block_applier_thread,
+            listener_run,
+            listener_thread,
         }
     }
 }

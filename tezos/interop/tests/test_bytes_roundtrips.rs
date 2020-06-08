@@ -9,7 +9,7 @@ use ocaml::{List, Tuple, Value};
 use serial_test::serial;
 
 use crypto::hash::HashType;
-use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, ForkingTestchainData, RustBytes, TezosRuntimeConfiguration};
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
 use tezos_interop::ffi;
 use tezos_interop::ffi::{Interchange, OcamlBytes, OcamlHash};
@@ -61,7 +61,7 @@ fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_na
         // sent bytes to ocaml
         let roundtrip = ocaml::named_value(&ffi_fn_name).expect(&format!("function '{}' is not registered", &ffi_fn_name));
 
-        let data_as_rust_bytes: RustBytes = orig_data.as_rust_bytes(MSG::encoding()).expect("failed to convert");
+        let data_as_rust_bytes: RustBytes = orig_data.as_rust_bytes().expect("failed to convert");
 
         let result: Result<Value, ocaml::Error> = roundtrip.call_exn::<OcamlBytes>(
             data_as_rust_bytes.convert_to(),
@@ -71,7 +71,7 @@ fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_na
         let result: OcamlBytes = result.expect("failed to call ffi").into();
         let result: RustBytes = result.convert_to();
 
-        let result = MSG::from_rust_bytes(result, MSG::encoding()).expect("failed to convert in ffi");
+        let result = MSG::from_rust_bytes(result).expect("failed to convert in ffi");
         assert_eq!(orig_data, result);
 
         ()
@@ -316,8 +316,8 @@ fn test_apply_block_request_roundtrip(iteration: i32) -> Result<(), failure::Err
 roundtrip_test!(test_apply_block_response_roundtrip_calls, test_apply_block_response_roundtrip, 10000);
 
 fn test_apply_block_response_roundtrip(iteration: i32) -> Result<(), failure::Error> {
-    // request
-    let response: ApplyBlockResponse = ApplyBlockResponse {
+    // request - test data - None
+    let response_with_none_forking_data: ApplyBlockResponse = ApplyBlockResponse {
         validation_result_message: "validation_result_message".to_string(),
         context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
         block_header_proto_json: "block_header_proto_json".to_string(),
@@ -329,12 +329,33 @@ fn test_apply_block_response_roundtrip(iteration: i32) -> Result<(), failure::Er
         forking_testchain_data: None,
     };
 
-    Ok(
-        assert!(
-            bytes_encoding_roundtrip(response, String::from("apply_block_response_roundtrip")).is_ok(),
-            format!("test_apply_block_response_roundtrip roundtrip iteration: {} failed!", iteration)
-        )
-    )
+    assert!(
+        bytes_encoding_roundtrip(response_with_none_forking_data.clone(), String::from("apply_block_response_roundtrip")).is_ok(),
+        format!("test_apply_block_response_roundtrip (forking data - none) roundtrip iteration: {} failed!", iteration)
+    );
+
+    // request - test data - None
+    let response_with_some_forking_data: ApplyBlockResponse = ApplyBlockResponse {
+        validation_result_message: "validation_result_message".to_string(),
+        context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
+        block_header_proto_json: "block_header_proto_json".to_string(),
+        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
+        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        max_operations_ttl: 6,
+        last_allowed_fork_level: 8,
+        forking_testchain: true,
+        forking_testchain_data: Some(ForkingTestchainData {
+            test_chain_id: HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?,
+            forking_block_hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+        }),
+    };
+
+    assert!(
+        bytes_encoding_roundtrip(response_with_some_forking_data, String::from("apply_block_response_roundtrip")).is_ok(),
+        format!("test_apply_block_response_roundtrip (forking data - some) roundtrip iteration: {} failed!", iteration)
+    );
+
+    Ok(())
 }
 
 #[test]

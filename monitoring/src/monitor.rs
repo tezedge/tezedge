@@ -53,35 +53,10 @@ impl Monitor {
         "monitor-manager"
     }
 
-    fn new((event_channel, msg_channel, shell_channel, persistent_storage): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)) -> Self {
-        let blocks_meta = BlockMetaStorage::new(&persistent_storage);
-        let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
-            let mut res = 0;
-            for _ in iter {
-                res += 1
-            }
-            res
-        } else { 0 };
-        let mut bootstrap_monitor = BootstrapMonitor::new();
-        bootstrap_monitor.set_downloaded_blocks(downloaded);
-        bootstrap_monitor.set_level(downloaded);
-
-        Self {
-            event_channel,
-            shell_channel,
-            msg_channel,
-            peer_monitors: HashMap::new(),
-            bootstrap_monitor,
-            blocks_monitor: BlocksMonitor::new(4096, downloaded),
-            block_application_monitor: ApplicationMonitor::new(),
-            chain_monitor: ChainMonitor::new(),
-        }
-    }
-
     pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage) -> Result<MonitorRef, CreateError> {
-        sys.actor_of(
-            Props::new_args(Self::new, (event_channel, msg_channel, shell_channel, persistent_storage.clone())),
+        sys.actor_of_props::<Monitor>(
             Self::name(),
+            Props::new_args((event_channel, msg_channel, shell_channel, persistent_storage.clone())),
         )
     }
 
@@ -111,6 +86,33 @@ impl Monitor {
             }
         } else {
             warn!(log, "Missing monitor for peer"; "peer" => msg.peer.name());
+        }
+    }
+}
+
+impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)> for Monitor {
+    fn create_args((event_channel, msg_channel, shell_channel, persistent_storage): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)) -> Self {
+        let blocks_meta = BlockMetaStorage::new(&persistent_storage);
+        let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
+            let mut res = 0;
+            for _ in iter {
+                res += 1
+            }
+            res
+        } else { 0 };
+        let mut bootstrap_monitor = BootstrapMonitor::new();
+        bootstrap_monitor.set_downloaded_blocks(downloaded);
+        bootstrap_monitor.set_level(downloaded);
+
+        Self {
+            event_channel,
+            shell_channel,
+            msg_channel,
+            peer_monitors: HashMap::new(),
+            bootstrap_monitor,
+            blocks_monitor: BlocksMonitor::new(4096, downloaded),
+            block_application_monitor: ApplicationMonitor::new(),
+            chain_monitor: ChainMonitor::new(),
         }
     }
 }

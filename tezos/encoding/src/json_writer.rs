@@ -268,7 +268,7 @@ impl JsonWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value))
                 }
             }
-            Encoding::Option(option_encoding) => {
+            Encoding::Option(option_encoding) | Encoding::OptionalField(option_encoding) => {
                 match value {
                     Value::Option(wrapped_value) => {
                         match wrapped_value {
@@ -326,7 +326,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn can_serialize_complex_schema_to_binary() {
+    fn can_serialize_complex_schema_to_json() {
         #[derive(Serialize, Debug)]
         #[allow(dead_code)]
         enum EnumType {
@@ -361,6 +361,7 @@ mod tests {
             h: Vec<u8>,
             p: Vec<u8>,
             t: i64,
+            ofs: Option<String>,
         }
 
         let record = Record {
@@ -378,6 +379,7 @@ mod tests {
             h: hex::decode("8eceda2f").unwrap(),
             p: hex::decode("6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a").unwrap(),
             t: 1_553_127_011,
+            ofs: Some("ofs".to_string()),
         };
 
         let version_schema = vec![
@@ -402,14 +404,15 @@ mod tests {
             Field::new("d", Encoding::Float),
             Field::new("e", Encoding::Enum),
             Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema)))),
-            Field::new("h", Encoding::Hash(HashType::ChainId))
+            Field::new("h", Encoding::Hash(HashType::ChainId)),
+            Field::new("ofs", Encoding::OptionalField(Box::new(Encoding::String))),
         ];
 
         let mut writer = JsonWriter::new();
         let writer_result = writer.write(&record, &Encoding::Obj(record_schema));
         assert!(writer_result.is_ok());
 
-        let expected_writer_result = r#"{ "a": 32, "b": true, "t": "2019-03-21T00:10:11+00:00", "s": { "x": 5, "y": 32, "v": [12, 34] }, "p": "6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a", "c": "5c4d4aa1", "d": 12.34, "e": "Disconnected", "f": [{ "name": "A", "major": 1, "minor": 1 }, { "name": "B", "major": 2, "minor": 0 }], "h": "NetXgtSLGNJvNye" }"#;
+        let expected_writer_result = r#"{ "a": 32, "b": true, "t": "2019-03-21T00:10:11+00:00", "s": { "x": 5, "y": 32, "v": [12, 34] }, "p": "6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a", "c": "5c4d4aa1", "d": 12.34, "e": "Disconnected", "f": [{ "name": "A", "major": 1, "minor": 1 }, { "name": "B", "major": 2, "minor": 0 }], "h": "NetXgtSLGNJvNye", "ofs": "ofs" }"#;
         assert_eq!(expected_writer_result, writer_result.unwrap());
     }
 }

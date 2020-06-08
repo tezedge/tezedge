@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use failure::{Error, Fail};
 use riker::actors::*;
-use slog::{debug, Logger, warn, trace};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
@@ -69,7 +69,7 @@ impl ChainFeeder {
             let init_storage_data = init_storage_data.clone();
             let tezos_env = tezos_env.clone();
 
-            thread::spawn(move || {
+            thread::spawn(move || -> Result<(), Error>{
                 let mut block_storage = BlockStorage::new(&persistent_storage);
                 let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let operations_storage = OperationsStorage::new(&persistent_storage);
@@ -95,9 +95,10 @@ impl ChainFeeder {
             })
         };
 
-        let myself = sys.actor_of(
-            Props::new_args(ChainFeeder::new, (shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
-            ChainFeeder::name())?;
+        let myself = sys.actor_of_props::<ChainFeeder>(
+            ChainFeeder::name(),
+            Props::new_args((shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread)))))
+        )?;
 
         Ok(myself)
     }
@@ -106,14 +107,6 @@ impl ChainFeeder {
     /// we won't support multiple names per instance.
     fn name() -> &'static str {
         "chain-feeder"
-    }
-
-    fn new((shell_channel, block_applier_run, block_applier_thread): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)) -> Self {
-        ChainFeeder {
-            shell_channel,
-            block_applier_run,
-            block_applier_thread,
-        }
     }
 
     fn process_shell_channel_message(&mut self, _ctx: &Context<ChainFeederMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
@@ -125,6 +118,16 @@ impl ChainFeeder {
         }
 
         Ok(())
+    }
+}
+
+impl ActorFactoryArgs<(ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)> for ChainFeeder {
+    fn create_args((shell_channel, block_applier_run, block_applier_thread): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)) -> Self {
+        ChainFeeder {
+            shell_channel,
+            block_applier_run,
+            block_applier_thread,
+        }
     }
 }
 
@@ -235,7 +238,7 @@ fn feed_chain_to_protocol(
     )?;
 
     // now resolve where to start apply next blocks (at least genesis should be there)
-    let mut current_head_hash: BlockHash = match &block_meta_storage.load_current_head()? {
+    let (mut current_head_hash, ..) : (BlockHash, _) = match &block_meta_storage.load_current_head()? {
         Some(block) => block.clone(),
         None => {
             // this should not happen here, we applied at least genesis before
@@ -368,14 +371,14 @@ pub(crate) fn initialize_protocol_context(
     trace!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
 
     // initialize protocol context runtime
-    let genesis_commit_data = protocol_controller.init_protocol(need_commit_genesis)?;
-    trace!(log, "Protocol context initialized"; "genesis_commit_data" => format!("{:?}", &genesis_commit_data));
+    let context_init_info = protocol_controller.init_protocol(need_commit_genesis)?;
+    info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info));
 
     if need_commit_genesis {
 
         // if we needed commit_genesis, it means, that it is apply of 0 block,
         // which initiates genesis protocol in context, so we need to store some data, like we do in normal apply, see below store_apply_block_result
-        if let Some(genesis_context_hash) = genesis_commit_data.genesis_commit_hash {
+        if let Some(genesis_context_hash) = context_init_info.genesis_commit_hash {
 
             // at first store genesis to storage
             let genesis_with_hash = initialize_storage_with_genesis_block(

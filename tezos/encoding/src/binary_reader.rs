@@ -28,7 +28,7 @@ pub enum BinaryReaderError {
         bytes: usize
     },
     /// Generic deserialization error.
-    #[fail(display = "Message de-serialization error")]
+    #[fail(display = "Message de-serialization error: {:?}", error)]
     DeserializationError {
         error: crate::de::Error
     },
@@ -225,6 +225,17 @@ impl BinaryReader {
                         Ok(Value::Option(Some(Box::new(v))))
                     }
                     types::BYTE_VAL_NONE => Ok(Value::Option(None)),
+                    _ => Err(de::Error::custom(format!("Unexpected option value {:X}", is_present_byte)).into())
+                }
+            }
+            Encoding::OptionalField(_) => {
+                let is_present_byte = safe!(buf, get_u8, u8);
+                match is_present_byte {
+                    types::BYTE_FIELD_SOME => {
+                        let v = self.decode_value(buf, encoding.try_unwrap_option_encoding())?;
+                        Ok(Value::Option(Some(Box::new(v))))
+                    }
+                    types::BYTE_FIELD_NONE => Ok(Value::Option(None)),
                     _ => Err(de::Error::custom(format!("Unexpected option value {:X}", is_present_byte)).into())
                 }
             }
@@ -499,5 +510,53 @@ mod tests {
 
         let connection_message_deserialized: ConnectionMessage = de::from_value(&value).unwrap();
         assert_eq!(connection_message, connection_message_deserialized);
+    }
+
+    #[test]
+    fn can_deserialize_option_some() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Record {
+            pub forking_block_hash: Vec<u8>,
+        }
+
+        let record_schema = vec![
+            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record = Some(
+            Record {
+                forking_block_hash: hex::decode("2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap(),
+            }
+        );
+
+        let message_buf = hex::decode("012253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(message_buf, &Encoding::option(record_encoding)).unwrap();
+
+        let record_deserialized: Option<Record> = de::from_value(&value).unwrap();
+        assert_eq!(record, record_deserialized);
+    }
+
+    #[test]
+    fn can_deserialize_option_none() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Record {
+            pub forking_block_hash: Vec<u8>,
+        }
+
+        let record_schema = vec![
+            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+        ];
+        let record_encoding = Encoding::Obj(record_schema);
+
+        let record: Option<Record> = None;
+
+        let message_buf = hex::decode("00").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader.read(message_buf, &Encoding::option(record_encoding)).unwrap();
+
+        let record_deserialized: Option<Record> = de::from_value(&value).unwrap();
+        assert_eq!(record, record_deserialized);
     }
 }

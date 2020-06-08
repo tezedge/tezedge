@@ -24,6 +24,7 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::Head;
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockchainState, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
@@ -105,21 +106,6 @@ impl CurrentHead {
     }
 }
 
-/// This struct holds info about remote "current" head and level
-#[derive(Clone, Debug)]
-struct Head {
-    /// BlockHash of head.
-    hash: BlockHash,
-    /// Level of the head.
-    level: i32,
-}
-
-impl Head {
-    fn to_debug_info(&self) -> (String, i32) {
-        (BLOCK_HASH_ENCODING.bytes_to_string(&self.hash), self.level)
-    }
-}
-
 /// Holds various stats with info about internal synchronization.
 struct Stats {
     /// Count of received blocks
@@ -171,50 +157,16 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 impl ChainManager {
     /// Create new actor instance.
     pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
-        sys.actor_of(
-            Props::new_args(
-                ChainManager::new,
-                (
-                    network_channel,
-                    shell_channel,
-                    persistent_storage.clone(),
-                    chain_id.clone()
-                ),
-            ),
-            ChainManager::name())
+        sys.actor_of_props::<ChainManager>(
+            ChainManager::name(),
+            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone()))
+        )
     }
 
     /// The `ChainManager` is intended to serve as a singleton actor so that's why
     /// we won't support multiple names per instance.
     fn name() -> &'static str {
         "chain-manager"
-    }
-
-    fn new((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
-        ChainManager {
-            network_channel,
-            shell_channel,
-            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
-            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
-            operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
-            mempool_storage: MempoolStorage::new(&persistent_storage),
-            chain_state: BlockchainState::new(&persistent_storage, &chain_id),
-            operations_state: OperationsState::new(&persistent_storage, &chain_id),
-            peers: HashMap::new(),
-            current_head: CurrentHead {
-                local: None,
-                remote: None,
-            },
-            shutting_down: false,
-            stats: Stats {
-                unseen_block_count: 0,
-                unseen_block_last: Instant::now(),
-                unseen_block_operations_last: Instant::now(),
-                applied_block_last: None,
-                applied_block_level: None,
-                hydrated_state_last: None,
-            },
-        }
     }
 
     fn check_mempool_completeness(&mut self, _ctx: &Context<ChainManagerMsg>) {
@@ -416,7 +368,7 @@ impl ChainManager {
                                             peer.block_response_last = Instant::now();
 
                                             let is_new_block =
-                                                chain_state.process_block_header(&block_header_with_hash)
+                                                chain_state.process_block_header(&block_header_with_hash, log.clone())
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
 
                                             if is_new_block {
@@ -592,19 +544,8 @@ impl ChainManager {
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
 
         info!(ctx.system.log(), "Loading current head");
-        self.current_head.local = match self.block_meta_storage.load_current_head().expect("Failed to load current head") {
-            Some(hash) => {
-                self.block_storage
-                    .get(&hash)
-                    .expect(&format!("Failed to read head: {}", BLOCK_HASH_ENCODING.bytes_to_string(&hash)))
-                    .map(|block| Head {
-                        hash: block.hash.clone(),
-                        level: block.header.level(),
-                    })
-            }
-            None => None
-        };
-
+        self.current_head.local = self.block_meta_storage.load_current_head().expect("Failed to load current head")
+            .map(|(hash, level)| Head { hash, level });
 
         let (local_head, local_head_level) = self.current_head.local_debug_info();
         info!(
@@ -614,6 +555,35 @@ impl ChainManager {
             "local_head_level" => local_head_level,
         );
         self.stats.hydrated_state_last = Some(Instant::now());
+    }
+}
+
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)> for ChainManager {
+    fn create_args((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
+        ChainManager {
+            network_channel,
+            shell_channel,
+            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
+            operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
+            mempool_storage: MempoolStorage::new(&persistent_storage),
+            chain_state: BlockchainState::new(&persistent_storage, &chain_id),
+            operations_state: OperationsState::new(&persistent_storage, &chain_id),
+            peers: HashMap::new(),
+            current_head: CurrentHead {
+                local: None,
+                remote: None,
+            },
+            shutting_down: false,
+            stats: Stats {
+                unseen_block_count: 0,
+                unseen_block_last: Instant::now(),
+                unseen_block_operations_last: Instant::now(),
+                applied_block_last: None,
+                applied_block_level: None,
+                hydrated_state_last: None,
+            },
+        }
     }
 }
 

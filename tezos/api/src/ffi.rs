@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
 use std::fmt::Debug;
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
@@ -10,7 +11,7 @@ use failure::Fail;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, ProtocolHash};
 use lazy_static::lazy_static;
 use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
@@ -23,14 +24,14 @@ pub type RustBytes = Vec<u8>;
 /// Trait for binary encoding messages for ffi.
 pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
     #[inline]
-    fn as_rust_bytes(&self, encoding: &Encoding) -> Result<RustBytes, ser::Error> {
-        binary_writer::write(&self, &encoding)
+    fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
+        binary_writer::write(&self, Self::encoding())
     }
 
     /// Create new struct from bytes.
-    /// #[inline]
-    fn from_rust_bytes(buf: RustBytes, encoding: &Encoding) -> Result<Self, BinaryReaderError> {
-        let value = BinaryReader::new().read(buf, encoding)?;
+    #[inline]
+    fn from_rust_bytes(buf: RustBytes) -> Result<Self, BinaryReaderError> {
+        let value = BinaryReader::new().read(buf, Self::encoding())?;
         let value: Self = deserialize_from_value(&value)?;
         Ok(value)
     }
@@ -126,8 +127,8 @@ pub struct ApplyBlockResponse {
 
 lazy_static! {
     pub static ref FORKING_TESTCHAIN_DATA_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("genesis", Encoding::Hash(HashType::BlockHash)),
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+        Field::new("forking_block_hash", Encoding::Hash(HashType::BlockHash)),
+        Field::new("test_chain_id", Encoding::Hash(HashType::ChainId)),
     ]);
 
     pub static ref APPLY_BLOCK_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
@@ -150,11 +151,25 @@ impl FfiMessage for ApplyBlockResponse {
 }
 
 /// Init protocol context result
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct InitProtocolContextResult {
-    pub supported_protocol_hashes: Vec<RustBytes>,
+    pub supported_protocol_hashes: Vec<ProtocolHash>,
     /// Presents only if was genesis commited to context
     pub genesis_commit_hash: Option<ContextHash>,
+}
+
+impl fmt::Debug for InitProtocolContextResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let genesis_commit_hash = match &self.genesis_commit_hash {
+            Some(hash) => HashType::ContextHash.bytes_to_string(hash),
+            None => "-none-".to_string()
+        };
+        let supported_protocol_hashes = self.supported_protocol_hashes
+            .iter()
+            .map(|ph| HashType::ProtocolHash.bytes_to_string(ph))
+            .collect::<Vec<String>>();
+        write!(f, "genesis_commit_hash: {}, supported_protocol_hashes: {:?}", &genesis_commit_hash, &supported_protocol_hashes)
+    }
 }
 
 /// Commit genesis result
@@ -168,8 +183,8 @@ pub struct CommitGenesisResult {
 /// Forking test chain data
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ForkingTestchainData {
-    pub genesis: BlockHash,
-    pub chain_id: ChainId,
+    pub forking_block_hash: BlockHash,
+    pub test_chain_id: ChainId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]

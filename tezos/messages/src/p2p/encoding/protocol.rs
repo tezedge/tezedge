@@ -51,7 +51,7 @@ impl HasEncoding for Component {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
             Field::new("name", Encoding::String),
-            Field::new("interface", Encoding::option(Encoding::String)),
+            Field::new("interface", Encoding::option_field(Encoding::String)),
             Field::new("implementation", Encoding::String),
         ])
     }
