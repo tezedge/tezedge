@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::bail;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
 use crypto::hash::{BlockHash, HashType, ProtocolHash};
@@ -55,6 +55,14 @@ pub struct InnerBlockHeader {
     pub protocol_data: HashMap<String, Value>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct HeaderContent {
+    pub command: String,
+    pub hash: String,
+    pub fitness: Vec<String>,
+    pub protocol_parameters: String,
+}
+
 /// Object containing information to recreate the block header information
 #[derive(Serialize, Debug, Clone)]
 pub struct BlockHeaderInfo {
@@ -78,6 +86,8 @@ pub struct BlockHeaderInfo {
     pub seed_nonce_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_of_work_nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<HeaderContent>,
 }
 
 impl FullBlockInfo {
@@ -127,6 +137,11 @@ impl BlockHeaderInfo {
         let seed_nonce_hash = header_data.get("seed_nonce_hash").map(|val| val.as_str().unwrap().to_string());
         let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
         let protocol = proto_data.get("protocol").map(|val| val.as_str().unwrap().to_string());
+        
+        let mut content: Option<HeaderContent> = None;
+        if let Some(header_content) = header_data.get("content") {
+            content = serde_json::from_value(header_content.clone()).unwrap();
+        }
 
         Self {
             hash,
@@ -144,6 +159,7 @@ impl BlockHeaderInfo {
             priority,
             seed_nonce_hash,
             proof_of_work_nonce,
+            content,
         }
     }
 }
