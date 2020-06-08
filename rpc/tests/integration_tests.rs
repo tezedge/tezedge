@@ -46,6 +46,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             .expect("Failed to get block from ocaml");
 
         if level <= 0 {
+            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
             println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
             continue;
         }
@@ -55,6 +56,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 
         // --------------------------- Tests for each block_id ---------------------------
         test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
