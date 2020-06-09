@@ -127,3 +127,4 @@ into_peer_message!(CurrentHeadMessage, CurrentHead);
 into_peer_message!(GetOperationsForBlocksMessage, GetOperationsForBlocks);
 into_peer_message!(OperationsForBlocksMessage, OperationsForBlocks);
 into_peer_message!(GetOperationsMessage, GetOperations);
+into_peer_message!(OperationMessage, Operation);

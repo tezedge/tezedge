@@ -25,11 +25,11 @@ pub struct CurrentHeadMessage {
 }
 
 impl CurrentHeadMessage {
-    pub fn new(chain_id: ChainId, current_block_header: BlockHeader) -> Self {
+    pub fn new(chain_id: ChainId, current_block_header: BlockHeader, current_mempool: Mempool) -> Self {
         CurrentHeadMessage {
             chain_id,
             current_block_header,
-            current_mempool: Default::default(),
+            current_mempool,
             body: Default::default()
         }
     }

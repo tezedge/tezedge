@@ -19,7 +19,7 @@ pub mod mempool_prevalidator;
 
 /// This struct holds info about head and his level
 #[derive(Clone, Debug)]
-pub(crate) struct Head {
+pub struct Head {
     /// BlockHash of head.
     hash: BlockHash,
     /// Level of the head.

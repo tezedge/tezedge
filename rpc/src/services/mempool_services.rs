@@ -6,7 +6,7 @@ use serde_json::Value;
 use slog::Logger;
 
 use crypto::hash::{BlockHash, HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::MempoolCurrentState;
+use shell::shell_channel::CurrentMempoolState;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::prelude::Operation;
@@ -30,10 +30,10 @@ pub fn get_pending_operations(
 
     // get actual known state of mempool
     let state = state.read().unwrap();
-    let mempool_current_state: &Option<MempoolCurrentState> = state.mempool_current_state();
+    let current_mempool_state: &Option<CurrentMempoolState> = state.current_mempool_state();
 
     // convert to rpc data
-    match mempool_current_state {
+    match current_mempool_state {
         Some(mempool) => {
             let protocol = match &mempool.protocol {
                 Some(protocol) => protocol,

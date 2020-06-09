@@ -98,8 +98,9 @@ impl CachedData for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetOperationsMessage {
+    #[get = "pub"]
     get_operations: Vec<OperationHash>,
 
     #[serde(skip_serializing)]

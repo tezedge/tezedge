@@ -32,7 +32,7 @@ use tezos_messages::p2p::encoding::prelude::Operation;
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
 
 use crate::Head;
-use crate::shell_channel::{MempoolCurrentState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::shell_channel::{CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -104,11 +104,9 @@ impl MempoolPrevalidator {
         };
 
         // create actor
-        let myself = sys.actor_of(
-            Props::new_args(
-                MempoolPrevalidator::new,
-                (shell_channel, validator_run, Arc::new(Mutex::new(Some(validator_thread))), Arc::new(Mutex::new(validator_event_sender)))),
+        let myself = sys.actor_of_props::<MempoolPrevalidator>(
             MempoolPrevalidator::name(),
+            Props::new_args((shell_channel, validator_run, Arc::new(Mutex::new(Some(validator_thread))), Arc::new(Mutex::new(validator_event_sender)))),
         )?;
 
         Ok(myself)
@@ -118,15 +116,6 @@ impl MempoolPrevalidator {
     /// we won't support multiple names per instance.
     fn name() -> &'static str {
         "mempool-prevalidator"
-    }
-
-    fn new((shell_channel, validator_run, validator_thread, validator_event_sender): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle, Arc<Mutex<QueueSender<Event>>>)) -> Self {
-        MempoolPrevalidator {
-            shell_channel,
-            validator_run,
-            validator_thread,
-            validator_event_sender,
-        }
     }
 
     fn process_shell_channel_message(&mut self, _: &Context<MempoolPrevalidatorMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
@@ -147,6 +136,17 @@ impl MempoolPrevalidator {
         }
 
         Ok(())
+    }
+}
+
+impl ActorFactoryArgs<(ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle, Arc<Mutex<QueueSender<Event>>>)> for MempoolPrevalidator {
+    fn create_args((shell_channel, validator_run, validator_thread, validator_event_sender): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle, Arc<Mutex<QueueSender<Event>>>)) -> Self {
+        MempoolPrevalidator {
+            shell_channel,
+            validator_run,
+            validator_thread,
+            validator_event_sender,
+        }
     }
 }
 
@@ -396,7 +396,7 @@ fn begin_construction(block_storage: &mut BlockStorage,
 fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controller: &ProtocolController, state: &mut MempoolState, log: &Logger) {
     info!(log, "Mempool - handle_pending_operations "; "pendings" => state.pending.len(), "can" => state.can_handle_pending());
 
-    if state.can_handle_pending() {
+    if !state.can_handle_pending() {
         info!(log, "Mempool - handle_pending_operations - nothing to handle");
         return;
     }
@@ -426,6 +426,8 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
 
                             // merge new result with existing one
                             state_changed |= state.add_result(&result);
+
+                            // TODO: handle result like ocaml - branch_delayed add back to pending and so on - check handle_unprocessed
                         }
                         Err(err) => {
                             warn!(log, "Mempool - failed to validate operation message"; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "error" => format!("{:?}", err));
@@ -457,10 +459,12 @@ fn notify_validation_result_changed(shell_channel: &ShellChannelRef, mempool_sta
 
     shell_channel.tell(
         Publish {
-            msg: MempoolCurrentState {
+            msg: CurrentMempoolState {
+                head: mempool_state.predecessor.clone(),
                 result: mempool_state.validation_result.clone(),
                 operations: mempool_state.operations.clone(),
                 protocol,
+                pending: mempool_state.pending.clone(),
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         },

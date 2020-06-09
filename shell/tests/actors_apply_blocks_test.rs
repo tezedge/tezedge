@@ -271,7 +271,7 @@ fn apply_blocks_with_chain_feeder(
     let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
     // let's insert stored requests to database
-    for request in test_data::apply_block_requests_until_1326() {
+    for request in test_data::read_apply_block_requests_until_1326() {
 
         // parse request
         let request: RustBytes = hex::decode(request)?;
@@ -300,8 +300,7 @@ fn apply_blocks_with_chain_feeder(
 
     // wait for applied blocks
     loop {
-        let head = block_meta_storage.load_current_head()?;
-        match head {
+        match block_meta_storage.load_current_head()? {
             None => (),
             Some((h, _)) => {
                 let meta = block_meta_storage.get(&h)?;
@@ -332,7 +331,7 @@ mod test_data {
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
 
-    pub fn apply_block_requests_until_1326() -> Vec<String> {
+    pub fn read_apply_block_requests_until_1326() -> Vec<String> {
         let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
             .join("tests")
             .join("resources")

@@ -41,11 +41,11 @@ impl MempoolStorage {
     pub fn put(&mut self, operation_type: MempoolOperationType, operation: OperationMessage, time_to_live: SystemTime) -> Result<(), StorageError> {
         let key = MempoolKey {
             operation_type,
-            operation_hash: operation.message_hash()?
+            operation_hash: operation.message_hash()?,
         };
         let value = MempoolValue {
             operation,
-            time_to_live
+            time_to_live,
         };
 
         self.kv.put(&key, &value)
@@ -54,10 +54,27 @@ impl MempoolStorage {
 
     #[inline]
     pub fn get(&self, operation_type: MempoolOperationType, operation_hash: OperationHash) -> Result<Option<OperationMessage>, StorageError> {
-        let key = MempoolKey {operation_type, operation_hash };
+        let key = MempoolKey { operation_type, operation_hash };
         self.kv.get(&key)
             .map(|value| value.map(|value| value.operation))
             .map_err(StorageError::from)
+    }
+
+    #[inline]
+    pub fn find(&self, operation_hash: &OperationHash) -> Result<Option<OperationMessage>, StorageError> {
+        // TODO: implement correctly and effectively
+
+        // check known_valids
+        if let Some(found) = self.get(MempoolOperationType::KnownValid, operation_hash.clone())? {
+            return Ok(Some(found));
+        }
+
+        // check pendings
+        if let Some(found) = self.get(MempoolOperationType::Pending, operation_hash.clone())? {
+            return Ok(Some(found));
+        }
+
+        Ok(None)
     }
 }
 
@@ -72,11 +89,10 @@ impl KeyValueSchema for MempoolStorage {
 }
 
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MempoolKey {
     operation_type: MempoolOperationType,
-    operation_hash: OperationHash
+    operation_hash: OperationHash,
 }
 
 impl MempoolKey {
@@ -120,4 +136,4 @@ pub struct MempoolValue {
     time_to_live: SystemTime,
 }
 
-impl BincodeEncoded for MempoolValue { }
+impl BincodeEncoded for MempoolValue {}

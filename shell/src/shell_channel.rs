@@ -3,7 +3,7 @@
 
 //! Shell channel is used to transmit high level shell messages.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use getset::Getters;
 use riker::actors::*;
@@ -14,6 +14,8 @@ use storage::BlockHeaderWithHash;
 use tezos_api::ffi::ValidateOperationResult;
 use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::Operation;
+
+use crate::Head;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -56,10 +58,12 @@ pub struct MempoolOperationReceived {
 }
 
 #[derive(Clone, Debug)]
-pub struct MempoolCurrentState {
+pub struct CurrentMempoolState {
+    pub head: Option<Head>,
     pub protocol: Option<ProtocolHash>,
     pub result: ValidateOperationResult,
     pub operations: HashMap<OperationHash, Operation>,
+    pub pending: HashSet<OperationHash>,
 }
 
 /// Shell channel event message.
@@ -69,7 +73,7 @@ pub enum ShellChannelMsg {
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
-    MempoolValidationResultChanged(MempoolCurrentState),
+    MempoolStateChanged(CurrentMempoolState),
     ShuttingDown(ShuttingDown),
 }
 
@@ -85,9 +89,9 @@ impl From<MempoolOperationReceived> for ShellChannelMsg {
     }
 }
 
-impl From<MempoolCurrentState> for ShellChannelMsg {
-    fn from(msg: MempoolCurrentState) -> Self {
-        ShellChannelMsg::MempoolValidationResultChanged(msg)
+impl From<CurrentMempoolState> for ShellChannelMsg {
+    fn from(msg: CurrentMempoolState) -> Self {
+        ShellChannelMsg::MempoolStateChanged(msg)
     }
 }
 
