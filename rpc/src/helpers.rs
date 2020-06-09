@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use failure::bail;
+use failure::{bail, Fail};
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
@@ -341,6 +341,17 @@ pub(crate) struct ContextProtocolParam {
     pub level: usize,
 }
 
+
+#[derive(Debug, Clone, Fail)]
+pub enum ContextParamsError {
+    #[fail(display = "Protocol not found in context for block: {}", _0)]
+    NoProtocolForBlock(String),
+    #[fail(display = "Protocol constants not found in context for block: {}", _0)]
+    NoConstantsForBlock(String),
+
+}
+
+
 /// Get protocol and context constants as bytes from context list for desired block or level
 ///
 /// # Arguments
@@ -376,13 +387,13 @@ pub(crate) fn get_context_protocol_params(
         if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
             protocol_hash = data;
         } else {
-            panic!(format!("Protocol not found in context for block: {}, level: {}", block_id, level));
+            return Err(ContextParamsError::NoProtocolForBlock(block_id.to_string()).into());
         }
 
         if let Some(Bucket::Exists(data)) = reader.get_key(level, &"data/v1/constants".to_string())? {
             constants = data;
         } else {
-            panic!("Protocol constants not found in context for block: {}, level: {}, protocol_hash: {}", block_id, level, HashType::ProtocolHash.bytes_to_string(&protocol_hash));
+            return Err(ContextParamsError::NoConstantsForBlock(block_id.to_string()).into());
         }
     };
 

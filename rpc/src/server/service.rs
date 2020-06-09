@@ -14,12 +14,13 @@ use storage::block_storage::BlockJsonData;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
-use tezos_messages::protocol::RpcJsonMap;
+use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::ContextList;
 use crate::helpers::{BlockHeaderInfo, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types};
 use crate::rpc_actor::RpcCollectedStateRef;
 use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson};
+use slog::Logger;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -176,6 +177,24 @@ pub(crate) fn get_context_constants_just_for_rpc(
     )?;
 
     Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?)
+}
+
+pub(crate) fn get_cycle_length_for_block(block_id: &str, list: ContextList, storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> Result<i32, failure::Error> {
+    if let Ok(context_proto_params) = get_context_protocol_params(block_id, None, list, storage, state) {
+        Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?
+            .map(|constants| constants.get("blocks_per_cycle")
+                .map(|value| if let UniversalValue::Number(value) = value { *value } else {
+                    slog::warn!(log, "Cycle length missing"; "block" => block_id);
+                    4096
+                })
+            ).flatten().unwrap_or_else(|| {
+            slog::warn!(log, "Cycle length missing"; "block" => block_id);
+            4096
+        }))
+    } else {
+        slog::warn!(log, "Cycle length missing"; "block" => block_id);
+        Ok(4096)
+    }
 }
 
 pub(crate) fn get_cycle_from_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
