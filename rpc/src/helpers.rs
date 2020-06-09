@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::{bail, Fail};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
 use crypto::hash::{BlockHash, HashType, ProtocolHash};
@@ -55,6 +55,14 @@ pub struct InnerBlockHeader {
     pub protocol_data: HashMap<String, Value>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct HeaderContent {
+    pub command: String,
+    pub hash: String,
+    pub fitness: Vec<String>,
+    pub protocol_parameters: String,
+}
+
 /// Object containing information to recreate the block header information
 #[derive(Serialize, Debug, Clone)]
 pub struct BlockHeaderInfo {
@@ -68,12 +76,18 @@ pub struct BlockHeaderInfo {
     pub operations_hash: String,
     pub fitness: Vec<String>,
     pub context: String,
-    pub protocol: String,
-    pub signature: String,
-    pub priority: i64,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub seed_nonce_hash: Option<String>,
-    pub proof_of_work_nonce: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_nonce_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proof_of_work_nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<HeaderContent>,
 }
 
 impl FullBlockInfo {
@@ -117,12 +131,17 @@ impl BlockHeaderInfo {
         let context = HashType::ContextHash.bytes_to_string(header.context());
         let hash = HashType::BlockHash.bytes_to_string(&val.header().hash);
         let header_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_json()).unwrap_or_default();
-        let signature = header_data.get("signature").unwrap();
-        let priority = header_data.get("priority").unwrap();
-        let proof_of_work_nonce = header_data.get("proof_of_work_nonce").unwrap();
-        // let seed_nonce_hash = header_data.get("seed_nonce_hash").unwrap().as_str();
+        let signature = header_data.get("signature").map(|val| val.as_str().unwrap().to_string());
+        let priority = header_data.get("priority").map(|val| val.as_i64().unwrap());
+        let proof_of_work_nonce = header_data.get("proof_of_work_nonce").map(|val| val.as_str().unwrap().to_string());
+        let seed_nonce_hash = header_data.get("seed_nonce_hash").map(|val| val.as_str().unwrap().to_string());
         let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
-        let protocol = proto_data.get("protocol").unwrap();
+        let protocol = proto_data.get("protocol").map(|val| val.as_str().unwrap().to_string());
+        
+        let mut content: Option<HeaderContent> = None;
+        if let Some(header_content) = header_data.get("content") {
+            content = serde_json::from_value(header_content.clone()).unwrap();
+        }
 
         Self {
             hash,
@@ -135,11 +154,12 @@ impl BlockHeaderInfo {
             operations_hash,
             fitness,
             context,
-            protocol: protocol.as_str().unwrap().to_string(),
-            signature: signature.as_str().unwrap().to_string(),
-            priority: priority.as_i64().unwrap(),
-            //seed_nonce_hash,
-            proof_of_work_nonce: proof_of_work_nonce.as_str().unwrap().to_string(),
+            protocol,
+            signature,
+            priority,
+            seed_nonce_hash,
+            proof_of_work_nonce,
+            content,
         }
     }
 }
