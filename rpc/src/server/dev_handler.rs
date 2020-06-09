@@ -8,11 +8,13 @@ use crate::{empty, make_json_response, result_to_json_response, ServiceResult, u
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment, service, service_stats};
 
 pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    warn!(env.log(), "Getting dev_blocks");
     let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), env.genesis_hash());
     let limit = query.get_usize("limit").unwrap_or(50);
+    let cycle_length = service::get_cycle_length_for_block(&from_block_id, env.persistent_storage().context_storage(), env.persistent_storage(), env.state(), env.log())?;
     let every_nth_level = match query.get_str("every_nth") {
-        Some("cycle") => Some(4096),
-        Some("voting-period") => Some(4096 * 8),
+        Some("cycle") => Some(cycle_length),
+        Some("voting-period") => Some(cycle_length * 8),
         _ => None
     };
     result_to_json_response(service::get_blocks(every_nth_level, &from_block_id, limit, env.persistent_storage(), env.state()), env.log())
