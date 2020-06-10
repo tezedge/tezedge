@@ -368,7 +368,7 @@ pub(crate) fn initialize_protocol_context(
         Some(genesis_meta) => !genesis_meta.is_applied(),
         None => true,
     };
-    info!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
+    trace!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
 
     // initialize protocol context runtime
     let context_init_info = protocol_controller.init_protocol_for_write(need_commit_genesis, &init_storage_data.patch_context)?;

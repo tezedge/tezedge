@@ -529,7 +529,7 @@ steps:
     commands:
       - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
-  - name: mempool-test
+  - name: apply-and-context-and-mempool-test
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -539,8 +539,10 @@ steps:
       OCAML_BUILD_CHAIN: remote
       LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
       OCAML_LOG_ENABLED: false
+      PROTOCOL_RUNNER: /drone/src/target/release/protocol-runner
+      LOG_LEVEL: debug
     commands:
-      - cargo test --verbose --release -- --nocapture test_actors_apply_blocks_and_check_context
+      - cargo test --verbose --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
 
 volumes:
   - name: tezedge-node-data-mempool

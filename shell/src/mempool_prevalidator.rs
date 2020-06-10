@@ -19,7 +19,7 @@ use std::thread::JoinHandle;
 
 use failure::{Error, Fail};
 use riker::actors::*;
-use slog::{info, Logger, warn};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
@@ -283,7 +283,7 @@ fn process_prevalidation(
                     // check if NewHeader is bigger than actual, if present
                     if let Some(current_mempool_block) = &mut state.predecessor {
                         if level <= current_mempool_block.level {
-                            info!(log, "Mempool - new head has smaller level than actual mempool head, so we just ignore it!";
+                            warn!(log, "Mempool - new head has smaller level than actual mempool head, so we just ignore it!";
                                         "received_level" => level,
                                         "received_block_hash" => HashType::BlockHash.bytes_to_string(&header),
                                         "current_mempool_level" => current_mempool_block.level,
@@ -292,7 +292,7 @@ fn process_prevalidation(
                         }
                     }
 
-                    info!(log, "Mempool - new higher head received, so begin construction a new context";
+                    debug!(log, "Mempool - new higher head received, so begin construction a new context";
                                 "received_level" => level,
                                 "received_block_hash" => HashType::BlockHash.bytes_to_string(&header));
 
@@ -302,11 +302,9 @@ fn process_prevalidation(
                     // recreate state
                     state = MempoolState::new(prevalidator, head, state.pending);
 
-                    notify_validation_result_changed(&shell_channel, &state);
+                    notify_mempool_changed(&shell_channel, &state);
                 }
                 Event::ValidateOperation(oph, mempool_operation_type) => {
-                    info!(log, "Mempool - received validate operation event"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
-
                     // TODO: handling when operation not exists - can happen?
                     let operation = mempool_storage.get(mempool_operation_type, oph.clone())?;
                     if let Some(operation) = operation {
@@ -315,10 +313,9 @@ fn process_prevalidation(
                         // TODO: handle already_handled?
 
                         // just and operations to pendings
-                        info!(log, "Mempool - received validate operation event - adding to pending"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                         state.add_to_pending(&oph, operation.operation());
                     } else {
-                        info!(log, "Mempool - received validate operation event - no data in mempool storage?"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
+                        warn!(log, "Mempool - received validate operation event - no data in mempool storage?"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                     }
                 }
             }
@@ -394,10 +391,10 @@ fn begin_construction(block_storage: &mut BlockStorage,
 }
 
 fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controller: &ProtocolController, state: &mut MempoolState, log: &Logger) {
-    info!(log, "Mempool - handle_pending_operations "; "pendings" => state.pending.len(), "can" => state.can_handle_pending());
+    debug!(log, "Mempool - handle_pending_operations "; "pendings" => state.pending.len(), "can" => state.can_handle_pending());
 
     if !state.can_handle_pending() {
-        info!(log, "Mempool - handle_pending_operations - nothing to handle");
+        trace!(log, "Mempool - handle_pending_operations - nothing to handle");
         return;
     }
 
@@ -416,7 +413,7 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
         .for_each(|pending_op| {
             match state.operations.get(&pending_op) {
                 Some(operation) => {
-                    info!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op));
+                    trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op));
 
                     // lets validate throught protocol
                     match protocol_controller.validate_operation(&prevalidator, operation) {
@@ -445,12 +442,12 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
 
     // lets notify actors about changed mempool
     if state_changed {
-        notify_validation_result_changed(&shell_channel, &state);
+        notify_mempool_changed(&shell_channel, &state);
     }
 }
 
-/// Notify other actors that mempool's validation result is changed
-fn notify_validation_result_changed(shell_channel: &ShellChannelRef, mempool_state: &MempoolState) {
+/// Notify other actors that mempool state changed
+fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &MempoolState) {
     let protocol = if let Some(prevalidator) = &mempool_state.prevalidator {
         Some(prevalidator.protocol.clone())
     } else {
