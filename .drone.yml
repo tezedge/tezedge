@@ -27,7 +27,7 @@ environment:
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
-  TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT: http://tezedge-node-mainnet-run:18732
+  TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT: http://tezedge-node-run-mainnet:18732
 
 steps:
 - name: cleanup-node-data
@@ -48,6 +48,8 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
+    - name: cache
+      path: /tmp/tezedge-cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
@@ -90,7 +92,7 @@ steps:
 - name: bootstrapping-ocaml
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --bootstrap --level=1000 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap --bootstrap --level=100 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
 volumes:
   - name: tezedge-node-data
@@ -145,9 +147,9 @@ steps:
     - rm -rf /tmp/tezedge_master_developer/tezos-node
 
 - name: mutliple-protocol-runners-test
-    image: simplestakingcom/tezedge-ci-builder:latest
-    pull: if-not-exists
-    user: root
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
@@ -176,7 +178,7 @@ steps:
   commands:
     - cargo build --release --workspace
     - cp ./target/release/protocol-runner /tmp/tezedge_developer/
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732 --protocol-runner=/tmp/tezedge_developer/protocol-runner
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port 19732 --protocol-runner "/tmp/tezedge_developer/protocol-runner"
 
 - name: bootstrapping-tezedge
   image: simplestakingcom/tezos-node-bootstrap:latest

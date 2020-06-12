@@ -111,6 +111,7 @@ fn block_on_actors(
             &env.storage.tezos_data_dir,
             &env.protocol_runner,
             env.logging.level,
+            true
         ),
         log.clone(),
     );
@@ -135,7 +136,7 @@ fn block_on_actors(
         .expect("Failed to create shell channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_block_protocol_events, log.clone(), env.storage.store_context_actions)
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_block_protocol_events.expect("Context listener needs event server"), log.clone(), env.storage.store_context_actions)
         .expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");

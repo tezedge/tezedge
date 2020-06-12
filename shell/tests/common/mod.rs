@@ -71,15 +71,15 @@ pub struct NoopMessage;
 #[derive(Clone)]
 pub struct TestProtocolRunner {
     sock_cmd_path: PathBuf,
-    sock_evt_path: PathBuf,
+    sock_evt_path: Option<PathBuf>,
     endpoint_name: String,
 }
 
 impl ProtocolRunner for TestProtocolRunner {
-    fn new(_configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: &Path, endpoint_name: String) -> Self {
+    fn new(_configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: Option<PathBuf>, endpoint_name: String) -> Self {
         TestProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
-            sock_evt_path: sock_evt_path.to_path_buf(),
+            sock_evt_path,
             endpoint_name,
         }
     }
@@ -87,19 +87,24 @@ impl ProtocolRunner for TestProtocolRunner {
     fn spawn(&self) -> Result<Child, ProtocolServiceError> {
 
         // run context_event callback listener
-        let _ = {
-            let sock_evt_path = self.sock_evt_path.clone();
-            let endpoint_name = self.endpoint_name.clone();
-            // enable context event to receive
-            enable_context_channel();
-            thread::spawn(move || {
-                match tezos_wrapper::service::process_protocol_events(&sock_evt_path) {
-                    Ok(()) => (),
-                    Err(err) => {
-                        println!("Error while processing protocol events, endpoint: {}. Reason: {}", &endpoint_name, format!("{:?}", err))
-                    }
-                }
-            })
+        let _ = if let Some(sock_evt_path) = &self.sock_evt_path {
+            Some(
+                {
+                    let sock_evt_path = sock_evt_path.clone();
+                    let endpoint_name = self.endpoint_name.clone();
+                    // enable context event to receive
+                    enable_context_channel();
+                    thread::spawn(move || {
+                        match tezos_wrapper::service::process_protocol_events(&sock_evt_path) {
+                            Ok(()) => (),
+                            Err(err) => {
+                                println!("Error while processing protocol events, endpoint: {}. Reason: {}", &endpoint_name, format!("{:?}", err))
+                            }
+                        }
+                    })
+                })
+        } else {
+            None
         };
 
         // Process commands from from the Rust node. Most commands are instructions for the Tezos protocol

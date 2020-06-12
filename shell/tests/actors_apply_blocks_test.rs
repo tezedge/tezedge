@@ -72,7 +72,8 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
             false,
             &context_db_path,
             &protocol_runner,
-            log_level,
+            log_level.clone(),
+            true,
         ),
         log.clone(),
     );
@@ -91,7 +92,7 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
     // run actor's
     let actor_system = SystemBuilder::new().name("test_apply_block_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events, log.clone(), false).expect("Failed to create context event listener");
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone()).expect("Failed to create chain feeder");
 
     // prepare data for apply blocks and wait for current head

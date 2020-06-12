@@ -102,6 +102,7 @@ fn create_endpoint(log: Logger, log_level: Level, index: i32) -> Result<(IpcCmdS
             &context_db_path,
             &protocol_runner,
             log_level.clone(),
+            false,
         ),
         log.clone(),
     );

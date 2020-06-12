@@ -146,7 +146,7 @@ impl<R> Drop for IpcReceiver<R> {
 /// Listens for incoming IPC connections.
 pub struct IpcServer<R, S> {
     listener: UnixListener,
-    path: PathBuf,
+    pub path: PathBuf,
     _phantom_r: PhantomData<R>,
     _phantom_s: PhantomData<S>,
 }

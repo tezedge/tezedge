@@ -268,10 +268,12 @@ pub struct ProtocolEndpointConfiguration {
     executable_path: PathBuf,
     #[get = "pub"]
     log_level: Level,
+    #[get_copy = "pub"]
+    need_event_server: bool,
 }
 
 impl ProtocolEndpointConfiguration {
-    pub fn new<P: AsRef<Path>>(runtime_configuration: TezosRuntimeConfiguration, environment: TezosEnvironmentConfiguration, enable_testchain: bool, data_dir: P, executable_path: P, log_level: Level) -> Self {
+    pub fn new<P: AsRef<Path>>(runtime_configuration: TezosRuntimeConfiguration, environment: TezosEnvironmentConfiguration, enable_testchain: bool, data_dir: P, executable_path: P, log_level: Level, need_event_server: bool) -> Self {
         ProtocolEndpointConfiguration {
             runtime_configuration,
             environment,
@@ -279,6 +281,7 @@ impl ProtocolEndpointConfiguration {
             data_dir: data_dir.as_ref().into(),
             executable_path: executable_path.as_ref().into(),
             log_level,
+            need_event_server,
         }
     }
 }
@@ -520,16 +523,24 @@ pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
     log: Logger,
 
     pub commands: IpcCmdServer,
-    pub events: IpcEvtServer,
+    pub events: Option<IpcEvtServer>,
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     pub fn new(name: &str, configuration: ProtocolEndpointConfiguration, log: Logger) -> ProtocolRunnerEndpoint<Runner> {
-        let evt_server = IpcEvtServer::new();
         let cmd_server = IpcCmdServer::new(configuration.clone());
+
+        let (evt_server, evt_server_path) = if configuration.need_event_server {
+            let evt_server = IpcEvtServer::new();
+            let evt_server_path = evt_server.0.path.clone();
+            (Some(evt_server), Some(evt_server_path))
+        } else {
+            (None, None)
+        };
+
         ProtocolRunnerEndpoint {
             name: name.to_string(),
-            runner: Runner::new(configuration, cmd_server.0.client().path(), evt_server.0.client().path(), name.to_string()),
+            runner: Runner::new(configuration, cmd_server.0.client().path(), evt_server_path, name.to_string()),
             commands: cmd_server,
             events: evt_server,
             log,
@@ -588,7 +599,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
 #[derive(Clone)]
 pub struct ExecutableProtocolRunner {
     sock_cmd_path: PathBuf,
-    sock_evt_path: PathBuf,
+    sock_evt_path: Option<PathBuf>,
     executable_path: PathBuf,
     endpoint_name: String,
     log_level: Level,
@@ -602,11 +613,11 @@ impl ProtocolRunner for ExecutableProtocolRunner {
     fn new(
         configuration: ProtocolEndpointConfiguration,
         sock_cmd_path: &Path,
-        sock_evt_path: &Path,
+        sock_evt_path: Option<PathBuf>,
         endpoint_name: String) -> Self {
         ExecutableProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
-            sock_evt_path: sock_evt_path.to_path_buf(),
+            sock_evt_path,
             executable_path: configuration.executable_path.clone(),
             endpoint_name,
             log_level: configuration.log_level,
@@ -614,17 +625,28 @@ impl ProtocolRunner for ExecutableProtocolRunner {
     }
 
     fn spawn(&self) -> Result<Child, ProtocolServiceError> {
-        let process = Command::new(&self.executable_path)
-            .arg("--sock-cmd")
-            .arg(&self.sock_cmd_path)
-            .arg("--sock-evt")
-            .arg(&self.sock_evt_path)
-            .arg("--endpoint")
-            .arg(&self.endpoint_name)
-            .arg("--log-level")
-            .arg(&self.log_level.as_str().to_lowercase())
-            .spawn()
-            .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?;
+        let process = match &self.sock_evt_path {
+            Some(sep) => Command::new(&self.executable_path)
+                .arg("--sock-cmd")
+                .arg(&self.sock_cmd_path)
+                .arg("--sock-evt")
+                .arg(&sep)
+                .arg("--endpoint")
+                .arg(&self.endpoint_name)
+                .arg("--log-level")
+                .arg(&self.log_level.as_str().to_lowercase())
+                .spawn()
+                .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?,
+            None => Command::new(&self.executable_path)
+                .arg("--sock-cmd")
+                .arg(&self.sock_cmd_path)
+                .arg("--endpoint")
+                .arg(&self.endpoint_name)
+                .arg("--log-level")
+                .arg(&self.log_level.as_str().to_lowercase())
+                .spawn()
+                .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?,
+        };
         Ok(process)
     }
 
@@ -647,7 +669,7 @@ impl ProtocolRunner for ExecutableProtocolRunner {
 }
 
 pub trait ProtocolRunner: Clone + Send {
-    fn new(configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: &Path, endpoint_name: String) -> Self;
+    fn new(configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: Option<PathBuf>, endpoint_name: String) -> Self;
 
     fn spawn(&self) -> Result<Child, ProtocolServiceError>;
 
