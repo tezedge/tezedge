@@ -400,19 +400,31 @@ roundtrip_test!(test_begin_construction_request_roundtrip_calls, test_begin_cons
 
 fn test_begin_construction_request_roundtrip(iteration: i32) -> Result<(), failure::Error> {
 
-    // validation result
+    // validation result - no protocol data
     let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
         .chain_id(HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?)
         .predecessor(BlockHeader::from_bytes(hex::decode(HEADER)?)?)
-        .protocol_data(vec![])
+        .protocol_data(None)
         .build().unwrap();
 
-    Ok(
-        assert!(
-            bytes_encoding_roundtrip(request, String::from("begin_construction_request_roundtrip")).is_ok(),
-            format!("test_begin_construction_request_roundtrip roundtrip iteration: {} failed!", iteration)
-        )
-    )
+    assert!(
+        bytes_encoding_roundtrip(request, String::from("begin_construction_request_roundtrip")).is_ok(),
+        format!("test_begin_construction_request_roundtrip (none protocol data) roundtrip iteration: {} failed!", iteration)
+    );
+
+    // validation result - some protocol data
+    let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
+        .chain_id(HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?)
+        .predecessor(BlockHeader::from_bytes(hex::decode(HEADER)?)?)
+        .protocol_data(Some(vec![1, 2, 3, 4, 5, 6]))
+        .build().unwrap();
+
+    assert!(
+        bytes_encoding_roundtrip(request, String::from("begin_construction_request_roundtrip")).is_ok(),
+        format!("test_begin_construction_request_roundtrip (some protocol data) roundtrip iteration: {} failed!", iteration)
+    );
+
+    Ok(())
 }
 
 #[test]

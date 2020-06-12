@@ -133,7 +133,7 @@ mod tezos {
         }
 
         fn begin_construction(chain_id: &ChainId, block_header: &BlockHeader) -> Result<PrevalidatorWrapper, BeginConstructionError> {
-            begin_construction(chain_id, block_header, Vec::new())
+            begin_construction(chain_id, block_header, None)
         }
 
         fn validate_operation(prevalidator: &PrevalidatorWrapper, operation: &Operation) -> Result<ValidateOperationResponse, ValidateOperationError> {

@@ -107,7 +107,7 @@ pub fn apply_block(
 pub fn begin_construction(
     chain_id: &ChainId,
     predecessor_block_header: &BlockHeader,
-    protocol_data: Vec<u8>,
+    protocol_data: Option<Vec<u8>>,
 ) -> Result<PrevalidatorWrapper, BeginConstructionError> {
 
     // request

@@ -32,6 +32,23 @@ steps:
     - cargo build --release --workspace
     - cargo test --verbose --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
 
+# runs integration test for shell actors which applies blocks and checks context and mempool
+- name: shell-actors-apply-context-mempool-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+    OCAML_LOG_ENABLED: false
+    PROTOCOL_RUNNER: /drone/src/target/release/protocol-runner
+    LOG_LEVEL: debug
+  commands:
+    - cargo build --release --workspace
+    - cargo test --verbose --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
+
 trigger:
   branch:
     - master
@@ -494,7 +511,7 @@ name: mempool-test
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 500 # also check parameter --stop=
+  TO_BLOCK_HEADER: 20000 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:18732

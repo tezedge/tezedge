@@ -19,7 +19,6 @@ use jsonpath::Selector;
 use riker::actors::*;
 use riker::system::SystemBuilder;
 use serde_json::Value;
-use slog::Logger;
 use slog::{info, Logger};
 
 use crypto::hash::{HashType, OperationHash};
@@ -78,7 +77,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
             tezos_env.clone(),
             false,
             &context_db_path,
-            &protocol_runner,
+            &apply_protocol_runner,
             log_level.clone(),
             true,
         ),

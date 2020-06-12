@@ -198,14 +198,14 @@ impl FfiMessage for PrevalidatorWrapper {
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
-    pub protocol_data: Vec<u8>,
+    pub protocol_data: Option<Vec<u8>>,
 }
 
 lazy_static! {
     pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding())),
-            Field::new("protocol_data", Encoding::list(Encoding::Uint8)),
+            Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
     ]);
 }
 
