@@ -514,7 +514,7 @@ steps:
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
-#    detach: true
+    detach: true
     volumes:
       - name: tezedge-node-data-mempool
         path: /tmp/tezedge_developer
@@ -522,12 +522,12 @@ steps:
       SODIUM_USE_PKG_CONFIG: 1
     commands:
       - cargo build --release --workspace
-#      - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732 --ocaml-log-enabled=false --log-level=info
+      - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732 --ocaml-log-enabled=false --log-level=info
 
-#  - name: bootstrapping-tezedge
-#    image: simplestakingcom/tezos-node-bootstrap:latest
-#    commands:
-#      - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+  - name: bootstrapping-tezedge
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   - name: mutliple-protocol-runners-test
     image: simplestakingcom/tezedge-ci-builder:latest

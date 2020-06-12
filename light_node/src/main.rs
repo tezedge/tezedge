@@ -160,9 +160,6 @@ fn block_on_actors(
     // if feeding is started, than run chain manager
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
         .expect("Failed to create chain manager");
-
-    thread::sleep(Duration::from_secs(15));
-
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),
