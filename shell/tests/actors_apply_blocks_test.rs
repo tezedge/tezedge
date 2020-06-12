@@ -139,9 +139,6 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     let _ = test_actor::TestActor::actor(&actor_system, shell_channel.clone(), test_result_sender);
     let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-
-    thread::sleep(Duration::from_secs(15));
-
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),

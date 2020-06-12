@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_json::Value;
 use slog::Logger;
 
-use crypto::hash::{BlockHash, HashType, OperationHash, ProtocolHash};
+use crypto::hash::{HashType, OperationHash, ProtocolHash};
 use shell::shell_channel::CurrentMempoolState;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, Errored};
