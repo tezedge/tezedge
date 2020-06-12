@@ -102,7 +102,8 @@ impl ProtocolRunner for TestProtocolRunner {
                             }
                         }
                     })
-                })
+                }
+            )
         } else {
             None
         };

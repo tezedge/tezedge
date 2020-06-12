@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::thread;
 use std::time::Duration;
 
 use riker::actors::*;
@@ -30,7 +31,6 @@ use tezos_api::identity::Identity;
 use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
-use std::thread;
 
 mod configuration;
 mod identity;
@@ -133,7 +133,19 @@ fn block_on_actors(
     // tezos protocol runner endpoint for mempool
     let mut mempool_prevalidator_protocol_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
         "mempool_prevalidator_protocol_runner_endpoint",
-        protocol_endpoint_configuration,
+        ProtocolEndpointConfiguration::new(
+            TezosRuntimeConfiguration {
+                log_enabled: env.logging.ocaml_log_enabled,
+                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+                debug_mode: env.storage.store_context_actions,
+            },
+            tezos_env.clone(),
+            env.enable_testchain,
+            &env.storage.tezos_data_dir,
+            &env.protocol_runner,
+            env.logging.level,
+            false,
+        ),
         log.clone(),
     );
     let (mempool_prevalidator_protocol_runner_endpoint_run_feature, mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name) = match mempool_prevalidator_protocol_endpoint.start_in_restarting_mode() {
@@ -167,7 +179,7 @@ fn block_on_actors(
         &init_storage_data,
         &tezos_env,
         (mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name),
-        log.clone()
+        log.clone(),
     ).expect("Failed to create chain feeder");
 
     // and than open p2p and others
