@@ -12,7 +12,7 @@ use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
 use storage::block_storage::BlockJsonData;
-use storage::persistent::PersistentStorage;
+use storage::persistent::{PersistentStorage, ContextMap};
 use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextIndex};
 use tezos_context::channel::ContextAction;
@@ -386,7 +386,7 @@ pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
     memory.get_memory_stats()
 }
 
-pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
     crate::helpers::get_context(level, list)
 }
 

@@ -11,7 +11,7 @@ use serde_json::Value;
 use crypto::hash::{BlockHash, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
-use storage::persistent::PersistentStorage;
+use storage::persistent::{PersistentStorage, ContextMap};
 use storage::skip_list::Bucket;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
@@ -404,7 +404,7 @@ pub(crate) fn get_context_protocol_params(
     })
 }
 
-pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<HashMap<String, Bucket<Vec<u8>>>>, failure::Error> {
+pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
     let level = level.parse()?;
     {
         let storage = list.read().expect("poisoned storage lock");

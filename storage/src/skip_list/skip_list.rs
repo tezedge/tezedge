@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp::max;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::hash::Hash;
 use std::sync::Arc;
 
@@ -66,9 +66,9 @@ impl DatabaseBackedSkipList {
     }
 
     /// Rebuild state for given index
-    fn get_internal<K, V>(&self, index: usize, prefix: Option<&K>) -> Result<Option<HashMap<K, V>>, SkipListError>
+    fn get_internal<K, V>(&self, index: usize, prefix: Option<&K>) -> Result<Option<BTreeMap<K, V>>, SkipListError>
         where
-            K: Codec + Hash + Eq,
+            K: Ord + Codec + Hash + Eq,
             V: Codec
     {
         // There is an sequential index on lowest level, if expected index is bigger than
@@ -154,26 +154,26 @@ impl SkipList for DatabaseBackedSkipList {
 }
 
 pub trait TypedSkipList<K: Codec, V: Codec>: SkipList {
-    fn get(&self, index: usize) -> Result<Option<HashMap<K, V>>, SkipListError>;
+    fn get(&self, index: usize) -> Result<Option<BTreeMap<K, V>>, SkipListError>;
 
-    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<HashMap<K, V>>, SkipListError>;
+    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<BTreeMap<K, V>>, SkipListError>;
 
     fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError>;
 
-    fn push(&mut self, value: &HashMap<K, V>) -> Result<(), SkipListError>;
+    fn push(&mut self, value: &BTreeMap<K, V>) -> Result<(), SkipListError>;
 }
 
 impl<K, V> TypedSkipList<K, V> for DatabaseBackedSkipList
     where
-        K: Codec + Hash + Eq,
+        K: Ord + Codec + Hash + Eq,
         V: Codec
 {
     /// Rebuild state for given index
-    fn get(&self, index: usize) -> Result<Option<HashMap<K, V>>, SkipListError> {
+    fn get(&self, index: usize) -> Result<Option<BTreeMap<K, V>>, SkipListError> {
         self.get_internal(index, None)
     }
 
-    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<HashMap<K, V>>, SkipListError> {
+    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<BTreeMap<K, V>>, SkipListError> {
         self.get_internal(index, Some(prefix))
     }
 
@@ -207,7 +207,7 @@ impl<K, V> TypedSkipList<K, V> for DatabaseBackedSkipList
 
     /// Push new value into the end of the list. Beware, this is operation is
     /// not thread safe and should be handled with care !!!
-    fn push(&mut self, value: &HashMap<K, V>) -> Result<(), SkipListError> {
+    fn push(&mut self, value: &BTreeMap<K, V>) -> Result<(), SkipListError> {
         let mut lane = self.lane(0);
         let mut pos = NodeHeader::new(self.list_id, lane.level(), self.state.len);
 

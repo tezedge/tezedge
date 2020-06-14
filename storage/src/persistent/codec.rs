@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::ops::Range;
 
 use failure::Fail;
@@ -120,6 +120,11 @@ impl<T> Decoder for T where T: BincodeEncoded {
 
 impl<K, V> BincodeEncoded for HashMap<K, V>
     where K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a>,
+          V: Serialize + for<'a> Deserialize<'a>
+{}
+
+impl<K, V> BincodeEncoded for BTreeMap<K, V>
+    where K: Ord + Eq + Serialize + for<'a> Deserialize<'a>,
           V: Serialize + for<'a> Deserialize<'a>
 {}
 

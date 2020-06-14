@@ -35,4 +35,3 @@ tezos_messages = { path = "../tezos/messages" }
 
 [dev-dependencies]
 assert-json-diff = "1.0.0"
-
