@@ -182,7 +182,7 @@ impl RightsContextData {
         // let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, snapshot_level.try_into()?)? {
+        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, block_level.try_into()?, requested_cycle, roll_snapshot)? {
             rolls
         } else {
             return Err(format_err!("rolls"));
@@ -202,33 +202,52 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(context: &TezedgeContext, snapshot_level: usize) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+    fn get_context_rolls(context: &TezedgeContext, requested_level: usize, cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         // let data: ContextMap = context.into_iter()
         //     // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
         //     .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
         //     .collect();
-        let context_index = ContextIndex::new(Some(snapshot_level), None);
+        let context_index = ContextIndex::new(Some(requested_level), None);
 
-        let rolls = if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/current".to_string()])? {
+        let rolls = if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/snapshot".to_string(), cycle.to_string(), snapshot.to_string()])? {
             val
         } else {
             bail!("No rolls found in context")
         };
 
         let mut roll_owners: HashMap<i32, String> = HashMap::new();
+        println!("requested level: {}", requested_level);
 
         // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
         for (key, value) in rolls.into_iter() {
             let roll_num = key.split('/').last().unwrap();
 
+            if roll_num.parse::<i32>().unwrap() == 35249 {
+                println!("Key: {} | Val: {:?}", key, value);
+            }
+
             // the values are public keys
             if let Bucket::Exists(pk) = value {
-                let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk)?.to_string();
+                let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk.clone())?.to_string();
                 //let delegate = hex::encode(pk);
+                // if delegate.eq(&"tz1f8uLERkLmF1HtDWyRcq3xEVcKB4kfcAn6".to_string()) {
+                //     println!("PK: {}", hex::encode(&pk));
+                //     println!("tz1f8uLERkLmF1HtDWyRcq3xEVcKB4kfcAn6");
+                //     println!("Roll num: {} | Key: {}", &roll_num, key);
+                // }
+                // if delegate.eq(&"tz1SYq214SCBy9naR6cvycQsYcUGpBqQAE8d".to_string()) {
+                //     println!("PK: {}", hex::encode(&pk));
+                //     println!("tz1SYq214SCBy9naR6cvycQsYcUGpBqQAE8d");
+                //     println!("Roll num: {} | Key: {}", &roll_num, key);
+                // }
+
                 roll_owners.insert(roll_num.parse().unwrap(), delegate);
             } else {
                 continue;  // If the value is Deleted then is skipped and it go to the next iteration
             }
+        }
+        if roll_owners.len() == 0 {
+            bail!("No rolls assigned, all rolls happened to be DELETED")
         }
         Ok(Some(roll_owners))
     }
