@@ -61,6 +61,7 @@ fn prepare_protocol_context(dir_name: &str, tezos_env: &TezosEnvironment, commit
         cfg.protocol_overrides.clone(),
         commit_genesis,
         false,
+        false,
     ).unwrap().unwrap();
 
     storage_init_info

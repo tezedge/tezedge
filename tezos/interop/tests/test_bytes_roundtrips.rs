@@ -46,10 +46,12 @@ macro_rules! roundtrip_test {
 
                 for i in 0..$counts {
                     let result = $test_fn(i);
-                    if result.is_err() {
-                        println!("$test_fn roundtrip number {} failed!", i);
+                    match result {
+                        Err(e) => {
+                            panic!("roundtrip number {} failed! error: {:?}", i, e)
+                        },
+                        Ok(_) => ()
                     }
-                    assert!(result.is_ok())
                 }
             }
         };
@@ -78,13 +80,7 @@ fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_na
     })
 }
 
-#[test]
-#[serial]
-fn test_chain_id_roundtrip_one() {
-    init_test_runtime();
-
-    assert!(test_chain_id_roundtrip(1).is_ok())
-}
+roundtrip_test!(test_chain_id_roundtrip_calls, test_chain_id_roundtrip, 1);
 
 fn test_chain_id_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let chain_id: RustBytes = hex::decode(CHAIN_ID).unwrap();
@@ -106,13 +102,7 @@ fn test_chain_id_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     )
 }
 
-#[test]
-#[serial]
-fn test_block_header_roundtrip_one() {
-    init_test_runtime();
-
-    assert!(test_block_header_roundtrip(1).is_ok())
-}
+roundtrip_test!(test_block_header_roundtrip_calls, test_block_header_roundtrip, 1);
 
 fn test_block_header_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let header: RustBytes = hex::decode(HEADER).unwrap();
@@ -135,13 +125,7 @@ fn test_block_header_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     )
 }
 
-#[test]
-#[serial]
-fn test_block_header_with_hash_roundtrip_one() {
-    init_test_runtime();
-
-    assert!(test_block_header_with_hash_roundtrip(1).is_ok())
-}
+roundtrip_test!(test_block_header_with_hash_roundtrip_calls, test_block_header_with_hash_roundtrip, 1);
 
 fn test_block_header_with_hash_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let header_hash: RustBytes = hex::decode(HEADER_HASH).unwrap();
@@ -167,13 +151,7 @@ fn test_block_header_with_hash_roundtrip(iteration: i32) -> Result<(), failure::
     )
 }
 
-#[test]
-#[serial]
-fn test_operation_roundtrip_one() {
-    init_test_runtime();
-
-    assert!(test_operation_roundtrip(1).is_ok())
-}
+roundtrip_test!(test_operation_roundtrip_calls, test_operation_roundtrip, 1);
 
 fn test_operation_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let operation: RustBytes = hex::decode(OPERATION).unwrap();

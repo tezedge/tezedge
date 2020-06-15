@@ -109,15 +109,14 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
 
     // clean up
     // shutdown events listening
-    tezos_context::channel::context_send(ContextAction::Shutdown)?;
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(3));
     shell_channel.tell(
         Publish {
             msg: ShuttingDown.into(),
             topic: ShellChannelTopic::ShellCommands.into(),
         }, None,
     );
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(2));
     let _ = actor_system.shutdown();
 
     // check context
@@ -374,8 +373,9 @@ mod tezos {
             genesis: GenesisChain,
             protocol_overrides: ProtocolOverrides,
             commit_genesis: bool,
-            enable_testchain: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
-            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain)
+            enable_testchain: bool,
+            readonly: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly)
         }
 
         fn genesis_result_data(

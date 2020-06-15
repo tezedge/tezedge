@@ -55,6 +55,7 @@ struct InitProtocolContextParams {
     protocol_overrides: ProtocolOverrides,
     commit_genesis: bool,
     enable_testchain: bool,
+    readonly: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -126,6 +127,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                     params.protocol_overrides,
                     params.commit_genesis,
                     params.enable_testchain,
+                    params.readonly,
                 );
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
             }
@@ -363,7 +365,7 @@ impl<'a> ProtocolController<'a> {
 
     /// Command tezos ocaml code to initialize context and protocol.
     /// CommitGenesisResult is returned only if commit_genesis is set to true
-    fn init_protocol_context(&self, storage_data_dir: String, tezos_environment: &TezosEnvironmentConfiguration, commit_genesis: bool, enable_testchain: bool) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+    fn init_protocol_context(&self, storage_data_dir: String, tezos_environment: &TezosEnvironmentConfiguration, commit_genesis: bool, enable_testchain: bool, readonly: bool) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::InitProtocolContextCall(InitProtocolContextParams {
             storage_data_dir,
@@ -372,6 +374,7 @@ impl<'a> ProtocolController<'a> {
             protocol_overrides: tezos_environment.protocol_overrides.clone(),
             commit_genesis,
             enable_testchain,
+            readonly
         }))?;
         match io.rx.receive()? {
             NodeMessage::InitProtocolContextResult(result) => result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into()),
@@ -407,13 +410,14 @@ impl<'a> ProtocolController<'a> {
     }
 
     /// Initialize protocol environment from default configuration.
-    pub fn init_protocol(&self, commit_genesis: bool) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+    pub fn init_protocol(&self, commit_genesis: bool, readonly: bool) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
         self.init_protocol_context(
             self.configuration.data_dir().to_str().unwrap().to_string(),
             self.configuration.environment(),
             commit_genesis,
             self.configuration.enable_testchain(),
+            readonly
         )
     }
 

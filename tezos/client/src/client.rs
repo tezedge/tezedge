@@ -30,8 +30,9 @@ pub fn init_protocol_context(
     genesis: GenesisChain,
     protocol_overrides: ProtocolOverrides,
     commit_genesis: bool,
-    enable_testchain: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
-    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain) {
+    enable_testchain: bool,
+    readonly: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly) {
         Ok(result) => Ok(result?),
         Err(e) => {
             Err(TezosStorageInitError::InitializeError {
@@ -88,7 +89,7 @@ pub fn apply_block(
         .build().unwrap();
 
     match ffi::apply_block(request) {
-        Ok(result) => result.map_err(|e|ApplyBlockError::from(e)),
+        Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
                 message: format!("Unknown OcamlError: {:?}", e)

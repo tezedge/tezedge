@@ -44,6 +44,7 @@ fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Erro
             tezos_env.protocol_overrides.clone(),
             true,
             false,
+            false,
         ) {
             Err(e) => panic!("Failed to initialize storage for: {:?}, Reason: {:?}", net, e),
             Ok(init_info) => {
