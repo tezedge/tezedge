@@ -14,6 +14,9 @@
 # tezos-node-bootstrap --bootstrap in the bootstrapping step accepts --level=<value> and multiplne --node_<name>=<url> args. You can specify the node urls to be bootstrapped
 ############################################################################################################################
 
+##############################################################################################################
+# This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
+##############################################################################################################
 kind: pipeline
 name: connection-from-different-network-test
 
@@ -24,7 +27,7 @@ environment:
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
-  TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-node-mainnet-run:18732
+  TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT: http://tezedge-node-mainnet-run:18732
 
 steps:
 - name: cleanup-node-data
@@ -33,24 +36,18 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
-    - name: tezedge-master-node-data
-      path: /tmp/tezedge_master_developer
   commands:
     - rm -rf /tmp/tezedge_developer/light-node
     - rm -rf /tmp/tezedge_developer/tezos-node
-    - rm -rf /tmp/tezedge_master_developer/light-node
-    - rm -rf /tmp/tezedge_master_developer/tezos-node
 
-- name: tezedge-node-mainnet-run
+- name: tezedge-node-run-mainnet
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
   volumes:
-    - name: tezedge-master-node-data
+    - name: tezedge-node-data
       path: /tmp/tezedge_developer
-    - name: cache
-      path: /tmp/tezedge-cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
@@ -61,7 +58,7 @@ steps:
 - name: bootstrapping-tezedge-not-fixed
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT}
 
   # just run ocaml snapshosted node
 - name: ocaml-node-carthage-run
@@ -99,9 +96,6 @@ volumes:
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-node
-  - name: tezedge-master-node-data
-    host:
-      path: /etc/tezedge-master-node
   - name: cache
     host:
       path: /etc/tezedge-ci/cache
@@ -150,6 +144,25 @@ steps:
     - rm -rf /tmp/tezedge_master_developer/light-node
     - rm -rf /tmp/tezedge_master_developer/tezos-node
 
+- name: mutliple-protocol-runners-test
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+  volumes:
+    - name: tezedge-node-data
+      path: /tmp/tezedge_developer
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+    OCAML_LOG_ENABLED: false
+    PROTOCOL_RUNNER: /drone/src/target/release/protocol-runner
+    LOG_LEVEL: debug
+  commands:
+    - cargo build --release --workspace
+    - cargo test --verbose --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+
 - name: tezedge-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -162,7 +175,8 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
   commands:
     - cargo build --release --workspace
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732
+    - cp ./target/release/protocol-runner /tmp/tezedge_developer/
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/drone/src/docker/identities/identity_tezedge.json" --p2p-port=19732 --protocol-runner=/tmp/tezedge_developer/protocol-runner
 
 - name: bootstrapping-tezedge
   image: simplestakingcom/tezos-node-bootstrap:latest

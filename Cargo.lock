@@ -2831,6 +2831,7 @@ dependencies = [
  "getset",
  "ipc",
  "ipmpsc",
+ "lazy_static",
  "libc",
  "rand 0.7.3",
  "serde 1.0.111",
