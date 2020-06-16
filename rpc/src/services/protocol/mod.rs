@@ -148,7 +148,7 @@ pub(crate) fn check_and_get_baking_rights(
                 cycle,
                 max_priority,
                 has_all,
-                context_list,
+                context,
                 persistent_storage,
             )
         }
@@ -266,7 +266,7 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                context_list,
+                context,
                 persistent_storage,
             )
         }
