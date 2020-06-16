@@ -4,8 +4,8 @@
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    CommitGenesisResult,
-    ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError,
+    CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult,
+    PatchContext, ProtocolOverrides, TezosGenerateIdentityError,
     TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
 };
 use tezos_api::identity::Identity;
@@ -31,8 +31,10 @@ pub fn init_protocol_context(
     protocol_overrides: ProtocolOverrides,
     commit_genesis: bool,
     enable_testchain: bool,
-    readonly: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
-    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly) {
+    readonly: bool,
+    patch_context: Option<PatchContext>,
+) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly, patch_context) {
         Ok(result) => Ok(result?),
         Err(e) => {
             Err(TezosStorageInitError::InitializeError {

@@ -25,6 +25,7 @@ pub struct SystemStorage {
 impl SystemStorage {
     const CHAIN_ID: &'static str = "chain_id";
     const DB_VERSION: &'static str = "db_version";
+    const CHAIN_NAME: &'static str = "chain_name";
 
     pub fn new(kv: Arc<SystemStorageKv>) -> Self {
         SystemStorage { kv }
@@ -49,7 +50,7 @@ impl SystemStorage {
     #[inline]
     pub fn get_db_version(&self) -> Result<Option<DbVersion>, StorageError> {
         self.kv.get(&Self::DB_VERSION.to_string())
-            .map(|result|  match result {
+            .map(|result| match result {
                 Some(SystemValue::Integer(value)) => Some(value),
                 _ => None
             })
@@ -59,6 +60,22 @@ impl SystemStorage {
     #[inline]
     pub fn set_db_version(&mut self, db_version: DbVersion) -> Result<(), StorageError> {
         self.kv.put(&Self::DB_VERSION.to_string(), &SystemValue::Integer(db_version))
+            .map_err(StorageError::from)
+    }
+
+    #[inline]
+    pub fn get_chain_name(&self) -> Result<Option<String>, StorageError> {
+        self.kv.get(&Self::CHAIN_NAME.to_string())
+            .map(|result| match result {
+                Some(SystemValue::String(value)) => Some(value),
+                _ => None
+            })
+            .map_err(StorageError::from)
+    }
+
+    #[inline]
+    pub fn set_chain_name(&mut self, chain_name: &String) -> Result<(), StorageError> {
+        self.kv.put(&Self::CHAIN_NAME.to_string(), &SystemValue::String(chain_name.clone()))
             .map_err(StorageError::from)
     }
 }
@@ -78,7 +95,7 @@ impl KeyValueSchema for SystemStorage {
 pub enum SystemValue {
     String(String),
     Integer(i64),
-    Hash(Vec<u8>)
+    Hash(Vec<u8>),
 }
 
 impl BincodeEncoded for SystemValue {}

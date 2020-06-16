@@ -163,7 +163,7 @@ mod tezos {
             commit_genesis: bool,
             enable_testchain: bool,
             readonly: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
-            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly)
+            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly, None)
         }
 
         fn genesis_result_data(

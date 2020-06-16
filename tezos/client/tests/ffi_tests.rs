@@ -62,6 +62,7 @@ fn prepare_protocol_context(dir_name: &str, tezos_env: &TezosEnvironment, commit
         commit_genesis,
         false,
         false,
+        None
     ).unwrap().unwrap();
 
     storage_init_info

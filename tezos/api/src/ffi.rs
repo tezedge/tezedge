@@ -55,6 +55,13 @@ pub struct ProtocolOverrides {
     pub voted_protocol_overrides: Vec<(String, String)>,
 }
 
+/// Patch_context key json
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct PatchContext {
+    pub key: String,
+    pub json: String,
+}
+
 /// Test chain information
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TestChain {

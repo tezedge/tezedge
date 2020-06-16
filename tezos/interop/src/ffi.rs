@@ -105,7 +105,8 @@ pub fn init_protocol_context(
     protocol_overrides: ProtocolOverrides,
     commit_genesis: bool,
     enable_testchain: bool,
-    readonly: bool
+    readonly: bool,
+    patch_context: Option<PatchContext>,
 ) -> Result<Result<InitProtocolContextResult, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
         // genesis configuration
@@ -123,6 +124,17 @@ pub fn init_protocol_context(
         configuration.set(1, Value::bool(enable_testchain)).unwrap();
         configuration.set(2, Value::bool(readonly)).unwrap();
 
+        // patch context
+        let patch_context = match patch_context {
+            Some(pc) => {
+                let mut patch_context: Tuple = Tuple::new(2);
+                patch_context.set(0, Str::from(pc.key.as_str()).into()).unwrap();
+                patch_context.set(1, Str::from(pc.json.as_str()).into()).unwrap();
+                Value::some(Value::from(patch_context))
+            }
+            None => Value::none()
+        };
+
         let ocaml_function = ocaml::named_value("init_protocol_context").expect("function 'init_protocol_context' is not registered");
         match ocaml_function.call_n_exn(
             [
@@ -130,6 +142,7 @@ pub fn init_protocol_context(
                 Value::from(genesis_tuple),
                 Value::from(protocol_overrides_tuple),
                 Value::from(configuration),
+                patch_context,
             ]
         ) {
             Ok(result) => {
