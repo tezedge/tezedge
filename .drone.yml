@@ -18,6 +18,107 @@
 # This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
 ##############################################################################################################
 kind: pipeline
+name: mempool-rpc-tests
+
+environment:
+  NETWORK: carthagenet
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 0
+  SODIUM_USE_PKG_CONFIG: 1
+  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
+  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
+  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
+  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
+  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+
+steps:
+#- name: tezedge-node-run
+#  image: simplestakingcom/tezedge-ci-builder:latest
+#  pull: if-not-exists
+#  user: root
+#  detach: true
+#  volumes:
+#    - name: cache
+#      path: /tmp/tezedge-cache
+#  environment:
+#    SODIUM_USE_PKG_CONFIG: 1
+#    OCAML_BUILD_CHAIN: remote
+#    UPDATE_GIT: true
+#  commands:
+#    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/tezedge_ip.txt
+#    - cp ./light_node/etc/tezedge/sandbox-parameters.json /tmp/tezedge-cache/
+#    - cargo clean
+#    - cargo build --release
+#    - cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge_drone.config --tezos-data-dir /tmp/tezedge/tezos-node --identity-file ./light_node/etc/tezedge/identity.json --bootstrap-db-path /tmp/tezedge/light-node --network sandbox --protocol-runner ./target/release/protocol-runner --identity-expected-pow 0.0 --peer-thresh-high 1 --peer-thresh-low 1
+#
+#- name: bootstrapping-tezedge
+#  image: simplestakingcom/tezos-node-bootstrap:latest
+#  commands:
+#    - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: ocaml-node-carthage-run
+  user: root
+  image: tezos/tezos:v7.1
+  detach: true
+  volumes:
+    - name: cache
+      path: /tmp/tezedge-cache
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/ocaml_ip.txt
+    - mkdir /home/tezos/data/
+    - cp /drone/src/light_node/etc/tezedge/sandbox-parameters.json /tmp/tezedge-cache/
+    - cp /drone/src/light_node/etc/tezedge/sandbox.json /tmp/tezedge-cache/
+    - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+    - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
+    - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox /tmp/tezedge-cache/sandbox.json --no-bootstrap-peers --singleprocess
+
+- name: ocaml-client
+  user: root
+  image: tezos/tezos:v7.0-rc1
+  volumes:
+    - name: cache
+      path: /tmp/tezedge-cache
+  commands:
+    - sleep 20
+    - tezos-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
+    - tezos-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+    - tezos-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+    - tezos-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/tezedge-cache/sandbox-parameters.json --timestamp 2020-06-15T19:36:30Z
+    - sleep 2
+    - tezos-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1
+    - sleep 2
+    - tezos-admin-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 connect address `cat /tmp/tezedge-cache/tezedge_ip.txt`:9732
+    - sleep 2
+    - tezos-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1
+
+- name: rpc-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts
+  commands:
+    - cargo test --verbose --release -- --nocapture --ignored test_mempool_rpc
+
+volumes:
+  - name: cache
+    host:
+      path: /etc/tezedge-ci/cache
+
+trigger:
+  branch:
+    - feature/mempool-test
+
+---
+kind: pipeline
 name: connection-from-different-network-test
 
 environment:

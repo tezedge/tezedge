@@ -19,6 +19,13 @@ async fn test_rpc_compare() {
     integration_tests_rpc(from_block_header(), to_block_header()).await
 }
 
+#[ignore]
+#[tokio::test]
+async fn test_mempool_rpc() {
+    test_rpc_compare_json("chains/main/mempool/pending_operations").await;
+}
+
+
 async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
