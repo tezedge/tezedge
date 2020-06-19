@@ -29,7 +29,7 @@ use tezos_api::ffi::{ApplyBlockRequest, FfiMessage, RustBytes, TezosRuntimeConfi
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
 use tezos_messages::p2p::encoding::operations_for_blocks;
-use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint};
+use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 mod common;
 
@@ -55,7 +55,7 @@ fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
 
     let storage_db_path = PathBuf::from(storage_db_path);
     let context_db_path = PathBuf::from(context_db_path);
-    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, log.clone())
+    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, log.clone())
         .expect("Failed to resolve init storage chain data");
 
     // protocol runner endpoint

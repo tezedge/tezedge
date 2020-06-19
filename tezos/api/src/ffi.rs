@@ -56,10 +56,16 @@ pub struct ProtocolOverrides {
 }
 
 /// Patch_context key json
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PatchContext {
     pub key: String,
     pub json: String,
+}
+
+impl fmt::Debug for PatchContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "key: {}, json: {:?}", &self.key, &self.json)
+    }
 }
 
 /// Test chain information

@@ -71,6 +71,7 @@ struct InitProtocolContextParams {
     commit_genesis: bool,
     enable_testchain: bool,
     readonly: bool,
+    patch_context: Option<PatchContext>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -143,6 +144,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                     params.commit_genesis,
                     params.enable_testchain,
                     params.readonly,
+                    params.patch_context,
                 );
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
             }
@@ -389,7 +391,13 @@ impl<'a> ProtocolController<'a> {
 
     /// Command tezos ocaml code to initialize context and protocol.
     /// CommitGenesisResult is returned only if commit_genesis is set to true
-    fn init_protocol_context(&self, storage_data_dir: String, tezos_environment: &TezosEnvironmentConfiguration, commit_genesis: bool, enable_testchain: bool, readonly: bool) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+    fn init_protocol_context(&self,
+                             storage_data_dir: String,
+                             tezos_environment: &TezosEnvironmentConfiguration,
+                             commit_genesis: bool,
+                             enable_testchain: bool,
+                             readonly: bool,
+                             patch_context: Option<PatchContext>) -> Result<InitProtocolContextResult, ProtocolServiceError> {
 
         // try to check if was at least one write success, other words, if context was already created on file system
         {
@@ -418,6 +426,7 @@ impl<'a> ProtocolController<'a> {
             commit_genesis,
             enable_testchain,
             readonly,
+            patch_context,
         }))?;
 
         // wait for response
@@ -477,15 +486,29 @@ impl<'a> ProtocolController<'a> {
         }
     }
 
-    /// Initialize protocol environment from default configuration.
-    pub fn init_protocol(&self, commit_genesis: bool, readonly: bool) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+    /// Initialize protocol environment from default configuration (writeable).
+    pub fn init_protocol_for_write(&self, commit_genesis: bool, patch_context: &Option<PatchContext>) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
         self.init_protocol_context(
             self.configuration.data_dir().to_str().unwrap().to_string(),
             self.configuration.environment(),
             commit_genesis,
             self.configuration.enable_testchain(),
-            readonly,
+            false,
+            patch_context.clone(),
+        )
+    }
+
+    /// Initialize protocol environment from default configuration (readonly).
+    pub fn init_protocol_for_read(&self) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+        self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
+        self.init_protocol_context(
+            self.configuration.data_dir().to_str().unwrap().to_string(),
+            self.configuration.environment(),
+            false,
+            self.configuration.enable_testchain(),
+            true,
+            None,
         )
     }
 

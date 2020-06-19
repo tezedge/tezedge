@@ -13,6 +13,7 @@ use clap::{App, Arg};
 use shell::peer_manager::Threshold;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
+use tezos_api::ffi::PatchContext;
 
 #[derive(Debug, Clone)]
 pub struct P2p {
@@ -41,6 +42,7 @@ pub struct Storage {
     pub bootstrap_db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
+    pub patch_context: Option<PatchContext>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +81,7 @@ pub struct Environment {
     pub enable_testchain: bool,
     pub protocol_runner: PathBuf,
     pub no_of_ffi_calls_threshold_for_gc: i32,
-    pub tokio_threads: usize
+    pub tokio_threads: usize,
 }
 
 macro_rules! parse_validator_fn {
@@ -96,9 +98,9 @@ pub fn tezos_app() -> App<'static, 'static> {
     // In case some args are required=true and user provides only config-file,
     // first round of parsing would always fail then
     let app = App::new("Tezos Light Node")
-            .version("0.3.1")
-            .author("SimpleStaking and the project contributors")
-            .about("Rust implementation of the tezos node")
+        .version("0.3.1")
+        .author("SimpleStaking and the project contributors")
+        .about("Rust implementation of the tezos node")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(Arg::with_name("config-file")
             .long("config-file")
@@ -178,18 +180,18 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "sandbox"])
             .help("Choose the Tezos environment"))
-            .arg(Arg::with_name("p2p-port")
-                .long("p2p-port")
-                .takes_value(true)
-                .value_name("PORT")
-                .help("Socket listening port for p2p for communication with tezos world")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("rpc-port")
-                .long("rpc-port")
-                .takes_value(true)
-                .value_name("PORT")
-                .help("Rust server RPC port for communication with rust node")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+        .arg(Arg::with_name("p2p-port")
+            .long("p2p-port")
+            .takes_value(true)
+            .value_name("PORT")
+            .help("Socket listening port for p2p for communication with tezos world")
+            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+        .arg(Arg::with_name("rpc-port")
+            .long("rpc-port")
+            .takes_value(true)
+            .value_name("PORT")
+            .help("Rust server RPC port for communication with rust node")
+            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("enable-testchain")
             .long("enable-testchain")
             .takes_value(true)
@@ -207,57 +209,64 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PORT")
             .help("Port on which the Tezedge node monitoring information will be exposed")
             .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("peers")
-                .long("peers")
-                .takes_value(true)
-                .value_name("IP:PORT")
-                .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
-                .validator(|v| {
-                    let err_count = v.split(',')
-                        .map(|ip_port| ip_port.parse::<SocketAddr>())
-                        .filter(|v| v.is_err())
-                        .count();
-                    if err_count == 0 {
-                        Ok(())
-                    } else {
-                        Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
-                    }
-                }))
-            .arg(Arg::with_name("peer-thresh-low")
-                .long("peer-thresh-low")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Minimal number of peers to connect to")
-                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-            .arg(Arg::with_name("peer-thresh-high")
-                .long("peer-thresh-high")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Maximal number of peers to connect to")
-                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-            .arg(Arg::with_name("protocol-runner")
-                .long("protocol-runner")
-                .takes_value(true)
-                .value_name("PATH")
-                .help("Path to a tezos protocol runner executable")
-                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-            .arg(Arg::with_name("ffi-calls-gc-threshold")
-                .long("ffi-calls-gc-threshold")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Number of ffi calls, after which will be Ocaml garbage collector called")
-                .validator(parse_validator_fn!(i32, "Value must be a valid number")))
-            .arg(Arg::with_name("tokio-threads")
-                .long("tokio-threads")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
-                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("peers")
+            .long("peers")
+            .takes_value(true)
+            .value_name("IP:PORT")
+            .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
+            .validator(|v| {
+                let err_count = v.split(',')
+                    .map(|ip_port| ip_port.parse::<SocketAddr>())
+                    .filter(|v| v.is_err())
+                    .count();
+                if err_count == 0 {
+                    Ok(())
+                } else {
+                    Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
+                }
+            }))
+        .arg(Arg::with_name("peer-thresh-low")
+            .long("peer-thresh-low")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Minimal number of peers to connect to")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("peer-thresh-high")
+            .long("peer-thresh-high")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Maximal number of peers to connect to")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("protocol-runner")
+            .long("protocol-runner")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to a tezos protocol runner executable")
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
+        .arg(Arg::with_name("ffi-calls-gc-threshold")
+            .long("ffi-calls-gc-threshold")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of ffi calls, after which will be Ocaml garbage collector called")
+            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
+        .arg(Arg::with_name("tokio-threads")
+            .long("tokio-threads")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("store-context-actions")
             .long("store-context-actions")
             .takes_value(true)
             .value_name("BOOL")
-            .help("Activate recording of context storage actions"));
+            .help("Activate recording of context storage actions"))
+        .arg(Arg::with_name("sandbox-patch-context-json-file")
+            .long("sandbox-patch-context-json-file")
+            .takes_value(true)
+            .value_name("PATH")
+            .required(false)
+            .help("Path to the json file with key-values, which will be added to empty context on startup and commit genesis.")
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }));
     app
 }
 
@@ -480,6 +489,22 @@ impl Environment {
                     .unwrap_or("true")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
+                patch_context: {
+                    match args.value_of("sandbox-patch-context-json-file") {
+                        Some(path) => {
+                            let path = path.parse::<PathBuf>().expect("Provided value cannot be converted to path");
+                            let path = get_final_path(&data_dir, path);
+                            match fs::read_to_string(path) {
+                                | Ok(content) => Some(PatchContext {
+                                    key: "sandbox_parameter".to_string(),
+                                    json: content,
+                                }),
+                                | Err(e) => panic!("Cannot read file, reason: {:?}", e)
+                            }
+                        }
+                        None => None
+                    }
+                },
             },
             identity: crate::configuration::Identity {
                 identity_json_file_path: {

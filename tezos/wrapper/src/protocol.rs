@@ -26,7 +26,8 @@ pub trait ProtocolApi {
         protocol_overrides: ProtocolOverrides,
         commit_genesis: bool,
         enable_testchain: bool,
-        readonly: bool) -> Result<InitProtocolContextResult, TezosStorageInitError>;
+        readonly: bool,
+        patch_context: Option<PatchContext>) -> Result<InitProtocolContextResult, TezosStorageInitError>;
 
     /// Command gets genesis data from context
     fn genesis_result_data(

@@ -302,7 +302,12 @@ fn main() {
         };
 
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
-        match resolve_storage_init_chain_data(&tezos_env, &env.storage.bootstrap_db_path, &env.storage.tezos_data_dir, log.clone()) {
+        match resolve_storage_init_chain_data(
+            &tezos_env,
+            &env.storage.bootstrap_db_path,
+            &env.storage.tezos_data_dir,
+            &env.storage.patch_context,
+            log.clone()) {
             Ok(init_data) => block_on_actors(&env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data. Reason: {}", e), actor_system),
         }

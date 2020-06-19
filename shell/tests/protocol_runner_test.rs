@@ -42,7 +42,13 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
         let handle = thread::spawn(move || -> Result<InitProtocolContextResult, failure::Error> {
             // init protocol read or write
             let result = match protocol.accept() {
-                Ok(proto) => Ok(proto.init_protocol(false, flag_readonly)?),
+                Ok(proto) => Ok({
+                    if flag_readonly {
+                        proto.init_protocol_for_read()?
+                    } else {
+                        proto.init_protocol_for_write(false, &None)?
+                    }
+                }),
                 Err(e) => Err(format_err!("{:?}", e))
             };
             result

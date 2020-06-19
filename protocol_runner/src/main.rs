@@ -119,7 +119,7 @@ fn main() {
 
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, PatchContext, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
     use tezos_api::identity::Identity;
     use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, genesis_result_data, init_protocol_context};
     use tezos_messages::p2p::encoding::prelude::*;
@@ -142,8 +142,9 @@ mod tezos {
             protocol_overrides: ProtocolOverrides,
             commit_genesis: bool,
             enable_testchain: bool,
-            readonly: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
-            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly)
+            readonly: bool,
+            patch_context: Option<PatchContext>) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+            init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly, patch_context)
         }
 
         fn genesis_result_data(
