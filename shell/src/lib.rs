@@ -21,6 +21,7 @@ pub mod peer_manager;
 pub(crate) struct Head {
     /// BlockHash of head.
     hash: BlockHash,
+    // TODO: refactor level to priority
     /// Level of the head.
     pub level: Level,
 }

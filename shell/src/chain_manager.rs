@@ -309,9 +309,15 @@ impl ChainManager {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!(log, "Received current branch");
                                     if message.current_branch().current_head().level() > 0 {
+                                        // schedule predecessor
                                         chain_state.push_missing_block(MissingBlock {
                                             block_hash: message.current_branch().current_head().predecessor().clone(),
                                             level: message.current_branch().current_head().level() - 1,
+                                        })?;
+                                        // schedule current_head
+                                        chain_state.push_missing_block(MissingBlock {
+                                            block_hash: message.current_branch().current_head().message_hash()?,
+                                            level: message.current_branch().current_head().level(),
                                         })?;
                                     }
                                     //TODO: refactor to support non zero level in MissingBlock
