@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use failure::format_err;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::Logger;
 
@@ -13,8 +13,8 @@ use tezos_messages::p2p::encoding::prelude::Operation;
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
-#[derive(Serialize, Debug, Clone, Default)]
-pub struct PendingOperations {
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct MempoolOperations {
     pub applied: Vec<HashMap<String, Value>>,
     pub refused: Vec<Value>,
     pub branch_refused: Vec<Value>,
@@ -26,7 +26,7 @@ pub struct PendingOperations {
 pub fn get_pending_operations(
     _persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef,
-    _log: &Logger) -> Result<PendingOperations, failure::Error> {
+    _log: &Logger) -> Result<MempoolOperations, failure::Error> {
 
     // get actual known state of mempool
     let state = state.read().unwrap();
@@ -40,7 +40,7 @@ pub fn get_pending_operations(
                 None => return Err(format_err!("missing protocol for mempool current state"))
             };
 
-            Ok(PendingOperations {
+            Ok(MempoolOperations {
                 applied: convert_applied(&mempool.result.applied, &mempool.operations)?,
                 refused: convert_errored(&mempool.result.refused, &mempool.operations, &protocol)?,
                 branch_refused: convert_errored(&mempool.result.branch_refused, &mempool.operations, &protocol)?,
@@ -48,7 +48,7 @@ pub fn get_pending_operations(
                 unprocessed: vec![],
             })
         }
-        None => Ok(PendingOperations::default())
+        None => Ok(MempoolOperations::default())
     }
 }
 
