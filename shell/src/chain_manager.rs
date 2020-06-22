@@ -159,7 +159,7 @@ impl ChainManager {
     pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
-            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone()))
+            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone())),
         )
     }
 
@@ -309,15 +309,28 @@ impl ChainManager {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!(log, "Received current branch");
                                     if message.current_branch().current_head().level() > 0 {
-                                        chain_state.push_missing_block(MissingBlock {
-                                            block_hash: message.current_branch().current_head().predecessor().clone(),
-                                            level: message.current_branch().current_head().level() - 1,
-                                        })?;
+                                        // schedule predecessor
+                                        chain_state.push_missing_block(
+                                            MissingBlock::with_level_guess(
+                                                message.current_branch().current_head().predecessor().clone(),
+                                                message.current_branch().current_head().level() - 1,
+                                            )
+                                        )?;
+
+                                        // schedule current_head
+                                        chain_state.push_missing_block(
+                                            MissingBlock::with_level(
+                                                message.current_branch().current_head().message_hash()?,
+                                                message.current_branch().current_head().level(),
+                                            )
+                                        )?
                                     }
-                                    //TODO: refactor to support non zero level in MissingBlock
-                                    message.current_branch().history().iter().cloned().rev()
-                                        .map(|history_block_hash| chain_state.push_missing_block(history_block_hash.into()))
-                                        .collect::<Result<Vec<_>, _>>()?;
+
+                                    // schedule history - we try to prioritize download from the beginning, so the history is reversed here
+                                    chain_state.push_missing_history(
+                                        message.current_branch().history().iter().cloned().rev().collect(),
+                                        message.current_branch().current_head().level(),
+                                    )?;
 
                                     let peer_current_head = message.current_branch().current_head();
 

@@ -38,7 +38,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     //     test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", "2", "helpers/endorsing_rights")).await;
     //     test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", "2", "helpers/baking_rights")).await;
 
-    //     test_rpc_compare_json(&format!("{}/{}/{}?all&cycle=0", "chains/main/blocks", "2", "helpers/baking_rights")).await;
+    //     test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle=0", "chains/main/blocks", "2", "helpers/baking_rights")).await;
     //     test_rpc_compare_json(&format!("{}/{}/{}?cycle=0", "chains/main/blocks", "2", "helpers/endorsing_rights")).await;
 
     //     test_rpc_compare_json(&format!("{}/{}/{}?level=0", "chains/main/blocks", "2", "helpers/baking_rights")).await;
@@ -120,9 +120,9 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", cycle+preserved_cycles)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, cycle-2) )).await;
 
-            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle+preserved_cycles)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle+preserved_cycles)).await;
+            test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
             //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
 
             // known ocaml node bugs
