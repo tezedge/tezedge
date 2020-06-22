@@ -169,7 +169,6 @@ volumes:
 trigger:
   branch:
     - master
-    - bootstrap_fix
 
 ##############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
