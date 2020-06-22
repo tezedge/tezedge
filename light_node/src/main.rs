@@ -128,6 +128,8 @@ fn block_on_actors(
         env.p2p.listener_port,
         identity,
         tezos_env.version.clone(),
+        env.p2p.disable_mempool,
+        env.p2p.private_node,
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");

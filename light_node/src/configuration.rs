@@ -20,6 +20,8 @@ pub struct P2p {
     pub bootstrap_lookup_addresses: Vec<String>,
     pub initial_peers: Vec<SocketAddr>,
     pub peer_threshold: Threshold,
+    pub disable_mempool: bool,
+    pub private_node: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +152,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("bootstrap-lookup-address")
             .takes_value(true)
             .conflicts_with("peers")
+            .conflicts_with("private-node")
             .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
         .arg(Arg::with_name("log-file")
             .long("log-file")
@@ -173,23 +176,35 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Flag for turn on/off logging in Tezos OCaml runtime"))
+        .arg(Arg::with_name("disable-mempool")
+            .long("disable-mempool")
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Enable or disable mempool"))
+        .arg(Arg::with_name("private-node")
+            .long("private-node")
+            .takes_value(true)
+            .value_name("BOOL")
+            .requires("peers")
+            .conflicts_with("bootstrap-lookup-address")
+            .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
         .arg(Arg::with_name("network")
             .long("network")
             .takes_value(true)
             .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage"])
             .help("Choose the Tezos environment"))
-            .arg(Arg::with_name("p2p-port")
-                .long("p2p-port")
-                .takes_value(true)
-                .value_name("PORT")
-                .help("Socket listening port for p2p for communication with tezos world")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("rpc-port")
-                .long("rpc-port")
-                .takes_value(true)
-                .value_name("PORT")
-                .help("Rust server RPC port for communication with rust node")
-                .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+        .arg(Arg::with_name("p2p-port")
+            .long("p2p-port")
+            .takes_value(true)
+            .value_name("PORT")
+            .help("Socket listening port for p2p for communication with tezos world")
+            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
+        .arg(Arg::with_name("rpc-port")
+            .long("rpc-port")
+            .takes_value(true)
+            .value_name("PORT")
+            .help("Rust server RPC port for communication with rust node")
+            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("enable-testchain")
             .long("enable-testchain")
             .takes_value(true)
@@ -207,52 +222,52 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PORT")
             .help("Port on which the Tezedge node monitoring information will be exposed")
             .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
-            .arg(Arg::with_name("peers")
-                .long("peers")
-                .takes_value(true)
-                .value_name("IP:PORT")
-                .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
-                .validator(|v| {
-                    let err_count = v.split(',')
-                        .map(|ip_port| ip_port.parse::<SocketAddr>())
-                        .filter(|v| v.is_err())
-                        .count();
-                    if err_count == 0 {
-                        Ok(())
-                    } else {
-                        Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
-                    }
-                }))
-            .arg(Arg::with_name("peer-thresh-low")
-                .long("peer-thresh-low")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Minimal number of peers to connect to")
-                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-            .arg(Arg::with_name("peer-thresh-high")
-                .long("peer-thresh-high")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Maximal number of peers to connect to")
-                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-            .arg(Arg::with_name("protocol-runner")
-                .long("protocol-runner")
-                .takes_value(true)
-                .value_name("PATH")
-                .help("Path to a tezos protocol runner executable")
-                .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-            .arg(Arg::with_name("ffi-calls-gc-threshold")
-                .long("ffi-calls-gc-threshold")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Number of ffi calls, after which will be Ocaml garbage collector called")
-                .validator(parse_validator_fn!(i32, "Value must be a valid number")))
-            .arg(Arg::with_name("tokio-threads")
-                .long("tokio-threads")
-                .takes_value(true)
-                .value_name("NUM")
-                .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
-                .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("peers")
+            .long("peers")
+            .takes_value(true)
+            .value_name("IP:PORT")
+            .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
+            .validator(|v| {
+                let err_count = v.split(',')
+                    .map(|ip_port| ip_port.parse::<SocketAddr>())
+                    .filter(|v| v.is_err())
+                    .count();
+                if err_count == 0 {
+                    Ok(())
+                } else {
+                    Err(format!("Value '{}' is not valid. Expected format is: IP1:PORT1,IP2:PORT2,IP3:PORT3", v))
+                }
+            }))
+        .arg(Arg::with_name("peer-thresh-low")
+            .long("peer-thresh-low")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Minimal number of peers to connect to")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("peer-thresh-high")
+            .long("peer-thresh-high")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Maximal number of peers to connect to")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("protocol-runner")
+            .long("protocol-runner")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to a tezos protocol runner executable")
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
+        .arg(Arg::with_name("ffi-calls-gc-threshold")
+            .long("ffi-calls-gc-threshold")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of ffi calls, after which will be Ocaml garbage collector called")
+            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
+        .arg(Arg::with_name("tokio-threads")
+            .long("tokio-threads")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("store-context-actions")
             .long("store-context-actions")
             .takes_value(true)
@@ -261,9 +276,9 @@ pub fn tezos_app() -> App<'static, 'static> {
     app
 }
 
-// Explicitely validates all required parameters
+// Explicitly validates all required parameters
 // Flag Required=true must be handled separately as we parse args twice,
-// once to see only if confi-file arg is present and second time to parse all args
+// once to see only if config-file arg is present and second time to parse all args
 // In case some args are required=true and user provides only config-file,
 // first round of parsing would always fail then
 pub fn validate_required_args(args: &clap::ArgMatches) {
@@ -404,7 +419,7 @@ impl Environment {
                         .map(|address| address.to_string())
                         .collect()
                     ).unwrap_or_else(|| {
-                    if !args.is_present("peers") {
+                    if !args.is_present("peers") && !args.is_present("private-node") {
                         match environment::TEZOS_ENV.get(&tezos_network) {
                             None => panic!("No tezos environment configured for: {:?}", tezos_network),
                             Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
@@ -430,6 +445,14 @@ impl Environment {
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
                 ),
+                private_node: args.value_of("private-node")
+                    .unwrap_or("false")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool"),
+                disable_mempool: args.value_of("disable-mempool")
+                    .unwrap_or("false")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool"),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

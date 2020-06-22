@@ -98,6 +98,10 @@ pub struct PeerManager {
     bootstrap_addresses: Vec<String>,
     /// List of initial peers to connect to
     initial_peers: HashSet<SocketAddr>,
+    /// Indicates that mempool should be disabled
+    disable_mempool: bool,
+    /// Indicates that p2p is working in private mode
+    private_node: bool,
     /// List of potential peers to connect to
     potential_peers: HashSet<SocketAddr>,
     /// Tokio runtime
@@ -135,6 +139,8 @@ impl PeerManager {
                  listener_port: u16,
                  identity: Identity,
                  protocol_version: String,
+                 disable_mempool: bool,
+                 private_node: bool,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
             PeerManager::name(),
@@ -147,7 +153,9 @@ impl PeerManager {
                 threshold,
                 listener_port,
                 identity,
-                protocol_version)),
+                protocol_version,
+                disable_mempool,
+                private_node)),
             )
     }
 
@@ -247,10 +255,10 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)> for PeerManager {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, bool, bool)> for PeerManager {
 
-    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String)) -> Self
+    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, disable_mempool, private_node):
+                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, bool, bool)) -> Self
     {
         PeerManager {
             network_channel,
@@ -262,6 +270,8 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, 
             listener_port,
             identity,
             protocol_version,
+            disable_mempool,
+            private_node,
             rx_run: Arc::new(AtomicBool::new(true)),
             potential_peers: HashSet::new(),
             peers: HashMap::new(),
@@ -462,13 +472,15 @@ impl Receive<ConnectToPeer> for PeerManager {
         } else {
             let peer = self.create_peer(ctx, &msg.address);
             let system = ctx.system.clone();
+            let disable_mempool = self.disable_mempool;
+            let private_node = self.private_node;
 
             self.tokio_executor.spawn(async move {
                 info!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name());
                 match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                     Ok(Ok(stream)) => {
                         info!(system.log(), "Connection successful"; "ip" => msg.address);
-                        peer.tell(Bootstrap::outgoing(stream, msg.address), None);
+                        peer.tell(Bootstrap::outgoing(stream, msg.address, disable_mempool, private_node), None);
                     }
                     Ok(Err(e)) => {
                         info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "reason" => format!("{:?}", e));
@@ -493,7 +505,7 @@ impl Receive<AcceptPeer> for PeerManager {
         } else if self.peers.len() < self.threshold.high {
             info!(ctx.system.log(), "Connection from"; "ip" => msg.address);
             let peer = self.create_peer(ctx, &msg.address);
-            peer.tell(Bootstrap::incoming(msg.stream, msg.address), None);
+            peer.tell(Bootstrap::incoming(msg.stream, msg.address, self.disable_mempool, self.private_node), None);
         } else {
             debug!(ctx.system.log(), "Cannot accept incoming peer connection because peer limit was reached");
             drop(msg.stream); // not needed, just wanted to be explicit here
