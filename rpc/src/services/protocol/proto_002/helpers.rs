@@ -123,8 +123,6 @@ impl RightsContextData {
     pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, context: TezedgeContext) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
-        let preserved_cycles = *constants.preserved_cycles();
-        let blocks_per_roll_snapshot = *constants.blocks_per_roll_snapshot();
 
         // prepare parameters that are used
         let block_level = *parameters.block_level();
@@ -169,17 +167,6 @@ impl RightsContextData {
                 return Err(format_err!("last_roll"));
             }
         };
-
-        // prepare context list from which rollers are selected
-        // first prepare snapshot_level which is used access context list where are stored rollers for requested_cycle
-        let snapshot_level = if requested_cycle < (preserved_cycles as i64) + 2 {
-            block_level
-        } else {
-            let cycle_of_rolls = requested_cycle - (preserved_cycles as i64) - 2;
-            // to calculate order of snapshot add 1 to snapshot index (roll_snapshot)
-            (cycle_of_rolls * (blocks_per_cycle as i64)) + (((roll_snapshot + 1) as i64) * (blocks_per_roll_snapshot as i64))
-        };
-        // let roll_context = Self::get_context_as_hashmap(snapshot_level.try_into()?, list.clone())?;
 
         // get list of rolls from context list
         let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, block_level.try_into()?, requested_cycle, roll_snapshot)? {
