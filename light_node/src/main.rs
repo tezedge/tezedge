@@ -156,6 +156,8 @@ fn block_on_actors(
         env.p2p.listener_port,
         identity,
         tezos_env.version.clone(),
+        env.p2p.disable_mempool,
+        env.p2p.private_node,
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -190,8 +192,6 @@ fn block_on_actors(
         let _ = actor_system.shutdown().await;
         info!(log, "Shutdown complete");
     });
-
-    tokio_runtime.shutdown_timeout(Duration::from_millis(100));
 }
 
 fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironmentConfiguration, log: Logger) -> Result<bool, StorageError> {

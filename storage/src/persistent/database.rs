@@ -138,7 +138,7 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
             IteratorMode::From(key, direction) => self.iterator_cf(cf, rocksdb::IteratorMode::From(&key.encode()?, direction.into()))
         };
 
-        Ok(IteratorWithSchema(iter?, PhantomData))
+        Ok(IteratorWithSchema(iter, PhantomData))
     }
 
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError> {
@@ -146,7 +146,7 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
         let cf = self.cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
-        Ok(IteratorWithSchema(self.prefix_iterator_cf(cf, key)?, PhantomData))
+        Ok(IteratorWithSchema(self.prefix_iterator_cf(cf, key), PhantomData))
     }
 
     fn contains(&self, key: &S::Key) -> Result<bool, DBError> {
@@ -154,7 +154,7 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         let key = key.encode()?;
-        let iter = self.iterator_cf(cf, rocksdb::IteratorMode::From(&key, rocksdb::Direction::Forward))?;
+        let iter = self.iterator_cf(cf, rocksdb::IteratorMode::From(&key, rocksdb::Direction::Forward));
         let contains = if iter.valid() {
             let iter: DBRawIterator = iter.into();
             match iter.key() {

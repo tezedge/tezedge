@@ -128,15 +128,17 @@ pub struct Bootstrap {
     stream: Arc<Mutex<Option<TcpStream>>>,
     address: SocketAddr,
     incoming: bool,
+    disable_mempool: bool,
+    private_node: bool,
 }
 
 impl Bootstrap {
-    pub fn incoming(stream: Arc<Mutex<Option<TcpStream>>>, address: SocketAddr) -> Self {
-        Bootstrap { stream, address, incoming: true }
+    pub fn incoming(stream: Arc<Mutex<Option<TcpStream>>>, address: SocketAddr, disable_mempool: bool, private_node: bool) -> Self {
+        Bootstrap { stream, address, incoming: true, disable_mempool, private_node }
     }
 
-    pub fn outgoing(stream: TcpStream, address: SocketAddr) -> Self {
-        Bootstrap { stream: Arc::new(Mutex::new(Some(stream))), address, incoming: false }
+    pub fn outgoing(stream: TcpStream, address: SocketAddr, disable_mempool: bool, private_node: bool) -> Self {
+        Bootstrap { stream: Arc::new(Mutex::new(Some(stream))), address, incoming: false, disable_mempool, private_node }
     }
 }
 
@@ -268,7 +270,7 @@ impl Receive<Bootstrap> for Peer {
 
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
-            match bootstrap(msg, info, system.log()).await {
+            match bootstrap(msg, info, &system.log()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
@@ -350,7 +352,7 @@ struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey
 async fn bootstrap(
     msg: Bootstrap,
     info: Arc<Local>,
-    log: Logger,
+    log: &Logger,
 ) -> Result<BootstrapOutput, PeerError> {
     let (mut msg_rx, mut msg_tx) = {
         let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");
@@ -422,7 +424,7 @@ async fn bootstrap(
     }
 
     // send metadata
-    let metadata = MetadataMessage::new(false, false);
+    let metadata = MetadataMessage::new(msg.disable_mempool, msg.private_node);
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
