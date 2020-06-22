@@ -52,7 +52,7 @@ impl RpcServer {
 
         // TODO: refactor - call load_current_head in pre_start
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(persistent_storage, sys.log()),
+            current_head: load_current_head(persistent_storage, &sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
@@ -62,7 +62,7 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, sys.log());
+            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
@@ -119,7 +119,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(persistent_storage: &PersistentStorage, log: Logger) -> Option<BlockApplied> {
+fn load_current_head(persistent_storage: &PersistentStorage, log: &Logger) -> Option<BlockApplied> {
     use storage::{BlockStorage, BlockStorageReader, BlockMetaStorage, BlockMetaStorageReader, StorageError};
 
     let block_meta_storage = BlockMetaStorage::new(persistent_storage);

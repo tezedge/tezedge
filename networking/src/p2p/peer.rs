@@ -270,7 +270,7 @@ impl Receive<Bootstrap> for Peer {
 
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
-            match bootstrap(msg, info, system.log()).await {
+            match bootstrap(msg, info, &system.log()).await {
                 Ok(BootstrapOutput(rx, tx, public_key)) => {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name());
                     setup_net(&net, tx).await;
@@ -352,7 +352,7 @@ struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey
 async fn bootstrap(
     msg: Bootstrap,
     info: Arc<Local>,
-    log: Logger,
+    log: &Logger,
 ) -> Result<BootstrapOutput, PeerError> {
     let (mut msg_rx, mut msg_tx) = {
         let stream = msg.stream.lock().await.take().expect("Someone took ownership of the socket before the Peer");

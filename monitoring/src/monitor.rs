@@ -60,7 +60,7 @@ impl Monitor {
         )
     }
 
-    fn process_peer_message(&mut self, msg: PeerMessageReceived, log: Logger) {
+    fn process_peer_message(&mut self, msg: PeerMessageReceived, log: &Logger) {
         use std::mem::size_of_val;
         use tezos_messages::p2p::encoding::peer::PeerMessage;
 
@@ -230,7 +230,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     PeerBootstrapped::Failure { .. } => ()
                 }
             }
-            NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, ctx.system.log()),
+            NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, &ctx.system.log()),
         }
     }
 }

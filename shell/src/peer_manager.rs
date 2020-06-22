@@ -166,7 +166,7 @@ impl PeerManager {
     }
 
     /// Try to discover new remote peers to connect
-    fn discover_peers(&mut self, log: Logger) {
+    fn discover_peers(&mut self, log: &Logger) {
         if self.peers.is_empty() || self.discovery_last.filter(|discovery_last| discovery_last.elapsed() <= DISCOVERY_INTERVAL).is_none() {
             self.discovery_last = Some(Instant::now());
 
@@ -376,7 +376,7 @@ impl Receive<CheckPeerCount> for PeerManager {
             // peer count is too low, try to connect to more peers
             warn!(ctx.system.log(), "Peer count is too low"; "actual" => self.peers.len(), "required" => self.threshold.low);
             if self.potential_peers.len() < self.threshold.low {
-                self.discover_peers(ctx.system.log());
+                self.discover_peers(&ctx.system.log());
             }
 
             let num_required_peers = cmp::max((self.threshold.high + 3 * self.threshold.low) / 4 - self.peers.len(), self.threshold.low);
