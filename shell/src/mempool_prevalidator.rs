@@ -268,7 +268,7 @@ fn process_prevalidation(
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
-    let _ = protocol_controller.init_protocol(false, true)?;
+    let _ = protocol_controller.init_protocol_for_read(prevalidator_mempool_test.rs)?;
     info!(log, "Mempool - protocol context (readonly) initialized for mempool");
 
     // hydrate state
