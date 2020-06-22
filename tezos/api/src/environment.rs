@@ -31,6 +31,7 @@ pub enum TezosEnvironment {
     Carthagenet,
     Mainnet,
     Zeronet,
+    Sandbox,
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +47,7 @@ impl FromStr for TezosEnvironment {
             "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
+            "sandbox" => Ok(TezosEnvironment::Sandbox),
             _ => Err(ParseTezosEnvironmentError(format!("Invalid variant name: {}", s)))
         }
     }
@@ -152,6 +154,23 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: true,
+    });
+
+    env.insert(TezosEnvironment::Sandbox, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2018-06-30T16:07:32Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
+            protocol: "ProtoGenesisGenesisGenesisGenesisGenesisGenesk612im".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "localhost".to_string()
+        ],
+        version: "SANDBOXED_TEZOS".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
+        enable_testchain: false,
     });
 
     env

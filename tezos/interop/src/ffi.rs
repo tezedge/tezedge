@@ -104,8 +104,10 @@ pub fn init_protocol_context(
     genesis: GenesisChain,
     protocol_overrides: ProtocolOverrides,
     commit_genesis: bool,
-    enable_testchain: bool)
-    -> Result<Result<InitProtocolContextResult, TezosStorageInitError>, OcamlError> {
+    enable_testchain: bool,
+    readonly: bool,
+    patch_context: Option<PatchContext>,
+) -> Result<Result<InitProtocolContextResult, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
         // genesis configuration
         let mut genesis_tuple: Tuple = Tuple::new(3);
@@ -116,14 +118,31 @@ pub fn init_protocol_context(
         // protocol overrides
         let protocol_overrides_tuple: Tuple = protocol_overrides_to_ocaml(protocol_overrides)?;
 
+        // configuration
+        let mut configuration: Tuple = Tuple::new(3);
+        configuration.set(0, Value::bool(commit_genesis)).unwrap();
+        configuration.set(1, Value::bool(enable_testchain)).unwrap();
+        configuration.set(2, Value::bool(readonly)).unwrap();
+
+        // patch context
+        let patch_context = match patch_context {
+            Some(pc) => {
+                let mut patch_context: Tuple = Tuple::new(2);
+                patch_context.set(0, Str::from(pc.key.as_str()).into()).unwrap();
+                patch_context.set(1, Str::from(pc.json.as_str()).into()).unwrap();
+                Value::some(Value::from(patch_context))
+            }
+            None => Value::none()
+        };
+
         let ocaml_function = ocaml::named_value("init_protocol_context").expect("function 'init_protocol_context' is not registered");
         match ocaml_function.call_n_exn(
             [
                 Value::from(Str::from(storage_data_dir.as_str())),
                 Value::from(genesis_tuple),
                 Value::from(protocol_overrides_tuple),
-                Value::bool(commit_genesis),
-                Value::bool(enable_testchain)
+                Value::from(configuration),
+                patch_context,
             ]
         ) {
             Ok(result) => {
@@ -197,7 +216,6 @@ pub fn genesis_result_data(context_hash: RustBytes, chain_id: RustBytes, protoco
 }
 
 /// Applies block to context
-/// - apply_block_request see [tezos_api::ffi:ApplyBlockRequest]
 pub fn apply_block(apply_block_request: ApplyBlockRequest) -> Result<Result<ApplyBlockResponse, CallError>, OcamlError> {
     call(String::from("apply_block"), apply_block_request)
 }

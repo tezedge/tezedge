@@ -6,8 +6,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use failure::Fail;
+use slog::{info, Logger};
 
 use tezos_api::identity::Identity;
+use tezos_client::client;
 
 #[derive(Fail, Debug)]
 pub enum IdentityError {
@@ -56,4 +58,31 @@ pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), Identit
     fs::write(&path, &identity_json)?;
 
     Ok(())
+}
+
+/// Ensures (load or create) identity exists according to the configuration
+pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: Logger) -> Result<Identity, IdentityError> {
+    if identity_cfg.identity_json_file_path.exists() {
+        load_identity(&identity_cfg.identity_json_file_path)
+    } else {
+        info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
+
+        // TODO: TE-74 will be replace with rust version without protocol_runner
+        match client::generate_identity(identity_cfg.expected_pow) {
+            Ok(identity) => {
+                info!(log, "Identity successfully generated");
+                match store_identity(&identity_cfg.identity_json_file_path, &identity) {
+                    Ok(()) => {
+                        info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
+                        Ok(identity)
+                    }
+                    Err(e) => Err(e)
+                }
+            }
+            Err(e) => return Err(IdentityError::ServiceError {
+                error: e.into(),
+                message: "Failed to generate identity",
+            })
+        }
+    }
 }

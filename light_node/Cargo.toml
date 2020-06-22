@@ -24,6 +24,8 @@ tokio = { version = "0.2", features = ["rt-threaded", "signal"] }
 # Local dependencies
 logging = { path = "../logging" }
 tezos_api = { path = "../tezos/api" }
+# TODO: TE-74 - remove deps
+tezos_client = { path = "../tezos/client" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 crypto = { path = "../crypto" }

@@ -7,90 +7,123 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use jsonpath::Selector;
+use riker::actors::*;
 use riker::system::SystemBuilder;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::{Drain, Level, Logger, warn};
+use slog::Logger;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::HashType;
+use shell::chain_feeder::ChainFeeder;
 use shell::context_listener::ContextListener;
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, resolve_storage_init_chain_data, store_commit_genesis_result};
+use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data};
 use storage::context::{ContextApi, ContextIndex, TezedgeContext};
-use storage::persistent::ContextList;
+use storage::persistent::{ContextList, PersistentStorage};
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CallError, FfiMessage, RustBytes, TezosRuntimeConfiguration};
-use tezos_client::client;
-use tezos_context::channel::*;
-use tezos_interop::ffi;
+use tezos_api::ffi::{ApplyBlockRequest, FfiMessage, RustBytes, TezosRuntimeConfiguration};
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_wrapper::service::IpcEvtServer;
+use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
+use tezos_messages::p2p::encoding::operations_for_blocks;
+use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+
+mod common;
 
 #[test]
-fn test_apply_block_and_check_context() -> Result<(), failure::Error> {
+fn test_actors_apply_blocks_and_check_context() -> Result<(), failure::Error> {
 
     // logger
-    let log = create_logger();
-
-    // storage
-    let storage_db_path = "__shell_context_listener_test_apply_blocks";
-    let context_db_path = "__shell_context_listener_test_apply_blocks_context";
-    let tmp_storage = TmpStorage::create(common::prepare_empty_dir(storage_db_path))?;
-    let persistent_storage = tmp_storage.storage();
-    let mut block_storage = BlockStorage::new(&persistent_storage);
-    let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
-    let mut operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level.clone());
 
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
 
-    // run event ipc server
-    let event_server = IpcEvtServer::new();
-    let evt_socket_path = event_server.client_path();
+    // storage
+    let storage_db_path = "__shell_context_listener_test_apply_blocks";
+    let context_db_path = common::prepare_empty_dir("__shell_context_listener_test_apply_blocks_context");
+    let tmp_storage = TmpStorage::create(common::prepare_empty_dir(storage_db_path))?;
+    let persistent_storage = tmp_storage.storage();
+    let mut block_storage = BlockStorage::new(&persistent_storage);
+    let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let mut operations_storage = OperationsStorage::new(&persistent_storage);
+    let mut operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
 
-    // run context_event callback listener
-    let event_thread = {
-        let log = log.clone();
-        let evt_socket_path = evt_socket_path.clone();
-        // enable context event to receive
-        enable_context_channel();
-        thread::spawn(move || {
-            match tezos_wrapper::service::process_protocol_events(&evt_socket_path) {
-                Ok(()) => (),
-                Err(err) => {
-                    warn!(log, "Error while processing protocol events"; "reason" => format!("{:?}", err))
-                }
-            }
-        })
+    let storage_db_path = PathBuf::from(storage_db_path);
+    let context_db_path = PathBuf::from(context_db_path);
+    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, log.clone())
+        .expect("Failed to resolve init storage chain data");
+
+    // protocol runner endpoint
+    let protocol_runner = PathBuf::from("no_executable_protocol_runnner");
+    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<common::TestProtocolRunner>::new(
+        "test_protocol_runner_endpoint",
+        ProtocolEndpointConfiguration::new(
+            TezosRuntimeConfiguration {
+                log_enabled: false,
+                no_of_ffi_calls_treshold_for_gc: 50,
+                debug_mode: false,
+            },
+            tezos_env.clone(),
+            false,
+            &context_db_path,
+            &protocol_runner,
+            log_level.clone(),
+            true,
+        ),
+        log.clone(),
+    );
+    let (protocol_commands, protocol_events) = match protocol_runner_endpoint.start() {
+        Ok(_) => {
+            let ProtocolRunnerEndpoint {
+                commands,
+                events,
+                ..
+            } = protocol_runner_endpoint;
+            (commands, events)
+        }
+        Err(e) => panic!("Error to start test protocol runner: {:?}", e)
     };
 
-    // run context_listener actor
+    // run actor's
     let actor_system = SystemBuilder::new().name("test_apply_block_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, event_server, log.clone(), false).expect("Failed to create context event listener");
+    let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+    let _ = ContextListener::actor(&actor_system, &persistent_storage, protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
+    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, protocol_commands, log.clone()).expect("Failed to create chain feeder");
 
-    // run apply blocks
-    let _ = apply_blocks_like_chain_feeder(
-        &mut block_storage,
-        &mut block_meta_storage,
-        &mut operations_meta_storage,
-        tezos_env,
-        storage_db_path,
-        context_db_path,
-        log.clone(),
-    )?;
-    // assert!(result.is_ok());
+    // prepare data for apply blocks and wait for current head
+    assert!(
+        apply_blocks_with_chain_feeder(
+            &mut block_storage,
+            &mut block_meta_storage,
+            &mut operations_storage,
+            &mut operations_meta_storage,
+            tezos_env,
+            log.clone(),
+        ).is_ok()
+    );
 
     // clean up
     // shutdown events listening
-    tezos_context::channel::context_send(ContextAction::Shutdown)?;
-
-    assert!(event_thread.join().is_ok());
+    thread::sleep(Duration::from_secs(3));
+    shell_channel.tell(
+        Publish {
+            msg: ShuttingDown.into(),
+            topic: ShellChannelTopic::ShellCommands.into(),
+        }, None,
+    );
+    thread::sleep(Duration::from_secs(2));
     let _ = actor_system.shutdown();
 
-    // check context 0/1/2
+    // check context
+    check_context(&persistent_storage)
+}
+
+fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::Error> {
     let context = TezedgeContext::new(
         BlockStorage::new(&persistent_storage),
         persistent_storage.context_storage(),
@@ -175,59 +208,16 @@ fn assert_ctxt(ctxt: HashMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: Strin
     }
 }
 
-fn apply_blocks_like_chain_feeder(
+fn apply_blocks_with_chain_feeder(
     block_storage: &mut BlockStorage,
     block_meta_storage: &mut BlockMetaStorage,
+    operations_storage: &mut OperationsStorage,
     operations_meta_storage: &mut OperationsMetaStorage,
     tezos_env: &TezosEnvironmentConfiguration,
-    storage_db_path: &str,
-    context_db_path: &str,
     log: Logger) -> Result<(), failure::Error> {
-    ffi::change_runtime_configuration(
-        TezosRuntimeConfiguration {
-            debug_mode: false,
-            log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-        }
-    ).unwrap().unwrap();
+    let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
-    // init context
-    let storage_db_path_buf = PathBuf::from(storage_db_path);
-    let context_db_path_buf = PathBuf::from(context_db_path);
-    let init_storage_data = resolve_storage_init_chain_data(
-        &tezos_env,
-        &storage_db_path_buf,
-        &context_db_path_buf,
-        log.clone(),
-    )?;
-    let (chain_id, .., genesis_context_hash) = init_test_protocol_context(tezos_env, context_db_path);
-
-    // store genesis
-    let _ = initialize_storage_with_genesis_block(
-        block_storage,
-        &init_storage_data,
-        &tezos_env,
-        &genesis_context_hash,
-        log.clone(),
-    )?;
-
-    // store genesis result
-    let commit_data = client::genesis_result_data(
-        &genesis_context_hash,
-        &chain_id,
-        &tezos_env.genesis_protocol()?,
-        tezos_env.genesis_additional_data().max_operations_ttl,
-    )?;
-    let _ = store_commit_genesis_result(
-        block_storage,
-        block_meta_storage,
-        operations_meta_storage,
-        &init_storage_data,
-        commit_data,
-    )?;
-
-    // let's apply stored requests
-    let mut last_result: Option<ApplyBlockResponse> = None;
+    // let's insert stored requests to database
     for request in test_data::apply_block_requests_until_1326() {
 
         // parse request
@@ -241,87 +231,43 @@ fn apply_blocks_like_chain_feeder(
             header: Arc::new(header),
         };
         block_storage.put_block_header(&block)?;
+        block_meta_storage.put_block_header(&block, &chain_id, log.clone())?;
+        operations_meta_storage.put_block_header(&block, &chain_id)?;
 
-        // apply request
-        let result = match ffi::apply_block(request) {
-            Ok(result) => result,
-            Err(e) => {
-                Err(CallError::FailedToCall {
-                    parsed_error_message: Some(format!("Unknown OcamlError: {:?}", e))
-                })
-            }
-        };
-        assert!(result.is_ok());
-        last_result = Some(result.unwrap());
-    }
-
-    Ok(assert!(last_result.is_some()))
-}
-
-fn init_test_protocol_context(tezos_env: &TezosEnvironmentConfiguration, dir_name: &str) -> (ChainId, BlockHash, ContextHash) {
-    let result = client::init_protocol_context(
-        common::prepare_empty_dir(dir_name),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-    ).unwrap();
-
-    let genesis_context_hash = match result.genesis_commit_hash {
-        None => panic!("we needed commit_genesis and here should be result of it"),
-        Some(cr) => cr
-    };
-
-    (
-        tezos_env.main_chain_id().expect("invalid chain id"),
-        tezos_env.genesis_header_hash().expect("invalid genesis header hash"),
-        genesis_context_hash,
-    )
-}
-
-/// Empty message
-#[derive(Serialize, Deserialize, Debug)]
-struct NoopMessage;
-
-fn create_logger() -> Logger {
-    let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
-
-    Logger::root(drain, slog::o!())
-}
-
-mod common {
-    use std::env;
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    pub fn prepare_empty_dir(dir_name: &str) -> String {
-        let path = test_storage_dir_path(dir_name);
-        if path.exists() {
-            fs::remove_dir_all(&path).unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
+        // store operations to db
+        let operations = request.operations.clone();
+        for (idx, ops) in operations.iter().enumerate() {
+            let opb = OperationsForBlock::new(block.hash.clone(), idx as i8);
+            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, operations_for_blocks::Path::Op, ops.clone());
+            operations_storage.put_operations(&msg)?;
+            operations_meta_storage.put_operations(&msg)?;
         }
-        fs::create_dir_all(&path).unwrap_or_else(|_| panic!("Failed to create directory: {:?}", &path));
-        String::from(path.to_str().unwrap())
+        assert!(operations_meta_storage.is_complete(&block.hash)?);
     }
 
-    pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
-        let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-        let path = Path::new(out_dir.as_str())
-            .join(Path::new(dir_name))
-            .to_path_buf();
-        path
+    // wait for applied blocks
+    loop {
+        let head = block_meta_storage.load_current_head()?;
+        match head {
+            None => (),
+            Some((h, _)) => {
+                let meta = block_meta_storage.get(&h)?;
+                if let Some(m) = meta {
+                    let header = block_storage.get(&h).expect("failed to read current head").expect("current head not found");
+                    if m.level() >= 1326 {
+                        // TE-168: check if context is also asynchronously stored
+                        let context_hash = header.header.context();
+                        let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");
+                        if found_by_context_hash.is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    pub fn is_ocaml_log_enabled() -> bool {
-        env::var("OCAML_LOG_ENABLED")
-            .unwrap_or("false".to_string())
-            .parse::<bool>().unwrap()
-    }
-
-    pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
-        env::var("OCAML_CALLS_GC")
-            .unwrap_or("2000".to_string())
-            .parse::<i32>().unwrap()
-    }
+    Ok(())
 }
 
 mod test_data {

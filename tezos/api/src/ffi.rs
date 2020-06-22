@@ -23,6 +23,7 @@ pub type RustBytes = Vec<u8>;
 
 /// Trait for binary encoding messages for ffi.
 pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
+
     #[inline]
     fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
         binary_writer::write(&self, Self::encoding())
@@ -52,6 +53,19 @@ pub struct GenesisChain {
 pub struct ProtocolOverrides {
     pub forced_protocol_upgrades: Vec<(i32, String)>,
     pub voted_protocol_overrides: Vec<(String, String)>,
+}
+
+/// Patch_context key json
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PatchContext {
+    pub key: String,
+    pub json: String,
+}
+
+impl fmt::Debug for PatchContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "key: {}, json: {:?}", &self.key, &self.json)
+    }
 }
 
 /// Test chain information

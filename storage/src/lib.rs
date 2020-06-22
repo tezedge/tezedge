@@ -13,7 +13,7 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TezosEnvironmentConfiguration, TezosEnvironmentError};
-use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
+use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
@@ -151,13 +151,19 @@ impl slog::Value for StorageError {
 pub struct StorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,
+    pub patch_context: Option<PatchContext>,
 }
 
 /// Resolve main chain id and genesis header from configuration
-pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration, storage_db_path: &PathBuf, context_db_path: &PathBuf, log: Logger) -> Result<StorageInitInfo, StorageError> {
+pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration,
+                                       storage_db_path: &PathBuf,
+                                       context_db_path: &PathBuf,
+                                       patch_context: &Option<PatchContext>,
+                                       log: Logger) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
         chain_id: tezos_env.main_chain_id()?,
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
+        patch_context: patch_context.clone(),
     };
 
     info!(
@@ -167,7 +173,11 @@ pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration
         "init_data.chain_id" => format!("{:?}", HashType::ChainId.bytes_to_string(&init_data.chain_id)),
         "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.bytes_to_string(&init_data.genesis_block_header_hash)),
         "storage_db_path" => format!("{:?}", storage_db_path),
-        "context_db_path" => format!("{:?}", context_db_path)
+        "context_db_path" => format!("{:?}", context_db_path),
+        "patch_context" => match patch_context {
+                Some(pc) => format!("{:?}", pc),
+                None => "-none-".to_string()
+        },
     );
     Ok(init_data)
 }

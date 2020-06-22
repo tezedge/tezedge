@@ -4,8 +4,8 @@
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    CommitGenesisResult,
-    ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, ProtocolOverrides, TezosGenerateIdentityError,
+    CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult,
+    PatchContext, ProtocolOverrides, TezosGenerateIdentityError,
     TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
 };
 use tezos_api::identity::Identity;
@@ -30,8 +30,11 @@ pub fn init_protocol_context(
     genesis: GenesisChain,
     protocol_overrides: ProtocolOverrides,
     commit_genesis: bool,
-    enable_testchain: bool) -> Result<InitProtocolContextResult, TezosStorageInitError> {
-    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain) {
+    enable_testchain: bool,
+    readonly: bool,
+    patch_context: Option<PatchContext>,
+) -> Result<InitProtocolContextResult, TezosStorageInitError> {
+    match ffi::init_protocol_context(storage_data_dir, genesis, protocol_overrides, commit_genesis, enable_testchain, readonly, patch_context) {
         Ok(result) => Ok(result?),
         Err(e) => {
             Err(TezosStorageInitError::InitializeError {
@@ -88,7 +91,7 @@ pub fn apply_block(
         .build().unwrap();
 
     match ffi::apply_block(request) {
-        Ok(result) => result.map_err(|e|ApplyBlockError::from(e)),
+        Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
         Err(e) => {
             Err(ApplyBlockError::FailedToApplyBlock {
                 message: format!("Unknown OcamlError: {:?}", e)

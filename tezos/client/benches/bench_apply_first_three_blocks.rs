@@ -109,6 +109,8 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
         tezos_env.protocol_overrides.clone(),
         true,
         false,
+        false,
+        None,
     ).unwrap();
 
     let genesis_commit_hash = match result.clone().genesis_commit_hash {
