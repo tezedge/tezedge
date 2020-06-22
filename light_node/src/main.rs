@@ -192,8 +192,6 @@ fn block_on_actors(
         let _ = actor_system.shutdown().await;
         info!(log, "Shutdown complete");
     });
-
-    tokio_runtime.shutdown_timeout(Duration::from_secs(500));
 }
 
 fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironmentConfiguration, log: Logger) -> Result<bool, StorageError> {
