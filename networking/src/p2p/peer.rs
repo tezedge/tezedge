@@ -128,15 +128,17 @@ pub struct Bootstrap {
     stream: Arc<Mutex<Option<TcpStream>>>,
     address: SocketAddr,
     incoming: bool,
+    disable_mempool: bool,
+    private_node: bool,
 }
 
 impl Bootstrap {
-    pub fn incoming(stream: Arc<Mutex<Option<TcpStream>>>, address: SocketAddr) -> Self {
-        Bootstrap { stream, address, incoming: true }
+    pub fn incoming(stream: Arc<Mutex<Option<TcpStream>>>, address: SocketAddr, disable_mempool: bool, private_node: bool) -> Self {
+        Bootstrap { stream, address, incoming: true, disable_mempool, private_node }
     }
 
-    pub fn outgoing(stream: TcpStream, address: SocketAddr) -> Self {
-        Bootstrap { stream: Arc::new(Mutex::new(Some(stream))), address, incoming: false }
+    pub fn outgoing(stream: TcpStream, address: SocketAddr, disable_mempool: bool, private_node: bool) -> Self {
+        Bootstrap { stream: Arc::new(Mutex::new(Some(stream))), address, incoming: false, disable_mempool, private_node }
     }
 }
 
@@ -422,7 +424,7 @@ async fn bootstrap(
     }
 
     // send metadata
-    let metadata = MetadataMessage::new(false, false);
+    let metadata = MetadataMessage::new(msg.disable_mempool, msg.private_node);
     timeout(IO_TIMEOUT, msg_tx.write_message(&metadata)).await??;
 
     // receive metadata
