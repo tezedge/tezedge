@@ -60,12 +60,12 @@ impl RpcServer {
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
-            Props::new_args((shell_channel, shared_state.clone())),
+            Props::new_args((shell_channel.clone(), shared_state.clone())),
         )?;
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
+            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), shell_channel, persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
