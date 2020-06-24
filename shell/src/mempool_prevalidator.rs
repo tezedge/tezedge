@@ -25,7 +25,7 @@ use crypto::hash::{BlockHash, HashType, OperationHash};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
 use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{PrevalidatorWrapper, ValidateOperationResult};
+use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper, ValidateOperationResult};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::Operation;
@@ -230,6 +230,15 @@ impl MempoolState {
     fn can_handle_pending(&self) -> bool {
         !self.pending.is_empty() && self.prevalidator.is_some()
     }
+
+    /// Indicates, that the operation was allready validated and is in the mempool
+    fn is_already_validated(&self, operation_hash: &OperationHash) -> bool {
+        let mut contains = self.validation_result.applied.clone().into_iter().filter(|k| &k.hash == operation_hash).collect::<Vec<Applied>>().is_empty();
+        contains &= self.validation_result.refused.clone().into_iter().filter(|k| &k.hash == operation_hash).collect::<Vec<Errored>>().is_empty();
+        contains &= self.validation_result.branch_refused.clone().into_iter().filter(|k| &k.hash == operation_hash).collect::<Vec<Errored>>().is_empty();
+        contains &= self.validation_result.branch_delayed.clone().into_iter().filter(|k| &k.hash == operation_hash).collect::<Vec<Errored>>().is_empty();
+        !contains
+    }
 }
 
 /// Possible errors for prevalidation
@@ -310,10 +319,14 @@ fn process_prevalidation(
                     if let Some(operation) = operation {
 
                         // TODO: handle and validate pre_filter with operation?
-                        // TODO: handle already_handled?
+                        
+                        if state.is_already_validated(&oph) {
+                            debug!(log, "Mempool - received validate operation event - operation allready validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
+                        } else {
+                            // just and operations to pendings
+                            state.add_to_pending(&oph, operation.operation());
+                        }
 
-                        // just and operations to pendings
-                        state.add_to_pending(&oph, operation.operation());
                     } else {
                         warn!(log, "Mempool - received validate operation event - no data in mempool storage?"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                     }
