@@ -300,6 +300,18 @@ environment:
   BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
 
 steps:
+# clenup data from previous test
+- name: cleanup-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - rm -rf /tmp/sandbox/light-node
+    - rm -rf /tmp/sandbox/tezos-node
+    - rm -rf /tmp/sandbox/tezos-client
+
 # run empty rust node and wait for it
 - name: tezedge-node-sandbox-run
   image: simplestakingcom/tezedge-ci-builder:latest
