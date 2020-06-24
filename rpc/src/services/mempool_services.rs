@@ -1,15 +1,20 @@
 use std::collections::HashMap;
+use std::time::{Duration, SystemTime};
 
 use failure::format_err;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::Logger;
+use riker::actors::*;
 
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::CurrentMempoolState;
+use shell::shell_channel::{CurrentMempoolState, ShellChannelRef, ShellChannelTopic, MempoolOperationReceived};
+use storage::MempoolStorage;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::p2p::encoding::prelude::Operation;
+use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
+use tezos_messages::p2p::binary_message::{MessageHash, BinaryMessage};
+use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -112,6 +117,35 @@ fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, O
     }
 
     Ok(result)
+}
+
+pub fn inject_operation(
+    operation_data: &str,
+    persistent_storage: &PersistentStorage,
+    _state: &RpcCollectedStateRef,
+    shell_channel: ShellChannelRef,
+    _log: &Logger) -> Result<String, failure::Error> {
+
+    let mut mempool_storage = MempoolStorage::new(persistent_storage);
+
+    let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
+    let operation_message = OperationMessage::new(operation.clone());
+    let ttl = SystemTime::now() + Duration::from_secs(60);
+    let operation_hash = operation.message_hash()?;
+
+    mempool_storage.put(MempoolOperationType::Pending, operation_message, ttl)?;
+
+    shell_channel.tell(
+        Publish {
+            msg: MempoolOperationReceived {
+                operation_hash: operation_hash.clone(),
+                operation_type: MempoolOperationType::Pending,
+            }.into(),
+            topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
+
+    Ok(HashType::OperationHash.bytes_to_string(&operation_hash))
+
 }
 
 #[cfg(test)]
