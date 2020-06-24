@@ -407,6 +407,7 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 500 # also check parameter --stop=
   WRK_TEST_BLOCK_HEADER: 100
+  WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
@@ -521,7 +522,7 @@ steps:
   pull: always
   user: root
   commands:
-    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --wrk-duration=$${WRK_TEST_DURATION}
 
 - name: tz-indexer-tezedge
   image: blockwatch/tzindex:latest
@@ -578,7 +579,7 @@ steps:
   pull: always
   user: root
   commands:
-    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --wrk-duration=$${WRK_TEST_DURATION}
   when:
     ref:
     - refs/pull/*/head
