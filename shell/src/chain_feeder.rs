@@ -255,10 +255,11 @@ fn feed_chain_to_protocol(
                     // or in case no successor is available do nothing.
                     match current_head_meta.successor() {
                         Some(successor_hash) => {
+                            info!(log, "Current head is already applied, so we should move to successor"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash), "successor" => block_hash_encoding.bytes_to_string(&successor_hash));
                             current_head_hash = successor_hash.clone();
                             continue;
                         }
-                        None => ( /* successor is not yet available, we do nothing for now */ )
+                        None => info!(log, "Successor is not yet available, we do nothing for now (1)"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                     }
                 } else {
                     // Current head is not applied, so we should apply it now.
@@ -325,13 +326,13 @@ fn feed_chain_to_protocol(
                                         current_head_hash = successor_hash.clone();
                                         continue;
                                     }
-                                    None => ( /* successor is not yet available, we do nothing for now */ )
+                                    None => info!(log, "Successor is not yet available, we do nothing for now (2)"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                                 }
                             } else {
-                                // we don't have all operations available, do nothing
+                                warn!(log, "We don't have all operations available, do nothing"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                             }
                         }
-                        None => ( /* it's possible that data was not yet written do the storage, so don't panic! */ )
+                        None => warn!(log, "It's possible that data was not yet written do the storage, so don't panic!"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
                     }
                 }
             }

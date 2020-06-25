@@ -699,6 +699,7 @@ impl ChainManager {
             "Hydrating completed successfully";
             "local_head" => local_head,
             "local_head_level" => local_head_level,
+            "has_missing_blocks" => self.chain_state.has_missing_blocks()
         );
         self.stats.hydrated_state_last = Some(Instant::now());
     }

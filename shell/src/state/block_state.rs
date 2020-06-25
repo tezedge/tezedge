@@ -43,7 +43,7 @@ impl BlockchainState {
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(
-            MissingBlock::with_level(
+            MissingBlock::with_level_guess(
                 block_header.header.predecessor().clone(),
                 block_header.header.level() - 1,
             )
