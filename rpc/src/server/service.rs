@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{chain_id_to_b58_string};
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
 use storage::block_storage::BlockJsonData;
 use storage::persistent::{PersistentStorage, ContextMap};
 use storage::skip_list::Bucket;
-use storage::context::{TezedgeContext, ContextIndex};
+use storage::context::{TezedgeContext, ContextIndex, ContextApi};
 use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
@@ -39,7 +39,7 @@ pub struct Cycle {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CycleJson {
-    roll_snapshot: Option<usize>,
+    roll_snapshot: Option<i16>,
     random_seed: Option<String>,
 }
 
@@ -298,18 +298,23 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList, persistent_
     Ok(Some(cycles))
 }
 
-pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: ContextList) -> Result<Option<CycleJson>, failure::Error> {
+pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<CycleJson>, failure::Error> {
     let level: usize = level.parse()?;
 
-    let list = list.read().expect("mutex poisoning");
-    let random_seed = list.get_key(level, &format!("data/cycle/{}/random_seed", &cycle_id));
-    let roll_snapshot = list.get_key(level, &format!("data/cycle/{}/roll_snapshot", &cycle_id));
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
+    let context_index = ContextIndex::new(Some(level.try_into()?), None);
+
+    let random_seed = context.get_key(&context_index, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?; // list.get_key(level, &format!("data/cycle/{}/random_seed", &cycle_id));
+    let roll_snapshot = context.get_key(&context_index, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?;
+
+    println!("Roll sanpshot: {:?}", roll_snapshot);
     match (random_seed, roll_snapshot) {
-        (Ok(Some(random_seed)), Ok(Some(roll_snapshot))) => {
+        (Some(random_seed), Some(roll_snapshot)) => {
             let cycle_json = CycleJson {
                 random_seed: if let Bucket::Exists(value) = random_seed { Some(hex::encode(value).to_string()) } else { None },
-                roll_snapshot: if let Bucket::Exists(value) = roll_snapshot { hex::encode(value).parse().ok() } else { None },
+                roll_snapshot: if let Bucket::Exists(value) = roll_snapshot { Some(num_from_slice!(value, 0, i16)) } else { None },
             };
+            println!("{:?}", cycle_json);
             Ok(Some(cycle_json))
         }
         _ => bail!("Context data not found")
