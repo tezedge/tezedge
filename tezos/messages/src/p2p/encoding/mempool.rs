@@ -19,6 +19,20 @@ pub struct Mempool {
     body: BinaryDataCache,
 }
 
+impl Mempool {
+    pub fn new(known_valid: Vec<OperationHash>, pending: Vec<OperationHash>) -> Self {
+        Mempool {
+            known_valid,
+            pending,
+            body: Default::default(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.known_valid.is_empty() && self.pending.is_empty()
+    }
+}
+
 impl HasEncoding for Mempool {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
@@ -30,7 +44,7 @@ impl HasEncoding for Mempool {
 
 impl CachedData for Mempool {
     #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
+    fn cache_reader(&self) -> &dyn CacheReader {
         &self.body
     }
 

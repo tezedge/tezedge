@@ -15,10 +15,11 @@ pub mod chain_feeder;
 pub mod context_listener;
 pub mod chain_manager;
 pub mod peer_manager;
+pub mod mempool_prevalidator;
 
 /// This struct holds info about head and his level
 #[derive(Clone, Debug)]
-pub(crate) struct Head {
+pub struct Head {
     /// BlockHash of head.
     hash: BlockHash,
     /// Level of the head.
@@ -108,5 +109,4 @@ pub(crate) mod subscription {
                 topic: All.into(),
             }, None);
     }
-
 }

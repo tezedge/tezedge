@@ -5,11 +5,11 @@ use std::time::SystemTime;
 
 use failure::Error;
 
+use storage::mempool_storage::MempoolOperationType;
 use storage::MempoolStorage;
 use storage::tests_common::TmpStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]
@@ -19,11 +19,15 @@ fn mempool_storage_read_write() -> Result<(), Error> {
 
     let operation = make_test_operation_message()?;
     let operation_hash = operation.message_hash()?.clone();
-    let ttl= SystemTime::now();
+    let ttl = SystemTime::now();
 
     storage.put_known_valid(operation.clone(), ttl)?;
-    let block_header_res = storage.get(MempoolOperationType::KnownValid, operation_hash)?.unwrap();
+    let block_header_res = storage.get(MempoolOperationType::KnownValid, operation_hash.clone())?.unwrap();
     assert_eq!(block_header_res, operation);
+
+    assert!(storage.find(&operation_hash)?.is_some());
+    storage.delete(&operation_hash)?;
+    assert!(storage.find(&operation_hash)?.is_none());
 
     Ok(())
 }

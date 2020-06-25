@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 
@@ -11,7 +12,7 @@ use failure::Fail;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use lazy_static::lazy_static;
 use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
@@ -23,7 +24,6 @@ pub type RustBytes = Vec<u8>;
 
 /// Trait for binary encoding messages for ffi.
 pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
-
     #[inline]
     fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
         binary_writer::write(&self, Self::encoding())
@@ -162,6 +162,256 @@ impl FfiMessage for ApplyBlockResponse {
     fn encoding() -> &'static Encoding {
         &APPLY_BLOCK_RESPONSE_ENCODING
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct PrevalidatorWrapper {
+    pub chain_id: ChainId,
+    pub protocol: ProtocolHash,
+}
+
+impl fmt::Debug for PrevalidatorWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let chain_hash_encoding = HashType::ChainId;
+        let protocol_hash_encoding = HashType::ProtocolHash;
+        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}]",
+               chain_hash_encoding.bytes_to_string(&self.chain_id),
+               protocol_hash_encoding.bytes_to_string(&self.protocol)
+        )
+    }
+}
+
+lazy_static! {
+    pub static ref PREVALIDATOR_WRAPPER_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("protocol", Encoding::Hash(HashType::ProtocolHash)),
+    ]);
+}
+
+impl FfiMessage for PrevalidatorWrapper {
+    fn encoding() -> &'static Encoding {
+        &PREVALIDATOR_WRAPPER_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct BeginConstructionRequest {
+    pub chain_id: ChainId,
+    pub predecessor: BlockHeader,
+    pub protocol_data: Option<Vec<u8>>,
+}
+
+lazy_static! {
+    pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
+    ]);
+}
+
+impl FfiMessage for BeginConstructionRequest {
+    fn encoding() -> &'static Encoding {
+        &BEGIN_CONSTRUCTION_REQUEST_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct ValidateOperationRequest {
+    pub prevalidator: PrevalidatorWrapper,
+    pub operation: Operation,
+}
+
+lazy_static! {
+    pub static ref VALIDATE_OPERATION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
+            Field::new("operation", Encoding::dynamic(Operation::encoding())),
+    ]);
+}
+
+impl FfiMessage for ValidateOperationRequest {
+    fn encoding() -> &'static Encoding {
+        &VALIDATE_OPERATION_REQUEST_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct ValidateOperationResponse {
+    pub prevalidator: PrevalidatorWrapper,
+    pub result: ValidateOperationResult,
+}
+
+lazy_static! {
+    pub static ref VALIDATE_OPERATION_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
+            Field::new("result", VALIDATE_OPERATION_RESULT_ENCODING.clone()),
+    ]);
+}
+
+impl FfiMessage for ValidateOperationResponse {
+    fn encoding() -> &'static Encoding {
+        &VALIDATE_OPERATION_RESPONSE_ENCODING
+    }
+}
+
+pub type OperationProtocolDataJson = String;
+pub type ErrorListJson = String;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct OperationProtocolDataJsonWithErrorListJson {
+    pub protocol_data_json: OperationProtocolDataJson,
+    pub error_json: ErrorListJson,
+}
+
+#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
+pub struct Applied {
+    pub hash: OperationHash,
+    pub protocol_data_json: OperationProtocolDataJson,
+}
+
+impl fmt::Debug for Applied {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let operation_hash_encoding = HashType::OperationHash;
+        write!(f, "Applied[hash: {}, protocol_data_json: {}]",
+               operation_hash_encoding.bytes_to_string(&self.hash),
+               &self.protocol_data_json
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
+pub struct Errored {
+    pub hash: OperationHash,
+    pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
+}
+
+impl fmt::Debug for Errored {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let operation_hash_encoding = HashType::OperationHash;
+        write!(f, "Errored[hash: {}, protocol_data_json_with_error_json: {:?}]",
+               operation_hash_encoding.bytes_to_string(&self.hash),
+               &self.protocol_data_json_with_error_json
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq, Default)]
+pub struct ValidateOperationResult {
+    pub applied: Vec<Applied>,
+    pub refused: Vec<Errored>,
+    pub branch_refused: Vec<Errored>,
+    pub branch_delayed: Vec<Errored>,
+    // TODO: outedate?
+}
+
+impl ValidateOperationResult {
+    /// Merges result with new one, and returns `true/false` if something was changed
+    pub fn merge(&mut self, new_result: &ValidateOperationResult) -> bool {
+        let mut changed = self.merge_applied(&new_result.applied);
+        changed |= self.merge_refused(&new_result.refused);
+        changed |= self.merge_branch_refused(&new_result.branch_refused);
+        changed |= self.merge_branch_delayed(&new_result.branch_delayed);
+        changed
+    }
+
+    fn merge_applied(&mut self, new_items: &Vec<Applied>) -> bool {
+        let mut changed = false;
+        let mut added = false;
+        let mut m = HashMap::new();
+
+        for a in &self.applied {
+            m.insert(a.hash.clone(), a.clone());
+        }
+        for na in new_items {
+            match m.insert(na.hash.clone(), na.clone()) {
+                Some(_) => changed |= true,
+                None => added |= true,
+            };
+        }
+
+        if added || changed {
+            self.applied = m.values().cloned().collect();
+        }
+        added || changed
+    }
+
+    fn merge_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+        Self::merge_errored(&mut self.refused, new_items)
+    }
+
+    fn merge_branch_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+        Self::merge_errored(&mut self.branch_refused, new_items)
+    }
+
+    fn merge_branch_delayed(&mut self, new_items: &Vec<Errored>) -> bool {
+        Self::merge_errored(&mut self.branch_delayed, new_items)
+    }
+
+    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &Vec<Errored>) -> bool {
+        let mut changed = false;
+        let mut added = false;
+        let mut m = HashMap::new();
+
+        for a in old_items.into_iter() {
+            m.insert(a.hash.clone(), (*a).clone());
+        }
+        for na in new_items {
+            match m.insert(na.hash.clone(), na.clone()) {
+                Some(_) => changed |= true,
+                None => added |= true,
+            };
+        }
+
+        if added || changed {
+            *old_items = m.values().cloned().collect();
+        }
+        added || changed
+    }
+}
+
+lazy_static! {
+    static ref OPERATION_DATA_ERROR_JSON_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("protocol_data_json", Encoding::String),
+            Field::new("error_json", Encoding::String),
+    ]);
+
+    pub static ref VALIDATE_OPERATION_RESULT_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("applied", Encoding::dynamic(Encoding::list(
+                    Encoding::Obj(
+                        vec![
+                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("protocol_data_json", Encoding::String),
+                        ]
+                    )
+                ))
+            ),
+            Field::new("refused", Encoding::dynamic(Encoding::list(
+                    Encoding::Obj(
+                        vec![
+                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
+                        ]
+                    )
+                ))
+            ),
+            Field::new("branch_refused", Encoding::dynamic(Encoding::list(
+                    Encoding::Obj(
+                        vec![
+                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
+                        ]
+                    )
+                ))
+            ),
+            Field::new("branch_delayed", Encoding::dynamic(Encoding::list(
+                    Encoding::Obj(
+                        vec![
+                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
+                        ]
+                    )
+                ))
+            ),
+    ]);
 }
 
 /// Init protocol context result
@@ -383,6 +633,89 @@ impl From<CallError> for ApplyBlockError {
                 message
             },
             CallError::InvalidResponseData { message } => ApplyBlockError::InvalidRequestResponseData {
+                message
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+pub enum BeginConstructionError {
+    #[fail(display = "Failed to begin construction - message: {}!", message)]
+    FailedToBeginConstruction {
+        message: String,
+    },
+    #[fail(display = "Unknown predecessor context - try to apply predecessor at first message: {}!", message)]
+    UnknownPredecessorContext {
+        message: String,
+    },
+    #[fail(display = "Invalid request/response data - message: {}!", message)]
+    InvalidRequestResponseData {
+        message: String,
+    },
+}
+
+impl From<CallError> for BeginConstructionError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { parsed_error_message } => {
+                match parsed_error_message {
+                    None => BeginConstructionError::FailedToBeginConstruction {
+                        message: "unknown".to_string()
+                    },
+                    Some(message) => {
+                        match message.as_str() {
+                            e if e.starts_with("Unknown_predecessor_context") => BeginConstructionError::UnknownPredecessorContext {
+                                message: message.to_string()
+                            },
+                            message => BeginConstructionError::FailedToBeginConstruction {
+                                message: message.to_string()
+                            }
+                        }
+                    }
+                }
+            }
+            CallError::InvalidRequestData { message } => BeginConstructionError::InvalidRequestResponseData {
+                message
+            },
+            CallError::InvalidResponseData { message } => BeginConstructionError::InvalidRequestResponseData {
+                message
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+pub enum ValidateOperationError {
+    #[fail(display = "Failed to validate operation - message: {}!", message)]
+    FailedToValidateOperation {
+        message: String,
+    },
+    #[fail(display = "Invalid request/response data - message: {}!", message)]
+    InvalidRequestResponseData {
+        message: String,
+    },
+}
+
+impl From<CallError> for ValidateOperationError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { parsed_error_message } => {
+                match parsed_error_message {
+                    None => ValidateOperationError::FailedToValidateOperation {
+                        message: "unknown".to_string()
+                    },
+                    Some(message) => {
+                        ValidateOperationError::FailedToValidateOperation {
+                            message: message.to_string()
+                        }
+                    }
+                }
+            }
+            CallError::InvalidRequestData { message } => ValidateOperationError::InvalidRequestResponseData {
+                message
+            },
+            CallError::InvalidResponseData { message } => ValidateOperationError::InvalidRequestResponseData {
                 message
             },
         }

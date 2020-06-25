@@ -224,7 +224,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 match msg {
-                    PeerBootstrapped::Success { peer, peer_id } => if let Some(monitor) = self.peer_monitors.get_mut(peer.uri()) {
+                    PeerBootstrapped::Success { peer, peer_id, .. } => if let Some(monitor) = self.peer_monitors.get_mut(peer.uri()) {
                         monitor.public_key = Some(peer_id);
                     }
                     PeerBootstrapped::Failure { .. } => ()
@@ -268,7 +268,10 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.chain_monitor.process_block_operations(msg.level as usize);
 
             },
-            ShellChannelMsg::ShuttingDown(_) => ()
+            ShellChannelMsg::ShuttingDown(_) => (),
+            // TODO: TE-173: mempool stats
+            ShellChannelMsg::MempoolOperationReceived(_) => (),
+            ShellChannelMsg::MempoolStateChanged(_) => (),
         }
     }
 }

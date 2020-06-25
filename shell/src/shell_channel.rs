@@ -3,12 +3,19 @@
 
 //! Shell channel is used to transmit high level shell messages.
 
+use std::collections::{HashMap, HashSet};
+
 use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
+use storage::mempool_storage::MempoolOperationType;
+use tezos_api::ffi::ValidateOperationResult;
+use tezos_messages::p2p::encoding::prelude::Operation;
+
+use crate::Head;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -43,18 +50,48 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
+// Notify actors that operations should by validated by mempool
+#[derive(Clone, Debug)]
+pub struct MempoolOperationReceived {
+    pub operation_hash: OperationHash,
+    pub operation_type: MempoolOperationType,
+}
+
+#[derive(Clone, Debug)]
+pub struct CurrentMempoolState {
+    pub head: Option<Head>,
+    pub protocol: Option<ProtocolHash>,
+    pub result: ValidateOperationResult,
+    pub operations: HashMap<OperationHash, Operation>,
+    pub pending: HashSet<OperationHash>,
+}
+
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
     BlockApplied(BlockApplied),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
+    MempoolOperationReceived(MempoolOperationReceived),
+    MempoolStateChanged(CurrentMempoolState),
     ShuttingDown(ShuttingDown),
 }
 
 impl From<BlockApplied> for ShellChannelMsg {
     fn from(msg: BlockApplied) -> Self {
         ShellChannelMsg::BlockApplied(msg)
+    }
+}
+
+impl From<MempoolOperationReceived> for ShellChannelMsg {
+    fn from(msg: MempoolOperationReceived) -> Self {
+        ShellChannelMsg::MempoolOperationReceived(msg)
+    }
+}
+
+impl From<CurrentMempoolState> for ShellChannelMsg {
+    fn from(msg: CurrentMempoolState) -> Self {
+        ShellChannelMsg::MempoolStateChanged(msg)
     }
 }
 

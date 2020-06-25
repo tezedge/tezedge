@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::thread;
 use std::time::Duration;
 
 use riker::actors::*;
@@ -16,6 +17,7 @@ use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
+use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageError, StorageInitInfo, SystemStorage};
@@ -26,7 +28,7 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
-use tezos_wrapper::service::{ProtocolEndpointConfiguration, ProtocolRunnerEndpoint, ExecutableProtocolRunner};
+use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
 
@@ -128,6 +130,33 @@ fn block_on_actors(
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => apply_blocks_protocol_runner_endpoint.name, "reason" => e), actor_system),
     };
 
+    // tezos protocol runner endpoint for mempool
+    let mut mempool_prevalidator_protocol_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
+        "mempool_prevalidator_protocol_runner_endpoint",
+        ProtocolEndpointConfiguration::new(
+            TezosRuntimeConfiguration {
+                log_enabled: env.logging.ocaml_log_enabled,
+                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+                debug_mode: env.storage.store_context_actions,
+            },
+            tezos_env.clone(),
+            env.enable_testchain,
+            &env.storage.tezos_data_dir,
+            &env.protocol_runner,
+            env.logging.level,
+            false,
+        ),
+        log.clone(),
+    );
+    let (mempool_prevalidator_protocol_runner_endpoint_run_feature, mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name) = match mempool_prevalidator_protocol_endpoint.start_in_restarting_mode() {
+        Ok(run_feature) => {
+            let ProtocolRunnerEndpoint { commands, name, .. } = mempool_prevalidator_protocol_endpoint;
+            info!(log, "Protocol runner started successfully"; "endpoint" => name.clone());
+            (run_feature, commands, name)
+        }
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => mempool_prevalidator_protocol_endpoint.name, "reason" => e), actor_system),
+    };
+
     let mut tokio_runtime = create_tokio_runtime(env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -143,6 +172,15 @@ fn block_on_actors(
     // if feeding is started, than run chain manager
     let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
         .expect("Failed to create chain manager");
+    let _ = MempoolPrevalidator::actor(
+        &actor_system,
+        shell_channel.clone(),
+        &persistent_storage,
+        &init_storage_data,
+        &tezos_env,
+        (mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name),
+        log.clone(),
+    ).expect("Failed to create chain feeder");
 
     // and than open p2p and others
     let _ = PeerManager::actor(
@@ -167,7 +205,6 @@ fn block_on_actors(
         .expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {
-        use std::thread;
         use tokio::signal;
 
         signal::ctrl_c().await.expect("Failed to listen for ctrl-c event");
@@ -175,6 +212,7 @@ fn block_on_actors(
 
         // disable/stop protocol runner for applying blocks feature
         apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
+        mempool_prevalidator_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
         info!(log, "Sending shutdown notification to actors");
         shell_channel.tell(

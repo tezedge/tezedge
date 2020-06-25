@@ -10,7 +10,7 @@ use slog::{Logger, warn};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::PersistentStorage;
 use storage::StorageInitInfo;
 
@@ -29,6 +29,8 @@ pub struct RpcCollectedState {
     current_head: Option<BlockApplied>,
     #[get = "pub(crate)"]
     chain_id: ChainId,
+    #[get = "pub(crate)"]
+    current_mempool_state: Option<CurrentMempoolState>,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -54,15 +56,16 @@ impl RpcServer {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(persistent_storage, &sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
+            current_mempool_state: None,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
-            Props::new_args((shell_channel, shared_state.clone())),
+            Props::new_args((shell_channel.clone(), shared_state.clone())),
         )?;
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
+            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), shell_channel, persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
@@ -113,6 +116,10 @@ impl Receive<ShellChannelMsg> for RpcServer {
                     None => current_head_ref.current_head = Some(block)
                 }
             }
+            ShellChannelMsg::MempoolStateChanged(result) => {
+                let current_state = &mut *self.state.write().unwrap();
+                current_state.current_mempool_state = Some(result);
+            }
             _ => (/* Not yet implemented, do nothing */),
         }
     }
@@ -135,7 +142,7 @@ fn load_current_head(persistent_storage: &PersistentStorage, log: &Logger) -> Op
                     None
                 }
             }
-        },
+        }
         Ok(None) => None,
         Err(e) => {
             warn!(log, "Error reading current head from database."; "reason" => format!("{}", e));

@@ -19,13 +19,13 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Pee
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::block_meta_storage::BlockMetaStorageReader;
+use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::Head;
-use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, CurrentMempoolState, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockchainState, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
 use crate::subscription::*;
@@ -145,6 +145,8 @@ pub struct ChainManager {
     operations_state: OperationsState,
     /// Current head information
     current_head: CurrentHead,
+    // current last known mempool state
+    current_mempool_state: Option<CurrentMempoolState>,
     /// Internal stats
     stats: Stats,
     /// Indicates that system is shutting down
@@ -287,11 +289,11 @@ impl ChainManager {
         } = self;
 
         match msg {
-            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Success { peer, .. }) => {
+            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Success { peer, peer_metadata, .. }) => {
                 let log = ctx.system.log().new(slog::o!("peer" => peer.name().to_string()));
 
                 debug!(log, "Requesting current branch");
-                let peer = PeerState::new(peer);
+                let peer = PeerState::new(peer, peer_metadata);
                 // store peer
                 let actor_uri = peer.peer_ref.uri().clone();
                 self.peers.insert(actor_uri.clone(), peer);
@@ -421,7 +423,11 @@ impl ChainManager {
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         if let Some(current_head_local) = &current_head.local {
                                             if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
-                                                let msg = CurrentHeadMessage::new(chain_state.get_chain_id().clone(), (*current_head.header).clone());
+                                                let msg = CurrentHeadMessage::new(
+                                                    chain_state.get_chain_id().clone(),
+                                                    (*current_head.header).clone(),
+                                                    resolve_mempool_to_send_to_peer(&peer, &self.current_mempool_state, &current_head_local),
+                                                );
                                                 tell_peer(msg.into(), peer);
                                             }
                                         }
@@ -485,10 +491,11 @@ impl ChainManager {
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         let peer_current_mempool = message.current_mempool();
 
+                                        // all operations (known_valid + pending) should be added to pending and validated afterwards
                                         // enqueue mempool operations for retrieval
                                         peer_current_mempool.known_valid().iter().cloned()
                                             .for_each(|operation_hash| {
-                                                peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::KnownValid));
+                                                peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::Pending));
                                             });
                                         peer_current_mempool.pending().iter().cloned()
                                             .for_each(|operation_hash| {
@@ -499,16 +506,37 @@ impl ChainManager {
                                         ctx.myself().tell(CheckMempoolCompleteness, None);
                                     }
                                 }
+                                PeerMessage::GetOperations(message) => {
+                                    debug!(log, "Get operations received (mempool)");
+                                    let requested_operations: &Vec<OperationHash> = message.get_operations();
+                                    for operation_hash in requested_operations {
+                                        // TODO: where to look for operations for advertised mempool?
+                                        // TODO: if not found here, check regular operation storage?
+                                        if let Some(found) = mempool_storage.find(&operation_hash)? {
+                                            tell_peer(found.into(), peer);
+                                        }
+                                    }
+                                }
                                 PeerMessage::Operation(message) => {
                                     debug!(log, "Received mempool message");
                                     match peer.queued_mempool_operations.remove(&message.operation().message_hash()?) {
                                         Some((op_type, op_ttl)) => {
                                             // store mempool operation
                                             peer.mempool_operations_response_last = Instant::now();
-                                            mempool_storage.put(op_type, message.clone(), op_ttl)?;
+                                            mempool_storage.put(op_type.clone(), message.clone(), op_ttl)?;
 
                                             // trigger CheckMempoolCompleteness
                                             ctx.myself().tell(CheckMempoolCompleteness, None);
+
+                                            // notify others that new operation was received
+                                            shell_channel.tell(
+                                                Publish {
+                                                    msg: MempoolOperationReceived {
+                                                        operation_hash: message.operation().message_hash()?.clone(),
+                                                        operation_type: op_type.clone(),
+                                                    }.into(),
+                                                    topic: ShellChannelTopic::ShellEvents.into(),
+                                                }, Some(ctx.myself().into()));
                                         }
                                         None => debug!(log, "Unexpected mempool operation received")
                                     }
@@ -538,6 +566,41 @@ impl ChainManager {
                 });
                 self.stats.applied_block_level = Some(message.header().header.level());
                 self.stats.applied_block_last = Some(Instant::now());
+            }
+            ShellChannelMsg::MempoolStateChanged(new_mempool_state) => {
+                // prepare mempool/header to send to peers
+                let (mempool_to_send, header_to_send) = match &new_mempool_state.head {
+                    Some(head) => {
+                        if let Some(header) = self.block_storage.get(&head.hash)? {
+                            (resolve_mempool_to_send(&new_mempool_state), Some((*header.header).clone()))
+                        } else {
+                            (Mempool::default(), None)
+                        }
+                    }
+                    None => (Mempool::default(), None)
+                };
+
+                // set current mempool state
+                self.current_mempool_state = Some(new_mempool_state);
+
+                // send CurrentHead, only if we have anything in mempool (just to peers with enabled mempool)
+                if let Some(header_to_send) = header_to_send {
+                    if !mempool_to_send.is_empty() {
+                        let ChainManager { peers, chain_state, .. } = self;
+                        peers.iter_mut()
+                            .filter(|(_, peer)| peer.mempool_enabled)
+                            .for_each(|(_, peer)| {
+                                tell_peer(
+                                    CurrentHeadMessage::new(
+                                        chain_state.get_chain_id().clone(),
+                                        header_to_send.clone(),
+                                        mempool_to_send.clone(),
+                                    ).into(),
+                                    peer,
+                                )
+                            });
+                    }
+                }
             }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
@@ -587,6 +650,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ch
                 local: None,
                 remote: None,
             },
+            current_mempool_state: None,
             shutting_down: false,
             stats: Stats {
                 unseen_block_count: 0,
@@ -811,6 +875,9 @@ impl Receive<AskPeersAboutCurrentBranch> for ChainManager {
 struct PeerState {
     /// Reference to peer actor
     peer_ref: PeerRef,
+    // Has peer enabled mempool
+    mempool_enabled: bool,
+
     /// Queued blocks
     queued_block_headers: HashMap<BlockHash, MissingBlock>,
     /// Queued block operations
@@ -841,9 +908,10 @@ struct PeerState {
 }
 
 impl PeerState {
-    fn new(peer_ref: PeerRef) -> Self {
+    fn new(peer_ref: PeerRef, peer_metadata: MetadataMessage) -> Self {
         PeerState {
             peer_ref,
+            mempool_enabled: !peer_metadata.disable_mempool(),
             queued_block_headers: HashMap::new(),
             queued_block_operations: HashMap::new(),
             missing_mempool_operations: Vec::new(),
@@ -889,4 +957,32 @@ impl PeerState {
 
 fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
     peer.peer_ref.tell(SendMessage::new(msg), None);
+}
+
+fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
+    // collect for mempool
+    let known_valid = mempool_state.result.applied.iter().map(|a| a.hash.clone()).collect::<Vec<OperationHash>>();
+    let pending = mempool_state.pending.iter().map(|a| a.clone()).collect::<Vec<OperationHash>>();
+
+    Mempool::new(known_valid, pending)
+}
+
+fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<CurrentMempoolState>, current_head: &Head) -> Mempool {
+    if !peer.mempool_enabled {
+        return Mempool::default();
+    }
+
+    if let Some(mempool_state) = mempool_state {
+        if let Some(mempool_head) = &mempool_state.head {
+            if &mempool_head.hash == &current_head.hash {
+                resolve_mempool_to_send(mempool_state)
+            } else {
+                Mempool::default()
+            }
+        } else {
+            Mempool::default()
+        }
+    } else {
+        Mempool::default()
+    }
 }

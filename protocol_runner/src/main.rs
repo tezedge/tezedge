@@ -119,9 +119,9 @@ fn main() {
 
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, PatchContext, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, BeginConstructionError, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse};
     use tezos_api::identity::Identity;
-    use tezos_client::client::{apply_block, change_runtime_configuration, generate_identity, genesis_result_data, init_protocol_context};
+    use tezos_client::client::{apply_block, begin_construction, change_runtime_configuration, generate_identity, genesis_result_data, init_protocol_context, validate_operation};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
@@ -130,6 +130,14 @@ mod tezos {
     impl ProtocolApi for NativeTezosLib {
         fn apply_block(chain_id: &ChainId, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResponse, ApplyBlockError> {
             apply_block(chain_id, block_header, predecessor_block_header, operations, max_operations_ttl)
+        }
+
+        fn begin_construction(chain_id: &ChainId, block_header: &BlockHeader) -> Result<PrevalidatorWrapper, BeginConstructionError> {
+            begin_construction(chain_id, block_header, None)
+        }
+
+        fn validate_operation(prevalidator: &PrevalidatorWrapper, operation: &Operation) -> Result<ValidateOperationResponse, ValidateOperationError> {
+            validate_operation(prevalidator, operation)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
