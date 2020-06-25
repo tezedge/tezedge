@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Mempool suppport
+- Nothing.
 
 ### Changed
 
@@ -29,6 +29,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Nothing.
+
+## [0.1.0] - 2020-06-25
+
+### Added
+
+- Mempool p2p support + ffi prevalidator protocol validation
+- Support for sandboxing (used in drone tests)
+- RPC for /inject/operation (draft)
+- RPC's for developer for blocks and contracts
+- Possibility to run mulitple sub-process with ffi integration to ocaml
+
+### Changed
+
+- Upgraded version of riker, rocksdb
+- Improved DRONE integration tests
 
 ## [0.0.2] - 2020-06-01
 
@@ -64,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.0.2...HEAD
 [0.0.1]: https://github.com/simplestaking/tezedge/releases/v0.0.1
 [0.0.2]: https://github.com/simplestaking/tezedge/releases/v0.0.2
+[0.1.0]: https://github.com/simplestaking/tezedge/releases/v0.1.0
 
 ___
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
