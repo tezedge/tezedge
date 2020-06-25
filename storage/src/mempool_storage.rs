@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
+use std::fmt::Formatter;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -8,13 +10,47 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::operation::{MempoolOperationType, OperationMessage};
+use tezos_messages::p2p::encoding::operation::OperationMessage;
 
-use crate::{num_from_slice, StorageError};
+use crate::{IteratorMode, num_from_slice, StorageError};
 use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 
 /// Convenience type for operation meta storage database
 pub type MempoolStorageKV = dyn KeyValueStoreWithSchema<MempoolStorage> + Sync + Send;
+
+/// TODO: do we need this?
+/// Distinct
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum MempoolOperationType {
+    Pending,
+    KnownValid,
+}
+
+impl MempoolOperationType {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            MempoolOperationType::Pending => 0,
+            MempoolOperationType::KnownValid => 1
+        }
+    }
+
+    pub fn from_u8(num: u8) -> Result<Self, MempoolOperationTypeParseError> {
+        match num {
+            0 => Ok(MempoolOperationType::Pending),
+            1 => Ok(MempoolOperationType::KnownValid),
+            invalid_num => Err(MempoolOperationTypeParseError(invalid_num))
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MempoolOperationTypeParseError(u8);
+
+impl fmt::Display for MempoolOperationTypeParseError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_fmt(format_args!("Invalid value {}", self.0))
+    }
+}
 
 /// Operation metadata storage
 #[derive(Clone)]
@@ -61,20 +97,45 @@ impl MempoolStorage {
     }
 
     #[inline]
-    pub fn find(&self, operation_hash: &OperationHash) -> Result<Option<OperationMessage>, StorageError> {
+    pub fn delete(&self, operation_hash: &OperationHash) -> Result<(), StorageError> {
         // TODO: implement correctly and effectively
 
-        // check known_valids
-        if let Some(found) = self.get(MempoolOperationType::KnownValid, operation_hash.clone())? {
-            return Ok(Some(found));
-        }
+        let key = MempoolKey { operation_type: MempoolOperationType::Pending, operation_hash: operation_hash.clone() };
+        self.kv.delete(&key)
+            .map_err(StorageError::from)?;
+
+        let key = MempoolKey { operation_type: MempoolOperationType::KnownValid, operation_hash: operation_hash.clone() };
+        self.kv.delete(&key)
+            .map_err(StorageError::from)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn find(&self, operation_hash: &OperationHash) -> Result<Option<OperationMessage>, StorageError> {
+        // TODO: implement correctly and effectively
 
         // check pendings
         if let Some(found) = self.get(MempoolOperationType::Pending, operation_hash.clone())? {
             return Ok(Some(found));
         }
 
+        // check known_valids
+        if let Some(found) = self.get(MempoolOperationType::KnownValid, operation_hash.clone())? {
+            return Ok(Some(found));
+        }
+
         Ok(None)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> Result<Vec<(OperationHash, OperationMessage)>, StorageError> {
+        let mut operations = Vec::new();
+        for (key, value) in self.kv.iterator(IteratorMode::Start)? {
+            let (key, value) = (key?, value?);
+            operations.push((key.operation_hash, value.operation));
+        }
+        Ok(operations)
     }
 }
 

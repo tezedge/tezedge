@@ -2,19 +2,19 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use failure::format_err;
+use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::Logger;
-use riker::actors::*;
 
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, ShellChannelRef, ShellChannelTopic, MempoolOperationReceived};
+use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use storage::mempool_storage::MempoolOperationType;
 use storage::MempoolStorage;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, Errored};
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
-use tezos_messages::p2p::binary_message::{MessageHash, BinaryMessage};
-use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -125,7 +125,6 @@ pub fn inject_operation(
     _state: &RpcCollectedStateRef,
     shell_channel: ShellChannelRef,
     _log: &Logger) -> Result<String, failure::Error> {
-
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
 
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
@@ -145,7 +144,6 @@ pub fn inject_operation(
         }, None);
 
     Ok(HashType::OperationHash.bytes_to_string(&operation_hash))
-
 }
 
 #[cfg(test)]

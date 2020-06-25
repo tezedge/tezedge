@@ -23,11 +23,11 @@ use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
+use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper, ValidateOperationResult};
 use tezos_messages::p2p::encoding::block_header::Level;
-use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::Operation;
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
 
@@ -203,13 +203,13 @@ pub struct MempoolState {
 }
 
 impl MempoolState {
-    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<Head>, pending: HashSet<OperationHash>) -> MempoolState {
+    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<Head>, pending_operations: HashMap<OperationHash, Operation>) -> MempoolState {
         MempoolState {
             prevalidator,
             predecessor,
-            pending,
+            pending: pending_operations.keys().map(|oph| oph.clone()).collect(),
             validation_result: ValidateOperationResult::default(),
-            operations: HashMap::new(),
+            operations: pending_operations,
         }
     }
 
@@ -238,6 +238,23 @@ impl MempoolState {
         contains &= self.validation_result.branch_refused.clone().into_iter().filter(|k| &k.hash == operation_hash).collect::<Vec<Errored>>().is_empty();
         contains &= self.validation_result.branch_delayed.clone().into_iter().filter(|k| &k.hash == operation_hash).collect::<Vec<Errored>>().is_empty();
         !contains
+    }
+
+    /// Splits exists operations map to operations map with just pending operations and others
+    fn split_operations_to_pending_and_others(&self) -> (HashMap<OperationHash, Operation>, HashSet<OperationHash>) {
+        let mut pending = HashMap::new();
+        let mut others = HashSet::new();
+
+        // split
+        for (key, value) in self.operations.iter() {
+            if self.pending.contains(key) {
+                pending.insert(key.clone(), value.clone());
+            } else {
+                others.insert(key.clone());
+            }
+        }
+
+        (pending, others)
     }
 }
 
@@ -308,10 +325,21 @@ fn process_prevalidation(
                     // try to begin construction new context
                     let (prevalidator, head) = begin_construction(block_storage, &protocol_controller, &init_storage_data, &header, &log)?;
 
-                    // recreate state
-                    state = MempoolState::new(prevalidator, head, state.pending);
+                    // recreate state, reuse just pendings
+                    let (pending_operations, mut operations_to_delete) = state.split_operations_to_pending_and_others();
+                    state = MempoolState::new(prevalidator, head, pending_operations);
 
+                    // notify other actors
                     notify_mempool_changed(&shell_channel, &state);
+
+                    // clear unneeded operations from mempool storage
+                    operations_to_delete
+                        .drain()
+                        .for_each(|oph| {
+                            if let Err(err) = mempool_storage.delete(&oph) {
+                                warn!(log, "Mempool - delete operation failed"; "hash" => HashType::OperationHash.bytes_to_string(&oph), "error" => format!("{:?}", err))
+                            }
+                        });
                 }
                 Event::ValidateOperation(oph, mempool_operation_type) => {
                     // TODO: handling when operation not exists - can happen?
@@ -319,14 +347,13 @@ fn process_prevalidation(
                     if let Some(operation) = operation {
 
                         // TODO: handle and validate pre_filter with operation?
-                        
+
                         if state.is_already_validated(&oph) {
                             debug!(log, "Mempool - received validate operation event - operation allready validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                         } else {
-                            // just and operations to pendings
+                            // just add operations to pendings
                             state.add_to_pending(&oph, operation.operation());
                         }
-
                     } else {
                         warn!(log, "Mempool - received validate operation event - no data in mempool storage?"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                     }
@@ -345,7 +372,7 @@ fn hydrate_state(
     shell_channel: &ShellChannelRef,
     block_storage: &mut BlockStorage,
     block_meta_storage: &mut BlockMetaStorage,
-    _mempool_storage: &mut MempoolStorage,
+    mempool_storage: &mut MempoolStorage,
     protocol_controller: &ProtocolController,
     init_storage_data: &StorageInitInfo,
     log: &Logger) -> Result<MempoolState, PrevalidationError> {
@@ -360,8 +387,11 @@ fn hydrate_state(
         None => (None, None)
     };
 
-    // TODO: read from Mempool_storage (just pending) -> add to queue for validation -> pending
-    let pending = HashSet::new();
+    // read from Mempool_storage (just pending) -> add to queue for validation -> pending
+    let mut pending = mempool_storage.iter()?
+        .into_iter()
+        .map(|(key, value)| (key, value.operation().clone()))
+        .collect();
 
     // internal mempool state
     let mut state = MempoolState::new(prevalidator, head, pending);
@@ -446,7 +476,7 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                         }
                     }
 
-                    // remove from
+                    // remove from pendings
                     state_changed |= state.remove_from_pending(&pending_op);
                 }
                 None => warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => HashType::OperationHash.bytes_to_string(&pending_op))

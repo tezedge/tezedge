@@ -19,9 +19,9 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Pee
 use networking::p2p::peer::{PeerRef, SendMessage};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::block_meta_storage::BlockMetaStorageReader;
+use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::operation::MempoolOperationType;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::Head;
