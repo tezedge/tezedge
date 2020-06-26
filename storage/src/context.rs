@@ -250,15 +250,21 @@ impl ContextApi for TezedgeContext {
 
     fn delete_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_delete: &Vec<String>, context_diff: &mut ContextDiff) -> Result<(), ContextError> {
         ensure_eq_context_hash!(context_hash, &context_diff);
-        // self.remove_recursively_to_diff(context_hash, key_prefix_to_delete, context_diff)
+
         let context_map_diff = &mut context_diff.diff;
+        
+        // check in the current diff first
+        let key_in_diff = context_map_diff.get(&key_prefix_to_delete.join("/"));
+        if key_in_diff.is_some() {
+            context_map_diff.insert(key_prefix_to_delete.join("/"), Bucket::Deleted);
+        }
+
+        
         let context = self.get_key(&context_diff.predecessor_index, key_prefix_to_delete)?;
         if context.is_some() {
             context_map_diff.insert(key_prefix_to_delete.join("/"), Bucket::Deleted);
-            // for key in context.keys() {
-            //     context_map_diff.insert(key.clone(), Bucket::Deleted);
-            // }
         }
+
         Ok(())
     }
 
