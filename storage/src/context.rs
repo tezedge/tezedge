@@ -304,10 +304,16 @@ impl ContextApi for TezedgeContext {
                 }
             }
         }
-        // self.delete_to_diff(context_hash, key_prefix_to_remove, context_diff)?;
 
         for key in final_context_to_remove.keys() {
             context_map_diff.insert(key.clone(), Bucket::Deleted);
+        }
+
+        // lastly if the prefix is a spicific key with a value, too, remove it
+        let key_to_remove_value = self.get_key(&context_diff.predecessor_index, key_prefix_to_remove)?;
+
+        if key_to_remove_value.is_some() {
+            context_map_diff.insert(key_prefix_to_remove.join("/"), Bucket::Deleted);
         }
 
         Ok(())

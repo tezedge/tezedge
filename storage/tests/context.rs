@@ -76,7 +76,6 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     context_diff.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2"].to_vec()), &vec![1, 2, 3, 4, 5, 6])?;
     context_diff.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "a"].to_vec()), &vec![1, 2, 3, 4, 5, 61])?;
     context_diff.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "b"].to_vec()), &vec![1, 2, 3, 4, 5, 62])?;
-    context_diff.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "b", "A"].to_vec()), &vec![1, 2, 3, 4, 5, 62])?;
     context_diff.set(&None, &to_key(["data", "rolls", "owner", "current", "index", "123"].to_vec()), &vec![1, 2, 3, 4, 5, 6, 7])?;
 
     // commit
@@ -98,7 +97,6 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6]));
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 61]));
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b", "A"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 62]));
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1.clone(), Bucket::Exists(vec![1, 2, 3, 4, 5, 6, 7]));
 
     // insert another block with level 1
@@ -109,16 +107,15 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     // checkout last commit to be modified
     let mut context_diff = context.checkout(&context_hash_1)?;
 
-    context.delete_to_diff(
-        &Some(context_hash_1.clone()),
-        &to_key(["data", "rolls", "owner", "current", "cpu", "1", "b"].to_vec()),
-        &mut context_diff,
-    )?;
-
     // 1. remove rec
     context.remove_recursively_to_diff(
         &Some(context_hash_1.clone()),
         &to_key(["data", "rolls", "owner", "current", "cpu", "2"].to_vec()),
+        &mut context_diff,
+    )?;
+    context.delete_to_diff(
+        &Some(context_hash_1.clone()),
+        &to_key(["data", "rolls", "owner", "current", "cpu", "1", "b"].to_vec()),
         &mut context_diff,
     )?;
 
