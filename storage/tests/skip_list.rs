@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
-use maplit::hashmap;
+use maplit::btreemap;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -46,7 +46,7 @@ fn list_new() {
 fn list_push() {
     let tmp_storage = TmpStorage::create("__skip_list:list_push").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(2, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_push")).expect("failed to create skip list"));
-    list.push(&hashmap! { 1 => 1 }).expect("failed to push value to skip list");
+    list.push(&btreemap! { 1 => 1 }).expect("failed to push value to skip list");
     assert!(list.contains(0));
 }
 
@@ -65,19 +65,19 @@ fn list_index_level() {
 fn list_check_first() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_first").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(3, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_first")).expect("failed to create skip list"));
-    list.push(&hashmap! { 1 => 1 }).expect("failed to push value to skip list");
+    list.push(&btreemap! { 1 => 1 }).expect("failed to push value to skip list");
     let val = list.get(0).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(0), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    assert_eq!(val.unwrap(), hashmap! { 1 => 1 });
+    assert_eq!(val.unwrap(), btreemap! { 1 => 1 });
 }
 
 #[test]
 fn list_check_second() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_second").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(4, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_second")).expect("failed to create skip list"));
-    list.push(&hashmap! { 1 => 1 }).expect("failed to push value to skip list");
-    list.push(&hashmap! { 2 => 2 }).expect("failed to push value to skip list");
+    list.push(&btreemap! { 1 => 1 }).expect("failed to push value to skip list");
+    list.push(&btreemap! { 2 => 2 }).expect("failed to push value to skip list");
     let val = list.get(1).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(1), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
@@ -89,7 +89,7 @@ fn list_check_bottom_lane() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_bottom_lane").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(5, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_bottom_lane")).expect("failed to create skip list"));
     for index in 0..=6 {
-        list.push(&hashmap! { index => index }).expect("failed to push value to skip list");
+        list.push(&btreemap! { index => index }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 1);
     let val = list.get(6).expect("failed to get value from skip list");
@@ -103,7 +103,7 @@ pub fn list_check_faster_lane() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_faster_lane").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(6, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_faster_lane")).expect("failed to create skip list"));
     for index in 0..=7 {
-        list.push(&hashmap! { index => index }).expect("failed to push value to skip list");
+        list.push(&btreemap! { index => index }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 2);
     let val = list.get(7).expect("failed to get value from skip list");
@@ -117,7 +117,7 @@ pub fn list_check_lane_traversal() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_lane_traversal").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(7, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_lane_traversal")).expect("failed to create skip list"));
     for index in 0..=63 {
-        list.push(&hashmap! { index => index }).expect("failed to push value to skip list");
+        list.push(&btreemap! { index => index }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 3);
     let val = list.get(63).expect("failed to get value from skip list");
@@ -131,7 +131,7 @@ pub fn list_get_value_by_key() {
     let tmp_storage = TmpStorage::create("__skip_list:list_get_value_by_key").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_get_value_by_key")).expect("failed to create skip list"));
     for index in 0..=63 {
-        list.push(&hashmap! { index => index * 5 }).expect("failed to push value to skip list");
+        list.push(&btreemap! { index => index * 5 }).expect("failed to push value to skip list");
     }
     assert_eq!(list.levels(), 3);
     let key: i32 = 21;
@@ -147,15 +147,15 @@ pub fn list_get_values_by_prefix() -> Result<(), failure::Error> {
     let tmp_storage = TmpStorage::create("__skip_list:list_get_values_by_prefix").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<String, i32>> = Box::new(DatabaseBackedSkipList::new(9, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_get_values_by_prefix")).expect("failed to create skip list"));
 
-    list.push(&hashmap! { String::from("/system") => 10 })?;
-    list.push(&hashmap! { String::from("/system/cpu") => 11 })?;
-    list.push(&hashmap! { String::from("/system/cpu/0") => 110 })?;
-    list.push(&hashmap! { String::from("/system/cpu/1") => 111 })?;
-    list.push(&hashmap! { String::from("/context/user/name") => 31 })?;
-    list.push(&hashmap! { String::from("/context/user/email") => 32 })?;
-    list.push(&hashmap! { String::from("/context/user") => 3 })?;
-    list.push(&hashmap! { String::from("/context/user/name") => 9000 })?;
-    list.push(&hashmap! {
+    list.push(&btreemap! { String::from("/system") => 10 })?;
+    list.push(&btreemap! { String::from("/system/cpu") => 11 })?;
+    list.push(&btreemap! { String::from("/system/cpu/0") => 110 })?;
+    list.push(&btreemap! { String::from("/system/cpu/1") => 111 })?;
+    list.push(&btreemap! { String::from("/context/user/name") => 31 })?;
+    list.push(&btreemap! { String::from("/context/user/email") => 32 })?;
+    list.push(&btreemap! { String::from("/context/user") => 3 })?;
+    list.push(&btreemap! { String::from("/context/user/name") => 9000 })?;
+    list.push(&btreemap! {
         String::from("/system/cpu/3") => 113,
         String::from("/system/cpu/2") => 112,
     })?;
@@ -163,7 +163,7 @@ pub fn list_get_values_by_prefix() -> Result<(), failure::Error> {
 
     let values = list.get_prefix(list.len() - 1, &String::from("/system"))?;
     assert!(values.is_some());
-    assert_eq!(values, Some(hashmap! {
+    assert_eq!(values, Some(btreemap! {
         String::from("/system") => 10,
         String::from("/system/cpu") => 11,
         String::from("/system/cpu/0") => 110,
@@ -174,7 +174,7 @@ pub fn list_get_values_by_prefix() -> Result<(), failure::Error> {
 
     let values = list.get_prefix(list.len() - 1, &String::from("/context/user"))?;
     assert!(values.is_some());
-    assert_eq!(values, Some(hashmap! {
+    assert_eq!(values, Some(btreemap! {
         String::from("/context/user") => 3,
         String::from("/context/user/name") => 9000,
         String::from("/context/user/email") => 32,
@@ -188,7 +188,7 @@ pub fn list_check_lane_order_traversal() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_lane_order_traversal").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_lane_order_traversal")).expect("failed to create skip list"));
     for (value, key) in (0..=63).zip((0..=7).cycle()) {
-        let mut map = HashMap::new();
+        let mut map = BTreeMap::new();
         map.insert(key, value);
         list.push(&map).expect("failed to store value into skip list");
     }
@@ -196,7 +196,7 @@ pub fn list_check_lane_order_traversal() {
     let val = list.get(63).expect("failed to get value from skip list");
     assert_eq!(val.is_some(), list.contains(63), "List `get` and `contains` return inconsistent answers");
     assert!(val.is_some());
-    let mut expected = HashMap::new();
+    let mut expected = BTreeMap::new();
     for (value, key) in (56..=63).zip(0..=7) {
         expected.insert(key, value);
     }
@@ -208,7 +208,7 @@ pub fn list_check_get_key() {
     let tmp_storage = TmpStorage::create("__skip_list:list_check_get_key").expect("Storage error");
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(DatabaseBackedSkipList::new(8, tmp_storage.storage().kv(), tmp_storage.storage().seq().generator("__skip_list:list_check_get_key")).expect("failed to create skip list"));
     for x in 0..=7 {
-        let mut map = HashMap::new();
+        let mut map = BTreeMap::new();
         map.insert(x, x);
         list.push(&map).expect("failed to store value into skip list");
     }
@@ -233,11 +233,11 @@ fn simulate_ledger(mut list: Box<dyn TypedSkipList<u64, Operation>>) {
 
     let mut rng = rand::thread_rng();
 
-    let mut context_aggregate: HashMap<u64, Operation> = Default::default();
-    let mut context_snapshots: Vec<HashMap<u64, Operation>> = Default::default();
+    let mut context_aggregate: BTreeMap<u64, Operation> = Default::default();
+    let mut context_snapshots: Vec<BTreeMap<u64, Operation>> = Default::default();
 
     for _ in 0..ledger_size {
-        let mut state: HashMap<u64, Operation> = Default::default();
+        let mut state: BTreeMap<u64, Operation> = Default::default();
 
         for _ in 0..rng.gen_range(1, operation_count) {
             let primary_key = rng.gen_range(0, key_count);

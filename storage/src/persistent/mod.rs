@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -53,7 +53,7 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 }
 
 
-pub type ContextMap = HashMap<String, Bucket<Vec<u8>>>;
+pub type ContextMap = BTreeMap<String, Bucket<Vec<u8>>>;
 pub type ContextList = Arc<RwLock<dyn TypedSkipList<String, Bucket<Vec<u8>>> + Sync + Send>>;
 
 /// Groups all components required for correct permanent storage functioning

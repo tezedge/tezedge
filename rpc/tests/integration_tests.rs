@@ -23,24 +23,6 @@ async fn test_rpc_compare() {
 async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
-    // const MINIMAL_BOOTSTRAP_LEVEL: i64 = 500;
-
-    // if to_block >= MINIMAL_BOOTSTRAP_LEVEL {
-    //     // allways test a block from the first cycle as they are special cases
-    //     println!("Running tests for block from cycle 0: ");
-    //     test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", "2", "context/constants")).await;
-    //     test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", "2", "helpers/endorsing_rights")).await;
-    //     test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", "2", "helpers/baking_rights")).await;
-
-    //     test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle=0", "chains/main/blocks", "2", "helpers/baking_rights")).await;
-    //     test_rpc_compare_json(&format!("{}/{}/{}?cycle=0", "chains/main/blocks", "2", "helpers/endorsing_rights")).await;
-
-    //     test_rpc_compare_json(&format!("{}/{}/{}?level=0", "chains/main/blocks", "2", "helpers/baking_rights")).await;
-    //     test_rpc_compare_json(&format!("{}/{}/{}?level=0", "chains/main/blocks", "2", "helpers/endorsing_rights")).await;
-
-    // } else {
-    //     panic!("Tests should allways bootstrap to at least level {}", MINIMAL_BOOTSTRAP_LEVEL);
-    // }
 
     for level in from_block..to_block + 1 {
         let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", level)).await

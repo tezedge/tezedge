@@ -393,7 +393,7 @@ pub struct ProtocolController<'a> {
 /// Methods also handle things such as timeouts and also checks is correct response type is received.
 impl<'a> ProtocolController<'a> {
     const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
-    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(180);
+    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(600);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);

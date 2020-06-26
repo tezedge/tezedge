@@ -2847,6 +2847,8 @@ dependencies = [
  "getset",
  "hex",
  "lazy_static",
+ "num-bigint",
+ "num-traits 0.2.12",
  "serde 1.0.114",
  "serde_json",
  "tezos_encoding",

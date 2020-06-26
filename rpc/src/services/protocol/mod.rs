@@ -18,8 +18,9 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use crypto::hash::HashType;
-use storage::num_from_slice;
+use storage::{num_from_slice, BlockStorage};
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
+use storage::context::TezedgeContext;
 use storage::skip_list::Bucket;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
@@ -36,6 +37,10 @@ use tezos_messages::protocol::{
 use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id};
 use crate::rpc_actor::RpcCollectedStateRef;
 
+mod proto_001;
+mod proto_002;
+mod proto_003;
+mod proto_004;
 mod proto_005_2;
 mod proto_006;
 
@@ -63,7 +68,7 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    list: ContextList,
+    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
@@ -71,19 +76,69 @@ pub(crate) fn check_and_get_baking_rights(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        list.clone(),
+        context_list.clone(),
         persistent_storage,
         state,
     )?;
 
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
-        proto_001_constants::PROTOCOL_HASH
-        | proto_002_constants::PROTOCOL_HASH
-        | proto_003_constants::PROTOCOL_HASH
-        | proto_004_constants::PROTOCOL_HASH
-        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_001_constants::PROTOCOL_HASH => {
+            proto_001::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_002_constants::PROTOCOL_HASH => {
+            proto_002::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_003_constants::PROTOCOL_HASH => {
+            proto_003::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_004_constants::PROTOCOL_HASH => {
+            proto_004::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::rights_service::check_and_get_baking_rights(
                 context_proto_params,
@@ -93,7 +148,7 @@ pub(crate) fn check_and_get_baking_rights(
                 cycle,
                 max_priority,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -106,7 +161,7 @@ pub(crate) fn check_and_get_baking_rights(
                 cycle,
                 max_priority,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -136,7 +191,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    list: ContextList,
+    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
@@ -144,19 +199,65 @@ pub(crate) fn check_and_get_endorsing_rights(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        list.clone(),
+        context_list.clone(),
         persistent_storage,
         state,
     )?;
 
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
-        proto_001_constants::PROTOCOL_HASH
-        | proto_002_constants::PROTOCOL_HASH
-        | proto_003_constants::PROTOCOL_HASH
-        | proto_004_constants::PROTOCOL_HASH
-        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_001_constants::PROTOCOL_HASH => {
+            proto_001::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_002_constants::PROTOCOL_HASH => {
+            proto_002::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_003_constants::PROTOCOL_HASH => {
+            proto_003::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_004_constants::PROTOCOL_HASH => {
+            proto_004::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::rights_service::check_and_get_endorsing_rights(
                 context_proto_params,
@@ -165,7 +266,7 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -177,7 +278,7 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }

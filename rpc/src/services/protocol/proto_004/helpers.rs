@@ -11,8 +11,8 @@ use getset::Getters;
 use crypto::blake2b;
 use storage::num_from_slice;
 use storage::persistent::PersistentStorage;
-use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use storage::skip_list::Bucket;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
@@ -68,16 +68,19 @@ impl RightsConstants {
     /// * `state` - Current RPC collected state (head).
     #[inline]
     pub(crate) fn parse_rights_constants(context_proto_param: ContextProtocolParam) -> Result<Self, failure::Error> {
-        let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(context_proto_param.constants_data)?;
-        let fixed = tezos_messages::protocol::proto_006::constants::FIXED;
+        let dynamic = tezos_messages::protocol::proto_004::constants::ParametricConstants::from_bytes(context_proto_param.constants_data)?;
+        // in proto 001, the constants are hard coded but a few exceptions modifiable in the context
+        let dynamic_all = tezos_messages::protocol::proto_004::constants::ParametricConstants::create_with_default_and_merge(dynamic);
+        let fixed = tezos_messages::protocol::proto_004::constants::FIXED;
 
+        // TODO: fix unwraps()
         Ok(RightsConstants::new(
-            dynamic.blocks_per_cycle(),
-            dynamic.preserved_cycles(),
+            dynamic_all.blocks_per_cycle().unwrap(),
+            dynamic_all.preserved_cycles().unwrap(),
             fixed.nonce_length(),
-            dynamic.time_between_blocks().clone(),
-            dynamic.blocks_per_roll_snapshot(),
-            dynamic.endorsers_per_block(),
+            dynamic_all.time_between_blocks().as_ref().unwrap().clone(),
+            dynamic_all.blocks_per_roll_snapshot().unwrap(),
+            dynamic_all.endorsers_per_block().unwrap(),
         ))
     }
 }
@@ -120,7 +123,7 @@ impl RightsContextData {
     pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, context: TezedgeContext) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
-
+        
         // prepare parameters that are used
         let block_level = *parameters.block_level();
         let requested_level = *parameters.requested_level();
@@ -133,6 +136,7 @@ impl RightsContextData {
         };
 
         // get context list of block_id level as ContextMap
+        // let current_context = Self::get_context_as_hashmap(block_level.try_into()?, list.clone())?;
         let context_index = ContextIndex::new(Some(block_level.try_into()?), None);
 
         // get index of roll snapshot

@@ -7,7 +7,7 @@ extern crate test;
 /// 1. test_scenario_for_apply_blocks_with_chain_feeder_and_check_context - see fn description
 /// 2. test_scenario_for_add_operations_to_mempool_and_check_state - see fn description
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -251,7 +251,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     Ok(())
 }
 
-fn assert_ctxt(ctxt: HashMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: String) {
+fn assert_ctxt(ctxt: BTreeMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: String) {
     let json: Value = serde_json::from_str(&ocaml_ctxt_as_json).unwrap();
     for (key, value) in ctxt.iter() {
         // comparing just data

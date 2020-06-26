@@ -16,7 +16,8 @@ use std::convert::TryInto;
 use failure::format_err;
 use itertools::Itertools;
 
-use storage::persistent::{ContextList, PersistentStorage};
+use storage::persistent::PersistentStorage;
+use storage::context::TezedgeContext;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::protocol::proto_005_2::rights::{BakingRights, EndorsingRight};
@@ -49,7 +50,7 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    list: ContextList,
+    context: TezedgeContext,
     persistent_storage: &PersistentStorage) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
     // get block level first
@@ -59,7 +60,7 @@ pub(crate) fn check_and_get_baking_rights(
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
 
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
+    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context)?;
 
     get_baking_rights(&context_data, &params, &constants)
 }
@@ -225,7 +226,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    list: ContextList,
+    context: TezedgeContext,
     persistent_storage: &PersistentStorage) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
     // get block level from block_id and from now get all nessesary data by block level
@@ -235,7 +236,7 @@ pub(crate) fn check_and_get_endorsing_rights(
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, None, has_all, block_level, &constants, persistent_storage, false)?;
 
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), list)?;
+    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context)?;
 
     get_endorsing_rights(&context_data, &params, &constants)
 }

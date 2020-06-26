@@ -1,6 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO: (anagy) - check TODO's
+// TODO: refactor errors so this will be removed
+// Enum defining possible response structures for RPC calls
+// there is reason to have this structure because of format of error responses from ocaml node:
+// [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","random_seed"],"function":"get"}]
+// [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":9,"requested":20,"latest":15}]
+// if there have to be same response format then RpcErrorMsg is covering it
+// this enum can be removed if errors are generated from error context directly in result_to_json_response function
+
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 
@@ -11,10 +20,10 @@ use storage::persistent::PersistentStorage;
 use storage::context::TezedgeContext;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
-use tezos_messages::protocol::proto_006::rights::{BakingRights, EndorsingRight};
+use tezos_messages::protocol::proto_004::rights::{BakingRights, EndorsingRight};
 
 use crate::helpers::ContextProtocolParam;
-use crate::services::protocol::proto_006::helpers::{EndorserSlots, get_prng_number, init_prng, RightsConstants, RightsContextData, RightsParams};
+use crate::services::protocol::proto_004::helpers::{EndorserSlots, get_prng_number, init_prng, RightsConstants, RightsContextData, RightsParams};
 use storage::context_action_storage::contract_id_to_contract_address_for_index;
 
 /// Return generated baking rights.
@@ -146,7 +155,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
     let rolls_map = context_data.rolls();
     let display_level: i32 = (*parameters.display_level()).try_into()?;
 
-    for priority in 0..max_priority + 1 {
+    for priority in 0..max_priority {
         // draw the rolls for the requested parameters
         let delegate_to_assign;
         // TODO: priority can overflow in the ocaml code, do a priority % i32::max_value()
