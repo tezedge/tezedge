@@ -155,8 +155,6 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
     let rolls_map = context_data.rolls();
     let display_level: i32 = (*parameters.display_level()).try_into()?;
 
-    println!("Last roll: {}", last_roll);
-
     for priority in 0..max_priority {
         // draw the rolls for the requested parameters
         let delegate_to_assign;
@@ -170,7 +168,6 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
                 delegate_to_assign = d;
                 break;
             } else {
-                //println!("prio: {} | roll: {} -> no delegate", priority, random_num);
                 state = sequence;
             }
         }

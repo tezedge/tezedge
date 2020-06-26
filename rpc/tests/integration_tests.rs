@@ -3,12 +3,10 @@
 
 use std::env;
 
-use assert_json_diff::assert_json_eq_no_panic;
+use assert_json_diff::assert_json_eq;
 use bytes::buf::BufExt;
 use hyper::Client;
 use serde_json::Value;
-
-use tokio::task;
 
 #[derive(Debug)]
 pub enum NodeType {
@@ -19,84 +17,26 @@ pub enum NodeType {
 #[ignore]
 #[tokio::test]
 async fn test_rpc_compare() {
-    // integration_tests_rpc(from_block_header(), to_block_header()).await
-    start_test(from_block_header(), to_block_header(), 5).await;
+    integration_tests_rpc(from_block_header(), to_block_header()).await
 }
 
-async fn start_test(from_block: i64, to_block: i64, thread_count: i64) {
-    let mut handles = Vec::new();
-
-    for i in 0..thread_count {
-        handles.push(
-            spawn_worker(from_block + i, to_block, thread_count).await
-        )
-    }
-    //futures::future::join_all(handles).await;
-    futures::future::try_join_all(handles).await.expect("Test failed");
-    // println!("JF: {:?}", joined_future);
-}
-
-<<<<<<< HEAD
-    //     test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle=0", "chains/main/blocks", "2", "helpers/baking_rights")).await;
-    //     test_rpc_compare_json(&format!("{}/{}/{}?cycle=0", "chains/main/blocks", "2", "helpers/endorsing_rights")).await;
-=======
-async fn spawn_worker(start_level: i64, last_level: i64, level_offset: i64) -> task::JoinHandle<()> {
-    let join = task::spawn(async move {
-        let mut level = start_level;
-        loop {
-            if level > last_level {
-                break
-            }
-            integration_tests_rpc(level).await;
-            level += level_offset;
-        }
-    });
-    join
-}
->>>>>>> b2402e8... integration test in paralell
-
-async fn integration_tests_rpc(level: i64) {
+async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
-    let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", level)).await
-        .expect("Failed to get block from ocaml");
+    for level in from_block..to_block + 1 {
+        let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", level)).await
+            .expect("Failed to get block from ocaml");
 
+        if level <= 0 {
+            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
+            println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
+            continue;
+        }
 
-    if level <= 0 {
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
-        println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
-        return
-    }
+        // -------------------------- Integration tests for RPC --------------------------
+        // ---------------------- Please keep one function per test ----------------------
 
-    // -------------------------- Integration tests for RPC --------------------------
-    // ---------------------- Please keep one function per test ----------------------
-
-    // --------------------------- Tests for each block_id ---------------------------
-    test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
-    test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
-    test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
-    test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
-    test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-    // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
-    // --------------------------------- End of tests --------------------------------
-
-    // we need some constants for
-    let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
-        .expect("Failed to get constants from tezedge");
-
-    let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
-    let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
-    let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
-
-    // block on level 1
-    let cycle:i64 = if level == 1 {
-        0
-    } else {
-        block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
-    };
-
-<<<<<<< HEAD
         // --------------------------- Tests for each block_id ---------------------------
         test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
@@ -181,86 +121,6 @@ async fn integration_tests_rpc(level: i64) {
             cycle_loop_counter += 1;
         }
     }
-=======
-    // test last level of snapshot
-    if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
-        // --------------------- Tests for each snapshot of the cycle ---------------------
-        println!("run snapshot tests: {}, level: {:?}", cycle, level);
-
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-1) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-10) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-1000) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level-3000) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+1 )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+10 )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+1000 )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", level+3000 )).await;
-
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-1) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-10) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-1000) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, level-3000) )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+1 )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+10 )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+1000 )).await;
-        test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/baking_rights", level+3000 )).await;
-
-        // ----------------- End of tests for each snapshot of the cycle ------------------
-    }
-            // test first and last level of cycle
-        // if level == 1 || (level >= blocks_per_cycle && ( (level-1) % blocks_per_cycle == 0 || level % blocks_per_cycle == 0)) {
-
-        //     // ----------------------- Tests for each cycle of the cycle -----------------------
-        //     println!("run cycle tests: {}, level: {:?}", cycle, level);
-
-        //     test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", cycle)).await;
-        //     test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", cycle+preserved_cycles)).await;
-        //     test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, cycle-2) )).await;
-
-        //     test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle)).await;
-        //     test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle+preserved_cycles)).await;
-        //     test_rpc_compare_json(&format!("{}/{}/{}?all&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, cycle-2) )).await;
-        //     //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
-
-        //     // known ocaml node bugs
-        //     // - endorsing rights: for cycle 0, when requested cycle 4 there should be cycle check error:
-        //     //  [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":0,"requested":4,"latest":3}]
-        //     //  instead there is panic on 
-        //     //  [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","last_roll","1"],"function":"get"}]
-        //     // if cycle==0 {
-        //     //     let block_level_1000 = "BM9xFVaVv6mi7ckPbTgxEe7TStcfFmteJCpafUZcn75qi2wAHrC";
-        //     //     test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", block_level_1000, "helpers/endorsing_rights", 4)).await;
-        //     // }
-        //     // - endorsing rights: if there is last level of cycle is not possible to request cycle - PERSERVED_CYCLES
-        //     // test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", std::cmp::max(0, cycle-PERSERVED_CYCLES) )).await;
-
-        //     // ------------------- End of tests for each cycle of the cycle --------------------
-
-        //     if cycle_loop_counter == MAX_CYCLE_LOOPS*2 {
-        //         break
-        //     }
-        //     cycle_loop_counter += 1;
-        // }
->>>>>>> b2402e8... integration test in paralell
-}
-
-async fn test_all_protos_mainnet() {
-    let proto_starts = vec![/*1, */28082, 204761/*, 458752*/];
-
-    for start in proto_starts {
-        for level in start - 50..start + 50 {
-            if level < 1 { 
-                continue;
-            }
-            test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
-            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
-            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
-            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-        }
-    }
-
-    // test 100 blocks the switch block being in the middle
-
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
@@ -272,20 +132,8 @@ async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) -> (Value, Value
     println!("Checking: {}", rpc_path);
     let ocaml_json = get_rpc_as_json(NodeType::Ocaml, rpc_path).await.unwrap();
     let tezedge_json = get_rpc_as_json(NodeType::Tezedge, rpc_path).await.unwrap();
-<<<<<<< HEAD
     assert_json_eq!(tezedge_json.clone(), ocaml_json.clone());
     (ocaml_json, tezedge_json)
-=======
-    let res = assert_json_eq_no_panic(&tezedge_json, &ocaml_json);
-
-    match res {
-        Ok(_) => (),
-        Err(e) => {
-            println!("Not equal at rpc path: {}", rpc_path);
-            panic!(e)
-        } 
-    }
->>>>>>> b2402e8... integration test in paralell
 }
 
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {

@@ -256,19 +256,16 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList, persistent_
         // process cycle key value pairs
         match path.as_slice() {
             ["data", "cycle", cycle, "random_seed"] => {
-                // println!("cycle: {:?} random_seed: {:?}", cycle, value );
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     cycle.random_seed = Some(value);
                 });
             }
             ["data", "cycle", cycle, "roll_snapshot"] => {
-                // println!("cycle: {:?} roll_snapshot: {:?}", cycle, value);
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     cycle.roll_snapshot = Some(value);
                 });
             }
             ["data", "cycle", cycle, "nonces", nonces] => {
-                // println!("cycle: {:?} nonces: {:?}/{:?}", cycle, nonces, value)
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     match cycle.nonces.as_mut() {
                         Some(entry) => entry.insert(nonces.to_string(), value),
@@ -280,7 +277,6 @@ pub(crate) fn get_cycle_from_context(level: &str, list: ContextList, persistent_
                 });
             }
             ["data", "cycle", cycle, "last_roll", last_roll] => {
-                // println!("cycle: {:?} last_roll: {:?}/{:?}", cycle, last_roll, value)
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
                     match cycle.last_roll.as_mut() {
                         Some(entry) => entry.insert(last_roll.to_string(), value),
@@ -307,14 +303,12 @@ pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: 
     let random_seed = context.get_key(&context_index, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?; // list.get_key(level, &format!("data/cycle/{}/random_seed", &cycle_id));
     let roll_snapshot = context.get_key(&context_index, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?;
 
-    println!("Roll sanpshot: {:?}", roll_snapshot);
     match (random_seed, roll_snapshot) {
         (Some(random_seed), Some(roll_snapshot)) => {
             let cycle_json = CycleJson {
                 random_seed: if let Bucket::Exists(value) = random_seed { Some(hex::encode(value).to_string()) } else { None },
                 roll_snapshot: if let Bucket::Exists(value) = roll_snapshot { Some(num_from_slice!(value, 0, i16)) } else { None },
             };
-            println!("{:?}", cycle_json);
             Ok(Some(cycle_json))
         }
         _ => bail!("Context data not found")
@@ -323,7 +317,6 @@ pub(crate) fn get_cycle_from_context_as_json(level: &str, cycle_id: &str, list: 
 
 pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextList, persistent_storage: &PersistentStorage) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
     let ctxt_level: usize = level.parse().unwrap();
-    // println!("level: {:?}", ctxt_level);
 
     let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
     let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
@@ -341,7 +334,6 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
     for (key, bucket) in rolls_lists.iter() {
 
         // create vector from path
-        println!("{}", key);
         let path: Vec<&str> = key.split('/').collect();
 
         // convert value from bytes to hex
@@ -353,7 +345,6 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
         // process roll key value pairs
         match path.as_slice() {
             ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
-                // println!("rolls: {:?}/{:?}/{:?} value: {:?}", path1, path2, path3, value );
 
                 rolls.entry(path1.to_string())
                     .and_modify(|roll| {

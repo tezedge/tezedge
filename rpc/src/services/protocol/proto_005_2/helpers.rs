@@ -199,7 +199,6 @@ impl RightsContextData {
         };
 
         let mut roll_owners: HashMap<i32, String> = HashMap::new();
-        println!("requested level: {}", requested_level);
 
         // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
         for (key, value) in rolls.into_iter() {

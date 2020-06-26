@@ -203,30 +203,14 @@ impl RightsContextData {
         };
 
         let mut roll_owners: HashMap<i32, String> = HashMap::new();
-        println!("requested level: {}", requested_level);
 
         // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
         for (key, value) in rolls.into_iter() {
             let roll_num = key.split('/').last().unwrap();
 
-            if roll_num.parse::<i32>().unwrap() == 35249 {
-                println!("Key: {} | Val: {:?}", key, value);
-            }
-
             // the values are public keys
             if let Bucket::Exists(pk) = value {
                 let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk.clone())?.to_string();
-                //let delegate = hex::encode(pk);
-                // if delegate.eq(&"tz1f8uLERkLmF1HtDWyRcq3xEVcKB4kfcAn6".to_string()) {
-                //     println!("PK: {}", hex::encode(&pk));
-                //     println!("tz1f8uLERkLmF1HtDWyRcq3xEVcKB4kfcAn6");
-                //     println!("Roll num: {} | Key: {}", &roll_num, key);
-                // }
-                // if delegate.eq(&"tz1SYq214SCBy9naR6cvycQsYcUGpBqQAE8d".to_string()) {
-                //     println!("PK: {}", hex::encode(&pk));
-                //     println!("tz1SYq214SCBy9naR6cvycQsYcUGpBqQAE8d");
-                //     println!("Roll num: {} | Key: {}", &roll_num, key);
-                // }
 
                 roll_owners.insert(roll_num.parse().unwrap(), delegate);
             } else {
