@@ -2757,6 +2757,7 @@ dependencies = [
  "lazy_static",
  "ocaml",
  "serde 1.0.114",
+ "serde_json",
  "slog",
  "tezos_encoding",
  "tezos_messages",

@@ -349,13 +349,13 @@ fn process_prevalidation(
                         // TODO: handle and validate pre_filter with operation?
 
                         if state.is_already_validated(&oph) {
-                            debug!(log, "Mempool - received validate operation event - operation allready validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
+                            debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                         } else {
                             // just add operations to pendings
                             state.add_to_pending(&oph, operation.operation());
                         }
                     } else {
-                        warn!(log, "Mempool - received validate operation event - no data in mempool storage?"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
+                        debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                     }
                 }
             }
@@ -388,7 +388,7 @@ fn hydrate_state(
     };
 
     // read from Mempool_storage (just pending) -> add to queue for validation -> pending
-    let mut pending = mempool_storage.iter()?
+    let pending = mempool_storage.iter()?
         .into_iter()
         .map(|(key, value)| (key, value.operation().clone()))
         .collect();
@@ -462,7 +462,7 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                     match protocol_controller.validate_operation(&prevalidator, operation) {
                         Ok(response) => {
                             let result = response.result;
-                            info!(log, "Mempool - validate operation response finished with success "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
+                            debug!(log, "Mempool - validate operation response finished with success "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
 
                             // merge new result with existing one
                             state_changed |= state.add_result(&result);

@@ -92,10 +92,6 @@ fn to_key(key: &Vec<String>) -> String {
     key.join("/")
 }
 
-fn key_starts_with(key: &String, prefix: &Vec<String>) -> bool {
-    key.starts_with(&to_key(prefix))
-}
-
 fn key_terminated_starts_with(key: &String, prefix: &Vec<String>) -> bool {
     let mut terminated_key = to_key(prefix);
     // terminate the key with a '/'
