@@ -296,6 +296,7 @@ impl fmt::Debug for Applied {
 #[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct Errored {
     pub hash: OperationHash,
+    pub is_endorsement: Option<bool>,
     pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
 }
 
@@ -403,6 +404,7 @@ lazy_static! {
                     Encoding::Obj(
                         vec![
                             Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
                             Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
                         ]
                     )
@@ -412,6 +414,7 @@ lazy_static! {
                     Encoding::Obj(
                         vec![
                             Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
                             Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
                         ]
                     )
@@ -421,6 +424,7 @@ lazy_static! {
                     Encoding::Obj(
                         vec![
                             Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
                             Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
                         ]
                     )

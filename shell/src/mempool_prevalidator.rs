@@ -467,7 +467,8 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                             // merge new result with existing one
                             state_changed |= state.add_result(&result);
 
-                            // TODO: handle result like ocaml - branch_delayed add back to pending and so on - check handle_unprocessed
+                            // TODO: handle Duplicate/ Outdated - if result is empty
+                            // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
                         }
                         Err(err) => {
                             warn!(log, "Mempool - failed to validate operation message"; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "error" => format!("{:?}", err));
