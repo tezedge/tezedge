@@ -111,6 +111,21 @@ pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, 
     }
 }
 
+pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+    if chain_id == "main" {
+        if block_id == "head" {
+            result_option_to_json_response(service::get_current_head_shell_header(env.state()).map(|res| res), env.log())
+        } else {
+            result_option_to_json_response(service::get_block_shell_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
+        }
+    } else {
+        empty()
+    }
+}
+
 pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
 
@@ -210,6 +225,71 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
 
     result_to_json_response(
         services::mempool_services::inject_operation(&operation_data, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        env.log(),
+    )
+}
+
+pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    
+    
+    result_to_json_response(
+        service::get_block_protocols(block_id, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    
+    result_to_json_response(
+        service::get_block_hash(block_id, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_chain_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    // this chain_id (e.g. main) reporesents the "alias" for the actial base58 encoded id (e.g. NetXdQprcVkpaWU)
+    let _chain_id = params.get_str("chain_id").unwrap();
+    
+    result_to_json_response(
+        service::get_chain_id(env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_contract_counter(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    let pkh = params.get_str("pkh").unwrap();
+    
+    result_to_json_response(
+        services::protocol::proto_get_contract_counter(_chain_id, block_id, pkh, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_contract_manager_key(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    let pkh = params.get_str("pkh").unwrap();
+    
+    result_to_json_response(
+        services::protocol::proto_get_contract_manager_key(_chain_id, block_id, pkh, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+//get_block_operations
+
+pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+    
+    result_to_json_response(
+        service::get_block_operation_hashes(block_id, env.persistent_storage(), env.state()),
         env.log(),
     )
 }

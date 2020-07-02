@@ -90,6 +90,19 @@ pub struct BlockHeaderInfo {
     pub content: Option<HeaderContent>,
 }
 
+/// Object containing information to recreate the block header shell information
+#[derive(Serialize, Debug, Clone)]
+pub struct BlockHeaderShellInfo {
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: String,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: String,
+    pub fitness: Vec<String>,
+    pub context: String,
+}
+
 impl FullBlockInfo {
     pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
         let header: &BlockHeader = &val.header().header;
@@ -160,6 +173,27 @@ impl BlockHeaderInfo {
             seed_nonce_hash,
             proof_of_work_nonce,
             content,
+        }
+    }
+
+    pub fn to_shell_header(&self) -> BlockHeaderShellInfo {
+        BlockHeaderShellInfo {
+            // pub level: i32,
+            // pub proto: u8,
+            // pub predecessor: String,
+            // pub timestamp: String,
+            // pub validation_pass: u8,
+            // pub operations_hash: String,
+            // pub fitness: Vec<String>,
+            // pub context: String,
+            level: self.level,
+            proto: self.proto,
+            predecessor: self.predecessor.clone(),
+            timestamp: self.timestamp.clone(),
+            validation_pass: self.validation_pass,
+            operations_hash: self.operations_hash.clone(),
+            fitness: self.fitness.clone(),
+            context: self.context.clone(),
         }
     }
 }
@@ -243,6 +277,21 @@ pub struct RpcErrorMsg {
 //         }
 //     }
 // }
+
+#[derive(Serialize, Debug, Clone)]
+pub struct Protocols {
+    protocol: String,
+    next_protocol: String, 
+}
+
+impl Protocols {
+    pub fn new(protocol: String, next_protocol: String) -> Self {
+        Self {
+            protocol,
+            next_protocol,
+        }
+    }
+}
 
 /// Return block level based on block_id url parameter
 /// 

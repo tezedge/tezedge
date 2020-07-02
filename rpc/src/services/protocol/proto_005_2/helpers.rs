@@ -13,12 +13,14 @@ use storage::num_from_slice;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::helpers::{ContextProtocolParam, get_block_timestamp_by_level};
 
 use crate::merge_slices;
+
 
 /// Context constants used in baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
@@ -573,4 +575,29 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
         };
     }
     Ok((v.into(), sequence))
+}
+
+#[inline]
+pub fn create_index_from_contract_id(contract_id: &str) -> Result<Vec<String>, failure::Error> {
+    const INDEX_SIZE: usize = 6;
+    let mut index = Vec::new();
+
+    // input validation is handled by the contract_id_to_address function 
+    let address = contract_id_to_contract_address_for_index(contract_id)?;
+
+    let hashed = hex::encode(blake2b::digest_256(&address));
+
+    for elem in (0..INDEX_SIZE * 2).step_by(2) {
+        index.push(hashed[elem..elem + 2].to_string());
+    }
+
+    Ok(index)
+}
+
+pub(crate) fn construct_indexed_contract_key(pkh: &str) -> Result<String, failure::Error> {
+    const KEY_PREFIX: &str = "data/contracts/index";
+    let index = create_index_from_contract_id(pkh)?.join("/");
+    let key = hex::encode(contract_id_to_contract_address_for_index(pkh)?);
+
+    Ok(format!("{}/{}/{}", KEY_PREFIX, index, key))
 }
