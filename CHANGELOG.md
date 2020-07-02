@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- RPC's for every protocol to support Tezos indexer 'blockwatch/tzindex'
+- Support for connect Mainnet
 
 ### Changed
 
-- Nothing.
+- Ffi upgrade based on Tezos gitlab latest-release (v7.2), supports now ocaml 4.09.1
 
 ### Deprecated
 

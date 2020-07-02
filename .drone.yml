@@ -89,6 +89,7 @@ volumes:
 trigger:
   branch:
     - master
+    - develop
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node with sandbox configuration
@@ -272,6 +273,7 @@ volumes:
 trigger:
   branch:
     - master
+    - develop
 
 depends_on:
   - build-and-tests
@@ -478,6 +480,7 @@ volumes:
 trigger:
   branch:
     - master
+    - develop
 
 depends_on:
   - sandbox-standalone-tests
@@ -586,6 +589,7 @@ volumes:
 trigger:
   branch:
     - master
+    - develop
 
 depends_on:
   - sandbox-standalone-tests-tezedge-inject-operation
@@ -618,7 +622,7 @@ environment:
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
   TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-run:18732
-  TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT: http://tezedge-master-node-run:18732
+  TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-target-branch-node-run:18732
   OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
   TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
 
@@ -683,8 +687,8 @@ steps:
 
 # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
-# if we are doing pull request, run also master build (async) for wrk total compare
-- name: tezedge-master-node-run
+# if we are doing pull request, run also master/target branch build (async) for wrk total compare
+- name: tezedge-target-branch-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -701,7 +705,9 @@ steps:
   commands:
     - cd /tmp/tezedge-cache
     - rm -rf tezedge
-    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge
+    - target_branch=$${DRONE_TARGET_BRANCH}
+    - echo "...checkouting target branch - $target_branch"
+    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
     - cd /tmp/tezedge-cache/tezedge
     - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/artifacts/docker/identities/identity_tezedge_master.json"
@@ -774,7 +780,7 @@ steps:
 - name: bootstrapping-tezedge-master
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap --bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap --bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_target_branch=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
   when:
     ref:
     - refs/pull/*/head
@@ -785,7 +791,7 @@ steps:
   pull: always
   user: root
   commands:
-    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_master=$${TEZEDGE_NODE_MASTER_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --wrk-duration=$${WRK_TEST_DURATION}
+    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_target_branch=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --wrk-duration=$${WRK_TEST_DURATION}
   when:
     ref:
     - refs/pull/*/head
@@ -814,6 +820,7 @@ volumes:
 trigger:
   branch:
     - master
+    - develop
 
 depends_on:
 - connection-from-different-network-test
