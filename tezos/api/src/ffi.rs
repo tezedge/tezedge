@@ -256,10 +256,19 @@ impl FfiMessage for ValidateOperationResponse {
 pub type OperationProtocolDataJson = String;
 pub type ErrorListJson = String;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct OperationProtocolDataJsonWithErrorListJson {
     pub protocol_data_json: OperationProtocolDataJson,
     pub error_json: ErrorListJson,
+}
+
+impl fmt::Debug for OperationProtocolDataJsonWithErrorListJson {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[error_json: {}, protocol_data_json: {}]",
+               format_json_single_line(&self.error_json),
+               format_json_single_line(&self.protocol_data_json)
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
@@ -268,12 +277,18 @@ pub struct Applied {
     pub protocol_data_json: OperationProtocolDataJson,
 }
 
+#[inline]
+fn format_json_single_line(origin: &String) -> String {
+    let json = serde_json::json!(origin);
+    serde_json::to_string(&json).unwrap_or(origin.clone())
+}
+
 impl fmt::Debug for Applied {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let operation_hash_encoding = HashType::OperationHash;
-        write!(f, "Applied[hash: {}, protocol_data_json: {}]",
+        write!(f, "[hash: {}, protocol_data_json: {}]",
                operation_hash_encoding.bytes_to_string(&self.hash),
-               &self.protocol_data_json
+               format_json_single_line(&self.protocol_data_json)
         )
     }
 }
@@ -281,13 +296,14 @@ impl fmt::Debug for Applied {
 #[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct Errored {
     pub hash: OperationHash,
+    pub is_endorsement: Option<bool>,
     pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
 }
 
 impl fmt::Debug for Errored {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let operation_hash_encoding = HashType::OperationHash;
-        write!(f, "Errored[hash: {}, protocol_data_json_with_error_json: {:?}]",
+        write!(f, "[hash: {}, protocol_data_json_with_error_json: {:?}]",
                operation_hash_encoding.bytes_to_string(&self.hash),
                &self.protocol_data_json_with_error_json
         )
@@ -388,6 +404,7 @@ lazy_static! {
                     Encoding::Obj(
                         vec![
                             Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
                             Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
                         ]
                     )
@@ -397,6 +414,7 @@ lazy_static! {
                     Encoding::Obj(
                         vec![
                             Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
                             Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
                         ]
                     )
@@ -406,6 +424,7 @@ lazy_static! {
                     Encoding::Obj(
                         vec![
                             Field::new("hash", Encoding::Hash(HashType::OperationHash)),
+                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
                             Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
                         ]
                     )

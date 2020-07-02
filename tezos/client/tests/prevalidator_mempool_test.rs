@@ -55,7 +55,7 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
 
 #[test]
 #[serial]
-fn test_begin_construction() {
+fn test_begin_construction_and_validate_operation() {
     init_test_runtime();
 
     // init empty context for test
@@ -78,8 +78,6 @@ fn test_begin_construction() {
     let result = result.unwrap();
     assert_eq!(result.prevalidator.chain_id, chain_id);
     assert_eq!(result.result.applied.len(), 1);
-
-    // TODO: skontrolvat json
 }
 
 fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: &BlockHeader) -> BlockHeader {

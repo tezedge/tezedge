@@ -358,6 +358,7 @@ fn test_validate_operation_response_roundtrip(iteration: i32) -> Result<(), fail
         .branch_refused(vec![
             Errored {
                 hash: operation_hash.clone(),
+                is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "protocol_data_json".to_string(),
                     error_json: "error_list_json".to_string(),
@@ -367,6 +368,7 @@ fn test_validate_operation_response_roundtrip(iteration: i32) -> Result<(), fail
         .branch_delayed(vec![
             Errored {
                 hash: operation_hash.clone(),
+                is_endorsement: Some(true),
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "".to_string(),
                     error_json: "error".to_string(),
