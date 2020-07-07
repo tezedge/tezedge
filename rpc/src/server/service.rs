@@ -449,14 +449,50 @@ pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &Pe
 
 pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error>{
     let block_storage = BlockStorage::new(persistent_storage);
+
+    // check whether block_id is formated like: head~10 (block 10 levels in the past from head)
+    let offseted_id: Vec<&str> = block_id.split("~").collect();
     
-    match block_id.parse() {
-        Ok(val) => {
-            Ok(block_storage.get_by_block_level_with_json_data(val)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)))
+    // get the level of the requested block_id (offset if necessery)
+    let level = if offseted_id.len() == 2 {
+        match offseted_id[1].parse::<i64>() {
+            Ok(offset) => {
+                get_block_level_by_block_id(offseted_id[0], offset, persistent_storage, state)?
+            }
+            Err(_) => bail!("Offset parameter should be a number! Offset parameter: {}", offseted_id[1])
         }
-        Err(_e) => {
-            let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
-            Ok(block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)))
+    } else {
+        get_block_level_by_block_id(block_id, 0, persistent_storage, state)?
+    };
+
+    // get the block by level (or level with offset)
+    Ok(block_storage.get_by_block_level_with_json_data(level.try_into()?)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)))
+}
+
+/// Extract block level from the full block info
+fn get_block_level_by_block_id(block_id: &str, offset: i64, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<i64, failure::Error> {
+    if block_id == "head" {
+        match get_full_current_head(state)? {
+            Some(head) => {
+                Ok(head.header.level as i64 - offset)
+            }
+            None => bail!("Head not yet initialized")
+        }
+    } else {
+        match block_id.parse::<i64>() {
+            Ok(val) => {
+                Ok(val - offset)
+            }
+            Err(_) => {
+                let block_storage = BlockStorage::new(persistent_storage);
+                let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+                let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+                if let Some(block) = block {
+                    Ok(block.header.level as i64 - offset)
+                } else {
+                    bail!("Cannot get block level from block {}, block not found", block_id)
+                }
+            }
         }
     }
 }
