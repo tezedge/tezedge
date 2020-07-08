@@ -17,9 +17,10 @@ use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextIndex, ContextApi};
 use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
+use tezos_api::environment::TezosEnvironmentConfiguration;
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson};
 use slog::Logger;
@@ -445,6 +446,36 @@ pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &Pe
     } else {
         bail!("Cannot retrieve operation hashes from block, block_id {} not found!", block_id)
     }
+}
+
+pub(crate) fn run_operation(block_id: &str, operation_json: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
+    let _block_header = get_block_header(block_id, persistent_storage, state);
+    
+    println!("operation_json: {}", operation_json);
+
+    // TODO send the operation json to ffi
+
+    let mock_result = r#"{"contents":[{"kind":"transaction","source":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","fee":"0","counter":"1","gas_limit":"1040000","storage_limit":"60000","amount":"1000000","destination":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","metadata":{"balance_updates":[],"operation_result":{"status":"applied","balance_updates":[{"kind":"contract","contract":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","change":"-1000000"},{"kind":"contract","contract":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","change":"1000000"}],"consumed_gas":"10207"}}}]}"#;
+    let ret = serde_json::from_str(&mock_result)?;
+
+    Ok(ret)
+}
+
+pub(crate) fn preapply_operations(block_id: &str, operation_json: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
+    let _block_header = get_block_header(block_id, persistent_storage, state);
+    
+    println!("operation_json: {}", operation_json);
+
+    // TODO send the operation json to ffi
+
+    let mock_result = r#"[{"contents":[{"kind":"transaction","source":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","fee":"1281","counter":"1","gas_limit":"10307","storage_limit":"0","amount":"1000000","destination":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","metadata":{"balance_updates":[{"kind":"contract","contract":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","change":"-1281"},{"kind":"freezer","category":"fees","delegate":"tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU","cycle":0,"change":"1281"}],"operation_result":{"status":"applied","balance_updates":[{"kind":"contract","contract":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","change":"-1000000"},{"kind":"contract","contract":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","change":"1000000"}],"consumed_gas":"10207"}}}],"signature":"edsigtZvjo7z3EFUqUvfugvPqd2C7da3pKmCmzwgD9WMgvXL2uXNwcHP1beMVYbya9Hy1QBBdSWTznTznQ7Hhfq5cUpoNdVkS1W"}]"#;
+    let ret = serde_json::from_str(&mock_result)?;
+
+    Ok(ret)
+}
+
+pub(crate) fn get_node_version(tezos_env: &TezosEnvironmentConfiguration) -> Result<NodeVersion, failure::Error> {
+    Ok(NodeVersion::new(tezos_env))
 }
 
 pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error>{

@@ -68,14 +68,10 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     let chain_id = params.get_str("chain_id").unwrap();
 
     if chain_id == "main" {
-        let current_head = service::get_full_current_head(env.state());
-        if let Ok(Some(_current_head)) = current_head {
-            // TODO: implement
-            empty()
-        } else {
-            empty()
-        }
+        // NOTE: just header?
+        result_option_to_json_response(service::get_current_head_shell_header(env.state()).map(|res| res), env.log())
     } else {
+        // TODO: implement... 
         empty()
     }
 }
@@ -281,7 +277,6 @@ pub async fn get_contract_manager_key(_: Request<Body>, params: Params, _: Query
         env.log(),
     )
 }
-//get_block_operations
 
 pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let _chain_id = params.get_str("chain_id").unwrap();
@@ -290,6 +285,39 @@ pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Que
     
     result_to_json_response(
         service::get_block_operation_hashes(block_id, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn run_operation(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    
+    let operation_data_raw = hyper::body::to_bytes(req.into_body()).await?;
+    let operation_data = String::from_utf8(operation_data_raw.to_vec())?;
+    
+    result_to_json_response(
+        service::run_operation(block_id, &operation_data, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    
+    let operation_data_raw = hyper::body::to_bytes(req.into_body()).await?;
+    let operation_data = String::from_utf8(operation_data_raw.to_vec())?;
+    
+    result_to_json_response(
+        service::preapply_operations(block_id, &operation_data, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        service::get_node_version(env.tezos_environment()),
         env.log(),
     )
 }

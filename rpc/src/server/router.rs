@@ -14,6 +14,7 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
 
     let mut routes = PathTree::<Handler>::new();
     // Tezos shell and protocol rpc
+    routes.handle("/version", handler::node_version);
     routes.handle("/monitor/bootstrapped", handler::bootstrapped);
     routes.handle("/monitor/commit_hash", handler::commit_hash);
     routes.handle("/monitor/active_chains", handler::active_chains);
@@ -30,6 +31,8 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle/:cycle_id", handler::cycle);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", handler::baking_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", handler::endorsing_rights);
+    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/scripts/run_operation", handler::run_operation);
+    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/preapply/operations", handler::preapply_operations);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", handler::votes_listings);
     routes.handle("/chains/:chain_id/mempool/pending_operations", handler::mempool_pending_operations);
     routes.handle("/chains/:chain_id/blocks/:block_id/protocols", handler::get_block_protocols);

@@ -5,20 +5,22 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::{bail, Fail};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crypto::hash::{BlockHash, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
-use storage::persistent::{PersistentStorage, ContextMap};
+use storage::context_action_storage::ContextActionType;
+use storage::persistent::{ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::ContextList;
+use crate::encoding::base_types::UniString;
 use crate::rpc_actor::RpcCollectedStateRef;
-use storage::context_action_storage::ContextActionType;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -150,7 +152,7 @@ impl BlockHeaderInfo {
         let seed_nonce_hash = header_data.get("seed_nonce_hash").map(|val| val.as_str().unwrap().to_string());
         let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
         let protocol = proto_data.get("protocol").map(|val| val.as_str().unwrap().to_string());
-        
+
         let mut content: Option<HeaderContent> = None;
         if let Some(header_content) = header_data.get("content") {
             content = serde_json::from_value(header_content.clone()).unwrap();
@@ -281,7 +283,7 @@ pub struct RpcErrorMsg {
 #[derive(Serialize, Debug, Clone)]
 pub struct Protocols {
     protocol: String,
-    next_protocol: String, 
+    next_protocol: String,
 }
 
 impl Protocols {
@@ -292,6 +294,60 @@ impl Protocols {
         }
     }
 }
+
+// ---------------------------------------------------------------------
+#[derive(Serialize, Debug, Clone)]
+pub struct NodeVersion {
+    version: Version,
+    network_version: NetworkVersion,
+    commit_info: CommitInfo,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct NetworkVersion {
+    chain_name: String,
+    distributed_db_version: i32,
+    p2p_version: i32,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct CommitInfo {
+    commit_hash: UniString,
+    commit_date: UniString,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct Version {
+    major: i32,
+    minor: i32,
+    additional_info: String,
+}
+
+impl NodeVersion {
+    pub fn new(env_config: &TezosEnvironmentConfiguration) -> Self {
+        let version_env: &'static str = env!("CARGO_PKG_VERSION");
+
+        let version: Vec<String> = version_env.split(".").map(|v| v.to_string()).collect();
+
+        Self {
+            version: Version {
+                major: version[0].parse().unwrap_or(0),
+                minor: version[1].parse().unwrap_or(0),
+                additional_info: "release".to_string(),
+            },
+            network_version: NetworkVersion {
+                chain_name: env_config.version.clone(),
+                distributed_db_version: 0,
+                p2p_version: 1,
+            },
+            commit_info: CommitInfo {
+                commit_hash: UniString::from(env!("GIT_HASH")),
+                commit_date: UniString::from(env!("GIT_COMMIT_DATE")),
+            },
+        }
+    }
+}
+// ---------------------------------------------------------------------
 
 /// Return block level based on block_id url parameter
 /// 

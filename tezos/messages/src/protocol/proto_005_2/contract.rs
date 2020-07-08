@@ -1,18 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::mem::size_of;
-use std::sync::Arc;
-use std::collections::HashMap;
-use std::string::ToString;
-
 use serde::{Deserialize, Serialize};
 use getset::Getters;
-use failure::bail;
-
-use crate::base::signature_public_key_hash::SignaturePublicKeyHash;
-use crate::base::signature_public_key::SignaturePublicKey;
-use crate::protocol::{ToRpcJsonMap, UniversalValue};
 
 use tezos_encoding::{
     encoding::{Encoding, Field, HasEncoding},
