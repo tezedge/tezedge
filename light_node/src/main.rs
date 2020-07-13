@@ -199,6 +199,7 @@ fn block_on_actors(
     let _ = RpcServer::actor(
         &actor_system,
         shell_channel.clone(),
+        tezos_env,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,

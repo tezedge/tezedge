@@ -1,29 +1,30 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::bail;
 use serde::{Deserialize, Serialize};
+use slog::Logger;
 
-use crypto::hash::{chain_id_to_b58_string};
+use crypto::hash::chain_id_to_b58_string;
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
 use storage::block_storage::BlockJsonData;
-use storage::persistent::{PersistentStorage, ContextMap};
+use storage::context::{ContextApi, ContextIndex, TezedgeContext};
+use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
+use storage::persistent::{ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
-use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_api::ffi::{FfiRpcService, JsonRpcRequest, ProtocolJsonRpcRequest};
 use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
-use tezos_api::environment::TezosEnvironmentConfiguration;
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, BlockHeaderMonitorInfo, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderMonitorInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
-use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson};
-use slog::Logger;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -367,7 +368,6 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
         // process roll key value pairs
         match path.as_slice() {
             ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
-
                 rolls.entry(path1.to_string())
                     .and_modify(|roll| {
                         roll.entry(path2.to_string())
@@ -420,7 +420,6 @@ pub(crate) fn get_block_protocols(block_id: &str, persistent_storage: &Persisten
     } else {
         bail!("Cannot retrieve protocols, block_id {} not found!", block_id)
     }
-    
 }
 
 /// Extract the hash from the block data
@@ -432,7 +431,6 @@ pub(crate) fn get_block_hash(block_id: &str, persistent_storage: &PersistentStor
     } else {
         bail!("Cannot retrieve block hash, block_id {} not found!", block_id)
     }
-    
 }
 
 /// Returns the chain id for the requested chain
@@ -459,42 +457,70 @@ pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &Pe
     }
 }
 
-pub(crate) fn run_operation(block_id: &str, operation_json: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
-    let _block_header = get_block_header(block_id, persistent_storage, state);
-    
-    println!("operation_json: {}", operation_json);
+pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
+    // get header
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
 
-    // TODO send the operation json to ffi
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersRunOperation,
+        request: json_request,
+        chain_id,
+    };
 
-    let mock_result = r#"{"contents":[{"kind":"transaction","source":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","fee":"0","counter":"1","gas_limit":"1040000","storage_limit":"60000","amount":"1000000","destination":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","metadata":{"balance_updates":[],"operation_result":{"status":"applied","balance_updates":[{"kind":"contract","contract":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","change":"-1000000"},{"kind":"contract","contract":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","change":"1000000"}],"consumed_gas":"10207"}}}]}"#;
-    let ret = serde_json::from_str(&mock_result)?;
+    // TODO: TE-192 - refactor to protocol runner call
+    let response = tezos_client::client::call_protocol_json_rpc(request)?;
 
-    Ok(ret)
+    Ok(serde_json::from_str(&response.body)?)
 }
 
-pub(crate) fn preapply_operations(block_id: &str, operation_json: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
-    let _block_header = get_block_header(block_id, persistent_storage, state);
-    
-    println!("operation_json: {}", operation_json);
+pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
+    // get header
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
 
-    // TODO send the operation json to ffi
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersPreapplyOperations,
+        request: json_request,
+        chain_id,
+    };
 
-    let mock_result = r#"[{"contents":[{"kind":"transaction","source":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","fee":"1281","counter":"1","gas_limit":"10307","storage_limit":"0","amount":"1000000","destination":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","metadata":{"balance_updates":[{"kind":"contract","contract":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","change":"-1281"},{"kind":"freezer","category":"fees","delegate":"tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU","cycle":0,"change":"1281"}],"operation_result":{"status":"applied","balance_updates":[{"kind":"contract","contract":"tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx","change":"-1000000"},{"kind":"contract","contract":"tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN","change":"1000000"}],"consumed_gas":"10207"}}}],"signature":"edsigtZvjo7z3EFUqUvfugvPqd2C7da3pKmCmzwgD9WMgvXL2uXNwcHP1beMVYbya9Hy1QBBdSWTznTznQ7Hhfq5cUpoNdVkS1W"}]"#;
-    let ret = serde_json::from_str(&mock_result)?;
+    // TODO: TE-192 - refactor to protocol runner call
+    let response = tezos_client::client::helpers_preapply_operations(request)?;
 
-    Ok(ret)
+    Ok(serde_json::from_str(&response.body)?)
 }
 
 pub(crate) fn get_node_version(tezos_env: &TezosEnvironmentConfiguration) -> Result<NodeVersion, failure::Error> {
     Ok(NodeVersion::new(tezos_env))
 }
 
-pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error>{
+pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
     let block_storage = BlockStorage::new(persistent_storage);
 
     // check whether block_id is formated like: head~10 (block 10 levels in the past from head)
     let offseted_id: Vec<&str> = block_id.split("~").collect();
-    
+
     // get the level of the requested block_id (offset if necessery)
     let level = if offseted_id.len() == 2 {
         match offseted_id[1].parse::<i64>() {

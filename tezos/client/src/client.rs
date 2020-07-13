@@ -2,15 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{
-    ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    BeginConstructionError, BeginConstructionRequest, BeginConstructionRequestBuilder,
-    CommitGenesisResult,
-    ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult,
-    PatchContext, PrevalidatorWrapper, ProtocolOverrides, TezosGenerateIdentityError,
-    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationRequest, ValidateOperationRequestBuilder, ValidateOperationResponse,
-};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, BeginConstructionRequestBuilder, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationRequestBuilder, ValidateOperationResponse};
 use tezos_api::identity::Identity;
 use tezos_interop::ffi;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -143,6 +135,42 @@ pub fn validate_operation(
         Ok(result) => result.map_err(|e| ValidateOperationError::from(e)),
         Err(e) => {
             Err(ValidateOperationError::FailedToValidateOperation {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Call protocol json rpc - general service
+pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+    match ffi::call_protocol_json_rpc(request) {
+        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Err(e) => {
+            Err(ProtocolRpcError::FailedToCallProtocolRpc {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Call helpers_preapply_operations shell service
+pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+    match ffi::helpers_preapply_operations(request) {
+        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Err(e) => {
+            Err(ProtocolRpcError::FailedToCallProtocolRpc {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Call helpers_preapply_block shell service
+pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+    match ffi::helpers_preapply_block(request) {
+        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Err(e) => {
+            Err(ProtocolRpcError::FailedToCallProtocolRpc {
                 message: format!("Unknown OcamlError: {:?}", e)
             })
         }

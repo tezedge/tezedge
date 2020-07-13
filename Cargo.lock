@@ -2160,6 +2160,7 @@ dependencies = [
  "slog",
  "storage",
  "tezos_api",
+ "tezos_client",
  "tezos_context",
  "tezos_encoding",
  "tezos_messages",
@@ -2728,10 +2729,12 @@ dependencies = [
 name = "tezos_client"
 version = "0.2.0"
 dependencies = [
+ "assert-json-diff",
  "crypto",
  "enum-iterator",
  "failure",
  "hex",
+ "serde_json",
  "serial_test",
  "tezos_api",
  "tezos_encoding",
