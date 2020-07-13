@@ -69,7 +69,7 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
 
     if chain_id == "main" {
         // NOTE: just header?
-        result_option_to_json_response(service::get_current_head_shell_header(env.state()).map(|res| res), env.log())
+        result_option_to_json_response(service::get_current_head_monitor_header(env.state()).map(|res| res), env.log())
     } else {
         // TODO: implement... 
         empty()

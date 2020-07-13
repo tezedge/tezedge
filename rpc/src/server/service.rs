@@ -20,7 +20,7 @@ use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderMonitorInfo, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson};
 use slog::Logger;
@@ -130,12 +130,23 @@ pub(crate) fn get_current_head_header(state: &RpcCollectedStateRef) -> Result<Op
     Ok(current_head)
 }
 
-/// Get information about current head header
+/// Get information about current head shell header
 pub(crate) fn get_current_head_shell_header(state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderShellInfo>, failure::Error> {
     let state = state.read().unwrap();
     let current_head = state.current_head().as_ref().map(|current_head| {
         let chain_id = chain_id_to_b58_string(state.chain_id());
         BlockHeaderInfo::new(current_head, &chain_id).to_shell_header()
+    });
+
+    Ok(current_head)
+}
+
+/// Get information about current head monitor header
+pub(crate) fn get_current_head_monitor_header(state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderMonitorInfo>, failure::Error> {
+    let state = state.read().unwrap();
+    let current_head = state.current_head().as_ref().map(|current_head| {
+        let chain_id = chain_id_to_b58_string(state.chain_id());
+        BlockHeaderInfo::new(current_head, &chain_id).to_monitor_header(current_head)
     });
 
     Ok(current_head)

@@ -105,6 +105,21 @@ pub struct BlockHeaderShellInfo {
     pub context: String,
 }
 
+/// Object containing information to recreate the block header shell information
+#[derive(Serialize, Debug, Clone)]
+pub struct BlockHeaderMonitorInfo {
+    pub hash: String,
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: String,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: String,
+    pub fitness: Vec<String>,
+    pub context: String,
+    pub protocol_data: String,
+}
+
 impl FullBlockInfo {
     pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
         let header: &BlockHeader = &val.header().header;
@@ -180,14 +195,6 @@ impl BlockHeaderInfo {
 
     pub fn to_shell_header(&self) -> BlockHeaderShellInfo {
         BlockHeaderShellInfo {
-            // pub level: i32,
-            // pub proto: u8,
-            // pub predecessor: String,
-            // pub timestamp: String,
-            // pub validation_pass: u8,
-            // pub operations_hash: String,
-            // pub fitness: Vec<String>,
-            // pub context: String,
             level: self.level,
             proto: self.proto,
             predecessor: self.predecessor.clone(),
@@ -196,6 +203,21 @@ impl BlockHeaderInfo {
             operations_hash: self.operations_hash.clone(),
             fitness: self.fitness.clone(),
             context: self.context.clone(),
+        }
+    }
+
+    pub fn to_monitor_header(&self, block: &BlockApplied) -> BlockHeaderMonitorInfo {
+        BlockHeaderMonitorInfo {
+            hash: self.hash.clone(),
+            level: self.level,
+            proto: self.proto,
+            predecessor: self.predecessor.clone(),
+            timestamp: self.timestamp.clone(),
+            validation_pass: self.validation_pass,
+            operations_hash: self.operations_hash.clone(),
+            fitness: self.fitness.clone(),
+            context: self.context.clone(),
+            protocol_data: hex::encode(block.header().header.protocol_data()),
         }
     }
 }

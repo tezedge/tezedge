@@ -225,7 +225,7 @@ steps:
   commands:
     - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
     - sleep 1
-    - tezos-client -l --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
+    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
     - sleep 2
 
 - name: check-mempool-after-transfer
