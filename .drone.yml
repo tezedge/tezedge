@@ -38,7 +38,6 @@ steps:
 
 - name: test-and-build-artifacts
   image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
   user: root
   volumes:
     - name: build
@@ -633,13 +632,13 @@ steps:
   volumes:
     - name: tezedge-node-data
       path: /tmp/tezedge_developer
-    - name: tezedge-master-node-data
-      path: /tmp/tezedge_master_developer
+    - name: tezedge-target-branch-node-data
+      path: /tmp/tezedge_target-branch_developer
   commands:
     - rm -rf /tmp/tezedge_developer/light-node
     - rm -rf /tmp/tezedge_developer/tezos-node
-    - rm -rf /tmp/tezedge_master_developer/light-node
-    - rm -rf /tmp/tezedge_master_developer/tezos-node
+    - rm -rf /tmp/tezedge_target-branch_developer/light-node
+    - rm -rf /tmp/tezedge_target-branch_developer/tezos-node
 
 - name: tezedge-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -659,6 +658,34 @@ steps:
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
     - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --identity-file "/artifacts/docker/identities/identity_tezedge.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+
+# if we are doing pull request, run also "target branch" build (async) for wrk total compare at the end
+- name: tezedge-target-branch-node-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezedge-target-branch-node-data
+      path: /tmp/tezedge_developer
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - cd /tmp/tezedge-cache
+    - rm -rf tezedge
+    - target_branch=$${DRONE_TARGET_BRANCH}
+    - echo "...checkouting target branch - $target_branch"
+    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
+    - cd /tmp/tezedge-cache/tezedge
+    - cargo build --release --workspace
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/artifacts/docker/identities/identity_tezedge_master.json"
+  when:
+    ref:
+      - refs/pull/*/head
 
 - name: bootstrapping-tezedge
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -687,34 +714,6 @@ steps:
 
 # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
-# if we are doing pull request, run also master/target branch build (async) for wrk total compare
-- name: tezedge-target-branch-node-run
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezedge-master-node-data
-      path: /tmp/tezedge_developer
-    - name: cache
-      path: /tmp/tezedge-cache
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-  commands:
-    - cd /tmp/tezedge-cache
-    - rm -rf tezedge
-    - target_branch=$${DRONE_TARGET_BRANCH}
-    - echo "...checkouting target branch - $target_branch"
-    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
-    - cd /tmp/tezedge-cache/tezedge
-    - cargo build --release --workspace
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --network "$${NETWORK}" --identity-file "/artifacts/docker/identities/identity_tezedge_master.json"
-  when:
-    ref:
-    - refs/pull/*/head
-
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -727,14 +726,6 @@ steps:
     RUST_BACKTRACE: 1
   commands:
     - /artifacts/rpc_integration_test --nocapture --ignored test_rpc_compare
-
-# compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with two nodes (current branch and ocaml))
-- name: wrk-performance-test-tezedge-vs-ocaml
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  pull: always
-  user: root
-  commands:
-    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --wrk-duration=$${WRK_TEST_DURATION}
 
 - name: tz-indexer-tezedge
   image: blockwatch/tzindex:latest
@@ -776,8 +767,21 @@ steps:
   commands:
     - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
 
-# this is triggerd just on pull request to master
-- name: bootstrapping-tezedge-master
+# compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with two nodes (current branch and ocaml))
+# not triggered on pull request, because on pull request is triggered more complex wrk test
+- name: wrk-performance-test-tezedge-vs-ocaml
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: always
+  user: root
+  commands:
+    - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --wrk-duration=$${WRK_TEST_DURATION}
+  when:
+    ref:
+      exclude:
+      - refs/pull/*/head
+
+# this is triggerd just on pull request to target branch
+- name: bootstrapping-tezedge-target-branch
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge_target_branch=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
@@ -785,8 +789,8 @@ steps:
     ref:
     - refs/pull/*/head
 
-#  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (master, current branch and ocaml))
-- name: wrk-performance-test--tezedge-vs-ocaml-vs-tezedge_master
+#  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
+- name: wrk-performance-test--tezedge-vs-ocaml-vs-tezedge_target_branch
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: always
   user: root
@@ -806,9 +810,9 @@ volumes:
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-node
-  - name: tezedge-master-node-data
+  - name: tezedge-target-branch-node-data
     host:
-      path: /etc/tezedge-master-node
+      path: /etc/tezedge-target-branch-node
   - name: cache
     host:
       path: /etc/tezedge-ci/cache
