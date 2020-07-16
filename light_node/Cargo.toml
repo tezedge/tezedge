@@ -6,8 +6,8 @@ edition = "2018"
 default-run = "light-node"
 
 [dependencies]
-clap = "2.33.0"
-dirs = "2.0.2"
+clap = "2.33"
+dirs = "3.0"
 failure = "0.1"
 futures = "0.3"
 hex = "0.4"
