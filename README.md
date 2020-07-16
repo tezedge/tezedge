@@ -81,8 +81,8 @@ curl https://sh.rustup.rs -sSf | sh
 
 Rust nightly is required to build this project.
 ```
-rustup toolchain install nightly-2020-05-15
-rustup default nightly-2020-05-15
+rustup toolchain install nightly-2020-07-12
+rustup default nightly-2020-07-12
 ```
 
 **3. Install required libs**
