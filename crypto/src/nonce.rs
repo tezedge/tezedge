@@ -38,7 +38,7 @@ impl Nonce {
     /// Generate new random nonce
     pub fn random() -> Self {
         let mut rng = rand::thread_rng();
-        let value: BigUint = rng.gen_biguint(NONCE_SIZE * 8);
+        let value: BigUint = rng.gen_biguint((NONCE_SIZE * 8) as u64);
         Nonce { value }
     }
 

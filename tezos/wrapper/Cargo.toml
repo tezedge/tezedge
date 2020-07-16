@@ -5,14 +5,14 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-getset = "0.0.9"
+getset = "0.1"
 failure = "0.1"
 failure_derive = "0.1"
 lazy_static = "1.4"
 serde = { version = "1.0", features = ["derive"] }
 slog = "2.5"
-strum_macros = "0.16.0"
-wait-timeout = "0.2.0"
+strum_macros = "0.18"
+wait-timeout = "0.2"
 # local dependencies
 ipc = { path = "../../ipc" }
 crypto = { path = "../../crypto" }
@@ -23,5 +23,5 @@ tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
 libc = "0.2.65"
-ipmpsc = "0.2.0"
+ipmpsc = "0.3"
 rand = "0.7.3"

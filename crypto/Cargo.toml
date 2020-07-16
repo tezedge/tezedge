@@ -9,8 +9,7 @@ base58 = "0.1.0"
 failure = "0.1"
 failure_derive = "0.1"
 hex = "0.4"
-num-bigint = { version = "0.2.6", features = ["serde", "rand"] }
+num-bigint = { version = "0.3", features = ["serde", "rand"] }
 num-traits = "0.2.8"
-# TODO: bump version to 0.7 when released num-bigint 0.3
-rand = "0.6.5"
+rand = "0.7.3"
 sodiumoxide = "0.2.5"

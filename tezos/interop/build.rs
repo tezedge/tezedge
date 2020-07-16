@@ -151,7 +151,7 @@ fn run_builder(build_chain: &str) {
                 let mut file = File::open(&libtezos_path).expect("Failed to read contents of libtezos.so");
                 let mut sha256 = Sha256::new();
                 std::io::copy(&mut file, &mut sha256).expect("Failed to read contents of libtezos.so");
-                let hash = sha256.result();
+                let hash = sha256.finalize();
                 assert_eq!(hash[..], *remote_lib_sha256, "libtezos.so SHA256 mismatch");
             }
         }
