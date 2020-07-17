@@ -3,12 +3,16 @@
 
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::pin::Pin;
 
+use chrono::Utc;
 use failure::{bail, Fail};
+use futures::Stream;
+use futures::task::{Context, Poll};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{BlockHash, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, chain_id_to_b58_string, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
 use storage::context_action_storage::ContextActionType;
@@ -19,7 +23,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::ContextList;
-use crate::encoding::base_types::UniString;
+use crate::encoding::base_types::{TimeStamp, UniString};
 use crate::rpc_actor::RpcCollectedStateRef;
 
 #[macro_export]
@@ -118,6 +122,61 @@ pub struct BlockHeaderMonitorInfo {
     pub fitness: Vec<String>,
     pub context: String,
     pub protocol_data: String,
+}
+
+pub struct MonitorHeadStream {
+    pub state: RpcCollectedStateRef,
+    pub last_polled_timestamp: Option<TimeStamp>,
+}
+
+impl Stream for MonitorHeadStream {
+    type Item = Result<String, serde_json::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, serde_json::Error>>> {
+        // Note: the stream only ends on the client dropping the connection
+
+        let state = self.state.read().unwrap();
+        let last_update = if let TimeStamp::Integral(timestamp) = state.head_update_time() {
+            *timestamp
+        } else {
+            // TODO: rework this quick hack
+            0
+        };
+        let current_head = state.current_head().clone();
+        let chain_id = state.chain_id().clone();
+
+        // drop the immutable borrow so we can borrow self again as mutable
+        drop(state);
+
+        if let Some(TimeStamp::Integral(poll_time)) = self.last_polled_timestamp {
+            if poll_time < last_update {
+                // get the desired structure of the
+                let current_head = current_head.as_ref().map(|current_head| {
+                    let chain_id = chain_id_to_b58_string(&chain_id);
+                    BlockHeaderInfo::new(current_head, &chain_id).to_monitor_header(current_head)
+                });
+
+                // serialize the struct to a json string to yield by the stream
+                let mut head_string = serde_json::to_string(&current_head.unwrap())?;
+
+                // push a newline character to the stream to imrove readability
+                head_string.push('\n');
+
+                self.last_polled_timestamp = Some(current_time_timestamp());
+
+                // yield the serialized json
+                return Poll::Ready(Some(Ok(head_string)));
+            } else {
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        } else {
+            self.last_polled_timestamp = Some(current_time_timestamp());
+
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
 }
 
 impl FullBlockInfo {
@@ -537,4 +596,8 @@ pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<Conte
         let storage = list.read().expect("poisoned storage lock");
         storage.get(level).map_err(|e| e.into())
     }
+}
+
+pub(crate) fn current_time_timestamp() -> TimeStamp {
+    TimeStamp::Integral(Utc::now().timestamp())
 }

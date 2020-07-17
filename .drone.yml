@@ -129,6 +129,7 @@ steps:
       path: /tmp/sandbox
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/sandbox/tezedge_ip.txt
     - cp /artifacts/protocol-runner /tmp/sandbox/
@@ -248,8 +249,27 @@ steps:
     - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
     - /tmp/sandbox/assert_equals.sh 1 $applied_count
 
-# compare all rpc's from blocks 0 to 1 between defined nodes
-- name: rpc-test-for-levels-0-1
+# transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+- name: bake-a-block-with-ocaml-client
+  user: root
+  image: tezos/tezos:v7.2
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+    - sleep 1
+    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 bake for bootstrap2
+    - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+
+# test checks if this block is synchronized to rust node through p2p
+- name: wait-for-sync-on-level-2
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=2 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# compare all rpc's from blocks 0 to 2 between defined nodes
+- name: rpc-test-for-levels-0-2
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -259,7 +279,7 @@ steps:
   environment:
     RUST_BACKTRACE: 1
     FROM_BLOCK_HEADER: 0
-    TO_BLOCK_HEADER: 1
+    TO_BLOCK_HEADER: 2
   commands:
     - /artifacts/rpc_integration_test --nocapture --ignored test_rpc_compare
 

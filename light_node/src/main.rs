@@ -199,11 +199,11 @@ fn block_on_actors(
     let _ = RpcServer::actor(
         &actor_system,
         shell_channel.clone(),
-        tezos_env,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,
         tezos_readonly_api.clone(),
+        tezos_env,
         &init_storage_data,
     ).expect("Failed to create RPC server");
 

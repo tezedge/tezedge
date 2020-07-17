@@ -18,6 +18,7 @@ use crate::{
         monitor::BootstrapInfo,
     },
     make_json_response,
+    make_json_stream_response,
     result_option_to_json_response,
     result_to_json_response,
     ServiceResult,
@@ -69,8 +70,7 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     let chain_id = params.get_str("chain_id").unwrap();
 
     if chain_id == "main" {
-        // NOTE: just header?
-        result_option_to_json_response(service::get_current_head_monitor_header(env.state()).map(|res| res), env.log())
+        make_json_stream_response(service::get_current_head_monitor_header(env.state())?.unwrap())
     } else {
         // TODO: implement... 
         empty()

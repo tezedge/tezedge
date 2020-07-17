@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use slog::Logger;
 
 use crypto::hash::chain_id_to_b58_string;
-use shell::shell_channel::BlockApplied;
+use shell::shell_channel::{BlockApplied};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
 use storage::block_storage::BlockJsonData;
@@ -23,7 +23,7 @@ use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, BlockHeaderMonitorInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, NodeVersion, PagedResult, Protocols};
+use crate::helpers::{BlockHeaderInfo, MonitorHeadStream, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 
 // Serialize, Deserialize,
@@ -142,15 +142,14 @@ pub(crate) fn get_current_head_shell_header(state: &RpcCollectedStateRef) -> Res
     Ok(current_head)
 }
 
-/// Get information about current head monitor header
-pub(crate) fn get_current_head_monitor_header(state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderMonitorInfo>, failure::Error> {
-    let state = state.read().unwrap();
-    let current_head = state.current_head().as_ref().map(|current_head| {
-        let chain_id = chain_id_to_b58_string(state.chain_id());
-        BlockHeaderInfo::new(current_head, &chain_id).to_monitor_header(current_head)
-    });
+/// Get information about current head monitor header as a stream of Json strings
+pub(crate) fn get_current_head_monitor_header(state: &RpcCollectedStateRef) -> Result<Option<MonitorHeadStream>, failure::Error> {
 
-    Ok(current_head)
+    // create and return the a new stream on rpc call 
+    Ok(Some(MonitorHeadStream {
+        state: state.clone(),
+        last_polled_timestamp: None,
+    }))
 }
 
 /// Get information about block
