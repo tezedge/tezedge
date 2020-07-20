@@ -32,6 +32,7 @@ tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_wrapper = { path = "../tezos/wrapper" }
 
 [dev-dependencies]
 assert-json-diff = "1.0.0"

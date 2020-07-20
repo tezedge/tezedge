@@ -25,11 +25,11 @@ use crypto::hash::{BlockHash, HashType, OperationHash};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper, ValidateOperationResult};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::Operation;
-use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
+use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
+use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::Head;
 use crate::shell_channel::{CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -62,21 +62,17 @@ impl MempoolPrevalidator {
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
         init_storage_data: &StorageInitInfo,
-        _: &TezosEnvironmentConfiguration,
-        (ipc_server, endpoint_name): (IpcCmdServer, String),
+        tezos_readonly_api: Arc<TezosApiConnectionPool>,
         log: Logger) -> Result<MempoolPrevalidatorRef, CreateError> {
 
         // spawn thread which processes event
-        let (validator_event_sender, validator_event_receiver) = channel();
+        let (validator_event_sender, mut validator_event_receiver) = channel();
         let validator_run = Arc::new(AtomicBool::new(true));
         let validator_thread = {
             let persistent_storage = persistent_storage.clone();
             let shell_channel = shell_channel.clone();
             let init_storage_data = init_storage_data.clone();
             let validator_run = validator_run.clone();
-            let endpoint_name = endpoint_name.clone();
-            let mut ipc_server = ipc_server;
-            let mut validator_event_receiver = validator_event_receiver;
 
             thread::spawn(move || {
                 let mut block_storage = BlockStorage::new(&persistent_storage);
@@ -84,21 +80,31 @@ impl MempoolPrevalidator {
                 let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
-                    match ipc_server.accept() {
+                    match tezos_readonly_api.pool.get() {
                         Ok(protocol_controller) =>
-                            match process_prevalidation(&mut block_storage, &mut block_meta_storage, &mut mempool_storage, &init_storage_data, &validator_run, &shell_channel, protocol_controller, &mut validator_event_receiver, &log) {
-                                Ok(()) => info!(log, "Mempool - prevalidation process finished"; "endpoint" => endpoint_name.clone()),
+                            match process_prevalidation(
+                                &mut block_storage,
+                                &mut block_meta_storage,
+                                &mut mempool_storage,
+                                &init_storage_data,
+                                &validator_run,
+                                &shell_channel,
+                                &protocol_controller.api,
+                                &mut validator_event_receiver,
+                                &log,
+                            ) {
+                                Ok(()) => info!(log, "Mempool - prevalidation process finished"),
                                 Err(err) => {
                                     if validator_run.load(Ordering::Acquire) {
-                                        warn!(log, "Mempool - error while process prevalidation"; "endpoint" => endpoint_name.clone(), "reason" => format!("{:?}", err));
+                                        warn!(log, "Mempool - error while process prevalidation"; "reason" => format!("{:?}", err));
                                     }
                                 }
                             }
-                        Err(err) => warn!(log, "Mempool - no connection from protocol runner"; "endpoint" => endpoint_name.clone(), "reason" => format!("{:?}", err)),
+                        Err(err) => warn!(log, "Mempool - no protocol runner connection available (try next turn)!"; "pool_name" => tezos_readonly_api.pool_name.clone(), "reason" => format!("{:?}", err)),
                     }
                 }
 
-                info!(log, "Mempool prevalidator thread finished"; "endpoint" => endpoint_name.clone());
+                info!(log, "Mempool prevalidator thread finished");
                 Ok(())
             })
         };
@@ -290,12 +296,11 @@ fn process_prevalidation(
     init_storage_data: &StorageInitInfo,
     validator_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
-    protocol_controller: ProtocolController,
+    protocol_controller: &ProtocolController,
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
-    let _ = protocol_controller.init_protocol_for_read()?;
-    info!(log, "Mempool - protocol context (readonly) initialized for mempool");
+    info!(log, "Mempool prevalidator started processing");
 
     // hydrate state
     let mut state = hydrate_state(&shell_channel, block_storage, block_meta_storage, mempool_storage, &protocol_controller, &init_storage_data, &log)?;

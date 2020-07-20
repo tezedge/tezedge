@@ -6,18 +6,22 @@ extern crate test;
 use std::path::PathBuf;
 use std::process::Child;
 use std::thread;
+use std::time::Duration;
 
 use failure::format_err;
+use serial_test::serial;
 use slog::{error, info, Level, Logger, warn};
 
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 use tezos_wrapper::service::{ExecutableProtocolRunner, IpcCmdServer, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 mod common;
 
 #[ignore]
 #[test]
+#[serial]
 fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() -> Result<(), failure::Error> {
 
     // logger
@@ -29,11 +33,18 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
     // we need to ensure, that first is write context created
     let mut flags_readonly = test_data::init_flags_readonly(number_of_endpoints);
 
+    let context_db_path = PathBuf::from(common::prepare_empty_dir("__shell_test_mutliple_protocol_runners"));
+
     // spawn thread for init_protocol_context for every endpoint
     let mut handles = Vec::new();
     for i in 0..number_of_endpoints {
         // create endpoint
-        let (mut protocol, child, endpoint_name) = create_endpoint(log.clone(), log_level.clone(), i as i32)?;
+        let (mut protocol, child, endpoint_name) = create_endpoint(
+            log.clone(),
+            log_level.clone(),
+            format!("test_multiple_endpoint_{}", i),
+            context_db_path.clone(),
+        )?;
 
         // choose flag readonly
         let flag_readonly = flags_readonly.pop_front().expect("Every thread should have defined flag!");
@@ -84,14 +95,10 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
     Ok(assert_eq!(number_of_endpoints, success_counter))
 }
 
-fn create_endpoint(log: Logger, log_level: Level, index: i32) -> Result<(IpcCmdServer, Child, String), failure::Error> {
-    let name = format!("test_endpoint_{}", index);
+fn create_endpoint(log: Logger, log_level: Level, name: String, context_db_path: PathBuf) -> Result<(IpcCmdServer, Child, String), failure::Error> {
 
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
-
-    // storage
-    let context_db_path = PathBuf::from(common::prepare_empty_dir("__shell_test_mutliple_protocol_runners"));
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
@@ -127,6 +134,115 @@ fn create_endpoint(log: Logger, log_level: Level, index: i32) -> Result<(IpcCmdS
     };
 
     Ok((protocol_commands, subprocess, endpoint_name))
+}
+
+#[ignore]
+#[test]
+#[serial]
+fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level.clone());
+    let number_of_endpoints = 3;
+
+    // environement
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
+
+    // storage
+    let context_db_path = PathBuf::from(common::prepare_empty_dir("__shell_test_readonly_protocol_runner_pool"));
+
+    // init protocol runner endpoint
+    let protocol_runner = common::protocol_runner_executable_path();
+
+    // at first we need to create one writerable context, because of creating new one - see feature AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
+    let (mut write_context_commands, ..) = create_endpoint(log.clone(), log_level.clone(), format!("test_one_writeable_endpoint"), context_db_path.clone())?;
+    let genesis_context_hash = write_context_commands
+        .accept()?
+        .init_protocol_for_write(true, &None)?
+        .genesis_commit_hash
+        .expect("Genesis context_hash should be commited!");
+
+    // cfg for pool
+    let pool_cfg = TezosApiConnectionPoolConfiguration {
+        min_connections: 0,
+        max_connections: number_of_endpoints,
+        connection_timeout: Duration::from_secs(3),
+        max_lifetime: Duration::from_secs(60),
+        idle_timeout: Duration::from_secs(60),
+    };
+
+    // cfg for protocol runner
+    let endpoint_cfg = ProtocolEndpointConfiguration::new(
+        TezosRuntimeConfiguration {
+            log_enabled: common::is_ocaml_log_enabled(),
+            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+            debug_mode: false,
+        },
+        tezos_env.clone(),
+        false,
+        &context_db_path,
+        &protocol_runner,
+        log_level.clone(),
+        false,
+    );
+
+    // create pool
+    let pool_wrapper = TezosApiConnectionPool::new_with_readonly_context(
+        "test_pool_with_readonly_context".to_string(),
+        pool_cfg,
+        endpoint_cfg,
+        log,
+    );
+
+    // create readonly pool pool
+    let pool = pool_wrapper.pool;
+    assert_eq!(0, pool.state().connections);
+
+    // test pool
+    {
+        {
+            // acquire one
+            assert!(&pool.get()?.api.genesis_result_data(&genesis_context_hash).is_ok());
+            assert_eq!(1, pool.state().connections);
+            // released1
+        }
+        assert_eq!(1, pool.state().connections);
+
+        // acquire (reuse connection and not release - api is not out of the scope yet)
+        let api1 = &pool.get()?.api;
+        assert!(api1.genesis_result_data(&genesis_context_hash).is_ok());
+        assert_eq!(1, pool.state().connections);
+
+        // acquire (create new connection and not release - api is not out of the scope yet)
+        let api2 = &pool.get()?.api;
+        assert!(api2.genesis_result_data(&genesis_context_hash).is_ok());
+        assert_eq!(2, pool.state().connections);
+
+        // acquire (create new connection and not release - api is not out of the scope yet)
+        let api3 = &pool.get()?.api;
+        assert!(api3.genesis_result_data(&genesis_context_hash).is_ok());
+        assert_eq!(3, pool.state().connections);
+
+        // try get another one (reached max number of connections)
+        assert!(pool.try_get().is_none());
+        assert_eq!(3, pool.state().connections);
+
+        // get another one (reached max number of connections) - default connection_timeout
+        let result = pool.get();
+        assert!(result.is_err())
+
+        // release all api1/2/3
+    }
+    assert_eq!(3, pool.state().connections);
+    assert_eq!(3, pool.state().idle_connections);
+
+    // acquire (reused and not release)
+    let api = &pool.get()?.api;
+    assert!(api.genesis_result_data(&genesis_context_hash).is_ok());
+    assert_eq!(3, pool.state().connections);
+    assert_eq!(2, pool.state().idle_connections);
+
+    Ok(())
 }
 
 mod test_data {

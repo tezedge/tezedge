@@ -60,6 +60,7 @@ steps:
     - export LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts
     - export PROTOCOL_RUNNER=/drone/src/target/release/protocol-runner
     - cargo test --package shell --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+    - cargo test --package shell --release -- --nocapture --ignored test_readonly_protocol_runner_connection_pool
     - cargo test --package shell --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
     # collect binary artefacts
     - mkdir /artifacts/ffi

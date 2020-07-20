@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Ffi upgrade based on Tezos gitlab latest-release (v7.2), supports now ocaml 4.09.1
+- Support for parallel access (readonly context) to Tezos ffi ocaml runtime through r2d2 connection pooling
 
 ### Deprecated
 

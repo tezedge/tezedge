@@ -76,6 +76,8 @@ pub struct TestProtocolRunner {
 }
 
 impl ProtocolRunner for TestProtocolRunner {
+    type Subprocess = Child;
+
     fn new(_configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: Option<PathBuf>, endpoint_name: String) -> Self {
         TestProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
@@ -127,6 +129,10 @@ impl ProtocolRunner for TestProtocolRunner {
     }
 
     fn terminate(mut process: Child) {
+        let _ = process.kill();
+    }
+
+    fn terminate_ref(process: &mut Child) {
         let _ = process.kill();
     }
 

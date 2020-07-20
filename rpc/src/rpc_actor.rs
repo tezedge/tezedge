@@ -13,6 +13,7 @@ use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::PersistentStorage;
 use storage::StorageInitInfo;
+use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::server::{RpcServiceEnvironment, spawn_server};
 
@@ -50,6 +51,7 @@ impl RpcServer {
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
+        tezos_readonly_api: Arc<TezosApiConnectionPool>,
         init_storage_data: &StorageInitInfo) -> Result<RpcServerRef, CreateError> {
 
         // TODO: refactor - call load_current_head in pre_start
@@ -65,7 +67,16 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), shell_channel, persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
+            let env = RpcServiceEnvironment::new(
+                sys.clone(),
+                actor_ref.clone(),
+                shell_channel,
+                persistent_storage,
+                tezos_readonly_api,
+                &init_storage_data.genesis_block_header_hash,
+                shared_state,
+                &sys.log(),
+            );
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
