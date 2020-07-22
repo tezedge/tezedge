@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use failure::Fail;
 use getset::{CopyGetters, Getters};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use slog::{crit, debug, info, Level, Logger};
 use strum_macros::IntoStaticStr;
@@ -19,7 +20,6 @@ use wait_timeout::ChildExt;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
-use lazy_static::lazy_static;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
 use tezos_api::identity::Identity;
@@ -353,7 +353,7 @@ impl IpcCmdServer {
 
         Ok(ProtocolController {
             io: RefCell::new(IpcIO { rx, tx }),
-            configuration: &self.1,
+            configuration: self.1.clone(),
         })
     }
 }
@@ -382,16 +382,16 @@ struct IpcIO {
 }
 
 /// Encapsulate IPC communication.
-pub struct ProtocolController<'a> {
+pub struct ProtocolController {
     io: RefCell<IpcIO>,
-    configuration: &'a ProtocolEndpointConfiguration,
+    configuration: ProtocolEndpointConfiguration,
 }
 
 /// Provides convenience methods for IPC communication.
 ///
 /// Instead of manually sending and receiving messages over IPC channel use provided methods.
 /// Methods also handle things such as timeouts and also checks is correct response type is received.
-impl<'a> ProtocolController<'a> {
+impl ProtocolController {
     const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(600);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -608,7 +608,7 @@ impl<'a> ProtocolController<'a> {
     }
 }
 
-impl Drop for ProtocolController<'_> {
+impl Drop for ProtocolController {
     fn drop(&mut self) {
         // try to gracefully shutdown protocol runner
         let _ = self.shutdown();
@@ -647,7 +647,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     }
 
     /// Starts protocol runner sub-process just once and you can take care of it
-    pub fn start(&self) -> Result<Child, ProtocolServiceError> {
+    pub fn start(&self) -> Result<Runner::Subprocess, ProtocolServiceError> {
         info!(self.log, "Starting protocol runner process"; "endpoint" => self.name.clone());
         self.runner.spawn()
     }
@@ -709,6 +709,8 @@ impl ExecutableProtocolRunner {
 }
 
 impl ProtocolRunner for ExecutableProtocolRunner {
+    type Subprocess = Child;
+
     fn new(
         configuration: ProtocolEndpointConfiguration,
         sock_cmd_path: &Path,
@@ -723,7 +725,7 @@ impl ProtocolRunner for ExecutableProtocolRunner {
         }
     }
 
-    fn spawn(&self) -> Result<Child, ProtocolServiceError> {
+    fn spawn(&self) -> Result<Self::Subprocess, ProtocolServiceError> {
         let process = match &self.sock_evt_path {
             Some(sep) => Command::new(&self.executable_path)
                 .arg("--sock-cmd")
@@ -749,7 +751,7 @@ impl ProtocolRunner for ExecutableProtocolRunner {
         Ok(process)
     }
 
-    fn terminate(mut process: Child) {
+    fn terminate(mut process: Self::Subprocess) {
         match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
             Some(_) => (),
             None => {
@@ -759,7 +761,17 @@ impl ProtocolRunner for ExecutableProtocolRunner {
         };
     }
 
-    fn is_running(process: &mut Child) -> bool {
+    fn terminate_ref(process: &mut Self::Subprocess) {
+        match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
+            Some(_) => (),
+            None => {
+                // child hasn't exited yet
+                let _ = process.kill();
+            }
+        };
+    }
+
+    fn is_running(process: &mut Self::Subprocess) -> bool {
         match process.try_wait() {
             Ok(None) => true,
             _ => false,
@@ -767,12 +779,15 @@ impl ProtocolRunner for ExecutableProtocolRunner {
     }
 }
 
-pub trait ProtocolRunner: Clone + Send {
+pub trait ProtocolRunner: Clone + Send + Sync {
+    type Subprocess: Send;
+
     fn new(configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: Option<PathBuf>, endpoint_name: String) -> Self;
 
-    fn spawn(&self) -> Result<Child, ProtocolServiceError>;
+    fn spawn(&self) -> Result<Self::Subprocess, ProtocolServiceError>;
 
-    fn terminate(process: Child);
+    fn terminate(process: Self::Subprocess);
+    fn terminate_ref(process: &mut Self::Subprocess);
 
-    fn is_running(process: &mut Child) -> bool;
+    fn is_running(process: &mut Self::Subprocess) -> bool;
 }

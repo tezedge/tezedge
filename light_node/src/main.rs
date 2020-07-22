@@ -29,6 +29,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
 use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::configuration::LogFormat;
 
@@ -99,21 +100,43 @@ fn block_on_actors(
     persistent_storage: PersistentStorage,
     log: Logger) {
 
+    // create pool for ffi protocol runner connections (used just for readonly context)
+    let tezos_readonly_api = Arc::new(
+        TezosApiConnectionPool::new_with_readonly_context(
+            String::from("tezos_readonly_api_pool"),
+            env.ffi.pool.clone(),
+            ProtocolEndpointConfiguration::new(
+                TezosRuntimeConfiguration {
+                    log_enabled: env.logging.ocaml_log_enabled,
+                    no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
+                    debug_mode: false,
+                },
+                tezos_env.clone(),
+                env.enable_testchain,
+                &env.storage.tezos_data_dir,
+                &env.ffi.protocol_runner,
+                env.logging.level,
+                false,
+            ),
+            log.clone(),
+        )
+    );
+
     // tezos protocol runner endpoint for applying blocks to chain
     let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
         "apply_blocks_protocol_runner_endpoint",
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
-                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+                no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
                 debug_mode: env.storage.store_context_actions,
             },
             tezos_env.clone(),
             env.enable_testchain,
             &env.storage.tezos_data_dir,
-            &env.protocol_runner,
+            &env.ffi.protocol_runner,
             env.logging.level,
-            true
+            true,
         ),
         log.clone(),
     );
@@ -128,33 +151,6 @@ fn block_on_actors(
             (run_feature, apply_block_protocol_events, apply_block_protocol_commands)
         }
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => apply_blocks_protocol_runner_endpoint.name, "reason" => e), actor_system),
-    };
-
-    // tezos protocol runner endpoint for mempool
-    let mut mempool_prevalidator_protocol_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
-        "mempool_prevalidator_protocol_runner_endpoint",
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
-                debug_mode: env.storage.store_context_actions,
-            },
-            tezos_env.clone(),
-            env.enable_testchain,
-            &env.storage.tezos_data_dir,
-            &env.protocol_runner,
-            env.logging.level,
-            false,
-        ),
-        log.clone(),
-    );
-    let (mempool_prevalidator_protocol_runner_endpoint_run_feature, mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name) = match mempool_prevalidator_protocol_endpoint.start_in_restarting_mode() {
-        Ok(run_feature) => {
-            let ProtocolRunnerEndpoint { commands, name, .. } = mempool_prevalidator_protocol_endpoint;
-            info!(log, "Protocol runner started successfully"; "endpoint" => name.clone());
-            (run_feature, commands, name)
-        }
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => mempool_prevalidator_protocol_endpoint.name, "reason" => e), actor_system),
     };
 
     let mut tokio_runtime = create_tokio_runtime(env);
@@ -177,8 +173,7 @@ fn block_on_actors(
         shell_channel.clone(),
         &persistent_storage,
         &init_storage_data,
-        &tezos_env,
-        (mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name),
+        tezos_readonly_api.clone(),
         log.clone(),
     ).expect("Failed to create chain feeder");
 
@@ -201,8 +196,15 @@ fn block_on_actors(
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime.handle(), &persistent_storage, &init_storage_data)
-        .expect("Failed to create RPC server");
+    let _ = RpcServer::actor(
+        &actor_system,
+        shell_channel.clone(),
+        ([0, 0, 0, 0], env.rpc.listener_port).into(),
+        &tokio_runtime.handle(),
+        &persistent_storage,
+        tezos_readonly_api.clone(),
+        &init_storage_data,
+    ).expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -212,7 +214,6 @@ fn block_on_actors(
 
         // disable/stop protocol runner for applying blocks feature
         apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
-        mempool_prevalidator_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
         info!(log, "Sending shutdown notification to actors");
         shell_channel.tell(
