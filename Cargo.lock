@@ -2160,7 +2160,6 @@ dependencies = [
  "slog",
  "storage",
  "tezos_api",
- "tezos_client",
  "tezos_context",
  "tezos_encoding",
  "tezos_messages",

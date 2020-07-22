@@ -302,7 +302,7 @@ pub async fn run_operation(req: Request<Body>, params: Params, _: Query, env: Rp
     };
 
     result_to_json_response(
-        service::run_operation(chain_param, block_param, json_request, env.persistent_storage(), env.state()),
+        service::run_operation(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }
@@ -320,7 +320,7 @@ pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, e
     };
 
     result_to_json_response(
-        service::preapply_operations(chain_param, block_param, json_request, env.persistent_storage(), env.state()),
+        service::preapply_operations(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }

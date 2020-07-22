@@ -25,6 +25,7 @@ use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 use crate::ContextList;
 use crate::helpers::{BlockHeaderInfo, MonitorHeadStream, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
+use crate::server::RpcServiceEnvironment;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -456,7 +457,11 @@ pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &Pe
     }
 }
 
-pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
+pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
     // get header
     let block_storage = BlockStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
@@ -477,13 +482,17 @@ pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: 
         chain_id,
     };
 
-    // TODO: TE-192 - refactor to protocol runner call
-    let response = tezos_client::client::call_protocol_json_rpc(request)?;
+    // TODO: retry?
+    let response = env.tezos_readonly_api.pool.get()?.api.call_protocol_json_rpc(request)?;
 
     Ok(serde_json::from_str(&response.body)?)
 }
 
-pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<serde_json::value::Value, failure::Error> {
+pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
     // get header
     let block_storage = BlockStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
@@ -504,8 +513,8 @@ pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_req
         chain_id,
     };
 
-    // TODO: TE-192 - refactor to protocol runner call
-    let response = tezos_client::client::helpers_preapply_operations(request)?;
+    // TODO: retry?
+    let response = env.tezos_readonly_api.pool.get()?.api.helpers_preapply_operations(request)?;
 
     Ok(serde_json::from_str(&response.body)?)
 }
