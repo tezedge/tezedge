@@ -102,37 +102,68 @@ impl SignaturePublicKey {
             return Err(ConversionError::InvalidPublicKey);
         }
     }
-
-    #[inline]
-    pub fn from_tagged_hex_string(pk: &str) -> Result<SignaturePublicKey, ConversionError> {
-        if pk.len() == 66 || pk.len() == 64 {
-            // first byte is a tag for contract implicitness
-            match &pk[0..2] {
-                "00" => {
-                    let tagless = &pk[4..];
-                    match &pk[2..4] {
-                        "00" => {
-                            Self::from_hex_hash_and_curve(&tagless, "ed25519")
-                        }
-                        "01" => {
-                            Self::from_hex_hash_and_curve(&tagless, "secp256k1")
-                        }
-                        "02" =>{
-                            Self::from_hex_hash_and_curve(&tagless, "p256")
-                        }
-                        _ => return Err(ConversionError::InvalidHash{ hash: pk.to_string() })
-                    }
-                }
-                _ => return Err(ConversionError::InvalidHash{ hash: pk.to_string() })
-            }
-        } else {
-            return Err(ConversionError::InvalidHash{ hash: pk.to_string() });
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
-//TODO
-    
+    use crate::base::signature_public_key::SignaturePublicKey;
+
+    //tz1TEZtYnuLiZLdA6c7JysAUJcHMrogu4Cpr - edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP
+    //tz2TSvNTh2epDMhZHrw73nV9piBX7kLZ9K9m - sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN
+    //tz3bEQoFCZEEfZMskefZ8q8e4eiHH1pssRax - p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW
+
+    #[test]
+    fn test_from_b58_hash() -> Result<(), failure::Error> {
+        
+        let decoded = decode_pk("edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP");
+        assert!(decoded.is_some());
+
+        let expected_valid_bytes = [181, 154, 48, 170, 159, 163, 206, 35, 84, 17, 234, 205, 0, 80, 66, 141, 114, 204, 77, 76, 204, 108, 83, 76, 39, 206, 128, 206, 247, 170, 72, 113];
+        let decoded = decoded.unwrap();
+        assert_eq!(decoded, expected_valid_bytes);
+        println!("{}", hex::encode(&expected_valid_bytes));
+
+        let decoded = decode_pk("sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN");
+        assert!(decoded.is_some());
+
+        let expected_valid_bytes = vec!(3, 69, 218, 140, 119, 94, 111, 160, 6, 57, 131, 202, 89, 148, 129, 168, 50, 167, 185, 155, 207, 103, 33, 252, 0, 241, 225, 115, 122, 207, 237, 248, 197);
+        let decoded = decoded.unwrap();
+        assert_eq!(decoded, expected_valid_bytes);
+        println!("{}", hex::encode(&expected_valid_bytes));
+
+
+        let decoded = decode_pk("p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW");
+        assert!(decoded.is_some());
+
+        let expected_valid_bytes = vec!(2, 222, 68, 156, 232, 235, 225, 129, 250, 81, 252, 118, 231, 35, 189, 211, 21, 80, 11, 178, 189, 66, 159, 204, 141, 166, 10, 113, 79, 176, 188, 68, 228);
+        let decoded = decoded.unwrap();
+        assert_eq!(decoded, expected_valid_bytes);
+        println!("{}", hex::encode(&expected_valid_bytes));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_hex_hash_and_curve() -> Result<(), failure::Error> {
+        let result = SignaturePublicKey::from_hex_hash_and_curve(&"b59a30aa9fa3ce235411eacd0050428d72cc4d4ccc6c534c27ce80cef7aa4871", &"ed25519")?;
+        assert_eq!(result.to_string().as_str(), "edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP");
+
+        let result = SignaturePublicKey::from_hex_hash_and_curve(&"0345da8c775e6fa0063983ca599481a832a7b99bcf6721fc00f1e1737acfedf8c5", &"secp256k1")?;
+        assert_eq!(result.to_string().as_str(), "sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN");
+
+        let result = SignaturePublicKey::from_hex_hash_and_curve(&"02de449ce8ebe181fa51fc76e723bdd315500bb2bd429fcc8da60a714fb0bc44e4", &"p256")?;
+        assert_eq!(result.to_string().as_str(), "p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW");
+
+        Ok(())
+    }
+
+    fn decode_pk(pk: &str) -> Option<Vec<u8>> {
+        let decoded = SignaturePublicKey::from_b58_hash(pk).unwrap();
+        let decoded = match decoded {
+            SignaturePublicKey::Ed25519(hash) => Some(hash),
+            SignaturePublicKey::P256(hash) => Some(hash),
+            SignaturePublicKey::Secp256k1(hash) => Some(hash)
+        };
+        decoded
+    }
 }

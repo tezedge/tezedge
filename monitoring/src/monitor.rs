@@ -272,6 +272,7 @@ impl Receive<ShellChannelMsg> for Monitor {
             // TODO: TE-173: mempool stats
             ShellChannelMsg::MempoolOperationReceived(_) => (),
             ShellChannelMsg::MempoolStateChanged(_) => (),
+            ShellChannelMsg::InjectBlock(_) => (),
         }
     }
 }

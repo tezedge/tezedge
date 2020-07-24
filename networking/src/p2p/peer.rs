@@ -26,8 +26,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
-const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
-const SUPPORTED_P2P_VERSION: u16 = 1;
+use crate::{SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);

@@ -33,6 +33,7 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", handler::endorsing_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/scripts/run_operation", handler::run_operation);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/preapply/operations", handler::preapply_operations);
+    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/preapply/block", handler::preapply_block);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", handler::votes_listings);
     routes.handle("/chains/:chain_id/mempool/pending_operations", handler::mempool_pending_operations);
     routes.handle("/chains/:chain_id/blocks/:block_id/protocols", handler::get_block_protocols);
@@ -41,7 +42,8 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/counter", handler::get_contract_counter);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/manager_key", handler::get_contract_manager_key);
 
-    routes.handle("/injection/operation", handler::inject_operation);    
+    routes.handle("/injection/operation", handler::inject_operation);
+    routes.handle("/injection/block", handler::inject_block);
 
     // Tezedge dev and support rpc
     routes.handle("/dev/chains/main/blocks", dev_handler::dev_blocks);

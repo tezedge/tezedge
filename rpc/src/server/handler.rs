@@ -225,6 +225,18 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
     )
 }
 
+pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+
+    let shell_channel = env.shell_channel();
+
+    result_to_json_response(
+        services::mempool_services::inject_block(&body, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        env.log(),
+    )
+}
+
 pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let _chain_id = params.get_str("chain_id").unwrap();
     let block_id = params.get_str("block_id").unwrap();
@@ -321,6 +333,24 @@ pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, e
 
     result_to_json_response(
         service::preapply_operations(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+    let json_request = JsonRpcRequest {
+        body,
+        context_path,
+    };
+
+    result_to_json_response(
+        service::preapply_block(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }

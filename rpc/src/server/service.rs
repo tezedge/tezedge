@@ -519,6 +519,37 @@ pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_req
     Ok(serde_json::from_str(&response.body)?)
 }
 
+pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    // get header
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersPreapplyBlock,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: TE-192 - refactor to protocol runner call
+    let response = env.tezos_readonly_api.pool.get()?.api.helpers_preapply_block(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
 pub(crate) fn get_node_version(tezos_env: &TezosEnvironmentConfiguration) -> Result<NodeVersion, failure::Error> {
     Ok(NodeVersion::new(tezos_env))
 }
@@ -547,7 +578,10 @@ pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &Persist
 
 /// Extract block level from the full block info
 fn get_block_level_by_block_id(block_id: &str, offset: i64, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<i64, failure::Error> {
-    if block_id == "head" {
+    if block_id == "genesis" {
+        // genesis alias is allways for the block on level 0
+        Ok(0)
+    } else if block_id == "head" {
         match get_full_current_head(state)? {
             Some(head) => {
                 Ok(head.header.level as i64 - offset)

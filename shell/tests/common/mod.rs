@@ -1,10 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{env, thread};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
 
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Level, Logger};

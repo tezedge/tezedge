@@ -13,7 +13,6 @@ use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader
 
 #[derive(Serialize, Deserialize, Debug, Clone, Getters)]
 pub struct Counter {
-    // TODO: merge with Code
     #[get = "pub"]
     counter: BigInt,
 

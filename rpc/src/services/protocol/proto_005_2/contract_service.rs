@@ -23,13 +23,12 @@ pub(crate) fn get_contract_counter(context_proto_params: ContextProtocolParam, p
     let indexed_contract_key = construct_indexed_contract_key(pkh)?;
 
     // ["data","contracts","index","91","6e","d7","72","4e","49","0000535110affdb82923710d1ec205f26ba8820a2259","counter"]
-    let contract_counter;
     let contract_counter_key = vec![indexed_contract_key.clone(), "counter".to_string()];
-    if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &contract_counter_key)? {
-        contract_counter = Some(tezos_messages::protocol::proto_005_2::contract::Counter::from_bytes(data)?);
+    let contract_counter = if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &contract_counter_key)? {
+        Some(tezos_messages::protocol::proto_005_2::contract::Counter::from_bytes(data)?)
     } else {
-        contract_counter = None;
-    }
+        None
+    };
 
     if let Some(contract_counter) = contract_counter {
         Ok(Some(contract_counter.to_string()))

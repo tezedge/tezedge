@@ -21,6 +21,7 @@ use storage::skip_list::Bucket;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
+use networking::{SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION};
 
 use crate::ContextList;
 use crate::encoding::base_types::{TimeStamp, UniString};
@@ -139,13 +140,14 @@ impl Stream for MonitorHeadStream {
         let last_update = if let TimeStamp::Integral(timestamp) = state.head_update_time() {
             *timestamp
         } else {
-            // TODO: rework this quick hack
-            0
+            cx.waker().wake_by_ref();
+            return Poll::Pending; 
         };
         let current_head = state.current_head().clone();
         let chain_id = state.chain_id().clone();
 
         // drop the immutable borrow so we can borrow self again as mutable
+        // TODO: refactor this drop (remove if possible)
         drop(state);
 
         if let Some(TimeStamp::Integral(poll_time)) = self.last_polled_timestamp {
@@ -387,8 +389,8 @@ pub struct NodeVersion {
 #[derive(Serialize, Debug, Clone)]
 pub struct NetworkVersion {
     chain_name: String,
-    distributed_db_version: i32,
-    p2p_version: i32,
+    distributed_db_version: u16,
+    p2p_version: u16,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -418,8 +420,8 @@ impl NodeVersion {
             },
             network_version: NetworkVersion {
                 chain_name: env_config.version.clone(),
-                distributed_db_version: 0,
-                p2p_version: 1,
+                distributed_db_version: SUPPORTED_DISTRIBUTED_DB_VERSION,
+                p2p_version: SUPPORTED_P2P_VERSION,
             },
             commit_info: CommitInfo {
                 commit_hash: UniString::from(env!("GIT_HASH")),
@@ -474,6 +476,7 @@ pub(crate) fn get_level_by_block_id(block_id: &str, persistent_storage: &Persist
 /// if block_id is block hash string return block hash byte string from BlockStorage by block hash string
 #[inline]
 pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<BlockHash, failure::Error> {
+    let block_storage = BlockStorage::new(persistent_storage);
     // first check if 'head' string was provided as parameter and take hash from RpcCollectedStateRef
     let block_hash = if block_id == "head" {
         let state_read = state.read().unwrap();
@@ -483,8 +486,12 @@ pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &Pe
             }
             None => bail!("head not initialized")
         }
+    } else if block_id == "genesis" {
+        match block_storage.get_by_block_level(0)? {
+            Some(genesis_block) => genesis_block.hash,
+            None => bail!("Error getting genesis block from storage")
+        }
     } else {
-        let block_storage = BlockStorage::new(persistent_storage);
         // try to parse level as number
         match block_id.parse() {
             // block level was passed as parameter to block_id

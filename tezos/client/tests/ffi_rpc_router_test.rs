@@ -146,7 +146,7 @@ fn test_preapply_block() -> Result<(), failure::Error> {
             context_path: "/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1592985768".to_string(),
             body: request.to_string(),
         },
-        ffi_service: FfiRpcService::HelpersPreapplyOperations,
+        ffi_service: FfiRpcService::HelpersPreapplyBlock,
     };
     let response = client::helpers_preapply_block(request)?;
 

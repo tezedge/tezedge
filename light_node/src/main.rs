@@ -166,8 +166,11 @@ fn block_on_actors(
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
     // if feeding is started, than run chain manager
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
-        .expect("Failed to create chain manager");
+    let is_sandbox = env.tezos_network == environment::TezosEnvironment::Sandbox;
+
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox)
+        .expect("Failed to create chain manager"); 
+
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),

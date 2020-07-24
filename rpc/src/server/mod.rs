@@ -16,6 +16,7 @@ use slog::Logger;
 use crypto::hash::{BlockHash, HashType};
 use shell::shell_channel::ShellChannelRef;
 use storage::persistent::PersistentStorage;
+
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_wrapper::TezosApiConnectionPool;
 
