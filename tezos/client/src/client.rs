@@ -4,7 +4,7 @@
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, BeginConstructionRequestBuilder, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationRequestBuilder, ValidateOperationResponse};
 use tezos_api::identity::Identity;
-use tezos_interop::ffi;
+use tezos_interop::{ffi, runtime};
 use tezos_messages::p2p::encoding::prelude::*;
 
 /// Override runtime configuration for OCaml runtime
@@ -199,4 +199,8 @@ pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: 
             })
         }
     }
+}
+
+pub fn shutdown_runtime() {
+    runtime::shutdown();
 }

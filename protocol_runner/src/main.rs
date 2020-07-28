@@ -12,7 +12,6 @@ use clap::{App, Arg};
 use slog::*;
 
 use tezos_context::channel;
-use tezos_interop::runtime;
 
 fn create_logger(log_level: Level) -> Logger {
     let drain = slog_async::Async::new(
@@ -76,7 +75,7 @@ fn main() {
         ctrlc::set_handler(move || {
             // do nothing and wait for parent process to send termination command
             debug!(log, "Shutting down ocaml runtime"; "endpoint" => &endpoint_name);
-            runtime::shutdown();
+            tezos_client::client::shutdown_runtime();
             debug!(log, "Ocaml runtime shutdown complete"; "endpoint" => &endpoint_name);
         }).expect("Error setting Ctrl-C handler");
     }

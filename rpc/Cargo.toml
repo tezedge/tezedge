@@ -25,12 +25,10 @@ rayon = "1.3"
 bytes = "0.5"
 # local dependencies
 crypto = { path = "../crypto" }
-networking = { path = "../networking" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
-tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 

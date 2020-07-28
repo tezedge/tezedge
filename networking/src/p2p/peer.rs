@@ -17,7 +17,6 @@ use tokio::time::timeout;
 use crypto::crypto_box::precompute;
 use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
-use storage::StorageError;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
@@ -64,10 +63,6 @@ enum PeerError {
     DeserializationError {
         error: BinaryReaderError
     },
-    #[fail(display = "Failed to store message: {}", error)]
-    StorageError {
-        error: StorageError
-    },
 }
 
 impl From<tezos_encoding::ser::Error> for PeerError {
@@ -97,12 +92,6 @@ impl From<StreamError> for PeerError {
 impl From<BinaryChunkError> for PeerError {
     fn from(error: BinaryChunkError) -> Self {
         PeerError::NetworkError { error: error.into(), message: "Binary chunk error" }
-    }
-}
-
-impl From<StorageError> for PeerError {
-    fn from(error: StorageError) -> Self {
-        PeerError::StorageError { error }
     }
 }
 
