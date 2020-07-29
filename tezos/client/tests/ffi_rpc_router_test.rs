@@ -6,7 +6,7 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -62,7 +62,7 @@ fn test_run_operations() -> Result<(), failure::Error> {
     let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_run_operations_storage_01");
 
     // apply block 1
-    let last_block = apply_blocks_1(&chain_id, &genesis_block_header);
+    let last_block = apply_blocks_1(&chain_id, genesis_block_header);
 
     // prepare encoded operation to send
     let request = test_data::OPERATION_JSON_RPC_REQUEST_LEVEL_2;
@@ -98,7 +98,7 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
     let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_preapply_operations_storage_02");
 
     // apply block 1
-    let last_block = apply_blocks_1(&chain_id, &genesis_block_header);
+    let last_block = apply_blocks_1(&chain_id, genesis_block_header);
 
     // prepare encoded request to send
     let request = test_data::NEXT_OPERATION_JSON_RPC_REQUEST_LEVEL_2;
@@ -159,18 +159,22 @@ fn test_preapply_block() -> Result<(), failure::Error> {
     Ok(())
 }
 
-fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: &BlockHeader) -> BlockHeader {
+fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> BlockHeader {
     // apply first block - level 1
     let block_header = BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap();
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &block_header,
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: block_header.clone(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     ).unwrap();
     assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
     assert_eq!(1, apply_block_result.max_operations_ttl);

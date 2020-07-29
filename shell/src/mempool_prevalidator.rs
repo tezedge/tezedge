@@ -25,7 +25,7 @@ use crypto::hash::{BlockHash, HashType, OperationHash};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper, ValidateOperationResult};
+use tezos_api::ffi::{Applied, BeginConstructionRequest, Errored, PrevalidatorWrapper, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::Operation;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
@@ -419,7 +419,13 @@ fn begin_construction(block_storage: &mut BlockStorage,
     let result = block_storage.get(&block_hash)?
         .map_or((None, None), |block| {
             // try to begin construction
-            match protocol_controller.begin_construction(&init_storage_data.chain_id, &block.header) {
+            match protocol_controller.begin_construction(
+                BeginConstructionRequest {
+                    chain_id: init_storage_data.chain_id.clone(),
+                    predecessor: (&*block.header).clone(),
+                    protocol_data: None,
+                }
+            ) {
                 Ok(prevalidator) => (
                     Some(prevalidator),
                     Some(
@@ -464,7 +470,12 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                     trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op));
 
                     // lets validate throught protocol
-                    match protocol_controller.validate_operation(&prevalidator, operation) {
+                    match protocol_controller.validate_operation(
+                        ValidateOperationRequest {
+                            prevalidator: prevalidator.clone(),
+                            operation: operation.clone(),
+                        }
+                    ) {
                         Ok(response) => {
                             let result = response.result;
                             debug!(log, "Mempool - validate operation response finished with success "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
