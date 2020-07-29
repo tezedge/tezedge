@@ -70,6 +70,7 @@ pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: Logge
         // TODO: TE-74 will be replace with rust version without protocol_runner
         match client::generate_identity(identity_cfg.expected_pow) {
             Ok(identity) => {
+                client::shutdown_runtime();
                 info!(log, "Identity successfully generated");
                 match store_identity(&identity_cfg.identity_json_file_path, &identity) {
                     Ok(()) => {
@@ -79,10 +80,13 @@ pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: Logge
                     Err(e) => Err(e)
                 }
             }
-            Err(e) => return Err(IdentityError::ServiceError {
-                error: e.into(),
-                message: "Failed to generate identity",
-            })
+            Err(e) => {
+                client::shutdown_runtime();
+                return Err(IdentityError::ServiceError {
+                    error: e.into(),
+                    message: "Failed to generate identity",
+                });
+            }
         }
     }
 }

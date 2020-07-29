@@ -23,4 +23,3 @@ networking = { path = "../networking" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }
 tezos_messages = { path = "../tezos/messages" }
-tezos_encoding = { path = "../tezos/encoding" }

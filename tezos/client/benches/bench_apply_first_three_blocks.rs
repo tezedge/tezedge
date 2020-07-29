@@ -8,7 +8,7 @@ use test::Bencher;
 
 use crypto::hash::ChainId;
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -55,14 +55,18 @@ fn apply_first_three_blocks(chain_id: ChainId, genesis_block_header: BlockHeader
     // apply first block - level 1
     let clocks = Instant::now();
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     )?;
     perf_log.push(format!("- 1. apply: {:?}", clocks.elapsed()));
     assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
@@ -70,14 +74,18 @@ fn apply_first_three_blocks(chain_id: ChainId, genesis_block_header: BlockHeader
     // apply second block - level 2
     let clocks = Instant::now();
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        apply_block_result.max_operations_ttl as u16,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())?,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                )
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+        }
     )?;
     perf_log.push(format!("- 2. apply: {:?}", clocks.elapsed()));
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", apply_block_result.validation_result_message);
@@ -85,14 +93,18 @@ fn apply_first_three_blocks(chain_id: ChainId, genesis_block_header: BlockHeader
     // apply third block - level 3
     let clocks = Instant::now();
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        ),
-        apply_block_result.max_operations_ttl as u16,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap())?,
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())?,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_3,
+                    test_data::block_header_level3_operations(),
+                )
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+        }
     )?;
     perf_log.push(format!("- 3. apply: {:?}", clocks.elapsed()));
     assert_eq!("lvl 3, fit 5, prio 12, 1 ops", apply_block_result.validation_result_message);

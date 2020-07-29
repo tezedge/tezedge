@@ -19,6 +19,7 @@ use crypto::hash::{BlockHash, HashType};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
 use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_api::ffi::ApplyBlockRequest;
 use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
 
 use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -97,7 +98,7 @@ impl ChainFeeder {
 
         let myself = sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
-            Props::new_args((shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread)))))
+            Props::new_args((shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
         )?;
 
         Ok(myself)
@@ -221,7 +222,6 @@ fn feed_chain_to_protocol(
     protocol_controller: ProtocolController,
     log: &Logger,
 ) -> Result<(), FeedChainError> {
-    let chain_id = init_storage_data.chain_id.clone();
     let block_hash_encoding = HashType::BlockHash;
 
     // at first we initialize protocol runtime and ffi context
@@ -238,7 +238,7 @@ fn feed_chain_to_protocol(
     )?;
 
     // now resolve where to start apply next blocks (at least genesis should be there)
-    let (mut current_head_hash, ..) : (BlockHash, _) = match &block_meta_storage.load_current_head()? {
+    let (mut current_head_hash, ..): (BlockHash, _) = match &block_meta_storage.load_current_head()? {
         Some(block) => block.clone(),
         None => {
             // this should not happen here, we applied at least genesis before
@@ -285,11 +285,13 @@ fn feed_chain_to_protocol(
                                 };
 
                                 let apply_block_result = protocol_controller.apply_block(
-                                    &chain_id,
-                                    &current_head.header,
-                                    &predecessor.header,
-                                    &operations,
-                                    predecessor_additional_data.max_operations_ttl().clone(),
+                                    ApplyBlockRequest {
+                                        chain_id: init_storage_data.chain_id.clone(),
+                                        block_header: (&*current_head.header).clone(),
+                                        pred_header: (&*predecessor.header).clone(),
+                                        operations: ApplyBlockRequest::convert_operations(&operations),
+                                        max_operations_ttl: predecessor_additional_data.max_operations_ttl() as i32,
+                                    }
                                 )?;
                                 debug!(
                                     log,
@@ -298,7 +300,6 @@ fn feed_chain_to_protocol(
                                     "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
                                     "validation_result_message" => &apply_block_result.validation_result_message
                                 );
-
 
 
                                 // store result

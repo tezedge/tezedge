@@ -25,7 +25,7 @@ use crate::{
     services,
 };
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
-use crate::server::service;
+use crate::services::base_services;
 
 /// Helper function for generating current TimeStamp
 #[allow(dead_code)]
@@ -70,7 +70,7 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     let chain_id = params.get_str("chain_id").unwrap();
 
     if chain_id == "main" {
-        make_json_stream_response(service::get_current_head_monitor_header(env.state())?.unwrap())
+        make_json_stream_response(base_services::get_current_head_monitor_header(env.state())?.unwrap())
     } else {
         // TODO: implement... 
         empty()
@@ -84,9 +84,9 @@ pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: Rp
     use crate::encoding::chain::BlockInfo;
     if chain_id == "main" {
         if block_id == "head" {
-            result_option_to_json_response(service::get_full_current_head(env.state()).map(|res| res.map(BlockInfo::from)), env.log())
+            result_option_to_json_response(base_services::get_full_current_head(env.state()).map(|res| res.map(BlockInfo::from)), env.log())
         } else {
-            result_option_to_json_response(service::get_full_block(block_id, env.persistent_storage(), env.state()).map(|res| res.map(BlockInfo::from)), env.log())
+            result_option_to_json_response(base_services::get_full_block(block_id, env.persistent_storage(), env.state()).map(|res| res.map(BlockInfo::from)), env.log())
         }
     } else {
         empty()
@@ -99,9 +99,9 @@ pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, 
 
     if chain_id == "main" {
         if block_id == "head" {
-            result_option_to_json_response(service::get_current_head_header(env.state()).map(|res| res), env.log())
+            result_option_to_json_response(base_services::get_current_head_header(env.state()).map(|res| res), env.log())
         } else {
-            result_option_to_json_response(service::get_block_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
+            result_option_to_json_response(base_services::get_block_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
         }
     } else {
         empty()
@@ -114,9 +114,9 @@ pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Q
 
     if chain_id == "main" {
         if block_id == "head" {
-            result_option_to_json_response(service::get_current_head_shell_header(env.state()).map(|res| res), env.log())
+            result_option_to_json_response(base_services::get_current_head_shell_header(env.state()).map(|res| res), env.log())
         } else {
-            result_option_to_json_response(service::get_block_shell_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
+            result_option_to_json_response(base_services::get_block_shell_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
         }
     } else {
         empty()
@@ -126,24 +126,24 @@ pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Q
 pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
 
-    result_to_json_response(service::get_context_constants_just_for_rpc(block_id, None, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()), env.log())
+    result_to_json_response(base_services::get_context_constants_just_for_rpc(block_id, None, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()), env.log())
 }
 
 pub async fn context_cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
 
-    result_to_json_response(service::get_cycle_from_context(block_id, env.persistent_storage().context_storage(), env.persistent_storage()), env.log())
+    result_to_json_response(base_services::get_cycle_from_context(block_id, env.persistent_storage().context_storage(), env.persistent_storage()), env.log())
 }
 
 pub async fn rolls_owner_current(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
-    result_to_json_response(service::get_rolls_owner_current_from_context(block_id, env.persistent_storage().context_storage(), env.persistent_storage()), env.log())
+    result_to_json_response(base_services::get_rolls_owner_current_from_context(block_id, env.persistent_storage().context_storage(), env.persistent_storage()), env.log())
 }
 
 pub async fn cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
     let cycle_id = params.get_str("cycle_id").unwrap();
-    result_to_json_response(service::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage().context_storage(), env.persistent_storage()), env.log())
+    result_to_json_response(base_services::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage().context_storage(), env.persistent_storage()), env.log())
 }
 
 pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -243,7 +243,7 @@ pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env
 
 
     result_to_json_response(
-        service::get_block_protocols(block_id, env.persistent_storage(), env.state()),
+        base_services::get_block_protocols(block_id, env.persistent_storage(), env.state()),
         env.log(),
     )
 }
@@ -253,7 +253,7 @@ pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: Rpc
     let block_id = params.get_str("block_id").unwrap();
 
     result_to_json_response(
-        service::get_block_hash(block_id, env.persistent_storage(), env.state()),
+        base_services::get_block_hash(block_id, env.persistent_storage(), env.state()),
         env.log(),
     )
 }
@@ -263,7 +263,7 @@ pub async fn get_chain_id(_: Request<Body>, params: Params, _: Query, env: RpcSe
     let _chain_id = params.get_str("chain_id").unwrap();
 
     result_to_json_response(
-        service::get_chain_id(env.state()),
+        base_services::get_chain_id(env.state()),
         env.log(),
     )
 }
@@ -296,7 +296,7 @@ pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Que
 
 
     result_to_json_response(
-        service::get_block_operation_hashes(block_id, env.persistent_storage(), env.state()),
+        base_services::get_block_operation_hashes(block_id, env.persistent_storage(), env.state()),
         env.log(),
     )
 }
@@ -314,7 +314,7 @@ pub async fn run_operation(req: Request<Body>, params: Params, _: Query, env: Rp
     };
 
     result_to_json_response(
-        service::run_operation(chain_param, block_param, json_request, &env),
+        services::protocol::run_operation(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }
@@ -332,7 +332,7 @@ pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, e
     };
 
     result_to_json_response(
-        service::preapply_operations(chain_param, block_param, json_request, &env),
+        services::protocol::preapply_operations(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }
@@ -350,14 +350,14 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
     };
 
     result_to_json_response(
-        service::preapply_block(chain_param, block_param, json_request, &env),
+        services::protocol::preapply_block(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }
 
 pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
-        service::get_node_version(env.tezos_environment()),
+        base_services::get_node_version(env.network_version()),
         env.log(),
     )
 }

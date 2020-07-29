@@ -18,10 +18,8 @@ use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
 use storage::context_action_storage::ContextActionType;
 use storage::persistent::{ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
-use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
-use networking::{SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION};
 
 use crate::ContextList;
 use crate::encoding::base_types::{TimeStamp, UniString};
@@ -141,7 +139,7 @@ impl Stream for MonitorHeadStream {
             *timestamp
         } else {
             cx.waker().wake_by_ref();
-            return Poll::Pending; 
+            return Poll::Pending;
         };
         let current_head = state.current_head().clone();
         let chain_id = state.chain_id().clone();
@@ -341,28 +339,6 @@ pub struct RpcErrorMsg {
     latest: Option<String>,
 }
 
-// impl RpcErrorMsg {
-//     pub fn new(
-//         kind: String, 
-//         id: String, 
-//         missing_key: Option<Value>,
-//         function: Option<String>,
-//         oldest: Option<String>,
-//         requested: Option<String>,
-//         latest: Option<String>) -> Self {
-
-//         Self {
-//             kind: kind.to_string(),
-//             id: id.to_string(),
-//             missing_key,
-//             function,
-//             oldest,
-//             requested,
-//             latest,
-//         }
-//     }
-// }
-
 #[derive(Serialize, Debug, Clone)]
 pub struct Protocols {
     protocol: String,
@@ -387,13 +363,6 @@ pub struct NodeVersion {
 }
 
 #[derive(Serialize, Debug, Clone)]
-pub struct NetworkVersion {
-    chain_name: String,
-    distributed_db_version: u16,
-    p2p_version: u16,
-}
-
-#[derive(Serialize, Debug, Clone)]
 pub struct CommitInfo {
     commit_hash: UniString,
     commit_date: UniString,
@@ -407,7 +376,7 @@ pub struct Version {
 }
 
 impl NodeVersion {
-    pub fn new(env_config: &TezosEnvironmentConfiguration) -> Self {
+    pub fn new(network_version: &NetworkVersion) -> Self {
         let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
         let version: Vec<String> = version_env.split(".").map(|v| v.to_string()).collect();
@@ -418,11 +387,7 @@ impl NodeVersion {
                 minor: version[1].parse().unwrap_or(0),
                 additional_info: "release".to_string(),
             },
-            network_version: NetworkVersion {
-                chain_name: env_config.version.clone(),
-                distributed_db_version: SUPPORTED_DISTRIBUTED_DB_VERSION,
-                p2p_version: SUPPORTED_P2P_VERSION,
-            },
+            network_version: network_version.clone(),
             commit_info: CommitInfo {
                 commit_hash: UniString::from(env!("GIT_HASH")),
                 commit_date: UniString::from(env!("GIT_COMMIT_DATE")),

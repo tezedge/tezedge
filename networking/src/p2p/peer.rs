@@ -17,7 +17,6 @@ use tokio::time::timeout;
 use crypto::crypto_box::precompute;
 use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
-use storage::StorageError;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
@@ -25,8 +24,6 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
-
-use crate::{SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -64,10 +61,6 @@ enum PeerError {
     DeserializationError {
         error: BinaryReaderError
     },
-    #[fail(display = "Failed to store message: {}", error)]
-    StorageError {
-        error: StorageError
-    },
 }
 
 impl From<tezos_encoding::ser::Error> for PeerError {
@@ -97,12 +90,6 @@ impl From<StreamError> for PeerError {
 impl From<BinaryChunkError> for PeerError {
     fn from(error: BinaryChunkError) -> Self {
         PeerError::NetworkError { error: error.into(), message: "Binary chunk error" }
-    }
-}
-
-impl From<StorageError> for PeerError {
-    fn from(error: StorageError) -> Self {
-        PeerError::StorageError { error }
     }
 }
 
@@ -176,7 +163,7 @@ pub struct Local {
     /// proof of work
     proof_of_work_stamp: String,
     /// version of network protocol
-    version: String,
+    version: NetworkVersion,
 }
 
 pub type PeerRef = ActorRef<PeerMsg>;
@@ -204,7 +191,7 @@ impl Peer {
                  public_key: &str,
                  secret_key: &str,
                  proof_of_work_stamp: &str,
-                 version: &str,
+                 version: NetworkVersion,
                  tokio_executor: Handle,
                  socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
@@ -213,7 +200,7 @@ impl Peer {
             proof_of_work_stamp: proof_of_work_stamp.into(),
             public_key: public_key.into(),
             secret_key: secret_key.into(),
-            version: version.into(),
+            version,
         };
         let props = Props::new_args::<Peer, _>((network_channel, Arc::new(info), tokio_executor, *socket_address));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
@@ -360,7 +347,7 @@ async fn bootstrap(
         msg_reader.split()
     };
 
-    let supported_protocol_version = Version::new(info.version.clone(), SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION);
+    let supported_protocol_version = info.version.clone();
 
     // send connection message
     let connection_message = ConnectionMessage::new(

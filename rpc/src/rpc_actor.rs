@@ -14,6 +14,7 @@ use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, S
 use storage::persistent::PersistentStorage;
 use storage::StorageInitInfo;
 use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::encoding::base_types::TimeStamp;
@@ -57,7 +58,8 @@ impl RpcServer {
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
-        tezos_env: &TezosEnvironmentConfiguration,
+        tezos_env: TezosEnvironmentConfiguration,
+        network_version: NetworkVersion,
         init_storage_data: &StorageInitInfo) -> Result<RpcServerRef, CreateError> {
 
         // TODO: refactor - call load_current_head in pre_start
@@ -79,6 +81,7 @@ impl RpcServer {
                 actor_ref.clone(),
                 shell_channel,
                 tezos_env,
+                network_version,
                 persistent_storage,
                 tezos_readonly_api,
                 &init_storage_data.genesis_block_header_hash,
