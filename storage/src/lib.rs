@@ -8,8 +8,7 @@ use std::sync::Arc;
 
 use failure::Fail;
 use serde::{Deserialize, Serialize};
-use slog::info;
-use slog::Logger;
+use slog::{error, info, Logger};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TezosEnvironmentConfiguration, TezosEnvironmentError};
@@ -287,6 +286,56 @@ pub fn initialize_storage_with_genesis_block(
         "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash),
     );
     Ok(genesis_with_hash)
+}
+
+pub fn check_database_compatibility(
+    db: Arc<rocksdb::DB>,
+    expected_database_version: i64,
+    tezos_env: &TezosEnvironmentConfiguration,
+    log: Logger) -> Result<bool, StorageError> {
+    let mut system_info = SystemStorage::new(db.clone());
+    let db_version_ok = match system_info.get_db_version()? {
+        Some(db_version) => db_version == expected_database_version,
+        None => {
+            system_info.set_db_version(expected_database_version)?;
+            true
+        }
+    };
+    if !db_version_ok {
+        error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
+    }
+
+    let tezos_env_main_chain_id = tezos_env.main_chain_id().map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
+    let tezos_env_main_chain_name = &tezos_env.version;
+
+    let (chain_id_ok, previous_chain_name, requested_chain_name) = match system_info.get_chain_id()? {
+        Some(chain_id) => {
+            let previous_chain_name = match system_info.get_chain_name()? {
+                Some(chn) => chn,
+                None => "-unknown-".to_string()
+            };
+
+            if chain_id == tezos_env_main_chain_id && previous_chain_name.eq(tezos_env_main_chain_name.as_str()) {
+                (true, previous_chain_name, tezos_env_main_chain_name)
+            } else {
+                (false, previous_chain_name, tezos_env_main_chain_name)
+            }
+        }
+        None => {
+            system_info.set_chain_id(&tezos_env_main_chain_id)?;
+            system_info.set_chain_name(&tezos_env_main_chain_name)?;
+            (true, "-none-".to_string(), tezos_env_main_chain_name)
+        }
+    };
+
+    if !chain_id_ok {
+        error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
+                    "requested_chain" => requested_chain_name,
+                    "previous_chain" => previous_chain_name
+        );
+    }
+
+    Ok(db_version_ok && chain_id_ok)
 }
 
 pub mod tests_common {
