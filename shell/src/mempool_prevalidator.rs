@@ -25,11 +25,11 @@ use crypto::hash::{BlockHash, HashType, OperationHash};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper, ValidateOperationResult};
+use tezos_api::ffi::{Applied, BeginConstructionRequest, Errored, PrevalidatorWrapper, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::Operation;
-use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
+use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
+use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::Head;
 use crate::shell_channel::{CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -62,21 +62,17 @@ impl MempoolPrevalidator {
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
         init_storage_data: &StorageInitInfo,
-        _: &TezosEnvironmentConfiguration,
-        (ipc_server, endpoint_name): (IpcCmdServer, String),
+        tezos_readonly_api: Arc<TezosApiConnectionPool>,
         log: Logger) -> Result<MempoolPrevalidatorRef, CreateError> {
 
         // spawn thread which processes event
-        let (validator_event_sender, validator_event_receiver) = channel();
+        let (validator_event_sender, mut validator_event_receiver) = channel();
         let validator_run = Arc::new(AtomicBool::new(true));
         let validator_thread = {
             let persistent_storage = persistent_storage.clone();
             let shell_channel = shell_channel.clone();
             let init_storage_data = init_storage_data.clone();
             let validator_run = validator_run.clone();
-            let endpoint_name = endpoint_name.clone();
-            let mut ipc_server = ipc_server;
-            let mut validator_event_receiver = validator_event_receiver;
 
             thread::spawn(move || {
                 let mut block_storage = BlockStorage::new(&persistent_storage);
@@ -84,21 +80,31 @@ impl MempoolPrevalidator {
                 let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
-                    match ipc_server.accept() {
+                    match tezos_readonly_api.pool.get() {
                         Ok(protocol_controller) =>
-                            match process_prevalidation(&mut block_storage, &mut block_meta_storage, &mut mempool_storage, &init_storage_data, &validator_run, &shell_channel, protocol_controller, &mut validator_event_receiver, &log) {
-                                Ok(()) => info!(log, "Mempool - prevalidation process finished"; "endpoint" => endpoint_name.clone()),
+                            match process_prevalidation(
+                                &mut block_storage,
+                                &mut block_meta_storage,
+                                &mut mempool_storage,
+                                &init_storage_data,
+                                &validator_run,
+                                &shell_channel,
+                                &protocol_controller.api,
+                                &mut validator_event_receiver,
+                                &log,
+                            ) {
+                                Ok(()) => info!(log, "Mempool - prevalidation process finished"),
                                 Err(err) => {
                                     if validator_run.load(Ordering::Acquire) {
-                                        warn!(log, "Mempool - error while process prevalidation"; "endpoint" => endpoint_name.clone(), "reason" => format!("{:?}", err));
+                                        warn!(log, "Mempool - error while process prevalidation"; "reason" => format!("{:?}", err));
                                     }
                                 }
                             }
-                        Err(err) => warn!(log, "Mempool - no connection from protocol runner"; "endpoint" => endpoint_name.clone(), "reason" => format!("{:?}", err)),
+                        Err(err) => warn!(log, "Mempool - no protocol runner connection available (try next turn)!"; "pool_name" => tezos_readonly_api.pool_name.clone(), "reason" => format!("{:?}", err)),
                     }
                 }
 
-                info!(log, "Mempool prevalidator thread finished"; "endpoint" => endpoint_name.clone());
+                info!(log, "Mempool prevalidator thread finished");
                 Ok(())
             })
         };
@@ -290,12 +296,11 @@ fn process_prevalidation(
     init_storage_data: &StorageInitInfo,
     validator_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
-    protocol_controller: ProtocolController,
+    protocol_controller: &ProtocolController,
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
-    let _ = protocol_controller.init_protocol_for_read()?;
-    info!(log, "Mempool - protocol context (readonly) initialized for mempool");
+    info!(log, "Mempool prevalidator started processing");
 
     // hydrate state
     let mut state = hydrate_state(&shell_channel, block_storage, block_meta_storage, mempool_storage, &protocol_controller, &init_storage_data, &log)?;
@@ -349,13 +354,13 @@ fn process_prevalidation(
                         // TODO: handle and validate pre_filter with operation?
 
                         if state.is_already_validated(&oph) {
-                            debug!(log, "Mempool - received validate operation event - operation allready validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
+                            debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                         } else {
                             // just add operations to pendings
                             state.add_to_pending(&oph, operation.operation());
                         }
                     } else {
-                        warn!(log, "Mempool - received validate operation event - no data in mempool storage?"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
+                        debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                     }
                 }
             }
@@ -388,7 +393,7 @@ fn hydrate_state(
     };
 
     // read from Mempool_storage (just pending) -> add to queue for validation -> pending
-    let mut pending = mempool_storage.iter()?
+    let pending = mempool_storage.iter()?
         .into_iter()
         .map(|(key, value)| (key, value.operation().clone()))
         .collect();
@@ -414,7 +419,13 @@ fn begin_construction(block_storage: &mut BlockStorage,
     let result = block_storage.get(&block_hash)?
         .map_or((None, None), |block| {
             // try to begin construction
-            match protocol_controller.begin_construction(&init_storage_data.chain_id, &block.header) {
+            match protocol_controller.begin_construction(
+                BeginConstructionRequest {
+                    chain_id: init_storage_data.chain_id.clone(),
+                    predecessor: (&*block.header).clone(),
+                    protocol_data: None,
+                }
+            ) {
                 Ok(prevalidator) => (
                     Some(prevalidator),
                     Some(
@@ -459,15 +470,21 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                     trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op));
 
                     // lets validate throught protocol
-                    match protocol_controller.validate_operation(&prevalidator, operation) {
+                    match protocol_controller.validate_operation(
+                        ValidateOperationRequest {
+                            prevalidator: prevalidator.clone(),
+                            operation: operation.clone(),
+                        }
+                    ) {
                         Ok(response) => {
                             let result = response.result;
-                            info!(log, "Mempool - validate operation response finished with success "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
+                            debug!(log, "Mempool - validate operation response finished with success "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
 
                             // merge new result with existing one
                             state_changed |= state.add_result(&result);
 
-                            // TODO: handle result like ocaml - branch_delayed add back to pending and so on - check handle_unprocessed
+                            // TODO: handle Duplicate/ Outdated - if result is empty
+                            // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
                         }
                         Err(err) => {
                             warn!(log, "Mempool - failed to validate operation message"; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "error" => format!("{:?}", err));

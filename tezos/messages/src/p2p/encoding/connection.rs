@@ -12,13 +12,13 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
-use crate::p2p::encoding::version::Version;
+use crate::p2p::encoding::version::NetworkVersion;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct ConnectionMessage {
     pub port: u16,
     #[get = "pub"]
-    pub versions: Vec<Version>,
+    pub versions: Vec<NetworkVersion>,
     #[get = "pub"]
     pub public_key: Vec<u8>,
     pub proof_of_work_stamp: Vec<u8>,
@@ -28,7 +28,7 @@ pub struct ConnectionMessage {
 }
 
 impl ConnectionMessage {
-    pub fn new(port: u16, public_key: &str, proof_of_work_stamp: &str, message_nonce: &[u8], versions: Vec<Version>) -> Self {
+    pub fn new(port: u16, public_key: &str, proof_of_work_stamp: &str, message_nonce: &[u8], versions: Vec<NetworkVersion>) -> Self {
         ConnectionMessage {
             port,
             versions,
@@ -60,7 +60,7 @@ impl HasEncoding for ConnectionMessage {
             Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
             Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
             Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Version::encoding()))
+            Field::new("versions", Encoding::list(NetworkVersion::encoding()))
         ])
     }
 }

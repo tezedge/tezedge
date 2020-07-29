@@ -46,6 +46,8 @@ const LOG_INTERVAL: Duration = Duration::from_secs(60);
 const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
 /// After this time peer will be disconnected if it fails to respond to our request
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
+const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31536000);
 /// After this interval we will rehydrate state if no new blocks are applied
 const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
 const BLOCK_HASH_ENCODING: HashType = HashType::BlockHash;
@@ -151,6 +153,8 @@ pub struct ChainManager {
     stats: Stats,
     /// Indicates that system is shutting down
     shutting_down: bool,
+    /// Indicates node mode
+    is_sandbox: bool,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -158,10 +162,10 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 
 impl ChainManager {
     /// Create new actor instance.
-    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Result<ChainManagerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, chain_id: &ChainId, is_sandbox: bool) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
-            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone())),
+            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone(), is_sandbox)),
         )
     }
 
@@ -602,6 +606,33 @@ impl ChainManager {
                     }
                 }
             }
+            ShellChannelMsg::InjectBlock(inject_data) => {
+                let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header.clone()).unwrap();
+                let log = ctx.system.log().new(slog::o!("injection" => "block".to_string()));
+
+                let is_new_block =
+                    self.chain_state.process_block_header(&block_header_with_hash, log.clone())
+                        .and(self.operations_state.process_block_header(&block_header_with_hash))?;
+
+                if is_new_block {
+                    // update stats
+                    self.stats.unseen_block_last = Instant::now();
+                    self.stats.unseen_block_count += 1;
+
+                    // trigger CheckChainCompleteness
+                    ctx.myself().tell(CheckChainCompleteness, None);
+
+                    // notify others that new block was received
+                    self.shell_channel.tell(
+                        Publish {
+                            msg: BlockReceived {
+                                hash: block_header_with_hash.hash,
+                                level: block_header_with_hash.header.level(),
+                            }.into(),
+                            topic: ShellChannelTopic::ShellEvents.into(),
+                        }, Some(ctx.myself().into()));
+                }
+            }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
                 unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
@@ -634,8 +665,8 @@ impl ChainManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)> for ChainManager {
-    fn create_args((network_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, bool)> for ChainManager {
+    fn create_args((network_channel, shell_channel, persistent_storage, chain_id, is_sandbox): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, bool)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
@@ -660,6 +691,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ch
                 applied_block_level: None,
                 hydrated_state_last: None,
             },
+            is_sandbox,
         }
     }
 }
@@ -693,9 +725,15 @@ impl Actor for ChainManager {
             ctx.myself(),
             None,
             LogStats.into());
+
+        let peer_timeout = if self.is_sandbox {
+            SILENT_PEER_TIMEOUT_SANDBOX
+        } else {
+            SILENT_PEER_TIMEOUT / 2
+        };
         ctx.schedule::<Self::Msg, _>(
-            SILENT_PEER_TIMEOUT / 2,
-            SILENT_PEER_TIMEOUT / 2,
+            peer_timeout,
+            peer_timeout,
             ctx.myself(),
             None,
             DisconnectStalledPeers.into());

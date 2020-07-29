@@ -5,11 +5,10 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult, TezosRuntimeConfiguration, ValidateOperationRequest};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
-use std::convert::TryInto;
 
 mod common;
 
@@ -55,58 +54,74 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
 
 #[test]
 #[serial]
-fn test_begin_construction() {
+fn test_begin_construction_and_validate_operation() {
     init_test_runtime();
 
     // init empty context for test
     let (chain_id, genesis_block_header, ..) = init_test_protocol_context("mempool_test_storage_01");
 
     // apply block 1 and block 2
-    let last_block = apply_blocks_1_2(&chain_id, &genesis_block_header);
+    let last_block = apply_blocks_1_2(&chain_id, genesis_block_header);
     assert!(true);
 
     // let's initialize prevalidator for current head
-    let result = client::begin_construction(&chain_id, &last_block, None);
+    let result = client::begin_construction(
+        BeginConstructionRequest {
+            chain_id: chain_id.clone(),
+            predecessor: last_block,
+            protocol_data: None,
+        }
+    );
     assert!(result.is_ok());
     let prevalidator = result.unwrap();
     assert_eq!(prevalidator.chain_id, chain_id);
 
     let operation = test_data::operation_from_hex(test_data::OPERATION_LEVEL_3);
 
-    let result = client::validate_operation(&prevalidator, &operation);
+    let result = client::validate_operation(
+        ValidateOperationRequest {
+            prevalidator,
+            operation,
+        }
+    );
     assert!(result.is_ok());
     let result = result.unwrap();
     assert_eq!(result.prevalidator.chain_id, chain_id);
     assert_eq!(result.result.applied.len(), 1);
-
-    // TODO: skontrolvat json
 }
 
-fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: &BlockHeader) -> BlockHeader {
+fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> BlockHeader {
     // apply first block - level 1
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )),
+            max_operations_ttl: 0,
+        }
     ).unwrap();
     assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
     assert_eq!(1, apply_block_result.max_operations_ttl);
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        apply_block_result.max_operations_ttl.try_into().unwrap(),
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                )
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+        }
     ).unwrap();
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
     assert_eq!(2, apply_block_result.max_operations_ttl);

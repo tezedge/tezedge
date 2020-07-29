@@ -230,6 +230,21 @@ pub fn validate_operation(request: ValidateOperationRequest) -> Result<Result<Va
     call(String::from("validate_operation"), request)
 }
 
+/// Call protocol json rpc - general service
+pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
+    call(String::from("call_protocol_json_rpc"), request)
+}
+
+/// Call helpers_preapply_operations shell service
+pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
+    call(String::from("helpers_preapply_operations"), request)
+}
+
+/// Call helpers_preapply_block shell service
+pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
+    call(String::from("helpers_preapply_block"), request)
+}
+
 pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("generate_identity").expect("function 'generate_identity' is not registered");

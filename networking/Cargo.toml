@@ -1,6 +1,6 @@
 [package]
 name = "networking"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -15,5 +15,4 @@ tokio = { version = "0.2", features = ["io-util", "time", "tcp", "rt-core"] }
 # local dependencies
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_messages = { path = "../tezos/messages" }
-storage = { path = "../storage" }
 crypto = { path = "../crypto" }

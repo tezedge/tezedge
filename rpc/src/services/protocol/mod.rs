@@ -18,9 +18,11 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use crypto::hash::HashType;
-use storage::num_from_slice;
+use storage::{BlockStorage, BlockStorageReader, num_from_slice};
+use storage::context::TezedgeContext;
 use storage::persistent::{ContextList, ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
+use tezos_api::ffi::{FfiRpcService, JsonRpcRequest, ProtocolJsonRpcRequest};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
     proto_001 as proto_001_constants,
@@ -33,9 +35,14 @@ use tezos_messages::protocol::{
     RpcJsonMap,
 };
 
-use crate::helpers::{get_context, get_context_protocol_params, get_level_by_block_id};
+use crate::helpers::{get_block_hash_by_block_id, get_context, get_context_protocol_params, get_level_by_block_id};
 use crate::rpc_actor::RpcCollectedStateRef;
+use crate::server::RpcServiceEnvironment;
 
+mod proto_001;
+mod proto_002;
+mod proto_003;
+mod proto_004;
 mod proto_005_2;
 mod proto_006;
 
@@ -63,7 +70,7 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    list: ContextList,
+    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
@@ -71,19 +78,69 @@ pub(crate) fn check_and_get_baking_rights(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        list.clone(),
+        context_list.clone(),
         persistent_storage,
         state,
     )?;
 
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
-        proto_001_constants::PROTOCOL_HASH
-        | proto_002_constants::PROTOCOL_HASH
-        | proto_003_constants::PROTOCOL_HASH
-        | proto_004_constants::PROTOCOL_HASH
-        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_001_constants::PROTOCOL_HASH => {
+            proto_001::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_002_constants::PROTOCOL_HASH => {
+            proto_002::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_003_constants::PROTOCOL_HASH => {
+            proto_003::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_004_constants::PROTOCOL_HASH => {
+            proto_004::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::rights_service::check_and_get_baking_rights(
                 context_proto_params,
@@ -93,7 +150,7 @@ pub(crate) fn check_and_get_baking_rights(
                 cycle,
                 max_priority,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -106,7 +163,7 @@ pub(crate) fn check_and_get_baking_rights(
                 cycle,
                 max_priority,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -136,7 +193,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    list: ContextList,
+    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
@@ -144,19 +201,65 @@ pub(crate) fn check_and_get_endorsing_rights(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        list.clone(),
+        context_list.clone(),
         persistent_storage,
         state,
     )?;
 
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
     match hash {
-        proto_001_constants::PROTOCOL_HASH
-        | proto_002_constants::PROTOCOL_HASH
-        | proto_003_constants::PROTOCOL_HASH
-        | proto_004_constants::PROTOCOL_HASH
-        | proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_001_constants::PROTOCOL_HASH => {
+            proto_001::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_002_constants::PROTOCOL_HASH => {
+            proto_002::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_003_constants::PROTOCOL_HASH => {
+            proto_003::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_004_constants::PROTOCOL_HASH => {
+            proto_004::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
         proto_005_2_constants::PROTOCOL_HASH => {
             proto_005_2::rights_service::check_and_get_endorsing_rights(
                 context_proto_params,
@@ -165,7 +268,7 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -177,7 +280,7 @@ pub(crate) fn check_and_get_endorsing_rights(
                 delegate,
                 cycle,
                 has_all,
-                list,
+                context,
                 persistent_storage,
             )
         }
@@ -240,4 +343,181 @@ impl VoteListings {
             rolls,
         }
     }
+}
+
+pub(crate) fn proto_get_contract_counter(
+    _chain_id: &str,
+    block_id: &str,
+    pkh: &str,
+    context_list: ContextList,
+    persistent_storage: &PersistentStorage,
+    state: &RpcCollectedStateRef) -> Result<Option<String>, failure::Error> {
+
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        context_list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH |
+        proto_002_constants::PROTOCOL_HASH |
+        proto_003_constants::PROTOCOL_HASH |
+        proto_004_constants::PROTOCOL_HASH |
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::contract_service::get_contract_counter(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        proto_006_constants::PROTOCOL_HASH => {
+            proto_006::contract_service::get_contract_counter(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
+}
+
+pub(crate) fn proto_get_contract_manager_key(
+    _chain_id: &str,
+    block_id: &str,
+    pkh: &str,
+    context_list: ContextList,
+    persistent_storage: &PersistentStorage,
+    state: &RpcCollectedStateRef) -> Result<Option<String>, failure::Error> {
+
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        context_list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH |
+        proto_002_constants::PROTOCOL_HASH |
+        proto_003_constants::PROTOCOL_HASH |
+        proto_004_constants::PROTOCOL_HASH |
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::contract_service::get_contract_manager_key(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        proto_006_constants::PROTOCOL_HASH => {
+            proto_006::contract_service::get_contract_manager_key(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
+}
+
+pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    // get header
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersRunOperation,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    // get header
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersPreapplyOperations,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_operations(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    // get header
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersPreapplyBlock,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: TE-192 - refactor to protocol runner call
+    let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_block(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
 }

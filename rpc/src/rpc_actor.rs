@@ -4,7 +4,7 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
-use getset::Getters;
+use getset::{Getters, Setters};
 use riker::actors::*;
 use slog::{Logger, warn};
 use tokio::runtime::Handle;
@@ -13,7 +13,12 @@ use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::PersistentStorage;
 use storage::StorageInitInfo;
+use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_messages::p2p::encoding::version::NetworkVersion;
+use tezos_wrapper::TezosApiConnectionPool;
 
+use crate::encoding::base_types::TimeStamp;
+use crate::helpers::current_time_timestamp;
 use crate::server::{RpcServiceEnvironment, spawn_server};
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
@@ -23,7 +28,7 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 
 /// Represents various collected information about
 /// internal state of the node.
-#[derive(Getters)]
+#[derive(Getters, Setters)]
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<BlockApplied>,
@@ -31,6 +36,8 @@ pub struct RpcCollectedState {
     chain_id: ChainId,
     #[get = "pub(crate)"]
     current_mempool_state: Option<CurrentMempoolState>,
+    #[get = "pub(crate)"]
+    head_update_time: TimeStamp,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -50,6 +57,9 @@ impl RpcServer {
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
+        tezos_readonly_api: Arc<TezosApiConnectionPool>,
+        tezos_env: TezosEnvironmentConfiguration,
+        network_version: NetworkVersion,
         init_storage_data: &StorageInitInfo) -> Result<RpcServerRef, CreateError> {
 
         // TODO: refactor - call load_current_head in pre_start
@@ -57,6 +67,7 @@ impl RpcServer {
             current_head: load_current_head(persistent_storage, &sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
             current_mempool_state: None,
+            head_update_time: current_time_timestamp(),
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
@@ -65,7 +76,18 @@ impl RpcServer {
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(sys.clone(), actor_ref.clone(), shell_channel, persistent_storage, &init_storage_data.genesis_block_header_hash, shared_state, &sys.log());
+            let env = RpcServiceEnvironment::new(
+                sys.clone(),
+                actor_ref.clone(),
+                shell_channel,
+                tezos_env,
+                network_version,
+                persistent_storage,
+                tezos_readonly_api,
+                &init_storage_data.genesis_block_header_hash,
+                shared_state,
+                &sys.log(),
+            );
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
@@ -115,6 +137,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
                     }
                     None => current_head_ref.current_head = Some(block)
                 }
+                current_head_ref.head_update_time = current_time_timestamp();
             }
             ShellChannelMsg::MempoolStateChanged(result) => {
                 let current_state = &mut *self.state.write().unwrap();

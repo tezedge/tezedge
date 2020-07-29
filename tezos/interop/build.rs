@@ -14,7 +14,7 @@ use serde_json;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "ffaa816164ac289d4428731851f75ad43fd423ea";
+const GIT_COMMIT_HASH: &str = "972404e57f176bc4226940868b35e9b59b4c2a04";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
@@ -151,7 +151,7 @@ fn run_builder(build_chain: &str) {
                 let mut file = File::open(&libtezos_path).expect("Failed to read contents of libtezos.so");
                 let mut sha256 = Sha256::new();
                 std::io::copy(&mut file, &mut sha256).expect("Failed to read contents of libtezos.so");
-                let hash = sha256.result();
+                let hash = sha256.finalize();
                 assert_eq!(hash[..], *remote_lib_sha256, "libtezos.so SHA256 mismatch");
             }
         }

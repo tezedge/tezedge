@@ -29,6 +29,15 @@ pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceRes
         .body(Body::from(serde_json::to_string(content)?))?)
 }
 
+/// Function to generate JSON response from a stream
+pub(crate) fn make_json_stream_response<T: futures::Stream<Item=Result<String, serde_json::Error>> + Send + 'static>(content: T) -> ServiceResult {
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/json")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::TRANSFER_ENCODING, "chunked")
+        .body(Body::wrap_stream(content))?)
+}
+
 /// Returns result as a JSON response.
 pub(crate) fn result_to_json_response<T: serde::Serialize>(res: Result<T, failure::Error>, log: &Logger) -> ServiceResult {
     match res {

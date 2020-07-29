@@ -8,13 +8,13 @@ use serde_json::Value;
 use slog::Logger;
 
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic, InjectBlock};
 use storage::mempool_storage::MempoolOperationType;
 use storage::MempoolStorage;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
-use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
+use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage, BlockHeader};
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -146,6 +146,28 @@ pub fn inject_operation(
     Ok(HashType::OperationHash.bytes_to_string(&operation_hash))
 }
 
+pub fn inject_block(
+    injection_data: &str,
+    _persistent_storage: &PersistentStorage,
+    _state: &RpcCollectedStateRef,
+    shell_channel: ShellChannelRef,
+    _log: &Logger) -> Result<String, failure::Error> {
+
+    let injection_data_json: serde_json::Value = serde_json::from_str(injection_data)?;
+
+    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(injection_data_json["data"].to_string().replace("\"", ""))?)?;
+
+    shell_channel.tell(
+        Publish {
+            msg: InjectBlock {
+                block_header: header.clone(),
+            }.into(),
+            topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
+
+    Ok(HashType::BlockHash.bytes_to_string(&header.message_hash().unwrap()))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -202,6 +224,7 @@ mod tests {
         let data = vec![
             Errored {
                 hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
                     error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
@@ -247,6 +270,7 @@ mod tests {
         let data = vec![
             Errored {
                 hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                is_endorsement: Some(true),
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "".to_string(),
                     error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),

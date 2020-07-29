@@ -2,18 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{
-    ApplyBlockError, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    BeginConstructionError, BeginConstructionRequest, BeginConstructionRequestBuilder,
-    CommitGenesisResult,
-    ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult,
-    PatchContext, PrevalidatorWrapper, ProtocolOverrides, TezosGenerateIdentityError,
-    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationRequest, ValidateOperationRequestBuilder, ValidateOperationResponse,
-};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
 use tezos_api::identity::Identity;
-use tezos_interop::ffi;
-use tezos_messages::p2p::encoding::prelude::*;
+use tezos_interop::{ffi, runtime};
 
 /// Override runtime configuration for OCaml runtime
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
@@ -69,29 +60,15 @@ pub fn genesis_result_data(
 /// - block and operations data are correctly stored in Tezos chain/storage
 /// - new current head is evaluated
 /// - returns validation_result.message
-pub fn apply_block(
-    chain_id: &ChainId,
-    block_header: &BlockHeader,
-    predecessor_block_header: &BlockHeader,
-    operations: &Vec<Option<OperationsForBlocksMessage>>,
-    max_operations_ttl: u16) -> Result<ApplyBlockResponse, ApplyBlockError> {
+pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError> {
 
     // check operations count by validation_pass
-    if (block_header.validation_pass() as usize) != operations.len() {
+    if (request.block_header.validation_pass() as usize) != request.operations.len() {
         return Err(ApplyBlockError::IncompleteOperations {
-            expected: block_header.validation_pass() as usize,
-            actual: operations.len(),
+            expected: request.block_header.validation_pass() as usize,
+            actual: request.operations.len(),
         });
     }
-
-    // request
-    let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
-        .chain_id(chain_id.clone())
-        .block_header(block_header.clone())
-        .pred_header(predecessor_block_header.clone())
-        .max_operations_ttl(max_operations_ttl as i32)
-        .operations(ApplyBlockRequest::convert_operations(operations))
-        .build().unwrap();
 
     match ffi::apply_block(request) {
         Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
@@ -104,19 +81,7 @@ pub fn apply_block(
 }
 
 /// Begin construction
-pub fn begin_construction(
-    chain_id: &ChainId,
-    predecessor_block_header: &BlockHeader,
-    protocol_data: Option<Vec<u8>>,
-) -> Result<PrevalidatorWrapper, BeginConstructionError> {
-
-    // request
-    let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
-        .chain_id(chain_id.clone())
-        .predecessor(predecessor_block_header.clone())
-        .protocol_data(protocol_data)
-        .build().unwrap();
-
+pub fn begin_construction(request: BeginConstructionRequest) -> Result<PrevalidatorWrapper, BeginConstructionError> {
     match ffi::begin_construction(request) {
         Ok(result) => result.map_err(|e| BeginConstructionError::from(e)),
         Err(e) => {
@@ -128,21 +93,47 @@ pub fn begin_construction(
 }
 
 /// Validate operation
-pub fn validate_operation(
-    prevalidator: &PrevalidatorWrapper,
-    operation: &Operation,
-) -> Result<ValidateOperationResponse, ValidateOperationError> {
-
-    // request
-    let request: ValidateOperationRequest = ValidateOperationRequestBuilder::default()
-        .prevalidator(prevalidator.clone())
-        .operation(operation.clone())
-        .build().unwrap();
-
+pub fn validate_operation(request: ValidateOperationRequest) -> Result<ValidateOperationResponse, ValidateOperationError> {
     match ffi::validate_operation(request) {
         Ok(result) => result.map_err(|e| ValidateOperationError::from(e)),
         Err(e) => {
             Err(ValidateOperationError::FailedToValidateOperation {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Call protocol json rpc - general service
+pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+    match ffi::call_protocol_json_rpc(request) {
+        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Err(e) => {
+            Err(ProtocolRpcError::FailedToCallProtocolRpc {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Call helpers_preapply_operations shell service
+pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+    match ffi::helpers_preapply_operations(request) {
+        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Err(e) => {
+            Err(ProtocolRpcError::FailedToCallProtocolRpc {
+                message: format!("Unknown OcamlError: {:?}", e)
+            })
+        }
+    }
+}
+
+/// Call helpers_preapply_block shell service
+pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+    match ffi::helpers_preapply_block(request) {
+        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Err(e) => {
+            Err(ProtocolRpcError::FailedToCallProtocolRpc {
                 message: format!("Unknown OcamlError: {:?}", e)
             })
         }
@@ -171,4 +162,8 @@ pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: 
             })
         }
     }
+}
+
+pub fn shutdown_runtime() {
+    runtime::shutdown();
 }

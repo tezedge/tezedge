@@ -1,6 +1,6 @@
 [package]
 name = "monitoring"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 
@@ -23,4 +23,3 @@ networking = { path = "../networking" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }
 tezos_messages = { path = "../tezos/messages" }
-tezos_encoding = { path = "../tezos/encoding" }

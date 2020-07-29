@@ -1,18 +1,19 @@
 [package]
 name = "tezos_client"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
 crypto = { path = "../../crypto" }
 tezos_api = { path = "../api" }
-tezos_encoding = { path = "../encoding" }
 tezos_interop = { path = "../interop" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
-enum-iterator = "0.5.0"
+assert-json-diff = "1.0.0"
+enum-iterator = "0.6"
 failure = "0.1"
 hex = "0.4"
+serde_json = "1.0"
 serial_test = "0.4"

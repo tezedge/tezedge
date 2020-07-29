@@ -15,7 +15,7 @@ use networking::p2p::{
 };
 use networking::p2p::network_channel::PeerBootstrapped;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockMetaStorage, IteratorMode};
+use storage::{BlockMetaStorage, BlockMetaStorageReader, IteratorMode};
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
@@ -45,7 +45,7 @@ pub struct Monitor {
     bootstrap_monitor: BootstrapMonitor,
     blocks_monitor: BlocksMonitor,
     block_application_monitor: ApplicationMonitor,
-    chain_monitor: ChainMonitor
+    chain_monitor: ChainMonitor,
 }
 
 impl Monitor {
@@ -93,16 +93,20 @@ impl Monitor {
 impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)> for Monitor {
     fn create_args((event_channel, msg_channel, shell_channel, persistent_storage): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)) -> Self {
         let blocks_meta = BlockMetaStorage::new(&persistent_storage);
+        // TODO: TE-184 - monitor - count all downloaded blocks - is this necessery?
+        // get downloaded count
         let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
-            let mut res = 0;
-            for _ in iter {
-                res += 1
-            }
-            res
+            iter.count()
         } else { 0 };
+        // get last header level
+        let level = blocks_meta.load_current_head()
+            .unwrap_or(None)
+            .map(|(_, level)| level)
+            .unwrap_or(0);
+
         let mut bootstrap_monitor = BootstrapMonitor::new();
         bootstrap_monitor.set_downloaded_blocks(downloaded);
-        bootstrap_monitor.set_level(downloaded);
+        bootstrap_monitor.set_level(level as usize);
 
         Self {
             event_channel,
@@ -239,7 +243,6 @@ impl Receive<ShellChannelMsg> for Monitor {
     type Msg = MonitorMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-
         match msg {
             ShellChannelMsg::BlockReceived(msg) => {
                 // Update current max block count
@@ -258,7 +261,6 @@ impl Receive<ShellChannelMsg> for Monitor {
 
                 self.blocks_monitor.block_was_applied_by_protocol();
                 self.block_application_monitor.block_was_applied(msg);
-
             }
             ShellChannelMsg::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();
@@ -266,12 +268,12 @@ impl Receive<ShellChannelMsg> for Monitor {
 
                 // update stats for block operations
                 self.chain_monitor.process_block_operations(msg.level as usize);
-
-            },
+            }
             ShellChannelMsg::ShuttingDown(_) => (),
             // TODO: TE-173: mempool stats
             ShellChannelMsg::MempoolOperationReceived(_) => (),
             ShellChannelMsg::MempoolStateChanged(_) => (),
+            ShellChannelMsg::InjectBlock(_) => (),
         }
     }
 }

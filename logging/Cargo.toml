@@ -1,14 +1,14 @@
 [package]
 name = "logging"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 
 [dependencies]
-chrono = "0.4.9"
+chrono = "0.4"
 libflate = "0.1.27"
-nix = "0.15.0"
+nix = "0.17"
 serde = { version = "1.0", features = ["derive"] }
 slog = "2.5"
 slog-json = "2.3"

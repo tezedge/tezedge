@@ -14,7 +14,7 @@ use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 
 use crate::rpc_actor::RpcCollectedStateRef;
-use crate::server::service::get_block_actions_by_hash;
+use crate::services::base_services::get_block_actions_by_hash;
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionTypeStats {
@@ -45,12 +45,17 @@ fn add_action<'a>(
     action_name: &'a str,
     key: Option<&Vec<String>>,
     value: Option<&Vec<u8>>,
-    time: f64
+    time: f64,
 ) {
     let mut action_stats = stats
         .entry(action_name).or_insert(ActionStats {
-            action_type_stats: HashMap::new(), total_time: 0f64, total_actions: 0,
-            key_length_max: 0, val_length_max: 0, val_length_sum: 0, key_length_sum: 0
+        action_type_stats: HashMap::new(),
+        total_time: 0f64,
+        total_actions: 0,
+        key_length_max: 0,
+        val_length_max: 0,
+        val_length_sum: 0,
+        key_length_sum: 0,
     });
     action_stats.total_time += time;
     action_stats.total_actions += 1;
@@ -87,7 +92,8 @@ fn add_action<'a>(
 }
 
 struct TopN<T: Ord> {
-    data: RwLock<BinaryHeap<Reverse<T>>>, // the Reverse makes it a min-heap
+    data: RwLock<BinaryHeap<Reverse<T>>>,
+    // the Reverse makes it a min-heap
     max: usize,
 }
 
@@ -147,7 +153,7 @@ fn fat_tail_vec(fat_tail: TopN<ContextAction>) -> Vec<ContextAction> {
 pub(crate) fn compute_storage_stats<'a>(
     _state: &RpcCollectedStateRef,
     from_block: &str,
-    persistent_storage: &PersistentStorage
+    persistent_storage: &PersistentStorage,
 ) -> Result<StatsResponse<'a>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
     let block_storage = BlockStorage::new(persistent_storage);
@@ -178,9 +184,9 @@ pub(crate) fn compute_storage_stats<'a>(
                 ContextAction::DirMem { key, start_time, end_time, .. } =>
                     add_action(&mut stats, "DIRMEM", Some(key), None, *end_time - *start_time),
                 ContextAction::Get { key, start_time, end_time, .. } =>
-                    add_action(&mut stats, "GET", Some(key),None, *end_time - *start_time),
+                    add_action(&mut stats, "GET", Some(key), None, *end_time - *start_time),
                 ContextAction::Fold { key, start_time, end_time, .. } =>
-                    add_action(&mut stats, "FOLD", Some(key),None, *end_time - *start_time),
+                    add_action(&mut stats, "FOLD", Some(key), None, *end_time - *start_time),
                 ContextAction::Shutdown => {}
             });
         } // drop the stats mutex here

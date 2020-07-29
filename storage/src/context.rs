@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
+
 use failure::Fail;
 
 use crypto::hash::{BlockHash, ContextHash, HashType};
@@ -90,8 +92,11 @@ fn to_key(key: &Vec<String>) -> String {
     key.join("/")
 }
 
-fn key_starts_with(key: &String, prefix: &Vec<String>) -> bool {
-    key.starts_with(&to_key(prefix))
+fn key_terminated_starts_with(key: &String, prefix: &Vec<String>) -> bool {
+    let mut terminated_key = to_key(prefix);
+    // terminate the key with a '/'
+    terminated_key.push('/');
+    key.starts_with(&terminated_key)
 }
 
 fn replace_key(key: &String, matched: &Vec<String>, replacer: &Vec<String>) -> String {
@@ -113,7 +118,15 @@ impl ContextIndex {
 /// Stuct which hold diff againts predecessor's context
 pub struct ContextDiff {
     pub predecessor_index: ContextIndex,
-    diff: ContextMap,
+    pub diff: ContextMap,
+}
+
+impl fmt::Debug for ContextDiff {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ContextDiff")
+            .field("Diff", &self.diff)
+            .finish()
+    }
 }
 
 impl ContextDiff {
@@ -156,7 +169,7 @@ impl TezedgeContext {
         Ok(block.header.level() as usize)
     }
 
-    fn get_by_key_prefix(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<ContextMap>, ContextError> {
+    pub fn get_by_key_prefix(&self, context_index: &ContextIndex, key: &Vec<String>) -> Result<Option<ContextMap>, ContextError> {
         if context_index.context_hash.is_none() && context_index.level.is_none() {
             return Ok(None);
         }
@@ -233,7 +246,22 @@ impl ContextApi for TezedgeContext {
 
     fn delete_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_delete: &Vec<String>, context_diff: &mut ContextDiff) -> Result<(), ContextError> {
         ensure_eq_context_hash!(context_hash, &context_diff);
-        self.remove_recursively_to_diff(context_hash, key_prefix_to_delete, context_diff)
+
+        let context_map_diff = &mut context_diff.diff;
+        
+        // check in the current diff first
+        let key_in_diff = context_map_diff.get(&key_prefix_to_delete.join("/"));
+        if key_in_diff.is_some() {
+            context_map_diff.insert(key_prefix_to_delete.join("/"), Bucket::Deleted);
+        }
+
+        
+        let context = self.get_key(&context_diff.predecessor_index, key_prefix_to_delete)?;
+        if context.is_some() {
+            context_map_diff.insert(key_prefix_to_delete.join("/"), Bucket::Deleted);
+        }
+
+        Ok(())
     }
 
     fn remove_recursively_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_remove: &Vec<String>, context_diff: &mut ContextDiff) -> Result<(), ContextError> {
@@ -241,25 +269,53 @@ impl ContextApi for TezedgeContext {
 
         // at first remove keys from temp diff
         let context_map_diff = &mut context_diff.diff;
-        context_map_diff.retain(|k, v| {
-            if key_starts_with(k, key_prefix_to_remove) == true {
-                match v {
-                    Bucket::Deleted => true, // deleted stays in diff, because of previous delete from parent context, see bellow
-                    _ => false
+        // context_map_diff.retain(|k, v| {
+        //     if key_terminated_starts_with(k, key_prefix_to_remove) {
+        //         match v {
+        //             Bucket::Deleted => true, // deleted stays in diff, because of previous delete from parent context, see bellow
+        //             _ => false
+        //         }
+        //     } else {
+        //         // else keep in diff
+        //         true
+        //     }
+        // });
+        let match_in_diff = context_map_diff.range(key_prefix_to_remove.join("/")..).take_while(|(k, _)| k.starts_with(&key_prefix_to_remove.join("/")));
+        let mut final_context_to_remove: ContextMap = Default::default();
+
+        for (k, v) in match_in_diff {
+            match v {
+                Bucket::Exists(_) => {
+                    final_context_to_remove.insert(k.clone(), v.clone()); // deleted stays in diff, because of previous delete from parent context, see bellow
+                    ()
                 }
-            } else {
-                // else keep in diff
-                true
-            }
-        });
+                _ => {
+                    ()
+                }
+            };
+        }
 
         // remove all keys with prefix from actual/parent context
         let context = self.get_by_key_prefix(&context_diff.predecessor_index, key_prefix_to_remove)?;
+        
         if context.is_some() {
             let context = context.unwrap();
             for key in context.keys() {
-                context_map_diff.insert(key.clone(), Bucket::Deleted);
+                if key_terminated_starts_with(key, key_prefix_to_remove) {
+                    context_map_diff.insert(key.clone(), Bucket::Deleted);
+                }
             }
+        }
+
+        for key in final_context_to_remove.keys() {
+            context_map_diff.insert(key.clone(), Bucket::Deleted);
+        }
+
+        // lastly if the prefix is a spicific key with a value, too, remove it
+        let key_to_remove_value = self.get_key(&context_diff.predecessor_index, key_prefix_to_remove)?;
+
+        if key_to_remove_value.is_some() {
+            context_map_diff.insert(key_prefix_to_remove.join("/"), Bucket::Deleted);
         }
 
         Ok(())
@@ -271,18 +327,52 @@ impl ContextApi for TezedgeContext {
         // get keys from actual/parent context
         let mut final_context_to_copy = self.get_by_key_prefix(&context_diff.predecessor_index, from_key)?.unwrap_or(ContextMap::default());
 
-        // merge the same keys from diff to final context
-        for (key, bucket) in &context_diff.diff {
-            if key_starts_with(key, from_key) == true {
-                match bucket {
-                    Bucket::Exists(_) => final_context_to_copy.insert(key.clone(), bucket.clone()),
-                    | Bucket::Deleted => final_context_to_copy.remove(key),
-                };
-            }
+        let match_in_diff = context_diff.diff.range(from_key.join("/")..).take_while(|(k, _)| k.starts_with(&from_key.join("/")));
+
+        for (key, bucket) in match_in_diff {
+            match bucket {
+                Bucket::Exists(_) => final_context_to_copy.insert(key.clone(), bucket.clone()),
+                | Bucket::Deleted => final_context_to_copy.remove(key),
+            };
         }
 
-        // now we can copy to_key destination
-        for (key, bucket) in final_context_to_copy {
+        // means that we have no context
+        // if final_context_to_copy.is_empty() {
+        //     print!("Is empty");
+        //     // final_context_to_copy = context_diff.diff.clone();
+
+        //     // optimalisation
+        //     // see if there is one specific key 
+        //     match context_diff.diff.get(&from_key.join("/")) {
+        //         Some(val) => {
+        //             println!("\t Concrete key!");
+        //             final_context_to_copy.insert(from_key.join("/"), val.clone());
+        //             ()
+        //         }
+        //         None => {
+        //                 // if there is no specific key, iterate...
+        //                 println!("\tPrefix key!");
+        //                 for (key, bucket) in &context_diff.diff {
+        //                     if key_starts_with(key, from_key) {
+        //                         match bucket {
+        //                             Bucket::Exists(_) => final_context_to_copy.insert(key.clone(), bucket.clone()),
+        //                             | Bucket::Deleted => final_context_to_copy.remove(key),
+        //                         };
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+
+        //     if context_diff.diff.contains_key(&from_key.join("/")) {
+        //         let val = context_diff.diff.get(&from_key.join("/")).unwrap();
+        //         final_context_to_copy.insert(from_key.join("/"), val.clone());
+        //     } else {
+                
+        // }
+
+        // merge the same keys from diff to final context
+        for (key, bucket) in &final_context_to_copy {
             match bucket {
                 Bucket::Exists(_) => {
                     let destination_key = replace_key(&key, from_key, to_key);

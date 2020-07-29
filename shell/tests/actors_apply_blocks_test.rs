@@ -7,7 +7,7 @@ extern crate test;
 /// 1. test_scenario_for_apply_blocks_with_chain_feeder_and_check_context - see fn description
 /// 2. test_scenario_for_add_operations_to_mempool_and_check_state - see fn description
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -39,6 +39,7 @@ use tezos_messages::p2p::encoding::operation::OperationMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
 use tezos_messages::p2p::encoding::operations_for_blocks;
 use tezos_messages::p2p::encoding::prelude::Operation;
+use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 mod common;
@@ -96,39 +97,33 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
         Err(e) => panic!("Error to start test_protocol_runner_endpoint: {} - error: {:?}", apply_protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e)
     };
 
-    // mempool protocol runner endpoint
-    let mempool_protocol_runner = common::protocol_runner_executable_path();
-    let mempool_protocol_endpoint_configuration = ProtocolEndpointConfiguration::new(
-        TezosRuntimeConfiguration {
-            log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-            debug_mode: false,
-        },
-        tezos_env.clone(),
-        false,
-        &context_db_path,
-        &mempool_protocol_runner,
-        log_level,
-        false,
+    // create pool for ffi protocol runner connections (used just for readonly context)
+    let tezos_readonly_api = Arc::new(
+        TezosApiConnectionPool::new_with_readonly_context(
+            String::from("test_ tezos_readonly_api_pool"),
+            TezosApiConnectionPoolConfiguration {
+                min_connections: 0,
+                max_connections: 2,
+                connection_timeout: Duration::from_secs(3),
+                max_lifetime: Duration::from_secs(60),
+                idle_timeout: Duration::from_secs(60),
+            },
+            ProtocolEndpointConfiguration::new(
+                TezosRuntimeConfiguration {
+                    log_enabled: common::is_ocaml_log_enabled(),
+                    no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+                    debug_mode: false,
+                },
+                tezos_env.clone(),
+                false,
+                &context_db_path,
+                &common::protocol_runner_executable_path(),
+                log_level,
+                false,
+            ),
+            log.clone(),
+        )
     );
-
-    // create and start protocol endpoint
-    let mut mempool_protocol_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
-        "test_mempool_prevalidator_protocol_runner_endpoint",
-        mempool_protocol_endpoint_configuration,
-        log.clone(),
-    );
-    let (mempool_restarting_feature, mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name) = match mempool_protocol_endpoint.start_in_restarting_mode() {
-        Ok(restarting_feature) => {
-            let ProtocolRunnerEndpoint {
-                commands,
-                name,
-                ..
-            } = mempool_protocol_endpoint;
-            (restarting_feature, commands, name)
-        }
-        Err(e) => panic!("Error to start test_mempool_prevalidator_protocol_runner_endpoint: {} - error: {:?}", mempool_protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e)
-    };
 
     // test mempool state for validation
     let (test_result_sender, test_result_receiver) = channel();
@@ -144,8 +139,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
         shell_channel.clone(),
         &persistent_storage,
         &init_storage_data,
-        &tezos_env,
-        (mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name),
+        tezos_readonly_api.clone(),
         log.clone(),
     ).expect("Failed to create chain feeder");
 
@@ -176,7 +170,6 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     // clean up
     // shutdown events listening
-    mempool_restarting_feature.store(false, Ordering::Release);
     apply_restarting_feature.store(false, Ordering::Release);
 
     thread::sleep(Duration::from_secs(3));
@@ -251,7 +244,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     Ok(())
 }
 
-fn assert_ctxt(ctxt: HashMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: String) {
+fn assert_ctxt(ctxt: BTreeMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: String) {
     let json: Value = serde_json::from_str(&ocaml_ctxt_as_json).unwrap();
     for (key, value) in ctxt.iter() {
         // comparing just data

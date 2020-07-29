@@ -20,7 +20,7 @@ use shell::context_listener::ContextListener;
 use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{block_storage, BlockMetaStorage, BlockStorage, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageError, StorageInitInfo, SystemStorage};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
 use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
@@ -28,7 +28,9 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_api::identity::Identity;
+use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::configuration::LogFormat;
 
@@ -36,6 +38,8 @@ mod configuration;
 mod identity;
 
 const DATABASE_VERSION: i64 = 14;
+const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
+const SUPPORTED_P2P_VERSION: u16 = 1;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -99,21 +103,52 @@ fn block_on_actors(
     persistent_storage: PersistentStorage,
     log: Logger) {
 
+    // if feeding is started, than run chain manager
+    let is_sandbox = env.tezos_network == environment::TezosEnvironment::Sandbox;
+    // version
+    let network_version = NetworkVersion::new(
+        tezos_env.version.clone(),
+        SUPPORTED_DISTRIBUTED_DB_VERSION,
+        SUPPORTED_P2P_VERSION,
+    );
+
+    // create pool for ffi protocol runner connections (used just for readonly context)
+    let tezos_readonly_api = Arc::new(
+        TezosApiConnectionPool::new_with_readonly_context(
+            String::from("tezos_readonly_api_pool"),
+            env.ffi.pool.clone(),
+            ProtocolEndpointConfiguration::new(
+                TezosRuntimeConfiguration {
+                    log_enabled: env.logging.ocaml_log_enabled,
+                    no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
+                    debug_mode: false,
+                },
+                tezos_env.clone(),
+                env.enable_testchain,
+                &env.storage.tezos_data_dir,
+                &env.ffi.protocol_runner,
+                env.logging.level,
+                false,
+            ),
+            log.clone(),
+        )
+    );
+
     // tezos protocol runner endpoint for applying blocks to chain
     let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
         "apply_blocks_protocol_runner_endpoint",
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
-                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
+                no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
                 debug_mode: env.storage.store_context_actions,
             },
             tezos_env.clone(),
             env.enable_testchain,
             &env.storage.tezos_data_dir,
-            &env.protocol_runner,
+            &env.ffi.protocol_runner,
             env.logging.level,
-            true
+            true,
         ),
         log.clone(),
     );
@@ -130,33 +165,6 @@ fn block_on_actors(
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => apply_blocks_protocol_runner_endpoint.name, "reason" => e), actor_system),
     };
 
-    // tezos protocol runner endpoint for mempool
-    let mut mempool_prevalidator_protocol_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
-        "mempool_prevalidator_protocol_runner_endpoint",
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: env.logging.ocaml_log_enabled,
-                no_of_ffi_calls_treshold_for_gc: env.no_of_ffi_calls_threshold_for_gc,
-                debug_mode: env.storage.store_context_actions,
-            },
-            tezos_env.clone(),
-            env.enable_testchain,
-            &env.storage.tezos_data_dir,
-            &env.protocol_runner,
-            env.logging.level,
-            false,
-        ),
-        log.clone(),
-    );
-    let (mempool_prevalidator_protocol_runner_endpoint_run_feature, mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name) = match mempool_prevalidator_protocol_endpoint.start_in_restarting_mode() {
-        Ok(run_feature) => {
-            let ProtocolRunnerEndpoint { commands, name, .. } = mempool_prevalidator_protocol_endpoint;
-            info!(log, "Protocol runner started successfully"; "endpoint" => name.clone());
-            (run_feature, commands, name)
-        }
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => mempool_prevalidator_protocol_endpoint.name, "reason" => e), actor_system),
-    };
-
     let mut tokio_runtime = create_tokio_runtime(env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -169,16 +177,15 @@ fn block_on_actors(
         .expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    // if feeding is started, than run chain manager
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox)
         .expect("Failed to create chain manager");
+
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
         &init_storage_data,
-        &tezos_env,
-        (mempool_prevalidator_protocol_commands, mempool_prevalidator_endpoint_name),
+        tezos_readonly_api.clone(),
         log.clone(),
     ).expect("Failed to create chain feeder");
 
@@ -193,7 +200,7 @@ fn block_on_actors(
         env.p2p.peer_threshold,
         env.p2p.listener_port,
         identity,
-        tezos_env.version.clone(),
+        network_version.clone(),
         env.p2p.disable_mempool,
         env.p2p.private_node,
     ).expect("Failed to create peer manager");
@@ -201,8 +208,17 @@ fn block_on_actors(
         .expect("Failed to start websocket actor");
     let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
         .expect("Failed to create monitor actor");
-    let _ = RpcServer::actor(&actor_system, shell_channel.clone(), ([0, 0, 0, 0], env.rpc.listener_port).into(), &tokio_runtime.handle(), &persistent_storage, &init_storage_data)
-        .expect("Failed to create RPC server");
+    let _ = RpcServer::actor(
+        &actor_system,
+        shell_channel.clone(),
+        ([0, 0, 0, 0], env.rpc.listener_port).into(),
+        &tokio_runtime.handle(),
+        &persistent_storage,
+        tezos_readonly_api.clone(),
+        tezos_env.clone(),
+        network_version,
+        &init_storage_data,
+    ).expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -212,7 +228,6 @@ fn block_on_actors(
 
         // disable/stop protocol runner for applying blocks feature
         apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
-        mempool_prevalidator_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
         info!(log, "Sending shutdown notification to actors");
         shell_channel.tell(
@@ -230,52 +245,6 @@ fn block_on_actors(
         let _ = actor_system.shutdown().await;
         info!(log, "Shutdown complete");
     });
-}
-
-fn check_database_compatibility(db: Arc<rocksdb::DB>, tezos_env: &TezosEnvironmentConfiguration, log: Logger) -> Result<bool, StorageError> {
-    let mut system_info = SystemStorage::new(db.clone());
-    let db_version_ok = match system_info.get_db_version()? {
-        Some(db_version) => db_version == DATABASE_VERSION,
-        None => {
-            system_info.set_db_version(DATABASE_VERSION)?;
-            true
-        }
-    };
-    if !db_version_ok {
-        error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
-    }
-
-    let tezos_env_main_chain_id = tezos_env.main_chain_id().map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
-    let tezos_env_main_chain_name = &tezos_env.version;
-
-    let (chain_id_ok, previous_chain_name, requested_chain_name) = match system_info.get_chain_id()? {
-        Some(chain_id) => {
-            let previous_chain_name = match system_info.get_chain_name()? {
-                Some(chn) => chn,
-                None => "-unknown-".to_string()
-            };
-
-            if chain_id == tezos_env_main_chain_id && previous_chain_name.eq(tezos_env_main_chain_name.as_str()) {
-                (true, previous_chain_name, tezos_env_main_chain_name)
-            } else {
-                (false, previous_chain_name, tezos_env_main_chain_name)
-            }
-        }
-        None => {
-            system_info.set_chain_id(&tezos_env_main_chain_id)?;
-            system_info.set_chain_name(&tezos_env_main_chain_name)?;
-            (true, "-none-".to_string(), tezos_env_main_chain_name)
-        }
-    };
-
-    if !chain_id_ok {
-        error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
-                    "requested_chain" => requested_chain_name,
-                    "previous_chain" => previous_chain_name
-        );
-    }
-
-    Ok(db_version_ok && chain_id_ok)
 }
 
 fn main() {
@@ -323,7 +292,7 @@ fn main() {
     };
     debug!(log, "Loaded RocksDB database");
 
-    match check_database_compatibility(rocks_db.clone(), &tezos_env, log.clone()) {
+    match check_database_compatibility(rocks_db.clone(), DATABASE_VERSION, &tezos_env, log.clone()) {
         Ok(false) => shutdown_and_exit!(crit!(log, "Database incompatibility detected"), actor_system),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to verify database compatibility"; "reason" => e), actor_system),
         _ => ()

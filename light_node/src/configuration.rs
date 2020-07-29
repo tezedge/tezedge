@@ -7,6 +7,7 @@ use std::fs;
 use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use clap::{App, Arg};
 
@@ -14,6 +15,7 @@ use shell::peer_manager::Threshold;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
+use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
 #[derive(Debug, Clone)]
 pub struct P2p {
@@ -54,6 +56,13 @@ pub struct Identity {
 }
 
 #[derive(Debug, Clone)]
+pub struct Ffi {
+    pub protocol_runner: PathBuf,
+    pub no_of_ffi_calls_threshold_for_gc: i32,
+    pub pool: TezosApiConnectionPoolConfiguration,
+}
+
+#[derive(Debug, Clone)]
 pub enum LogFormat {
     Json,
     Simple,
@@ -78,11 +87,10 @@ pub struct Environment {
     pub logging: Logging,
     pub storage: Storage,
     pub identity: Identity,
+    pub ffi: Ffi,
 
     pub tezos_network: TezosEnvironment,
     pub enable_testchain: bool,
-    pub protocol_runner: PathBuf,
-    pub no_of_ffi_calls_threshold_for_gc: i32,
     pub tokio_threads: usize,
 }
 
@@ -264,6 +272,30 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of ffi calls, after which will be Ocaml garbage collector called")
             .validator(parse_validator_fn!(i32, "Value must be a valid number")))
+        .arg(Arg::with_name("ffi-pool-max-connections")
+            .long("ffi-pool-max-connections")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of max ffi pool connections, default: 10")
+            .validator(parse_validator_fn!(u8, "Value must be a valid number")))
+        .arg(Arg::with_name("ffi-pool-connection-timeout-in-secs")
+            .long("ffi-pool-connection-timeout-in-secs")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of seconds to wait for connection, default: 60")
+            .validator(parse_validator_fn!(u16, "Value must be a valid number")))
+        .arg(Arg::with_name("ffi-pool-max-lifetime-in-secs")
+            .long("ffi-pool-max-lifetime-in-secs")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number")))
+        .arg(Arg::with_name("ffi-pool-idle-timeout-in-secs")
+            .long("ffi-pool-idle-timeout-in-secs")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number")))
         .arg(Arg::with_name("tokio-threads")
             .long("tokio-threads")
             .takes_value(true)
@@ -542,15 +574,40 @@ impl Environment {
                     .parse::<f64>()
                     .expect("Provided value cannot be converted to number"),
             },
-            protocol_runner: args
-                .value_of("protocol-runner")
-                .unwrap_or("")
-                .parse::<PathBuf>()
-                .expect("Provided value cannot be converted to path"),
-            no_of_ffi_calls_threshold_for_gc: args.value_of("ffi-calls-gc-threshold")
-                .unwrap_or("50")
-                .parse::<i32>()
-                .expect("Provided value cannot be converted to number"),
+            ffi: Ffi {
+                protocol_runner: args
+                    .value_of("protocol-runner")
+                    .unwrap_or("")
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path"),
+                no_of_ffi_calls_threshold_for_gc: args.value_of("ffi-calls-gc-threshold")
+                    .unwrap_or("50")
+                    .parse::<i32>()
+                    .expect("Provided value cannot be converted to number"),
+                pool: TezosApiConnectionPoolConfiguration {
+                    min_connections: 0,
+                    /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
+                    max_connections: args.value_of("ffi-pool-max-connections")
+                        .unwrap_or("10")
+                        .parse::<u8>()
+                        .expect("Provided value cannot be converted to number"),
+                    connection_timeout: args.value_of("ffi-pool-connection-timeout-in-secs")
+                        .unwrap_or("60")
+                        .parse::<u16>()
+                        .map(|seconds| Duration::from_secs(seconds as u64))
+                        .expect("Provided value cannot be converted to number"),
+                    max_lifetime: args.value_of("ffi-pool-max-lifetime-in-secs")
+                        .unwrap_or("21600")
+                        .parse::<u16>()
+                        .map(|seconds| Duration::from_secs(seconds as u64))
+                        .expect("Provided value cannot be converted to number"),
+                    idle_timeout: args.value_of("ffi-pool-idle-timeout-in-secs")
+                        .unwrap_or("1800")
+                        .parse::<u16>()
+                        .map(|seconds| Duration::from_secs(seconds as u64))
+                        .expect("Provided value cannot be converted to number"),
+                },
+            },
             tokio_threads: args.value_of("tokio-threads")
                 .unwrap_or("0")
                 .parse::<usize>()

@@ -110,8 +110,8 @@ pub struct PeerManager {
     listener_port: u16,
     /// Tezos identity
     identity: Identity,
-    /// Protocol version
-    protocol_version: String,
+    /// Network/protocol version
+    network_version: NetworkVersion,
     /// Message receiver boolean indicating whether
     /// more connections should be accepted from network
     rx_run: Arc<AtomicBool>,
@@ -138,7 +138,7 @@ impl PeerManager {
                  threshold: Threshold,
                  listener_port: u16,
                  identity: Identity,
-                 protocol_version: String,
+                 network_version: NetworkVersion,
                  disable_mempool: bool,
                  private_node: bool,
     ) -> Result<PeerManagerRef, CreateError> {
@@ -153,10 +153,10 @@ impl PeerManager {
                 threshold,
                 listener_port,
                 identity,
-                protocol_version,
+                network_version,
                 disable_mempool,
                 private_node)),
-            )
+        )
     }
 
     /// The `PeerManager` is intended to serve as a singleton actor so that's why
@@ -199,9 +199,9 @@ impl PeerManager {
             &self.identity.public_key,
             &self.identity.secret_key,
             &self.identity.proof_of_work_stamp,
-            &self.protocol_version,
+            self.network_version.clone(),
             self.tokio_executor.clone(),
-            socket_address
+            socket_address,
         ).unwrap();
 
         self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: socket_address.clone() });
@@ -255,10 +255,9 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, bool, bool)> for PeerManager {
-
-    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, protocol_version, disable_mempool, private_node):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, String, bool, bool)) -> Self
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, NetworkVersion, bool, bool)> for PeerManager {
+    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, network_version, disable_mempool, private_node):
+                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, NetworkVersion, bool, bool)) -> Self
     {
         PeerManager {
             network_channel,
@@ -269,7 +268,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, 
             threshold,
             listener_port,
             identity,
-            protocol_version,
+            network_version,
             disable_mempool,
             private_node,
             rx_run: Arc::new(AtomicBool::new(true)),
@@ -559,5 +558,5 @@ struct PeerState {
     /// Reference to peer actor
     peer_ref: PeerRef,
     /// Peer IP address
-    address: SocketAddr
+    address: SocketAddr,
 }

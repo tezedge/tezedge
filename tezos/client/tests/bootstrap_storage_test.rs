@@ -5,7 +5,7 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockError, InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -33,7 +33,7 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
         true,
         false,
         false,
-        None
+        None,
     ).unwrap();
 
     let genesis_commit_hash = match result.clone().genesis_commit_hash {
@@ -62,42 +62,54 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
 
     // apply first block - level 1
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     ).unwrap();
     assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
     assert_eq!(1, apply_block_result.max_operations_ttl);
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        apply_block_result.max_operations_ttl as u16,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                )
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+        }
     ).unwrap();
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
     assert_eq!(2, apply_block_result.max_operations_ttl);
 
     // apply third block - level 3
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        ),
-        apply_block_result.max_operations_ttl as u16,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_3,
+                    test_data::block_header_level3_operations(),
+                )
+            ),
+            max_operations_ttl: apply_block_result.max_operations_ttl,
+        }
     ).unwrap();
     assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.validation_result_message);
     assert_eq!(3, apply_block_result.max_operations_ttl);
@@ -113,28 +125,36 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
 
     // apply first block - level 0
     let apply_block_result_1 = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            pred_header: genesis_block_header.clone(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     );
     let apply_block_result_1 = apply_block_result_1.unwrap();
     assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result_1.context_hash);
 
     // apply first block second time - level 0
     let apply_block_result_2 = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     );
     let apply_block_result_2 = apply_block_result_2.unwrap();
     assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result_2.context_hash);
@@ -169,14 +189,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     ).unwrap();
 
     assert_contains_metadata(
@@ -201,14 +225,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        1,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                )
+            ),
+            max_operations_ttl: 1,
+        }
     ).unwrap();
 
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
@@ -238,14 +266,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     // apply the second block twice, should return the same data
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        1,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                )
+            ),
+            max_operations_ttl: 1,
+        }
     ).unwrap();
 
     assert_eq!("lvl 2, fit 2, prio 5, 0 ops", &apply_block_result.validation_result_message);
@@ -275,14 +307,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     // apply third block - level 3
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        ),
-        2,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_3,
+                    test_data::block_header_level3_operations(),
+                )
+            ),
+            max_operations_ttl: 2,
+        }
     ).unwrap();
     assert_eq!("lvl 3, fit 5, prio 12, 1 ops", &apply_block_result.validation_result_message);
 
@@ -329,14 +365,18 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_2,
-            test_data::block_header_level2_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_2,
+                    test_data::block_header_level2_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     );
     assert!(apply_block_result.is_err());
     assert!(
@@ -360,14 +400,18 @@ fn test_bootstrap_empty_storage_with_third_block_with_first_predecessor_should_f
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_3,
+                    test_data::block_header_level3_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     );
     assert!(apply_block_result.is_err());
     assert!(
@@ -391,11 +435,13 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
 
     // apply second block - level 3 has validation_pass = 4
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
-        &genesis_block_header,
-        vec![None].as_ref(),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(&vec![None]),
+            max_operations_ttl: 0,
+        }
     );
     assert!(apply_block_result.is_err());
     assert_eq!(ApplyBlockError::IncompleteOperations { expected: 4, actual: 1 }, apply_block_result.unwrap_err());
@@ -411,27 +457,35 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
 
     // apply second block - level 1 ok
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &genesis_block_header,
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_1,
-            test_data::block_header_level1_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            pred_header: genesis_block_header,
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
+                    test_data::block_header_level1_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     );
     assert!(apply_block_result.is_ok());
 
     // apply second block - level 2 with operations for level 3
     let apply_block_result = client::apply_block(
-        &chain_id,
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
-        &BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
-        &test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        ),
-        0,
+        ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
+            pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
+            operations: ApplyBlockRequest::convert_operations(
+                &test_data::block_operations_from_hex(
+                    test_data::BLOCK_HEADER_HASH_LEVEL_3,
+                    test_data::block_header_level3_operations(),
+                )
+            ),
+            max_operations_ttl: 0,
+        }
     );
     assert!(apply_block_result.is_err());
 }

@@ -12,7 +12,6 @@ use clap::{App, Arg};
 use slog::*;
 
 use tezos_context::channel;
-use tezos_interop::runtime;
 
 fn create_logger(log_level: Level) -> Logger {
     let drain = slog_async::Async::new(
@@ -76,7 +75,7 @@ fn main() {
         ctrlc::set_handler(move || {
             // do nothing and wait for parent process to send termination command
             debug!(log, "Shutting down ocaml runtime"; "endpoint" => &endpoint_name);
-            runtime::shutdown();
+            tezos_client::client::shutdown_runtime();
             debug!(log, "Ocaml runtime shutdown complete"; "endpoint" => &endpoint_name);
         }).expect("Error setting Ctrl-C handler");
     }
@@ -119,25 +118,36 @@ fn main() {
 
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, BeginConstructionError, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
     use tezos_api::identity::Identity;
-    use tezos_client::client::{apply_block, begin_construction, change_runtime_configuration, generate_identity, genesis_result_data, init_protocol_context, validate_operation};
-    use tezos_messages::p2p::encoding::prelude::*;
+    use tezos_client::client::{apply_block, begin_construction, call_protocol_json_rpc, change_runtime_configuration, generate_identity, genesis_result_data, helpers_preapply_block, helpers_preapply_operations, init_protocol_context, validate_operation};
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
 
     impl ProtocolApi for NativeTezosLib {
-        fn apply_block(chain_id: &ChainId, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResponse, ApplyBlockError> {
-            apply_block(chain_id, block_header, predecessor_block_header, operations, max_operations_ttl)
+        fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError> {
+            apply_block(request)
         }
 
-        fn begin_construction(chain_id: &ChainId, block_header: &BlockHeader) -> Result<PrevalidatorWrapper, BeginConstructionError> {
-            begin_construction(chain_id, block_header, None)
+        fn begin_construction(request: BeginConstructionRequest) -> Result<PrevalidatorWrapper, BeginConstructionError> {
+            begin_construction(request)
         }
 
-        fn validate_operation(prevalidator: &PrevalidatorWrapper, operation: &Operation) -> Result<ValidateOperationResponse, ValidateOperationError> {
-            validate_operation(prevalidator, operation)
+        fn validate_operation(request: ValidateOperationRequest) -> Result<ValidateOperationResponse, ValidateOperationError> {
+            validate_operation(request)
+        }
+
+        fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+            call_protocol_json_rpc(request)
+        }
+
+        fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+            helpers_preapply_operations(request)
+        }
+
+        fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+            helpers_preapply_block(request)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {

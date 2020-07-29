@@ -13,7 +13,7 @@ use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
 use tezos_api::ffi::ValidateOperationResult;
-use tezos_messages::p2p::encoding::prelude::Operation;
+use tezos_messages::p2p::encoding::prelude::{Operation, BlockHeader};
 
 use crate::Head;
 
@@ -66,6 +66,12 @@ pub struct CurrentMempoolState {
     pub pending: HashSet<OperationHash>,
 }
 
+#[derive(Clone, Debug)]
+pub struct InjectBlock {
+    pub block_header: BlockHeader,
+    // TODO TE-196 - need an operations field? we'll see
+}
+
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
@@ -74,7 +80,14 @@ pub enum ShellChannelMsg {
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
     MempoolStateChanged(CurrentMempoolState),
+    InjectBlock(InjectBlock),
     ShuttingDown(ShuttingDown),
+}
+
+impl From<InjectBlock> for ShellChannelMsg {
+    fn from(msg: InjectBlock) -> Self {
+        ShellChannelMsg::InjectBlock(msg)
+    }
 }
 
 impl From<BlockApplied> for ShellChannelMsg {
