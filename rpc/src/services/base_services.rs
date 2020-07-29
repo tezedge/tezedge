@@ -8,7 +8,7 @@ use failure::bail;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
 
-use crypto::hash::chain_id_to_b58_string;
+use crypto::hash::{chain_id_to_b58_string, HashType};
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
@@ -169,7 +169,7 @@ pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentSt
 /// Get information about block shell header
 pub(crate) fn get_block_shell_header(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderShellInfo>, failure::Error> {
     let block_storage = BlockStorage::new(persistent_storage);
-    let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+    let block_hash = HashType::BlockHash.string_to_bytes(&get_block_hash(block_id, persistent_storage, state)?)?;
     let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, state).to_shell_header());
 
     Ok(block)
