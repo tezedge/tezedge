@@ -15,6 +15,9 @@ mod prefix_bytes {
     pub const CONTRACT_TZ1_HASH: [u8; 3] = [6, 161, 159];
     pub const CONTRACT_TZ2_HASH: [u8; 3] = [6, 161, 161];
     pub const CONTRACT_TZ3_HASH: [u8; 3] = [6, 161, 164];
+    pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
+    pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
+    pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
 }
 
 pub type Hash = Vec<u8>;
@@ -28,6 +31,9 @@ pub type ContractTz1Hash = Hash;
 pub type ContractTz2Hash = Hash;
 pub type ContractTz3Hash = Hash;
 pub type CryptoboxPublicKeyHash = Hash;
+pub type PublicKeyEd25519 = Hash;
+pub type PublicKeySecp256k1 = Hash;
+pub type PublicKeyP256 = Hash;
 
 #[derive(Debug, Copy, Clone)]
 pub enum HashType {
@@ -53,6 +59,12 @@ pub enum HashType {
     // "\006\161\161" (* tz2(36) *)
     ContractTz3Hash,
     // "\006\161\164" (* tz3(36) *)
+    PublicKeyEd25519,
+    // "\013\015\037\217" (* edpk(54) *)
+    PublicKeySecp256k1,
+    // "\003\254\226\086" (* sppk(55) *)
+    PublicKeyP256,
+    // "\003\178\139\127" (* p2pk(55) *)
 }
 
 impl HashType {
@@ -72,6 +84,9 @@ impl HashType {
             HashType::ContractTz1Hash => &CONTRACT_TZ1_HASH,
             HashType::ContractTz2Hash => &CONTRACT_TZ2_HASH,
             HashType::ContractTz3Hash => &CONTRACT_TZ3_HASH,
+            HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
+            HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
+            HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
         }
     }
 
@@ -83,12 +98,15 @@ impl HashType {
             | HashType::ContextHash
             | HashType::ProtocolHash
             | HashType::OperationHash
-            | HashType::OperationListListHash => 32,
+            | HashType::OperationListListHash
+            | HashType::PublicKeyEd25519 => 32,
             HashType::CryptoboxPublicKeyHash => 16,
             HashType::ContractKt1Hash
             | HashType::ContractTz1Hash
             | HashType::ContractTz2Hash
             | HashType::ContractTz3Hash => 20,
+            HashType::PublicKeySecp256k1
+            | HashType::PublicKeyP256 => 33,
         }
     }
 
@@ -103,7 +121,10 @@ impl HashType {
             | HashType::ContractKt1Hash
             | HashType::ContractTz1Hash
             | HashType::ContractTz2Hash
-            | HashType::ContractTz3Hash => &copy_bytes,
+            | HashType::ContractTz3Hash
+            | HashType::PublicKeyEd25519
+            | HashType::PublicKeySecp256k1
+            | HashType::PublicKeyP256 => &copy_bytes,
             HashType::CryptoboxPublicKeyHash => &crate::blake2b::digest_128
         }
     }

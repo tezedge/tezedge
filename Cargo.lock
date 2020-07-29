@@ -2728,10 +2728,12 @@ dependencies = [
 name = "tezos_client"
 version = "0.2.0"
 dependencies = [
+ "assert-json-diff",
  "crypto",
  "enum-iterator",
  "failure",
  "hex",
+ "serde_json",
  "serial_test",
  "tezos_api",
  "tezos_encoding",

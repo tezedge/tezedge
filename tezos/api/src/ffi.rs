@@ -1,23 +1,24 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+/// Rust implementation of messages required for Rust <-> OCaml FFI communication.
+
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
-
-/// Rust implementation of messages required for Rust <-> OCaml FFI communication.
+use std::mem::size_of;
 
 use derive_builder::Builder;
 use failure::Fail;
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
-use lazy_static::lazy_static;
 use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::de::from_value as deserialize_from_value;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
 
 pub type RustBytes = Vec<u8>;
@@ -795,4 +796,118 @@ fn parse_error_message(ffi_error: ocaml::Value) -> Option<String> {
         }
     }
     None
+}
+
+pub type Json = String;
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct JsonRpcRequest {
+    pub body: Json,
+    pub context_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct JsonRpcResponse {
+    pub body: Json
+}
+
+lazy_static! {
+    pub static ref JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("body", Encoding::String),
+            Field::new("context_path", Encoding::String),
+    ]);
+
+    pub static ref JSON_RPC_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("body", Encoding::String),
+    ]);
+}
+
+impl FfiMessage for JsonRpcResponse {
+    fn encoding() -> &'static Encoding {
+        &JSON_RPC_RESPONSE_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct ProtocolJsonRpcRequest {
+    pub block_header: BlockHeader,
+    pub chain_arg: String,
+    pub chain_id: ChainId,
+
+    pub request: JsonRpcRequest,
+
+    // TODO: TE-140 - will be removed, when router is done
+    pub ffi_service: FfiRpcService,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum FfiRpcService {
+    HelpersRunOperation,
+    HelpersPreapplyOperations,
+    HelpersPreapplyBlock,
+}
+
+lazy_static! {
+    pub static ref PROTOCOL_JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("chain_arg", Encoding::String),
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),
+            Field::new("ffi_service", Encoding::Tags(
+                    size_of::<u16>(),
+                    TagMap::new(&[
+                        Tag::new(0, "HelpersRunOperation", Encoding::Unit),
+                        Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
+                        Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
+                    ]),
+                )
+            ),
+    ]);
+}
+
+impl FfiMessage for ProtocolJsonRpcRequest {
+    fn encoding() -> &'static Encoding {
+        &PROTOCOL_JSON_RPC_REQUEST_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+pub enum ProtocolRpcError {
+    #[fail(display = "Failed to call protocol rpc - message: {}!", message)]
+    FailedToCallProtocolRpc {
+        message: String,
+    },
+    #[fail(display = "Invalid request data - message: {}!", message)]
+    InvalidRequestData {
+        message: String,
+    },
+    #[fail(display = "Invalid response data - message: {}!", message)]
+    InvalidResponseData {
+        message: String,
+    },
+}
+
+impl From<CallError> for ProtocolRpcError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { parsed_error_message } => {
+                match parsed_error_message {
+                    None => ProtocolRpcError::FailedToCallProtocolRpc {
+                        message: "unknown".to_string()
+                    },
+                    Some(message) => {
+                        ProtocolRpcError::FailedToCallProtocolRpc {
+                            message: message.to_string()
+                        }
+                    }
+                }
+            }
+            CallError::InvalidRequestData { message } => ProtocolRpcError::InvalidRequestData {
+                message
+            },
+            CallError::InvalidResponseData { message } => ProtocolRpcError::InvalidResponseData {
+                message
+            },
+        }
+    }
 }

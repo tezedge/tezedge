@@ -1,8 +1,8 @@
 ##############################################################################################################
 # Drone contains these pipelines:
 # - standalone-tests (just rust tests)
-# - sandbox-standalone-tests (runs sandboxed ocaml and rust nodes and checks p2p, rpc between them)
-# - connection-from-different-network-test (runs live ocaml node and live rust node)
+# - sandbox-inject-operation (runs sandboxed ocaml and rust nodes and checks p2p, rpc between them, using tezos_client)
+# - connect-from-different-network-test (runs live ocaml node and live rust node)
 # - integration-live-tests (runs live ocaml node and live rust node)
 ##############################################################################################################
 # Ocaml stuff is based on image tezos/tezos:v7.2 (if released new one, fell free to upgrade it here)
@@ -92,11 +92,11 @@ trigger:
     - develop
 
 ##############################################################################################################
-# This pipeline runs tezedge node and ocaml node with sandbox configuration
+# This pipeline runs tezedge node with sandbox configuration and does transfer with tezos_client
 ##############################################################################################################
 ---
 kind: pipeline
-name: sandbox-standalone-tests
+name: sandbox-inject-operation
 
 clone:
   disable: true
@@ -128,13 +128,14 @@ steps:
       path: /tmp/sandbox
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/sandbox/tezedge_ip.txt
     - cp /artifacts/protocol-runner /tmp/sandbox/
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /tmp/sandbox/protocol-runner --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace
+    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /tmp/sandbox/protocol-runner --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true
 
 - name: wait-for-tezedge-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -176,7 +177,7 @@ steps:
 # TODO: write rpc test for check network/peers
 
 # inject protocol to ocaml node, means it creates the first block with level 1
-- name: inject-first-block-with-ocaml-client
+- name: inject-first-block-with-tezos_client
   user: root
   image: tezos/tezos:v7.2
   volumes:
@@ -186,7 +187,7 @@ steps:
     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/sandbox/006-carthage-protocol-parameters.json --timestamp $(TZ='AAA+1' date +%FT%TZ)
+    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/sandbox/006-carthage-protocol-parameters.json --timestamp $(TZ='AAA+1' date +%FT%TZ)
 
 # test checks if this block is synchronized to rust node through p2p
 - name: wait-for-sync-on-level-1
@@ -214,8 +215,8 @@ steps:
     - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
     - /tmp/sandbox/assert_equals.sh 0 $applied_count
 
-# transfer / inject operation to ocaml node, means it injects operations which is spread throught the p2p to other peers
-- name: do-transfer-with-ocaml-client
+# transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+- name: do-transfer-with-tezos_client
   user: root
   image: tezos/tezos:v7.2
   volumes:
@@ -224,7 +225,7 @@ steps:
   commands:
     - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
     - sleep 1
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
+    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
     - sleep 2
 
 - name: check-mempool-after-transfer
@@ -247,8 +248,27 @@ steps:
     - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
     - /tmp/sandbox/assert_equals.sh 1 $applied_count
 
-# compare all rpc's from blocks 0 to 1 between defined nodes
-- name: rpc-test-for-levels-0-1
+# transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+- name: bake-a-block-with-tezos_client
+  user: root
+  image: tezos/tezos:v7.2
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+    - sleep 1
+    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 bake for bootstrap2
+    - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+
+# test checks if this block is synchronized to rust node through p2p
+- name: wait-for-sync-on-level-2
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=2 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# compare all rpc's from blocks 0 to 2 between defined nodes
+- name: rpc-test-for-levels-0-2
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -258,7 +278,7 @@ steps:
   environment:
     RUST_BACKTRACE: 1
     FROM_BLOCK_HEADER: 0
-    TO_BLOCK_HEADER: 1
+    TO_BLOCK_HEADER: 2
   commands:
     - /artifacts/rpc_integration_test --nocapture --ignored test_rpc_compare
 
@@ -279,218 +299,11 @@ depends_on:
   - build-and-tests
 
 ##############################################################################################################
-# This pipeline runs tezedge node and ocaml node with sandbox configuration (tezedge inject operation)
-##############################################################################################################
----
-kind: pipeline
-name: sandbox-standalone-tests-tezedge-inject-operation
-
-clone:
-  disable: true
-
-environment:
-  SODIUM_USE_PKG_CONFIG: 1
-  NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
-  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
-  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
-  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
-  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
-  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
-  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
-  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
-
-steps:
-# clenup data from previous test
-- name: cleanup-data
-  image: alpine/git
-  user: root
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - rm -rf /tmp/sandbox/light-node
-    - rm -rf /tmp/sandbox/tezos-node
-    - rm -rf /tmp/sandbox/tezos-client
-
-# run empty rust node and wait for it
-- name: tezedge-node-sandbox-run
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: sandbox-data
-      path: /tmp/sandbox
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/sandbox/tezedge_ip.txt
-    - cp /artifacts/protocol-runner /tmp/sandbox/
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /tmp/sandbox/protocol-runner --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace
-
-- name: wait-for-tezedge-to-start
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  commands:
-    - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-# run empty ocaml sandbox and wait for it
-- name: ocaml-node-sandbox-run
-  user: root
-  image: tezos/tezos:v7.2
-  detach: true
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/sandbox/ocaml_ip.txt
-    - mkdir /home/tezos/data/
-    - mkdir /tmp/sandbox/tezos-client
-    - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --expected-pow 0.0 --connections 1
-    - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
-    - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox /tmp/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --bootstrap-threshold 1 -vv
-
-- name: wait-for-ocaml-to-start
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  commands:
-    - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
-
-# connect both nodes with tezos-admin-client
-- name: connect-ocaml-and-rust
-  user: root
-  image: tezos/tezos:v7.2
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
-    - sleep 3
-# TODO: instead of sleep 3, check status established
-# TODO: write rpc test for check network/peers
-
-# inject protocol to ocaml node, means it creates the first block with level 1 (with a static timestamp)
-- name: inject-first-block-with-ocaml-client
-  user: root
-  image: tezos/tezos:v7.2
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/sandbox/006-carthage-protocol-parameters.json --timestamp 2020-06-24T08:02:48Z
-
-# test checks if this block is synchronized to rust node through p2p
-- name: wait-for-sync-on-level-1
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  commands:
-    - tezos-node-bootstrap --bootstrap --level=1 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-- name: check-mempool-before-transfer
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    # get mempools
-    - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - echo "Ocaml mempool - $ocaml_mempool"
-    - echo "Tezedge mempool - $tezedge_mempool"
-    # check if both are equals
-    - /tmp/sandbox/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
-    # check if applied is 0
-    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - /tmp/sandbox/assert_equals.sh 0 $applied_count
-
-# reconnect the two nodes in case tezedge dropped the connection
-- name: reconnect
-  user: root
-  image: tezos/tezos:v7.2
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
-    - sleep 1
-
-- name: inject-operation-into-tezedge
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - curl --request POST "$TEZEDGE_URL/injection/operation" --header 'Content-Type:application/json' --data-raw '"cf764612821498403dd6bd71e2fcbde9ad2c50670113dadc15ec52d167c66b316c0002298c03ed7d454a101eb7022bc95f7e5f41ac78810a01c35000c0843d0000e7670f32038107a59a2b9cfefae36ea21f5aa63c001034e0ad237c810ea3df13e09516e48b21bcd384e53cc5c85cadabfd7d98822a5645e4e624955c41789b1649cd5167205a3941f9f579f575fadcb0a16ae7140e"'
-
-- name: check-mempool-after-transfer
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    # get mempools
-    - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - echo "Ocaml mempool - $ocaml_mempool"
-    - echo "Tezedge mempool - $tezedge_mempool"
-    # check if both are equals
-    - /tmp/sandbox/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
-    # check if applied is 1
-    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - /tmp/sandbox/assert_equals.sh 1 $applied_count
-
-# compare all rpc's from blocks 0 to 1 between defined nodes
-- name: rpc-test-for-levels-0-1
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-  environment:
-    RUST_BACKTRACE: 1
-    FROM_BLOCK_HEADER: 0
-    TO_BLOCK_HEADER: 1
-  commands:
-    - /artifacts/rpc_integration_test --nocapture --ignored test_rpc_compare
-
-volumes:
-  - name: build
-    host:
-      path: /etc/tezedge-ci-build/
-  - name: sandbox-data
-    host:
-      path: /etc/tezedge-ci-data/sandbox
-
-trigger:
-  branch:
-    - master
-    - develop
-
-depends_on:
-  - sandbox-standalone-tests
-
-##############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
 ##############################################################################################################
 ---
 kind: pipeline
-name: connection-from-different-network-test
+name: connect-from-different-network-test
 
 clone:
   disable: true
@@ -592,7 +405,7 @@ trigger:
     - develop
 
 depends_on:
-  - sandbox-standalone-tests-tezedge-inject-operation
+  - sandbox-inject-operation
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node with carthagenet configuration, which connects to to internet
@@ -828,4 +641,4 @@ trigger:
     - develop
 
 depends_on:
-- connection-from-different-network-test
+  - connect-from-different-network-test

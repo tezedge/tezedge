@@ -8,13 +8,13 @@ use serde_json::Value;
 use slog::Logger;
 
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic, InjectBlock};
 use storage::mempool_storage::MempoolOperationType;
 use storage::MempoolStorage;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
-use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage};
+use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage, BlockHeader};
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -144,6 +144,28 @@ pub fn inject_operation(
         }, None);
 
     Ok(HashType::OperationHash.bytes_to_string(&operation_hash))
+}
+
+pub fn inject_block(
+    injection_data: &str,
+    _persistent_storage: &PersistentStorage,
+    _state: &RpcCollectedStateRef,
+    shell_channel: ShellChannelRef,
+    _log: &Logger) -> Result<String, failure::Error> {
+
+    let injection_data_json: serde_json::Value = serde_json::from_str(injection_data)?;
+
+    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(injection_data_json["data"].to_string().replace("\"", ""))?)?;
+
+    shell_channel.tell(
+        Publish {
+            msg: InjectBlock {
+                block_header: header.clone(),
+            }.into(),
+            topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
+
+    Ok(HashType::BlockHash.bytes_to_string(&header.message_hash().unwrap()))
 }
 
 #[cfg(test)]

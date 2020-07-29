@@ -1,28 +1,31 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::bail;
 use serde::{Deserialize, Serialize};
+use slog::Logger;
 
-use crypto::hash::{chain_id_to_b58_string};
-use shell::shell_channel::BlockApplied;
+use crypto::hash::chain_id_to_b58_string;
+use shell::shell_channel::{BlockApplied};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
 use storage::block_storage::BlockJsonData;
-use storage::persistent::{PersistentStorage, ContextMap};
+use storage::context::{ContextApi, ContextIndex, TezedgeContext};
+use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
+use storage::persistent::{ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
-use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_api::ffi::{FfiRpcService, JsonRpcRequest, ProtocolJsonRpcRequest};
 use tezos_context::channel::ContextAction;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, FullBlockInfo, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types};
+use crate::helpers::{BlockHeaderInfo, MonitorHeadStream, BlockHeaderShellInfo, FullBlockInfo, NodeVersion, get_block_hash_by_block_id, get_context_protocol_params, PagedResult, get_action_types, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
-use storage::context_action_storage::{contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson};
-use slog::Logger;
+use crate::server::RpcServiceEnvironment;
 
 // Serialize, Deserialize,
 #[derive(Serialize, Deserialize, Debug)]
@@ -42,6 +45,8 @@ pub struct CycleJson {
     roll_snapshot: Option<i16>,
     random_seed: Option<String>,
 }
+
+pub type BlockOperations = Vec<String>;
 
 /// Retrieve blocks from database.
 pub(crate) fn get_blocks(every_nth_level: Option<i32>, block_id: &str, limit: usize, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<FullBlockInfo>, failure::Error> {
@@ -127,21 +132,30 @@ pub(crate) fn get_current_head_header(state: &RpcCollectedStateRef) -> Result<Op
     Ok(current_head)
 }
 
+/// Get information about current head shell header
+pub(crate) fn get_current_head_shell_header(state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderShellInfo>, failure::Error> {
+    let state = state.read().unwrap();
+    let current_head = state.current_head().as_ref().map(|current_head| {
+        let chain_id = chain_id_to_b58_string(state.chain_id());
+        BlockHeaderInfo::new(current_head, &chain_id).to_shell_header()
+    });
+
+    Ok(current_head)
+}
+
+/// Get information about current head monitor header as a stream of Json strings
+pub(crate) fn get_current_head_monitor_header(state: &RpcCollectedStateRef) -> Result<Option<MonitorHeadStream>, failure::Error> {
+
+    // create and return the a new stream on rpc call 
+    Ok(Some(MonitorHeadStream {
+        state: state.clone(),
+        last_polled_timestamp: None,
+    }))
+}
+
 /// Get information about block
 pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
-    let block_storage = BlockStorage::new(persistent_storage);
-    let block;
-    // hotfix
-    // TODO: rework block_id to accept types String and integer for block levels
-    match block_id.parse() {
-        Ok(val) => {
-            block = block_storage.get_by_block_level_with_json_data(val)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
-        }
-        Err(_e) => {
-            let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
-            block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
-        }
-    }
+    let block = get_block_by_block_id(block_id, persistent_storage, state)?;
     Ok(block)
 }
 
@@ -150,6 +164,15 @@ pub(crate) fn get_block_header(block_id: &str, persistent_storage: &PersistentSt
     let block_storage = BlockStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
     let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, state));
+
+    Ok(block)
+}
+
+/// Get information about block shell header
+pub(crate) fn get_block_shell_header(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<BlockHeaderShellInfo>, failure::Error> {
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+    let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_block_header_info(header, json_data, state).to_shell_header());
 
     Ok(block)
 }
@@ -345,7 +368,6 @@ pub(crate) fn get_rolls_owner_current_from_context(level: &str, list: ContextLis
         // process roll key value pairs
         match path.as_slice() {
             ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
-
                 rolls.entry(path1.to_string())
                     .and_modify(|roll| {
                         roll.entry(path2.to_string())
@@ -384,6 +406,205 @@ pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
 
 pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
     crate::helpers::get_context(level, list)
+}
+
+/// Extract the current_protocol and the next_protocol from the block metadata
+pub(crate) fn get_block_protocols(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Protocols, failure::Error> {
+    let block = get_block_by_block_id(block_id, persistent_storage, state)?;
+
+    if let Some(block_info) = block {
+        Ok(Protocols::new(
+            block_info.metadata["protocol"].to_string().replace("\"", ""),
+            block_info.metadata["next_protocol"].to_string().replace("\"", ""),
+        ))
+    } else {
+        bail!("Cannot retrieve protocols, block_id {} not found!", block_id)
+    }
+}
+
+/// Extract the hash from the block data
+pub(crate) fn get_block_hash(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<String, failure::Error> {
+    let block = get_block_by_block_id(block_id, persistent_storage, state)?;
+
+    if let Some(block_info) = block {
+        Ok(block_info.hash)
+    } else {
+        bail!("Cannot retrieve block hash, block_id {} not found!", block_id)
+    }
+}
+
+/// Returns the chain id for the requested chain
+pub(crate) fn get_chain_id(state: &RpcCollectedStateRef) -> Result<String, failure::Error> {
+    // Note: for now, we only support one chain
+    // TODO: rework to support multiple chains
+    let state = state.read().unwrap();
+    Ok(chain_id_to_b58_string(state.chain_id()))
+}
+
+/// Returns the chain id for the requested chain
+pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Vec<BlockOperations>, failure::Error> {
+    let block = get_block_by_block_id(block_id, persistent_storage, state)?;
+
+    if let Some(block_info) = block {
+        let operations = block_info.operations.into_iter()
+            .map(|op_group| op_group.into_iter()
+                .map(|op| op["hash"].to_string().replace("\"", ""))
+                .collect())
+            .collect();
+        Ok(operations)
+    } else {
+        bail!("Cannot retrieve operation hashes from block, block_id {} not found!", block_id)
+    }
+}
+
+pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    // get header
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersRunOperation,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api.pool.get()?.api.call_protocol_json_rpc(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    // get header
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersPreapplyOperations,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api.pool.get()?.api.helpers_preapply_operations(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    // get header
+
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let block_header = block_storage.get(&block_hash)?;
+    let block_header = match block_header {
+        Some(header) => header.header.as_ref().clone(),
+        None => bail!("No block header found for hash: {}", block_param)
+    };
+    let state = state.read().unwrap();
+    let chain_id = state.chain_id().clone();
+
+    // create request to ffi
+    let request = ProtocolJsonRpcRequest {
+        chain_arg: chain_param.to_string(),
+        block_header,
+        ffi_service: FfiRpcService::HelpersPreapplyBlock,
+        request: json_request,
+        chain_id,
+    };
+
+    // TODO: TE-192 - refactor to protocol runner call
+    let response = env.tezos_readonly_api.pool.get()?.api.helpers_preapply_block(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn get_node_version(tezos_env: &TezosEnvironmentConfiguration) -> Result<NodeVersion, failure::Error> {
+    Ok(NodeVersion::new(tezos_env))
+}
+
+pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
+    let block_storage = BlockStorage::new(persistent_storage);
+
+    // check whether block_id is formated like: head~10 (block 10 levels in the past from head)
+    let offseted_id: Vec<&str> = block_id.split("~").collect();
+
+    // get the level of the requested block_id (offset if necessery)
+    let level = if offseted_id.len() == 2 {
+        match offseted_id[1].parse::<i64>() {
+            Ok(offset) => {
+                get_block_level_by_block_id(offseted_id[0], offset, persistent_storage, state)?
+            }
+            Err(_) => bail!("Offset parameter should be a number! Offset parameter: {}", offseted_id[1])
+        }
+    } else {
+        get_block_level_by_block_id(block_id, 0, persistent_storage, state)?
+    };
+
+    // get the block by level (or level with offset)
+    Ok(block_storage.get_by_block_level_with_json_data(level.try_into()?)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state)))
+}
+
+/// Extract block level from the full block info
+fn get_block_level_by_block_id(block_id: &str, offset: i64, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<i64, failure::Error> {
+    if block_id == "genesis" {
+        // genesis alias is allways for the block on level 0
+        Ok(0)
+    } else if block_id == "head" {
+        match get_full_current_head(state)? {
+            Some(head) => {
+                Ok(head.header.level as i64 - offset)
+            }
+            None => bail!("Head not yet initialized")
+        }
+    } else {
+        match block_id.parse::<i64>() {
+            Ok(val) => {
+                Ok(val - offset)
+            }
+            Err(_) => {
+                let block_storage = BlockStorage::new(persistent_storage);
+                let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
+                let block = block_storage.get_with_json_data(&block_hash)?.map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &state));
+                if let Some(block) = block {
+                    Ok(block.header.level as i64 - offset)
+                } else {
+                    bail!("Cannot get block level from block {}, block not found", block_id)
+                }
+            }
+        }
+    }
 }
 
 #[inline]

@@ -119,9 +119,9 @@ fn main() {
 
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, BeginConstructionError, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolOverrides, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockResponse, BeginConstructionError, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse};
     use tezos_api::identity::Identity;
-    use tezos_client::client::{apply_block, begin_construction, change_runtime_configuration, generate_identity, genesis_result_data, init_protocol_context, validate_operation};
+    use tezos_client::client::{apply_block, begin_construction, call_protocol_json_rpc, change_runtime_configuration, generate_identity, genesis_result_data, helpers_preapply_block, helpers_preapply_operations, init_protocol_context, validate_operation};
     use tezos_messages::p2p::encoding::prelude::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
@@ -138,6 +138,18 @@ mod tezos {
 
         fn validate_operation(prevalidator: &PrevalidatorWrapper, operation: &Operation) -> Result<ValidateOperationResponse, ValidateOperationError> {
             validate_operation(prevalidator, operation)
+        }
+
+        fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+            call_protocol_json_rpc(request)
+        }
+
+        fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+            helpers_preapply_operations(request)
+        }
+
+        fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+            helpers_preapply_block(request)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {

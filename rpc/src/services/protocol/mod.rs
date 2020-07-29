@@ -342,3 +342,89 @@ impl VoteListings {
         }
     }
 }
+
+pub(crate) fn proto_get_contract_counter(
+    _chain_id: &str,
+    block_id: &str,
+    pkh: &str,
+    context_list: ContextList,
+    persistent_storage: &PersistentStorage,
+    state: &RpcCollectedStateRef) -> Result<Option<String>, failure::Error> {
+
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        context_list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH |
+        proto_002_constants::PROTOCOL_HASH |
+        proto_003_constants::PROTOCOL_HASH |
+        proto_004_constants::PROTOCOL_HASH |
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::contract_service::get_contract_counter(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        proto_006_constants::PROTOCOL_HASH => {
+            proto_006::contract_service::get_contract_counter(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
+}
+
+pub(crate) fn proto_get_contract_manager_key(
+    _chain_id: &str,
+    block_id: &str,
+    pkh: &str,
+    context_list: ContextList,
+    persistent_storage: &PersistentStorage,
+    state: &RpcCollectedStateRef) -> Result<Option<String>, failure::Error> {
+
+    // get protocol and constants
+    let context_proto_params = get_context_protocol_params(
+        block_id,
+        None,
+        context_list.clone(),
+        persistent_storage,
+        state,
+    )?;
+
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone());
+
+    // split impl by protocol
+    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    match hash {
+        proto_001_constants::PROTOCOL_HASH |
+        proto_002_constants::PROTOCOL_HASH |
+        proto_003_constants::PROTOCOL_HASH |
+        proto_004_constants::PROTOCOL_HASH |
+        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
+        proto_005_2_constants::PROTOCOL_HASH => {
+            proto_005_2::contract_service::get_contract_manager_key(
+                context_proto_params,
+                pkh,
+                context)
+        },
+        proto_006_constants::PROTOCOL_HASH => {
+            proto_006::contract_service::get_contract_manager_key(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
+}

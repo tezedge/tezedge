@@ -26,6 +26,15 @@ pub trait ProtocolApi {
         prevalidator: &PrevalidatorWrapper,
         operation: &Operation) -> Result<ValidateOperationResponse, ValidateOperationError>;
 
+    /// Call protocol json rpc
+    fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError>;
+
+    /// Call helpers_preapply_operations shell service
+    fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError>;
+
+    /// Call helpers_preapply_block shell service
+    fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError>;
+
     /// Change tezos runtime configuration
     fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError>;
 

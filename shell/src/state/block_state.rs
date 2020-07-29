@@ -149,9 +149,13 @@ impl BlockchainState {
             0
         } else {
             // e.g. next block: idx * split, e.g. for index in history: 1 and split, we guess level is in range (0 * 20 - 1 * 20) -> (0, 20)
-            let start_level = (index as i32 - 1) * split;
+            let start_level = ((index as i32 - 1) * split) + 1;
             let end_level = (index as i32) * split;
-            rng.gen_range(start_level + 1, end_level)
+            if start_level == end_level {
+                start_level
+            } else {
+                rng.gen_range(start_level, end_level)
+            }
         }
     }
 }

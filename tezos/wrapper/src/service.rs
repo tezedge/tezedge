@@ -48,6 +48,9 @@ enum ProtocolMessage {
     ApplyBlockCall(ApplyBlockParams),
     BeginConstructionCall(BeginConstructionParams),
     ValidateOperationCall(ValidateOperationParams),
+    ProtocolJsonRpcCall(ProtocolJsonRpcRequest),
+    HelpersPreapplyOperationsCall(ProtocolJsonRpcRequest),
+    HelpersPreapplyBlockCall(ProtocolJsonRpcRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
     GenesisResultDataCall(GenesisResultDataParams),
@@ -107,6 +110,7 @@ enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
     BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
     ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
+    JsonRpcResponse(Result<JsonRpcResponse, ProtocolRpcError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
@@ -161,6 +165,18 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                     &params.operation,
                 );
                 tx.send(&NodeMessage::ValidateOperationResponse(res))?;
+            }
+            ProtocolMessage::ProtocolJsonRpcCall(params) => {
+                let res = Proto::call_protocol_json_rpc(params);
+                tx.send(&NodeMessage::JsonRpcResponse(res))?;
+            }
+            ProtocolMessage::HelpersPreapplyOperationsCall(params) => {
+                let res = Proto::helpers_preapply_operations(params);
+                tx.send(&NodeMessage::JsonRpcResponse(res))?;
+            }
+            ProtocolMessage::HelpersPreapplyBlockCall(params) => {
+                let res = Proto::helpers_preapply_block(params);
+                tx.send(&NodeMessage::JsonRpcResponse(res))?;
             }
             ProtocolMessage::ChangeRuntimeConfigurationCall(params) => {
                 let res = Proto::change_runtime_configuration(params);
@@ -217,6 +233,10 @@ pub enum ProtocolError {
     #[fail(display = "Validate operation error: {}", reason)]
     ValidateOperationError {
         reason: ValidateOperationError
+    },
+    #[fail(display = "Protocol rpc call error: {}", reason)]
+    ProtocolRpcError {
+        reason: ProtocolRpcError
     },
     /// Error in configuration.
     #[fail(display = "OCaml runtime configuration error: {}", reason)]
@@ -397,6 +417,7 @@ impl ProtocolController {
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
+    const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Apply block
     pub fn apply_block(&self, chain_id: &Vec<u8>, block_header: &BlockHeader, predecessor_block_header: &BlockHeader, operations: &Vec<Option<OperationsForBlocksMessage>>, max_operations_ttl: u16) -> Result<ApplyBlockResponse, ProtocolServiceError> {
@@ -453,6 +474,36 @@ impl ProtocolController {
             NodeMessage::ValidateOperationResponse(result) => result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
+    }
+
+    /// Call protocol json rpc - internal
+    fn call_protocol_json_rpc_internal(&self, msg: ProtocolMessage) -> Result<JsonRpcResponse, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&msg)?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx.set_read_timeout(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::JsonRpcResponse(result) => result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into()),
+            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+        }
+    }
+
+    /// Call protocol json rpc
+    pub fn call_protocol_json_rpc(&self, request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolServiceError> {
+        self.call_protocol_json_rpc_internal(ProtocolMessage::ProtocolJsonRpcCall(request))
+    }
+
+    /// Call helpers_preapply_operations shell service
+    pub fn helpers_preapply_operations(&self, request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolServiceError> {
+        self.call_protocol_json_rpc_internal(ProtocolMessage::HelpersPreapplyOperationsCall(request))
+    }
+
+    /// Call helpers_preapply_block shell service
+    pub fn helpers_preapply_block(&self, request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolServiceError> {
+        self.call_protocol_json_rpc_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
     }
 
     /// Change tezos runtime configuration

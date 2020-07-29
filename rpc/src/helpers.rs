@@ -3,22 +3,29 @@
 
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::pin::Pin;
 
+use chrono::Utc;
 use failure::{bail, Fail};
-use serde::{Serialize, Deserialize};
+use futures::Stream;
+use futures::task::{Context, Poll};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{BlockHash, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, chain_id_to_b58_string, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
-use storage::persistent::{PersistentStorage, ContextMap};
+use storage::context_action_storage::ContextActionType;
+use storage::persistent::{ContextMap, PersistentStorage};
 use storage::skip_list::Bucket;
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
+use networking::{SUPPORTED_DISTRIBUTED_DB_VERSION, SUPPORTED_P2P_VERSION};
 
 use crate::ContextList;
+use crate::encoding::base_types::{TimeStamp, UniString};
 use crate::rpc_actor::RpcCollectedStateRef;
-use storage::context_action_storage::ContextActionType;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -90,6 +97,90 @@ pub struct BlockHeaderInfo {
     pub content: Option<HeaderContent>,
 }
 
+/// Object containing information to recreate the block header shell information
+#[derive(Serialize, Debug, Clone)]
+pub struct BlockHeaderShellInfo {
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: String,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: String,
+    pub fitness: Vec<String>,
+    pub context: String,
+}
+
+/// Object containing information to recreate the block header shell information
+#[derive(Serialize, Debug, Clone)]
+pub struct BlockHeaderMonitorInfo {
+    pub hash: String,
+    pub level: i32,
+    pub proto: u8,
+    pub predecessor: String,
+    pub timestamp: String,
+    pub validation_pass: u8,
+    pub operations_hash: String,
+    pub fitness: Vec<String>,
+    pub context: String,
+    pub protocol_data: String,
+}
+
+pub struct MonitorHeadStream {
+    pub state: RpcCollectedStateRef,
+    pub last_polled_timestamp: Option<TimeStamp>,
+}
+
+impl Stream for MonitorHeadStream {
+    type Item = Result<String, serde_json::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, serde_json::Error>>> {
+        // Note: the stream only ends on the client dropping the connection
+
+        let state = self.state.read().unwrap();
+        let last_update = if let TimeStamp::Integral(timestamp) = state.head_update_time() {
+            *timestamp
+        } else {
+            cx.waker().wake_by_ref();
+            return Poll::Pending; 
+        };
+        let current_head = state.current_head().clone();
+        let chain_id = state.chain_id().clone();
+
+        // drop the immutable borrow so we can borrow self again as mutable
+        // TODO: refactor this drop (remove if possible)
+        drop(state);
+
+        if let Some(TimeStamp::Integral(poll_time)) = self.last_polled_timestamp {
+            if poll_time < last_update {
+                // get the desired structure of the
+                let current_head = current_head.as_ref().map(|current_head| {
+                    let chain_id = chain_id_to_b58_string(&chain_id);
+                    BlockHeaderInfo::new(current_head, &chain_id).to_monitor_header(current_head)
+                });
+
+                // serialize the struct to a json string to yield by the stream
+                let mut head_string = serde_json::to_string(&current_head.unwrap())?;
+
+                // push a newline character to the stream to imrove readability
+                head_string.push('\n');
+
+                self.last_polled_timestamp = Some(current_time_timestamp());
+
+                // yield the serialized json
+                return Poll::Ready(Some(Ok(head_string)));
+            } else {
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        } else {
+            self.last_polled_timestamp = Some(current_time_timestamp());
+
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
+
 impl FullBlockInfo {
     pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
         let header: &BlockHeader = &val.header().header;
@@ -137,7 +228,7 @@ impl BlockHeaderInfo {
         let seed_nonce_hash = header_data.get("seed_nonce_hash").map(|val| val.as_str().unwrap().to_string());
         let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
         let protocol = proto_data.get("protocol").map(|val| val.as_str().unwrap().to_string());
-        
+
         let mut content: Option<HeaderContent> = None;
         if let Some(header_content) = header_data.get("content") {
             content = serde_json::from_value(header_content.clone()).unwrap();
@@ -160,6 +251,34 @@ impl BlockHeaderInfo {
             seed_nonce_hash,
             proof_of_work_nonce,
             content,
+        }
+    }
+
+    pub fn to_shell_header(&self) -> BlockHeaderShellInfo {
+        BlockHeaderShellInfo {
+            level: self.level,
+            proto: self.proto,
+            predecessor: self.predecessor.clone(),
+            timestamp: self.timestamp.clone(),
+            validation_pass: self.validation_pass,
+            operations_hash: self.operations_hash.clone(),
+            fitness: self.fitness.clone(),
+            context: self.context.clone(),
+        }
+    }
+
+    pub fn to_monitor_header(&self, block: &BlockApplied) -> BlockHeaderMonitorInfo {
+        BlockHeaderMonitorInfo {
+            hash: self.hash.clone(),
+            level: self.level,
+            proto: self.proto,
+            predecessor: self.predecessor.clone(),
+            timestamp: self.timestamp.clone(),
+            validation_pass: self.validation_pass,
+            operations_hash: self.operations_hash.clone(),
+            fitness: self.fitness.clone(),
+            context: self.context.clone(),
+            protocol_data: hex::encode(block.header().header.protocol_data()),
         }
     }
 }
@@ -244,6 +363,75 @@ pub struct RpcErrorMsg {
 //     }
 // }
 
+#[derive(Serialize, Debug, Clone)]
+pub struct Protocols {
+    protocol: String,
+    next_protocol: String,
+}
+
+impl Protocols {
+    pub fn new(protocol: String, next_protocol: String) -> Self {
+        Self {
+            protocol,
+            next_protocol,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+#[derive(Serialize, Debug, Clone)]
+pub struct NodeVersion {
+    version: Version,
+    network_version: NetworkVersion,
+    commit_info: CommitInfo,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct NetworkVersion {
+    chain_name: String,
+    distributed_db_version: u16,
+    p2p_version: u16,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct CommitInfo {
+    commit_hash: UniString,
+    commit_date: UniString,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct Version {
+    major: i32,
+    minor: i32,
+    additional_info: String,
+}
+
+impl NodeVersion {
+    pub fn new(env_config: &TezosEnvironmentConfiguration) -> Self {
+        let version_env: &'static str = env!("CARGO_PKG_VERSION");
+
+        let version: Vec<String> = version_env.split(".").map(|v| v.to_string()).collect();
+
+        Self {
+            version: Version {
+                major: version[0].parse().unwrap_or(0),
+                minor: version[1].parse().unwrap_or(0),
+                additional_info: "release".to_string(),
+            },
+            network_version: NetworkVersion {
+                chain_name: env_config.version.clone(),
+                distributed_db_version: SUPPORTED_DISTRIBUTED_DB_VERSION,
+                p2p_version: SUPPORTED_P2P_VERSION,
+            },
+            commit_info: CommitInfo {
+                commit_hash: UniString::from(env!("GIT_HASH")),
+                commit_date: UniString::from(env!("GIT_COMMIT_DATE")),
+            },
+        }
+    }
+}
+// ---------------------------------------------------------------------
+
 /// Return block level based on block_id url parameter
 /// 
 /// # Arguments
@@ -288,6 +476,7 @@ pub(crate) fn get_level_by_block_id(block_id: &str, persistent_storage: &Persist
 /// if block_id is block hash string return block hash byte string from BlockStorage by block hash string
 #[inline]
 pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<BlockHash, failure::Error> {
+    let block_storage = BlockStorage::new(persistent_storage);
     // first check if 'head' string was provided as parameter and take hash from RpcCollectedStateRef
     let block_hash = if block_id == "head" {
         let state_read = state.read().unwrap();
@@ -297,8 +486,12 @@ pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &Pe
             }
             None => bail!("head not initialized")
         }
+    } else if block_id == "genesis" {
+        match block_storage.get_by_block_level(0)? {
+            Some(genesis_block) => genesis_block.hash,
+            None => bail!("Error getting genesis block from storage")
+        }
     } else {
-        let block_storage = BlockStorage::new(persistent_storage);
         // try to parse level as number
         match block_id.parse() {
             // block level was passed as parameter to block_id
@@ -410,4 +603,8 @@ pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<Conte
         let storage = list.read().expect("poisoned storage lock");
         storage.get(level).map_err(|e| e.into())
     }
+}
+
+pub(crate) fn current_time_timestamp() -> TimeStamp {
+    TimeStamp::Integral(Utc::now().timestamp())
 }

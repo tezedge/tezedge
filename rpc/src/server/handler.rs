@@ -1,13 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use bytes::buf::BufExt;
 use chrono::prelude::*;
 use hyper::{Body, Request};
 use slog::warn;
-use bytes::buf::BufExt;
 
 use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
+use tezos_api::ffi::JsonRpcRequest;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::{
@@ -17,6 +18,7 @@ use crate::{
         monitor::BootstrapInfo,
     },
     make_json_response,
+    make_json_stream_response,
     result_option_to_json_response,
     result_to_json_response,
     ServiceResult,
@@ -68,14 +70,9 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     let chain_id = params.get_str("chain_id").unwrap();
 
     if chain_id == "main" {
-        let current_head = service::get_full_current_head(env.state());
-        if let Ok(Some(_current_head)) = current_head {
-            // TODO: implement
-            empty()
-        } else {
-            empty()
-        }
+        make_json_stream_response(service::get_current_head_monitor_header(env.state())?.unwrap())
     } else {
+        // TODO: implement... 
         empty()
     }
 }
@@ -105,6 +102,21 @@ pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, 
             result_option_to_json_response(service::get_current_head_header(env.state()).map(|res| res), env.log())
         } else {
             result_option_to_json_response(service::get_block_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
+        }
+    } else {
+        empty()
+    }
+}
+
+pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+    if chain_id == "main" {
+        if block_id == "head" {
+            result_option_to_json_response(service::get_current_head_shell_header(env.state()).map(|res| res), env.log())
+        } else {
+            result_option_to_json_response(service::get_block_shell_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
         }
     } else {
         empty()
@@ -202,7 +214,6 @@ pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Que
 }
 
 pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-
     let operation_data_raw = hyper::body::aggregate(req).await?;
     let operation_data: String = serde_json::from_reader(&mut operation_data_raw.reader())?;
 
@@ -210,6 +221,143 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
 
     result_to_json_response(
         services::mempool_services::inject_operation(&operation_data, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        env.log(),
+    )
+}
+
+pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+
+    let shell_channel = env.shell_channel();
+
+    result_to_json_response(
+        services::mempool_services::inject_block(&body, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        env.log(),
+    )
+}
+
+pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+
+    result_to_json_response(
+        service::get_block_protocols(block_id, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+    result_to_json_response(
+        service::get_block_hash(block_id, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_chain_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    // this chain_id (e.g. main) reporesents the "alias" for the actial base58 encoded id (e.g. NetXdQprcVkpaWU)
+    let _chain_id = params.get_str("chain_id").unwrap();
+
+    result_to_json_response(
+        service::get_chain_id(env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_contract_counter(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    let pkh = params.get_str("pkh").unwrap();
+
+    result_to_json_response(
+        services::protocol::proto_get_contract_counter(_chain_id, block_id, pkh, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_contract_manager_key(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+    let pkh = params.get_str("pkh").unwrap();
+
+    result_to_json_response(
+        services::protocol::proto_get_contract_manager_key(_chain_id, block_id, pkh, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+
+    result_to_json_response(
+        service::get_block_operation_hashes(block_id, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
+
+pub async fn run_operation(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+    let json_request = JsonRpcRequest {
+        body,
+        context_path,
+    };
+
+    result_to_json_response(
+        service::run_operation(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+    let json_request = JsonRpcRequest {
+        body,
+        context_path,
+    };
+
+    result_to_json_response(
+        service::preapply_operations(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+    let json_request = JsonRpcRequest {
+        body,
+        context_path,
+    };
+
+    result_to_json_response(
+        service::preapply_block(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        service::get_node_version(env.tezos_environment()),
         env.log(),
     )
 }
