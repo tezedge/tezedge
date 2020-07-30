@@ -22,7 +22,7 @@ use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, Level, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 
 // Serialize, Deserialize,
@@ -149,6 +149,18 @@ pub(crate) fn get_current_head_monitor_header(state: &RpcCollectedStateRef) -> R
         state: state.clone(),
         last_polled_timestamp: None,
     }))
+}
+
+/// Get information about current head shell header
+pub(crate) fn get_level_info(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<Level>, failure::Error> {
+    
+    let level: Level = if let Some(full_block) = get_block_by_block_id(block_id, persistent_storage, state)? {
+        full_block.into()
+    } else {
+        bail!("Block not found");
+    };
+
+    Ok(Some(level))
 }
 
 /// Get information about block

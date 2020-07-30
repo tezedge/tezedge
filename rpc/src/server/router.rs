@@ -34,6 +34,7 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/scripts/run_operation", handler::run_operation);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/preapply/operations", handler::preapply_operations);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/preapply/block", handler::preapply_block);
+    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/current_level", handler::level_info);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", handler::votes_listings);
     routes.handle("/chains/:chain_id/mempool/pending_operations", handler::mempool_pending_operations);
     routes.handle("/chains/:chain_id/blocks/:block_id/protocols", handler::get_block_protocols);

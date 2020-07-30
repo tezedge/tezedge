@@ -397,6 +397,47 @@ impl NodeVersion {
 }
 // ---------------------------------------------------------------------
 
+/// A structure holding different representations of levels 
+#[derive(Serialize, Debug, Clone)]
+pub struct Level {
+    /// The level of the block relative to genesis
+    level: i32,
+    /// The level of the block relative to the block that starts protocol alpha. This is specific to the protocol alpha. Other protocols might
+    /// or might not include a similar notion.
+    level_position: i32,
+    /// The current cycle's number. Note that cycles are a protocol-specific
+    /// notion. As a result, the cycle number starts at 0 with the first
+    /// block of protocol alpha
+    cycle: i32,
+    /// The current level of the block relative to the first block of the current cycle
+    cycle_position: i32,
+    /// The current voting period's index. Note that cycles are a protocol-specific notion.
+    /// As a result, the voting period index starts at 0 with the first block of protocol alpha
+    voting_period: i32,
+    /// The current level of the block relative to the first block of the current voting period.
+    voting_period_position: i32,
+    /// Tells wether the baker of this block has to commit a seed nonce hash
+    expected_commitment: bool,
+}
+// ---------------------------------------------------------------------
+
+impl From<FullBlockInfo> for Level {
+    fn from(block: FullBlockInfo) -> Self {
+        let level_map = block.metadata["level"].clone();
+        // TODO: TE-199 - unrwraps here are safe, the struct in ocaml conatins only 32 bit integers and expected_commitment is allways a boolean
+        // the rework described in TE-199 will solve the unwrap issue
+        Self {
+            level: level_map["level"].as_i64().unwrap().try_into().unwrap(),
+            level_position: level_map["level_position"].as_i64().unwrap().try_into().unwrap(),
+            cycle: level_map["cycle"].as_i64().unwrap().try_into().unwrap(),
+            cycle_position: level_map["cycle_position"].as_i64().unwrap().try_into().unwrap(),
+            voting_period: level_map["voting_period"].as_i64().unwrap().try_into().unwrap(),
+            voting_period_position: level_map["voting_period_position"].as_i64().unwrap().try_into().unwrap(),
+            expected_commitment: level_map["expected_commitment"].as_bool().unwrap(),
+        }
+    }
+}
+
 /// Return block level based on block_id url parameter
 /// 
 /// # Arguments

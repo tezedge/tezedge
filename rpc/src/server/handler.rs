@@ -361,3 +361,13 @@ pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcService
         env.log(),
     )
 }
+
+pub async fn level_info(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let _chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    result_to_json_response(
+        service::get_level_info(block_param, env.persistent_storage(), env.state()),
+        env.log(),
+    )
+}
