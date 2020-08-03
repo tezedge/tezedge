@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::pin::Pin;
+use std::cmp::max;
 
 use chrono::Utc;
 use failure::{bail, Fail};
@@ -434,6 +435,55 @@ impl From<FullBlockInfo> for Level {
             voting_period: level_map["voting_period"].as_i64().unwrap().try_into().unwrap(),
             voting_period_position: level_map["voting_period_position"].as_i64().unwrap().try_into().unwrap(),
             expected_commitment: level_map["expected_commitment"].as_bool().unwrap(),
+        }
+    }
+}
+
+impl Level {
+    pub fn new(level: i32, first_level: i32, offset: Option<i32> , constants: LevelConstants) -> Result<Self, failure::Error> {
+        let raw_level = if let Some(offset) = offset {
+            level + offset
+        } else {
+            level 
+        };
+
+        if raw_level > 0 {
+            let level_position = max(0, raw_level - first_level);
+            let cycle = level_position / constants.blocks_per_cycle;
+            let cycle_position = level_position % constants.blocks_per_cycle;
+            let voting_period = level_position / constants.blocks_per_voting_period;
+            let voting_period_position = level_position % constants.blocks_per_voting_period;
+            let expected_commitment = (cycle_position % constants.blocks_per_commitment) == (constants.blocks_per_commitment - 1);
+
+            Ok(Self {
+                level,
+                level_position,
+                cycle,
+                cycle_position,
+                voting_period,
+                voting_period_position,
+                expected_commitment,
+            })
+
+        } else {
+            bail!("Negative level")
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LevelConstants {
+    blocks_per_cycle: i32,
+    blocks_per_voting_period: i32,
+    blocks_per_commitment: i32,
+}
+
+impl LevelConstants {
+    pub fn new(blocks_per_cycle: i32, blocks_per_voting_period: i32, blocks_per_commitment: i32) -> Self {
+        Self {
+            blocks_per_cycle,
+            blocks_per_voting_period,
+            blocks_per_commitment,
         }
     }
 }

@@ -151,17 +151,6 @@ pub(crate) fn get_current_head_monitor_header(state: &RpcCollectedStateRef) -> R
     }))
 }
 
-/// Get information about current head shell header
-pub(crate) fn get_level_info(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<Level>, failure::Error> {
-    
-    let level: Level = if let Some(full_block) = get_block_by_block_id(block_id, persistent_storage, state)? {
-        full_block.into()
-    } else {
-        bail!("Block not found");
-    };
-
-    Ok(Some(level))
-}
 
 /// Get information about block
 pub(crate) fn get_full_block(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {
@@ -494,7 +483,7 @@ pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &Persist
 }
 
 /// Extract block level from the full block info
-fn get_block_level_by_block_id(block_id: &str, offset: i64, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<i64, failure::Error> {
+pub(crate) fn get_block_level_by_block_id(block_id: &str, offset: i64, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<i64, failure::Error> {
     if block_id == "genesis" {
         // genesis alias is allways for the block on level 0
         Ok(0)
