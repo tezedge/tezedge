@@ -7,7 +7,7 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContextHash};
+use crypto::hash::{BlockHash, ContextHash, HashType};
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage};
@@ -61,6 +61,8 @@ pub trait BlockStorageReader: Sync + Send {
     fn get_by_block_level(&self, level: i32) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn get_by_block_level_with_json_data(&self, level: BlockLevel) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
+    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
@@ -240,6 +242,15 @@ impl BlockStorageReader for BlockStorage {
                 .transpose(),
             None => Ok(None)
         }
+    }
+
+    #[inline]
+    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError> {
+        // TODO: include the genesis block as well
+        let live_blocks: Option<Vec<String>> = self.by_level_index.get_blocks(level, max_ttl)?.iter()
+            .map(|location| self.get_block_header_by_location(&location).map(|block_header| HashType::BlockHash.bytes_to_string(&block_header.hash)).ok())
+            .collect();
+        Ok(live_blocks)
     }
 
     #[inline]
