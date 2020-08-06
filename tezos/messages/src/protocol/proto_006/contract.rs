@@ -6,18 +6,18 @@ use getset::Getters;
 
 use tezos_encoding::{
     encoding::{Encoding, Field, HasEncoding},
+    has_encoding,
     types::BigInt,
 };
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
+
+static DUMMY_BODY_CACHE: NeverCache = NeverCache;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Getters)]
 pub struct Counter {
     #[get = "pub"]
     counter: BigInt,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
 impl Counter {
@@ -29,19 +29,17 @@ impl Counter {
 impl CachedData for Counter {
     #[inline]
     fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
+        &DUMMY_BODY_CACHE
     }
 
     #[inline]
     fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
+        None
     }
 }
 
-impl HasEncoding for Counter {
-    fn encoding() -> Encoding {
+has_encoding!(Counter, COUNTER_ENCODING, {
         Encoding::Obj(vec![
             Field::new("counter", Encoding::Z)
         ])
-    }
-}
+});

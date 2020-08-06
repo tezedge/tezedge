@@ -8,6 +8,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
 
@@ -83,9 +84,7 @@ impl NackInfo {
     }
 }
 
-
-impl HasEncoding for AckMessage {
-    fn encoding() -> Encoding {
+has_encoding!(AckMessage, ACK_MESSAGE_ENCODING, {
         Encoding::Tags(
             size_of::<u8>(),
             TagMap::new(&[
@@ -94,8 +93,7 @@ impl HasEncoding for AckMessage {
                 Tag::new(0xFF, "NackV0", Encoding::Unit),
             ]),
         )
-    }
-}
+});
 
 impl CachedData for AckMessage {
     fn cache_reader(&self) -> &dyn CacheReader {

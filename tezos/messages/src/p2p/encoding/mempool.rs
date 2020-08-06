@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -33,14 +34,12 @@ impl Mempool {
     }
 }
 
-impl HasEncoding for Mempool {
-    fn encoding() -> Encoding {
+has_encoding!(Mempool, MEMPOOL_ENCODING, {
         Encoding::Obj(vec![
             Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
             Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))))),
         ])
-    }
-}
+});
 
 impl CachedData for Mempool {
     #[inline]

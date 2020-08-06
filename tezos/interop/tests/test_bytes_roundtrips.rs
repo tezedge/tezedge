@@ -62,7 +62,6 @@ macro_rules! roundtrip_test {
         };
 }
 
-// fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, encoding: &'static Encoding, ffi_fn_name: String) -> Result<(), OcamlError> {
 fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_name: String) -> Result<(), OcamlError> {
     runtime::execute(move || {
         // sent bytes to ocaml

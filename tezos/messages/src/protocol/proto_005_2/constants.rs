@@ -7,12 +7,15 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::{
+    has_encoding,
     encoding::{Encoding, Field, HasEncoding},
     types::BigInt,
 };
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
 use crate::protocol::{ToRpcJsonMap, UniversalValue};
+
+static DUMMY_BODY_CACHE: NeverCache = NeverCache;
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -78,13 +81,9 @@ pub struct ParametricConstants {
     min_proposal_quorum: i32,
     initial_endorsers: u16,
     delay_per_missing_endorsement: i64,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
-impl HasEncoding for ParametricConstants {
-    fn encoding() -> Encoding {
+has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
         Encoding::Obj(vec![
             Field::new("preserved_cycles", Encoding::Uint8),
             Field::new("blocks_per_cycle", Encoding::Int32),
@@ -113,8 +112,7 @@ impl HasEncoding for ParametricConstants {
             Field::new("initial_endorsers", Encoding::Uint16),
             Field::new("delay_per_missing_endorsement", Encoding::Int64),
         ])
-    }
-}
+});
 
 impl ToRpcJsonMap for ParametricConstants {
     fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
@@ -152,11 +150,11 @@ impl ToRpcJsonMap for ParametricConstants {
 impl CachedData for ParametricConstants {
     #[inline]
     fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
+        &DUMMY_BODY_CACHE
     }
 
     #[inline]
     fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
+        None
     }
 }

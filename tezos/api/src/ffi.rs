@@ -113,10 +113,10 @@ impl ApplyBlockRequest {
 lazy_static! {
     pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
         Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
-        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
+        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
         Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
+        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
     ]);
 }
 
@@ -205,7 +205,7 @@ pub struct BeginConstructionRequest {
 lazy_static! {
     pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
     ]);
 }
@@ -225,7 +225,7 @@ pub struct ValidateOperationRequest {
 lazy_static! {
     pub static ref VALIDATE_OPERATION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("operation", Encoding::dynamic(Operation::encoding())),
+            Field::new("operation", Encoding::dynamic(Operation::encoding().clone())),
     ]);
 }
 
@@ -849,7 +849,7 @@ pub enum FfiRpcService {
 
 lazy_static! {
     pub static ref PROTOCOL_JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("chain_arg", Encoding::String),
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),

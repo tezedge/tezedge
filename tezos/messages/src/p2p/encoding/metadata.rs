@@ -7,6 +7,7 @@ use getset::CopyGetters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -36,14 +37,12 @@ impl fmt::Debug for MetadataMessage {
     }
 }
 
-impl HasEncoding for MetadataMessage {
-    fn encoding() -> Encoding {
+has_encoding!(MetadataMessage, METADATA_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("disable_mempool", Encoding::Bool),
             Field::new("private_node", Encoding::Bool)
         ])
-    }
-}
+});
 
 impl CachedData for MetadataMessage {
     #[inline]

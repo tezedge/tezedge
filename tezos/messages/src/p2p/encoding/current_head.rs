@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -35,15 +36,13 @@ impl CurrentHeadMessage {
     }
 }
 
-impl HasEncoding for CurrentHeadMessage {
-    fn encoding() -> Encoding {
+has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding())),
-            Field::new("current_mempool", Mempool::encoding())
+            Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+            Field::new("current_mempool", Mempool::encoding().clone())
         ])
-    }
-}
+});
 
 impl CachedData for CurrentHeadMessage {
     #[inline]
@@ -76,13 +75,11 @@ impl GetCurrentHeadMessage {
     }
 }
 
-impl HasEncoding for GetCurrentHeadMessage {
-    fn encoding() -> Encoding {
+has_encoding!(GetCurrentHeadMessage, GET_CURRENT_HEAD_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId))
         ])
-    }
-}
+});
 
 impl CachedData for GetCurrentHeadMessage {
     #[inline]

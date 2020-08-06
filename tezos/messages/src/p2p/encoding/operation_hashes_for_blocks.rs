@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::prelude::Path;
@@ -29,13 +30,11 @@ impl GetOperationHashesForBlocksMessage {
     }
 }
 
-impl HasEncoding for GetOperationHashesForBlocksMessage {
-    fn encoding() -> Encoding {
-        Encoding::Obj(vec![
-            Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding()))),
-        ])
-    }
-}
+has_encoding!(GetOperationHashesForBlocksMessage, GET_OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
+    Encoding::Obj(vec![
+        Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding().clone()))),
+    ])
+});
 
 impl CachedData for GetOperationHashesForBlocksMessage {
     #[inline]
@@ -74,15 +73,13 @@ impl OperationHashesForBlocksMessage {
     }
 }
 
-impl HasEncoding for OperationHashesForBlocksMessage {
-    fn encoding() -> Encoding {
+has_encoding!(OperationHashesForBlocksMessage, OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding()),
+            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding().clone()),
             Field::new("operation_hashes_path", path_encoding()),
             Field::new("operation_hashes", Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
         ])
-    }
-}
+});
 
 impl CachedData for OperationHashesForBlocksMessage {
     #[inline]
@@ -118,14 +115,12 @@ impl OperationHashesForBlock {
     }
 }
 
-impl HasEncoding for OperationHashesForBlock {
-    fn encoding() -> Encoding {
+has_encoding!(OperationHashesForBlock, OPERATION_HASHES_FOR_BLOCK_ENCODING, {
         Encoding::Obj(vec![
             Field::new("hash", Encoding::Hash(HashType::BlockHash)),
             Field::new("validation_pass", Encoding::Int8),
         ])
-    }
-}
+});
 
 impl CachedData for OperationHashesForBlock {
     #[inline]

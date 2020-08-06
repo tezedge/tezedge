@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use std::fmt;
@@ -41,15 +42,13 @@ impl NetworkVersion {
     }
 }
 
-impl HasEncoding for NetworkVersion {
-    fn encoding() -> Encoding {
+has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
         Encoding::Obj(vec![
             Field::new("chain_name", Encoding::String),
             Field::new("distributed_db_version", Encoding::Uint16),
             Field::new("p2p_version", Encoding::Uint16)
         ])
-    }
-}
+});
 
 impl CachedData for NetworkVersion {
     #[inline]

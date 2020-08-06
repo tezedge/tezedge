@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -19,14 +20,12 @@ pub struct SwapMessage {
     body: BinaryDataCache,
 }
 
-impl HasEncoding for SwapMessage {
-    fn encoding() -> Encoding {
+has_encoding!(SwapMessage, SWAP_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("point", Encoding::String),
             Field::new("peer_id", Encoding::String),
         ])
-    }
-}
+});
 
 impl CachedData for SwapMessage {
     #[inline]
