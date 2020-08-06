@@ -139,7 +139,7 @@ impl Encoder for OperationKey {
 impl Decoder for OperationsForBlocksMessage {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        OperationsForBlocksMessage::from_bytes(bytes.to_vec())
+        OperationsForBlocksMessage::from_bytes(bytes)
             .map_err(|_| SchemaError::DecodeError)
     }
 }

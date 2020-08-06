@@ -40,7 +40,6 @@ impl ConnectionMessage {
     }
 }
 
-// TODO: pozret
 // TODO: Replace this by impl TryFrom with a bounded generic parameter
 //       after https://github.com/rust-lang/rust/issues/50133 is resolved.
 impl TryFrom<BinaryChunk> for ConnectionMessage {
@@ -48,7 +47,7 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 
     fn try_from(value: BinaryChunk) -> Result<Self, Self::Error> {
         let cursor = Cursor::new(value.content());
-        ConnectionMessage::from_bytes(cursor.into_inner().to_vec())
+        ConnectionMessage::from_bytes(cursor.into_inner())
     }
 }
 

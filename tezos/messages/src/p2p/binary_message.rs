@@ -23,7 +23,7 @@ pub const CONTENT_LENGTH_FIELD_BYTES: usize = 2;
 /// Max allowed message length in bytes
 pub const CONTENT_LENGTH_MAX: usize = u16::max_value() as usize;
 
-/// This feature can provide cache mechanizm for BinaryMessages.
+/// This feature can provide cache mechanism for BinaryMessages.
 /// Cache is used to reduce computation time of encoding/decoding process.
 ///
 /// When we use cache (see macro [cached_data]):
@@ -181,7 +181,7 @@ pub trait BinaryMessage: Sized {
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error>;
 
     /// Create new struct from bytes.
-    fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError>;
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
 }
 
 impl<T> BinaryMessage for T
@@ -201,12 +201,13 @@ impl<T> BinaryMessage for T
     }
 
     #[inline]
-    fn from_bytes(buf: Vec<u8>) -> Result<Self, BinaryReaderError> {
-        let body = buf.clone();
-        let value = BinaryReader::new().read(buf, &Self::encoding())?;
+    fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
+        let bytes = bytes.as_ref();
+
+        let value = BinaryReader::new().read(bytes, &Self::encoding())?;
         let mut myself: Self = deserialize_from_value(&value)?;
         if let Some(cache_writer) = myself.cache_writer() {
-            cache_writer.put(&body);
+            cache_writer.put(bytes);
         }
         Ok(myself)
     }

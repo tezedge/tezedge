@@ -370,7 +370,7 @@ async fn bootstrap(
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
 
-    let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content().to_vec())?;
+    let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content())?;
 
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_message_bytes, msg.incoming);

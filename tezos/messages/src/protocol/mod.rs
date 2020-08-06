@@ -124,8 +124,7 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
     match hash {
         proto_001::PROTOCOL_HASH => {
             use crate::protocol::proto_001::constants::{ParametricConstants, FIXED};
-            println!("{:?}", bytes);
-            let context_param = ParametricConstants::from_bytes(bytes.to_vec())?;
+            let context_param = ParametricConstants::from_bytes(bytes)?;
             
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
@@ -135,10 +134,8 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         }
         proto_002::PROTOCOL_HASH => {
             use crate::protocol::proto_002::constants::{ParametricConstants, FIXED};
-            println!("{:?}", bytes);
-            let context_param = ParametricConstants::from_bytes(bytes.to_vec())?;
-            println!("{:?}", context_param);
-            
+            let context_param = ParametricConstants::from_bytes(bytes)?;
+
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
             let mut param_map = param.as_map();
@@ -147,8 +144,7 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         }
         proto_003::PROTOCOL_HASH => {
             use crate::protocol::proto_003::constants::{ParametricConstants, FIXED};
-            println!("{:?}", bytes);
-            let context_param = ParametricConstants::from_bytes(bytes.to_vec())?;
+            let context_param = ParametricConstants::from_bytes(bytes)?;
             
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
@@ -158,8 +154,7 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         }
         proto_004::PROTOCOL_HASH => {
             use crate::protocol::proto_004::constants::{ParametricConstants, FIXED};
-            println!("{:?}", bytes);
-            let context_param = ParametricConstants::from_bytes(bytes.to_vec())?;
+            let context_param = ParametricConstants::from_bytes(bytes)?;
             
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
@@ -169,19 +164,19 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         }
         proto_005::PROTOCOL_HASH => {
             use crate::protocol::proto_005::constants::{ParametricConstants, FIXED};
-            let mut param = ParametricConstants::from_bytes(bytes.to_vec())?.as_map();
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))
         }
         proto_005_2::PROTOCOL_HASH => {
             use crate::protocol::proto_005_2::constants::{ParametricConstants, FIXED};
-            let mut param = ParametricConstants::from_bytes(bytes.to_vec())?.as_map();
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))
         }
         proto_006::PROTOCOL_HASH => {
             use crate::protocol::proto_006::constants::{ParametricConstants, FIXED};
-            let mut param = ParametricConstants::from_bytes(bytes.to_vec())?.as_map();
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))
         }
