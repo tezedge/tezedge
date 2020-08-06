@@ -11,7 +11,8 @@ use crypto::hash::{BlockHash, ContextHash, HashType, OperationListListHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 
 pub type Fitness = Vec<Vec<u8>>;
 pub type Level = i32;
@@ -36,23 +37,12 @@ pub struct BlockHeaderMessage {
     body: BinaryDataCache,
 }
 
+cached_data!(BlockHeaderMessage, body);
 has_encoding!(BlockHeaderMessage, BLOCK_HEADER_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("block_header", BlockHeader::encoding().clone()),
         ])
 });
-
-impl CachedData for BlockHeaderMessage {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
 
 impl From<BlockHeader> for BlockHeaderMessage {
     fn from(block_header: BlockHeader) -> Self {
@@ -79,23 +69,12 @@ impl GetBlockHeadersMessage {
     }
 }
 
+cached_data!(GetBlockHeadersMessage, body);
 has_encoding!(GetBlockHeadersMessage, GET_BLOCK_HEADERS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("get_block_headers", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::BlockHash)))),
         ])
 });
-
-impl CachedData for GetBlockHeadersMessage {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Builder, Getters, CopyGetters)]
@@ -124,6 +103,7 @@ pub struct BlockHeader {
     body: BinaryDataCache,
 }
 
+cached_data!(BlockHeader, body);
 has_encoding!(BlockHeader, BLOCK_HEADER_ENCODING, {
         Encoding::Obj(vec![
             Field::new("level", Encoding::Int32),
@@ -142,15 +122,3 @@ has_encoding!(BlockHeader, BLOCK_HEADER_ENCODING, {
             )))
         ])
 });
-
-impl CachedData for BlockHeader {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}

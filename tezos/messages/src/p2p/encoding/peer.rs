@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -45,18 +46,7 @@ pub struct PeerMessageResponse {
     body: BinaryDataCache,
 }
 
-impl CachedData for PeerMessageResponse {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
-
+cached_data!(PeerMessageResponse, body);
 has_encoding!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
     Encoding::Obj(vec![
         Field::new("messages", Encoding::dynamic(Encoding::list(

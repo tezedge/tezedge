@@ -11,8 +11,8 @@ use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::has_encoding;
 
+use crate::non_cached_data;
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::version::NetworkVersion;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
@@ -24,8 +24,6 @@ pub struct ConnectionMessage {
     pub public_key: Vec<u8>,
     pub proof_of_work_stamp: Vec<u8>,
     pub message_nonce: Vec<u8>,
-    #[serde(skip_serializing)]
-    body: BinaryDataCache
 }
 
 impl ConnectionMessage {
@@ -38,11 +36,11 @@ impl ConnectionMessage {
             proof_of_work_stamp: hex::decode(proof_of_work_stamp)
                 .expect("Failed to decode proof of work stamp from hex string"),
             message_nonce: message_nonce.into(),
-            body: Default::default(),
         }
     }
 }
 
+// TODO: pozret
 // TODO: Replace this by impl TryFrom with a bounded generic parameter
 //       after https://github.com/rust-lang/rust/issues/50133 is resolved.
 impl TryFrom<BinaryChunk> for ConnectionMessage {
@@ -54,6 +52,7 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
     }
 }
 
+non_cached_data!(ConnectionMessage);
 has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("port", Encoding::Uint16),
@@ -63,15 +62,3 @@ has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
             Field::new("versions", Encoding::list(NetworkVersion::encoding().clone()))
         ])
 });
-
-impl CachedData for ConnectionMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}

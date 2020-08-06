@@ -10,10 +10,8 @@ use tezos_encoding::{
     types::BigInt,
 };
 
-use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
+use crate::non_cached_data;
 use crate::protocol::{ToRpcJsonMap, UniversalValue};
-
-static DUMMY_BODY_CACHE: NeverCache = NeverCache;
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -108,6 +106,7 @@ impl ToRpcJsonMap for ParametricConstants {
     }
 }
 
+non_cached_data!(ParametricConstants);
 has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
             Encoding::Obj(vec![
                 Field::new("preserved_cycles", Encoding::Uint8),
@@ -138,15 +137,3 @@ has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
                 Field::new("delay_per_missing_endorsement", Encoding::Int64),
             ])
 });
-
-impl CachedData for ParametricConstants {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &DUMMY_BODY_CACHE
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        None
-    }
-}

@@ -1,13 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
-use std::fmt;
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct NetworkVersion {
@@ -42,6 +44,7 @@ impl NetworkVersion {
     }
 }
 
+cached_data!(NetworkVersion, body);
 has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
         Encoding::Obj(vec![
             Field::new("chain_name", Encoding::String),
@@ -50,19 +53,7 @@ has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
         ])
 });
 
-impl CachedData for NetworkVersion {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
-
-impl Eq for NetworkVersion { }
+impl Eq for NetworkVersion {}
 
 impl PartialEq for NetworkVersion {
     fn eq(&self, other: &Self) -> bool {

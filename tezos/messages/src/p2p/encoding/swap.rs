@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct SwapMessage {
@@ -20,21 +21,10 @@ pub struct SwapMessage {
     body: BinaryDataCache,
 }
 
+cached_data!(SwapMessage, body);
 has_encoding!(SwapMessage, SWAP_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("point", Encoding::String),
             Field::new("peer_id", Encoding::String),
         ])
 });
-
-impl CachedData for SwapMessage {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
