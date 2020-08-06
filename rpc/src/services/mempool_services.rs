@@ -28,6 +28,12 @@ pub struct MempoolOperations {
     pub unprocessed: Vec<Value>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct InjectedBlockWithOperations {
+    pub data: String,
+    pub operations: Vec<Vec<Operation>>,
+}
+
 pub fn get_pending_operations(
     _persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef,
@@ -157,6 +163,8 @@ pub fn inject_block(
 
     let header: BlockHeader = BlockHeader::from_bytes(hex::decode(injection_data_json["data"].to_string().replace("\"", ""))?)?;
 
+    let injected_level = header.level();
+
     shell_channel.tell(
         Publish {
             msg: InjectBlock {
@@ -164,6 +172,16 @@ pub fn inject_block(
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
+
+    // handle injected operations - WARNING - special case for level 1, when protocol is "activated"
+    if injected_level > 1 {
+        println!("Op RAW: {:?}", injection_data_json["operations"].to_string());
+
+        let block_with_op: InjectedBlockWithOperations = serde_json::from_value(injection_data_json)?;
+        let validation_passes = block_with_op.operations.len();
+        
+        //println!("Op: {:?}", operations);
+    } 
 
     Ok(HashType::BlockHash.bytes_to_string(&header.message_hash().unwrap()))
 }

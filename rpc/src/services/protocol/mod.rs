@@ -469,16 +469,24 @@ pub(crate) fn minimal_valid_time(chain_param: &str, block_param: &str, json_requ
     Ok(serde_json::from_str(&response.body)?)
 }
 
-pub(crate) fn live_blocks(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+pub(crate) fn live_blocks(_chain_param: &str, block_param: &str, env: &RpcServiceEnvironment) -> Result<Option<Vec<String>>, failure::Error> {
     let persistent_storage = env.persistent_storage();
     let state = env.state();
     
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::LiveBlocks, persistent_storage, state)?;
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let current_block = block_storage.get_with_additional_data(&block_hash)?;
+    let max_ttl: usize = match current_block {
+        Some((_, json_data)) => {
+            json_data.max_operations_ttl().into()
+        }
+        None => bail!("Block not found for block id: {}", block_param)
+    };
+    let block_level = get_block_level_by_block_id(block_param, 0, persistent_storage, state)?;
 
-    // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+    let live_blocks = block_storage.get_live_blocks(block_level.try_into()?, max_ttl)?;
 
-    Ok(serde_json::from_str(&response.body)?)
+    Ok(live_blocks)
 }
 
 
@@ -500,6 +508,8 @@ pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request:
     let persistent_storage = env.persistent_storage();
     let state = env.state();
 
+    println!("json_request: {:?}", json_request);
+
     // create request to ffi
     let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersPreapplyBlock, persistent_storage, state)?;
 
@@ -519,6 +529,8 @@ fn create_protocol_json_rpc_request(chain_param: &str, block_param: &str, json_r
     };
     let state = state.read().unwrap();
     let chain_id = state.chain_id().clone();
+
+    println!("Header to send: {:?}", block_header);
 
     // create request to ffi
     Ok(ProtocolJsonRpcRequest {

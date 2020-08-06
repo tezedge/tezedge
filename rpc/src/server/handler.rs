@@ -341,10 +341,8 @@ pub async fn live_blocks(req: Request<Body>, params: Params, _: Query, env: RpcS
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let json_request = create_ffi_json_request(req).await?;
-
     result_to_json_response(
-        services::protocol::live_blocks(chain_param, block_param, json_request, &env),
+        services::protocol::live_blocks(chain_param, block_param, &env),
         env.log(),
     )
 }
