@@ -57,8 +57,8 @@ impl Eq for NetworkVersion {}
 
 impl PartialEq for NetworkVersion {
     fn eq(&self, other: &Self) -> bool {
-        return self.chain_name == other.chain_name
+        self.chain_name == other.chain_name
             && self.distributed_db_version == other.distributed_db_version
-            && self.p2p_version == other.p2p_version;
+            && self.p2p_version == other.p2p_version
     }
 }

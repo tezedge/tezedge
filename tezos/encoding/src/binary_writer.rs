@@ -90,7 +90,7 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
 fn encode_tuple(data: &mut Vec<u8>, value: &Value, encodings: &[Encoding]) -> Result<usize, Error> {
     if let Value::Tuple(ref values) = value {
         let mut bytes_sz: usize = 0;
-        for (index, encoding) in encodings.into_iter().enumerate() {
+        for (index, encoding) in encodings.iter().enumerate() {
             if let Some(value) = values.get(index) {
                 bytes_sz += encode_any(data, value, encoding)?;
             } else {

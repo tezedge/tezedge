@@ -50,7 +50,7 @@ fn add_action<'a>(
     let mut action_stats = stats
         .entry(action_name).or_insert(ActionStats {
         action_type_stats: HashMap::new(),
-        total_time: 0f64,
+        total_time: 0_f64,
         total_actions: 0,
         key_length_max: 0,
         val_length_max: 0,
@@ -82,7 +82,7 @@ fn add_action<'a>(
                 } else { first };
                 let actions_type_stats = action_stats.action_type_stats
                     .entry(action_type.clone())
-                    .or_insert(ActionTypeStats { total_time: 0f64, total_actions: 0 });
+                    .or_insert(ActionTypeStats { total_time: 0_f64, total_actions: 0 });
                 actions_type_stats.total_time += time;
                 actions_type_stats.total_actions += 1;
             };

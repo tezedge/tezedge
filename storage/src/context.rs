@@ -140,7 +140,7 @@ impl ContextDiff {
     pub fn set(&mut self, context_hash: &Option<ContextHash>, key: &Vec<String>, value: &Vec<u8>) -> Result<(), ContextError> {
         ensure_eq_context_hash!(context_hash, &self);
 
-        &self.diff.insert(to_key(key), Bucket::Exists(value.clone()));
+        self.diff.insert(to_key(key), Bucket::Exists(value.clone()));
 
         Ok(())
     }
@@ -269,17 +269,6 @@ impl ContextApi for TezedgeContext {
 
         // at first remove keys from temp diff
         let context_map_diff = &mut context_diff.diff;
-        // context_map_diff.retain(|k, v| {
-        //     if key_terminated_starts_with(k, key_prefix_to_remove) {
-        //         match v {
-        //             Bucket::Deleted => true, // deleted stays in diff, because of previous delete from parent context, see bellow
-        //             _ => false
-        //         }
-        //     } else {
-        //         // else keep in diff
-        //         true
-        //     }
-        // });
         let match_in_diff = context_map_diff.range(key_prefix_to_remove.join("/")..).take_while(|(k, _)| k.starts_with(&key_prefix_to_remove.join("/")));
         let mut final_context_to_remove: ContextMap = Default::default();
 
@@ -297,9 +286,8 @@ impl ContextApi for TezedgeContext {
 
         // remove all keys with prefix from actual/parent context
         let context = self.get_by_key_prefix(&context_diff.predecessor_index, key_prefix_to_remove)?;
-        
-        if context.is_some() {
-            let context = context.unwrap();
+
+        if let Some(context) = context {
             for key in context.keys() {
                 if key_terminated_starts_with(key, key_prefix_to_remove) {
                     context_map_diff.insert(key.clone(), Bucket::Deleted);
@@ -325,7 +313,7 @@ impl ContextApi for TezedgeContext {
         ensure_eq_context_hash!(context_hash, &context_diff);
 
         // get keys from actual/parent context
-        let mut final_context_to_copy = self.get_by_key_prefix(&context_diff.predecessor_index, from_key)?.unwrap_or(ContextMap::default());
+        let mut final_context_to_copy = self.get_by_key_prefix(&context_diff.predecessor_index, from_key)?.unwrap_or_default();
 
         let match_in_diff = context_diff.diff.range(from_key.join("/")..).take_while(|(k, _)| k.starts_with(&from_key.join("/")));
 

@@ -36,7 +36,7 @@ impl Interchange<ContextKey> for List {
 }
 
 fn to_hash(hash: Str) -> Option<Hash> {
-    if hash.len() <= 0 {
+    if hash.is_empty() {
         None
     } else {
         Some(hash.data().to_vec())
@@ -44,8 +44,7 @@ fn to_hash(hash: Str) -> Option<Hash> {
 }
 
 fn to_string(value: Str) -> Option<String> {
-
-    if value.len() <= 0 {
+    if value.is_empty() {
         None
     } else {
         Some(value.as_str().to_string())
@@ -69,7 +68,7 @@ caml!(ml_context_set(context_hash, block_hash, operation_hash, keyval_and_json, 
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_set(context_hash, block_hash, operation_hash, key, value, json_val, ignored, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for delete key from context
@@ -87,7 +86,7 @@ caml!(ml_context_delete(context_hash, block_hash, operation_hash, keyval, time_p
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_delete(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for remove_rec key from context
@@ -105,7 +104,7 @@ caml!(ml_context_remove_rec(context_hash, block_hash, operation_hash, keyval, ti
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_remove_rec(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for copy keys from context
@@ -124,7 +123,7 @@ caml!(ml_context_copy(context_hash, block_hash, operation_hash, from_to_key, tim
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_copy(context_hash, block_hash, operation_hash, from_key, to_key, ignored, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for checkout context
@@ -136,7 +135,7 @@ caml!(ml_context_checkout(context_hash, time_period) {
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_checkout(context_hash, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for checkout context
@@ -150,7 +149,7 @@ caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_commit(parent_context_hash, block_hash, new_context_hash, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for mem key from context
@@ -167,7 +166,7 @@ caml!(ml_context_mem(context_hash, block_hash, operation_hash, keyval, time_peri
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for dir_mem key from context
@@ -184,7 +183,7 @@ caml!(ml_context_dir_mem(context_hash, block_hash, operation_hash, keyval, time_
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_dir_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for raw_get key from context
@@ -203,7 +202,7 @@ caml!(ml_context_raw_get(context_hash, block_hash, operation_hash, keyval_and_js
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_raw_get(context_hash, block_hash, operation_hash, key, value, json_val, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 // External callback function for fold key from context
@@ -218,7 +217,7 @@ caml!(ml_context_fold(context_hash, block_hash, operation_hash, key, time_period
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
     context_fold(context_hash, block_hash, operation_hash, key, start_time, end_time);
-    return Value::unit();
+    Value::unit()
 });
 
 fn context_set(

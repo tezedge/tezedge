@@ -118,7 +118,7 @@ impl ContextActionStorage {
             let mut base_iterator = self.context_by_contract_index.get_by_contract_address_iterator(&hash, cursor_id)?.peekable();
             if let Some(action_type) = cursor_filters.action_type {
                 if let Some(index) = base_iterator.peek() {
-                    let type_iterator = self.context_by_type_index.get_by_action_types_iterator(&action_type, Some(index.clone()))?;
+                    let type_iterator = self.context_by_type_index.get_by_action_types_iterator(&action_type, Some(*index))?;
                     let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
                     self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
                 } else {
@@ -296,7 +296,7 @@ impl ContextActionByBlockHashIndex {
             |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),
         );
         Ok(self.kv.prefix_iterator(&key)?
-            .filter_map(|(key, _)| key.and_then(|k| Ok(k.id)).ok()))
+            .filter_map(|(key, _)| key.map(|k| k.id).ok()))
     }
 }
 
@@ -782,7 +782,7 @@ pub mod sorted_intersect {
             I::Item: Ord,
     {
         let mut ret = Default::default();
-        if iters.len() == 0 {
+        if iters.is_empty() {
             return ret;
         } else if iters.len() == 1 {
             let iter = iters.iter_mut().next().unwrap();

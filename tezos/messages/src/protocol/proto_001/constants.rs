@@ -81,14 +81,13 @@ pub struct ParametricConstants {
 impl ParametricConstants {
     /// Merge the default values with the values set in context DB 
     pub fn create_with_default_and_merge(context_param_constants: ParametricConstants) -> Self {
-        let param = ParametricConstants {
+        ParametricConstants {
             block_security_deposit: context_param_constants.block_security_deposit.clone(),
             endorsement_security_deposit: context_param_constants.endorsement_security_deposit.clone(),
             block_reward: context_param_constants.block_reward.clone(),
-            endorsement_reward: context_param_constants.endorsement_reward.clone(),
+            endorsement_reward: context_param_constants.endorsement_reward,
             ..Default::default()
-        };
-        param
+        }
     }
 }
 

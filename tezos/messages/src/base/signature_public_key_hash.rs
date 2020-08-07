@@ -78,7 +78,7 @@ impl SignaturePublicKeyHash {
             };
             Ok(public_hash_key)
         } else {
-            return Err(ConversionError::InvalidHash { hash: hash.to_string() });
+            Err(ConversionError::InvalidHash { hash: hash.to_string() })
         }
     }
 
@@ -95,10 +95,10 @@ impl SignaturePublicKeyHash {
                 "tz3" => {
                     Ok(SignaturePublicKeyHash::P256(HashType::ContractTz3Hash.string_to_bytes(b58_hash)?))
                 }
-                _ => return Err(ConversionError::InvalidCurveTag { curve_tag: String::from(&b58_hash[0..3]) })
+                _ => Err(ConversionError::InvalidCurveTag { curve_tag: String::from(&b58_hash[0..3]) })
             }
         } else {
-            return Err(ConversionError::InvalidHash { hash: b58_hash.to_string() });
+            Err(ConversionError::InvalidHash { hash: b58_hash.to_string() })
         }
     }
 
@@ -126,10 +126,10 @@ impl SignaturePublicKeyHash {
                 2 => {
                     Self::from_hex_hash_and_curve(&hex::encode(hash), "p256")
                 }
-                _ => return Err(ConversionError::InvalidPublicKey)
+                _ => Err(ConversionError::InvalidPublicKey)
             }
         } else {
-            return Err(ConversionError::InvalidPublicKey);
+            Err(ConversionError::InvalidPublicKey)
         }
     }
 }

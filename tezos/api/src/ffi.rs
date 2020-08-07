@@ -95,7 +95,7 @@ pub struct ApplyBlockRequest {
 }
 
 impl ApplyBlockRequest {
-    pub fn convert_operations(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
+    pub fn convert_operations(block_operations: &[Option<OperationsForBlocksMessage>]) -> Vec<Vec<Operation>> {
         let mut operations = Vec::with_capacity(block_operations.len());
 
         for block_ops in block_operations {
@@ -279,9 +279,9 @@ pub struct Applied {
 }
 
 #[inline]
-fn format_json_single_line(origin: &String) -> String {
+fn format_json_single_line(origin: &str) -> String {
     let json = serde_json::json!(origin);
-    serde_json::to_string(&json).unwrap_or(origin.clone())
+    serde_json::to_string(&json).unwrap_or_else(|_| origin.to_string())
 }
 
 impl fmt::Debug for Applied {
@@ -330,7 +330,7 @@ impl ValidateOperationResult {
         changed
     }
 
-    fn merge_applied(&mut self, new_items: &Vec<Applied>) -> bool {
+    fn merge_applied(&mut self, new_items: &[Applied]) -> bool {
         let mut changed = false;
         let mut added = false;
         let mut m = HashMap::new();
@@ -351,24 +351,24 @@ impl ValidateOperationResult {
         added || changed
     }
 
-    fn merge_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_refused(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.refused, new_items)
     }
 
-    fn merge_branch_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_branch_refused(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.branch_refused, new_items)
     }
 
-    fn merge_branch_delayed(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_branch_delayed(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.branch_delayed, new_items)
     }
 
-    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &Vec<Errored>) -> bool {
+    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &[Errored]) -> bool {
         let mut changed = false;
         let mut added = false;
         let mut m = HashMap::new();
 
-        for a in old_items.into_iter() {
+        for a in old_items.iter_mut() {
             m.insert(a.hash.clone(), (*a).clone());
         }
         for na in new_items {
@@ -727,7 +727,7 @@ impl From<CallError> for ValidateOperationError {
                     },
                     Some(message) => {
                         ValidateOperationError::FailedToValidateOperation {
-                            message: message.to_string()
+                            message
                         }
                     }
                 }
@@ -897,7 +897,7 @@ impl From<CallError> for ProtocolRpcError {
                     },
                     Some(message) => {
                         ProtocolRpcError::FailedToCallProtocolRpc {
-                            message: message.to_string()
+                            message
                         }
                     }
                 }

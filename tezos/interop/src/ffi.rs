@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use ocaml::{List, Str, ToValue, Tuple, Value};
-use serde_json;
 
 use tezos_api::ffi::*;
 use tezos_api::identity::Identity;

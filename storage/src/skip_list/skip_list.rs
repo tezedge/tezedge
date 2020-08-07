@@ -106,7 +106,7 @@ impl DatabaseBackedSkipList {
                     // We cannot move horizontally anymore, so we need to descent to lower level.
                     if lane.level() == 0 {
                         return Err(SkipListError::InternalError {
-                            description: format!("Correct value was skipped"),
+                            description: "Correct value was skipped".to_string(),
                         });
                     } else {
                         // Make descend
@@ -223,7 +223,7 @@ impl<K, V> TypedSkipList<K, V> for DatabaseBackedSkipList
 
             let start = pos.index() + 1 - LEVEL_BASE;
             for index in start..=pos.index() {
-                let list_value = lane.get_list_value(index)?.expect(&format!("Expected list value at: {:?}", &pos_higher));
+                let list_value = lane.get_list_value(index)?.unwrap_or_else(|| panic!("Expected list value at: {:?}", &pos_higher));
                 list_value_higher.merge(&list_value)?;
             }
 

@@ -3,11 +3,8 @@
 
 use std::io;
 
-use chrono;
-use nix;
 use slog::*;
 use slog::{FnValue, Level, Record};
-use slog_json;
 
 /// Get hostname for current machine
 fn get_hostname() -> String {
@@ -39,9 +36,9 @@ fn level_to_int(level: Level) -> i8 {
 /// # Arguments
 /// * `io` - output writer to write logs
 /// * `ts_f` - TimeStamp generator
-fn new_with_ts_fn<F, W>(io : W, ts_f: F) -> slog_json::JsonBuilder<W>
+fn new_with_ts_fn<F, W>(io: W, ts_f: F) -> slog_json::JsonBuilder<W>
     where F: Fn(&Record) -> String + Send + Sync + std::panic::RefUnwindSafe + 'static,
-          W : io::Write
+          W: io::Write
 {
     slog_json::Json::new(io)
         .add_key_value(o!(
@@ -60,9 +57,9 @@ fn new_with_ts_fn<F, W>(io : W, ts_f: F) -> slog_json::JsonBuilder<W>
 ///
 /// # Arguments
 /// * `io` - output writer to write logs
-pub fn default<W>(io : W) -> slog_json::Json<W>
+pub fn default<W>(io: W) -> slog_json::Json<W>
     where
-        W : io::Write {
+        W: io::Write {
     new_with_ts_fn(io, |_: &Record| chrono::Local::now().to_rfc3339()).build()
 }
 

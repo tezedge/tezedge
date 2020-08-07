@@ -118,7 +118,7 @@ impl SequenceGenerator {
                 break seq;
             } else {
                 // wait until seq_available is positive number again
-                let _ = self.guard.1.wait_while(self.guard.0.lock()?, |_| self.seq_available.load(Ordering::SeqCst) <= 0)?;
+                let _lock = self.guard.1.wait_while(self.guard.0.lock()?, |_| self.seq_available.load(Ordering::SeqCst) <= 0)?;
             }
         };
 

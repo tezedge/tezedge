@@ -9,13 +9,13 @@ pub struct BigInt(pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for BigInt {
     fn from(from: num_bigint::BigInt) -> Self {
-        BigInt(from.clone())
+        BigInt(from)
     }
 }
 
 impl From<BigInt> for num_bigint::BigInt {
     fn from(from: BigInt) -> Self {
-        from.0.clone()
+        from.0
     }
 }
 

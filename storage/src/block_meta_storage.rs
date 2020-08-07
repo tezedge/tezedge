@@ -52,7 +52,6 @@ impl BlockMetaStorage {
                                 "new_predecessor" => block_hash_encoding.bytes_to_string(&block_predecessor)
                             );
                         }
-                        ()
                     }
                 };
 
@@ -90,7 +89,6 @@ impl BlockMetaStorage {
                                 "new_successor" => block_hash_encoding.bytes_to_string(&block_hash)
                             );
                         }
-                        ()
                     }
                 };
 
@@ -134,18 +132,16 @@ impl BlockMetaStorage {
 impl BlockMetaStorageReader for BlockMetaStorage {
     fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError> {
         self.iter(IteratorMode::End)
-            .and_then(|meta_iterator|
-                Ok(
-                    meta_iterator
-                        // unwrap a tuple of Result
-                        .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
-                        // we are interested in applied blocks only
-                        .filter(|(_, meta)| meta.is_applied())
-                        // get block with the highest level
-                        .max_by_key(|(_, meta)| meta.level())
-                        // get data for the block
-                        .map(|(block_hash, meta)| (block_hash, meta.level()))
-                )
+            .map(|meta_iterator|
+                meta_iterator
+                    // unwrap a tuple of Result
+                    .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
+                    // we are interested in applied blocks only
+                    .filter(|(_, meta)| meta.is_applied())
+                    // get block with the highest level
+                    .max_by_key(|(_, meta)| meta.level())
+                    // get data for the block
+                    .map(|(block_hash, meta)| (block_hash, meta.level()))
             )
     }
 }

@@ -58,7 +58,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
 
     fn has_broken(&mut self) -> bool {
         let is_subprocess_running = Runner::is_running(&mut self.subprocess);
-        is_subprocess_running == false
+        !is_subprocess_running
     }
 
     pub fn terminate_subprocess(&mut self) {
@@ -167,10 +167,10 @@ impl<Runner: ProtocolRunner + 'static> CustomizeConnection<ProtocolRunnerConnect
             Err(e) => {
                 error!(conn.log, "Failed to initialize readonly context (so terminate sub-process)"; "name" => conn.name.clone(), "reason" => format!("{:?}", &e));
                 conn.terminate_subprocess();
-                return Err(PoolError::InitContextError {
+                Err(PoolError::InitContextError {
                     message: String::from("readonly_context"),
                     error: e,
-                });
+                })
             }
         }
     }

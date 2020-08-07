@@ -27,7 +27,7 @@ pub enum UniversalValue {
     /// Ocaml RPC formats i64 as string
     NumberI64(i64),
     BigNumber(BigInt),
-    List(Vec<Box<UniversalValue>>),
+    List(Vec<UniversalValue>),
     String(String),
     TimestampRfc3339(i64),
 }
@@ -54,25 +54,25 @@ impl UniversalValue {
     }
 
     fn i64_list(val: Vec<i64>) -> Self {
-        let mut ret: Vec<Box<UniversalValue>> = Default::default();
+        let mut ret: Vec<UniversalValue> = Default::default();
         for x in val {
-            ret.push(Box::new(Self::i64(x)))
+            ret.push(Self::i64(x))
         }
         Self::List(ret)
     }
 
     fn num_list<'a, T: 'a + Into<i32> + Clone, I: IntoIterator<Item=&'a T>>(val: I) -> Self {
-        let mut ret: Vec<Box<UniversalValue>> = Default::default();
+        let mut ret: Vec<UniversalValue> = Default::default();
         for x in val {
-            ret.push(Box::new(Self::num(x.clone())))
+            ret.push(Self::num(x.clone()))
         }
         Self::List(ret)
     }
 
-    fn big_num_list<'a, I: IntoIterator<Item=BigInt>>(val: I) -> Self {
-        let mut ret: Vec<Box<UniversalValue>> = Default::default();
+    fn big_num_list<I: IntoIterator<Item=BigInt>>(val: I) -> Self {
+        let mut ret: Vec<UniversalValue> = Default::default();
         for x in val {
-            ret.push(Box::new(Self::big_num(x.clone())))
+            ret.push(Self::big_num(x.clone()))
         }
         Self::List(ret)
     }
@@ -88,7 +88,7 @@ impl Serialize for UniversalValue {
                 serializer.serialize_str(&format!("{}", num.0))
             }
             UniversalValue::Number(num) => {
-                serializer.serialize_i32(num.clone())
+                serializer.serialize_i32(*num)
             }
             UniversalValue::NumberI64(num) => {
                 serializer.serialize_str(num.to_string().as_str())
@@ -97,7 +97,7 @@ impl Serialize for UniversalValue {
                 serializer.serialize_str(val.as_str())
             }
             UniversalValue::TimestampRfc3339(val) => {
-                let timestamp = ts_to_rfc3339(val.clone());
+                let timestamp = ts_to_rfc3339(*val);
                 serializer.serialize_str(timestamp.as_str())
             }
             UniversalValue::List(values) => {

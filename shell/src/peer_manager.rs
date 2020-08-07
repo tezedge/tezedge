@@ -204,7 +204,7 @@ impl PeerManager {
             socket_address,
         ).unwrap();
 
-        self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: socket_address.clone() });
+        self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: *socket_address });
 
         self.network_channel.tell(
             Publish {
@@ -355,7 +355,7 @@ impl Receive<SystemEvent> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
         if let SystemEvent::ActorTerminated(evt) = msg {
-            if let Some(_) = self.peers.remove(evt.actor.uri()) {
+            if self.peers.remove(evt.actor.uri()).is_some() {
                 self.trigger_check_peer_count(ctx);
             }
         }
@@ -421,7 +421,6 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                             // to a bootstrap message we will respond with list of potential peers
                             info!(ctx.system.log(), "Received bootstrap message"; "peer" => received.peer.name());
                             let addresses = self.peers.values()
-                                .into_iter()
                                 .filter(|peer_state| peer_state.peer_ref != received.peer)
                                 .map(|peer_state| peer_state.address)
                                 .collect::<Vec<_>>();
