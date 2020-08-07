@@ -95,18 +95,11 @@ pub struct ApplyBlockRequest {
 }
 
 impl ApplyBlockRequest {
-    pub fn convert_operations(block_operations: &[Option<OperationsForBlocksMessage>]) -> Vec<Vec<Operation>> {
-        let mut operations = Vec::with_capacity(block_operations.len());
-
-        for block_ops in block_operations {
-            if let Some(bo_ops) = block_ops {
-                operations.push(bo_ops.operations().clone());
-            } else {
-                operations.push(vec![]);
-            }
-        }
-
-        operations
+    pub fn convert_operations(block_operations: Vec<OperationsForBlocksMessage>) -> Vec<Vec<Operation>> {
+        block_operations
+            .into_iter()
+            .map(|ops| ops.operations)
+            .collect()
     }
 }
 

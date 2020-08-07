@@ -33,7 +33,7 @@ impl BlockMetaStorage {
     }
 
     /// Create new metadata record in storage from given block header
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: Logger) -> Result<(), StorageError> {
+    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {

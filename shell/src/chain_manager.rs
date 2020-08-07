@@ -387,7 +387,7 @@ impl ChainManager {
                                             peer.block_response_last = Instant::now();
 
                                             let is_new_block =
-                                                chain_state.process_block_header(&block_header_with_hash, log.clone())
+                                                chain_state.process_block_header(&block_header_with_hash, &log)
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
 
                                             if is_new_block {
@@ -611,7 +611,7 @@ impl ChainManager {
                 let log = ctx.system.log().new(slog::o!("injection" => "block".to_string()));
 
                 let is_new_block =
-                    self.chain_state.process_block_header(&block_header_with_hash, log.clone())
+                    self.chain_state.process_block_header(&block_header_with_hash, &log)
                         .and(self.operations_state.process_block_header(&block_header_with_hash))?;
 
                 if is_new_block {

@@ -269,10 +269,7 @@ fn feed_chain_to_protocol(
                             // available. If yes we will apply them. If not, we will do nothing.
                             if operations_meta_storage.is_complete(&current_head.hash)? {
                                 debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
-                                let operations = operations_storage.get_operations(&current_head_hash)?
-                                    .drain(..)
-                                    .map(Some)
-                                    .collect();
+                                let operations = operations_storage.get_operations(&current_head_hash)?;
 
                                 // apply block and it's operations
                                 let (predecessor, predecessor_additional_data) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
@@ -289,7 +286,7 @@ fn feed_chain_to_protocol(
                                         chain_id: init_storage_data.chain_id.clone(),
                                         block_header: (&*current_head.header).clone(),
                                         pred_header: (&*predecessor.header).clone(),
-                                        operations: ApplyBlockRequest::convert_operations(&operations),
+                                        operations: ApplyBlockRequest::convert_operations(operations),
                                         max_operations_ttl: predecessor_additional_data.max_operations_ttl() as i32,
                                     }
                                 )?;

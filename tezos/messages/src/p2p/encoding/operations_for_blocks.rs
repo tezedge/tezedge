@@ -51,7 +51,7 @@ pub struct OperationsForBlocksMessage {
     #[get = "pub"]
     operation_hashes_path: Path,
     #[get = "pub"]
-    operations: Vec<Operation>,
+    pub operations: Vec<Operation>,
     #[serde(skip_serializing)]
     body: BinaryDataCache,
 }

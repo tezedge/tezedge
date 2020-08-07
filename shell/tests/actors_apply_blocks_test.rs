@@ -319,7 +319,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
             header: Arc::new(header),
         };
         block_storage.put_block_header(&block)?;
-        block_meta_storage.put_block_header(&block, &chain_id, log.clone())?;
+        block_meta_storage.put_block_header(&block, &chain_id, &log)?;
         operations_meta_storage.put_block_header(&block, &chain_id)?;
 
         // store operations to db
