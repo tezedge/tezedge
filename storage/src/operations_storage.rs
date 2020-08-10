@@ -3,13 +3,13 @@
 
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
+use rocksdb::{ColumnFamilyDescriptor, SliceTransform};
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::StorageError;
 
 pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
@@ -47,7 +47,6 @@ impl OperationsStorage {
 }
 
 impl OperationsStorageReader for OperationsStorage {
-
     #[inline]
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError> {
         self.kv.get(key)
@@ -58,7 +57,7 @@ impl OperationsStorageReader for OperationsStorage {
     fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
         let key = OperationKey {
             block_hash: block_hash.clone(),
-            validation_pass: 0
+            validation_pass: 0,
         };
 
         let mut operations = vec![];
@@ -77,7 +76,7 @@ impl KeyValueSchema for OperationsStorage {
     type Value = OperationsForBlocksMessage;
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(HashType::BlockHash.size()));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
@@ -99,7 +98,7 @@ impl OperationKey {
     pub fn new(block_hash: &BlockHash, validation_pass: u8) -> Self {
         OperationKey {
             block_hash: block_hash.clone(),
-            validation_pass
+            validation_pass,
         }
     }
 }
@@ -108,7 +107,7 @@ impl<'a> From<&'a OperationsForBlock> for OperationKey {
     fn from(ops: &'a OperationsForBlock) -> Self {
         OperationKey {
             block_hash: ops.hash().clone(),
-            validation_pass: if ops.validation_pass() >= 0 { ops.validation_pass() as u8 } else { 0 }
+            validation_pass: if ops.validation_pass() >= 0 { ops.validation_pass() as u8 } else { 0 },
         }
     }
 }

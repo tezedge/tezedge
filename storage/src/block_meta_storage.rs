@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands};
 use slog::{Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
@@ -12,7 +12,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
@@ -57,7 +57,7 @@ impl BlockMetaStorage {
 
                 meta.predecessor = Some(block_predecessor);
                 self.put(&block_header.hash, &meta)?;
-            },
+            }
             None => {
                 let meta = Meta {
                     is_applied: false,
@@ -94,7 +94,7 @@ impl BlockMetaStorage {
 
                 meta.successor = Some(block_hash);
                 self.put(block_header.header.predecessor(), &meta)?;
-            },
+            }
             None => {
                 let meta = Meta {
                     is_applied: false,
@@ -275,7 +275,7 @@ impl KeyValueSchema for BlockMetaStorage {
     type Value = Meta;
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -309,7 +309,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
                     val.splice(IDX_SUCCESSOR..IDX_LEVEL, op[IDX_SUCCESSOR..IDX_LEVEL].iter().cloned());
                 }
                 assert_eq!(LEN_META, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", LEN_META, val.len());
-            },
+            }
             None => result = Some(op.to_vec())
         }
     }
@@ -363,7 +363,7 @@ mod tests {
                     chain_id: chain_id.clone(),
                 };
                 assert_eq!(expected, value);
-            },
+            }
             _ => panic!("value not present"),
         }
 
@@ -405,7 +405,7 @@ mod tests {
                     chain_id: vec![44; 4],
                 };
                 assert_eq!(expected, value);
-            },
+            }
             _ => panic!("value not present"),
         }
 
@@ -453,7 +453,7 @@ mod tests {
                         chain_id: vec![44; 4],
                     };
                     assert_eq!(expected, value);
-                },
+                }
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
             }
