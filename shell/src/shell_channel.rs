@@ -69,7 +69,7 @@ pub struct CurrentMempoolState {
 #[derive(Clone, Debug)]
 pub struct InjectBlock {
     pub block_header: BlockHeader,
-    // TODO TE-196 - need an operations field? we'll see
+    pub operations: Option<Vec<Vec<Operation>>>,
 }
 
 /// Shell channel event message.

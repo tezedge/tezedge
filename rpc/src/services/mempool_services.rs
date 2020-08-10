@@ -154,7 +154,7 @@ pub fn inject_operation(
 
 pub fn inject_block(
     injection_data: &str,
-    _persistent_storage: &PersistentStorage,
+    persistent_storage: &PersistentStorage,
     _state: &RpcCollectedStateRef,
     shell_channel: ShellChannelRef,
     _log: &Logger) -> Result<String, failure::Error> {
@@ -165,25 +165,43 @@ pub fn inject_block(
 
     let injected_level = header.level();
 
+    let block_hash = HashType::BlockHash.bytes_to_string(&header.message_hash().unwrap());
+    let opers = if injected_level > 1 {
+        let block_with_op: InjectedBlockWithOperations = serde_json::from_value(injection_data_json)?;
+        Some(block_with_op.operations)
+    } else {
+        None
+    };
+
     shell_channel.tell(
         Publish {
             msg: InjectBlock {
                 block_header: header.clone(),
+                operations: opers,
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
 
     // handle injected operations - WARNING - special case for level 1, when protocol is "activated"
-    if injected_level > 1 {
-        println!("Op RAW: {:?}", injection_data_json["operations"].to_string());
+    // if injected_level > 1 {
+    //     println!("Op RAW: {:?}", injection_data_json["operations"].to_string());
 
-        let block_with_op: InjectedBlockWithOperations = serde_json::from_value(injection_data_json)?;
-        let validation_passes = block_with_op.operations.len();
+    //     let block_with_op: InjectedBlockWithOperations = serde_json::from_value(injection_data_json)?;
+    //     // let validation_passes = block_with_op.operations.len();
+
+    //     // store operations to db
+    //     let operations = block_with_op.operations.clone();
+    //     for (idx, ops) in operations.iter().enumerate() {
+    //         let opb = OperationsForBlock::new(header.message_hash().unwrap(), idx as i8);
+    //         let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, Path::Op, ops.clone());
+    //         operations_storage.put_operations(&msg)?;
+    //         operations_meta_storage.put_operations(&msg)?;
+    //     }
         
-        //println!("Op: {:?}", operations);
-    } 
+    //     //println!("Op: {:?}", operations);
+    // } 
 
-    Ok(HashType::BlockHash.bytes_to_string(&header.message_hash().unwrap()))
+    Ok(block_hash)
 }
 
 #[cfg(test)]

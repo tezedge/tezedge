@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::Error;
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, info, trace, warn};
+use slog::{debug, info, trace, warn, crit};
 
 use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
@@ -447,6 +447,7 @@ impl ChainManager {
                                                 trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
 
                                                 if operations_state.process_block_operations(&operations)? {
+                                                    println!("OPS: {:?}", &operations);
                                                     // update stats
                                                     stats.unseen_block_operations_last = Instant::now();
 
@@ -615,6 +616,7 @@ impl ChainManager {
                         .and(self.operations_state.process_block_header(&block_header_with_hash))?;
 
                 if is_new_block {
+                    crit!(log, "NEW BLOCK DETECTED VIA INJECTION RPC!!!");
                     // update stats
                     self.stats.unseen_block_last = Instant::now();
                     self.stats.unseen_block_count += 1;
@@ -631,6 +633,35 @@ impl ChainManager {
                             }.into(),
                             topic: ShellChannelTopic::ShellEvents.into(),
                         }, Some(ctx.myself().into()));
+
+                    if inject_data.block_header.level() > 1 {
+                        // safe unwrap after above first block
+                        let operations = inject_data.operations.clone().unwrap();
+                        let header = inject_data.block_header.clone();
+                        for (idx, ops) in operations.iter().enumerate() {
+                            let opb = OperationsForBlock::new(header.message_hash().unwrap(), idx as i8);
+                            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, Path::Op, ops.clone());
+                            if self.operations_state.process_block_operations(&msg)? {
+                                //println!("OPS: {:?}", &operations);
+                                // update stats
+                                self.stats.unseen_block_operations_last = Instant::now();
+
+                                // trigger CheckChainCompleteness
+                                ctx.myself().tell(CheckChainCompleteness, None);
+
+                                // notify others that new all operations for block were received
+                                let block = self.block_storage.get(&header.message_hash().unwrap())?.ok_or(StorageError::MissingKey)?;
+                                self.shell_channel.tell(
+                                    Publish {
+                                        msg: AllBlockOperationsReceived {
+                                            hash: block.hash,
+                                            level: block.header.level(),
+                                        }.into(),
+                                        topic: ShellChannelTopic::ShellEvents.into(),
+                                    }, Some(ctx.myself().into()));
+                            }
+                        }
+                    }
                 }
             }
             ShellChannelMsg::ShuttingDown(_) => {
