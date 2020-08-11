@@ -848,7 +848,7 @@ lazy_static! {
             Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),
             Field::new("ffi_service", Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[
+                    TagMap::new(vec![
                         Tag::new(0, "HelpersRunOperation", Encoding::Unit),
                         Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
                         Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),

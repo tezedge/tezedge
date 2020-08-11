@@ -67,7 +67,7 @@ impl NackInfo {
             vec![
                 Field::new("motive", Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[
+                    TagMap::new(vec![
                         Tag::new(0, "NoMotive", Encoding::Unit),
                         Tag::new(1, "TooManyConnections", Encoding::Unit),
                         Tag::new(2, "UnknownChainName", Encoding::Unit),
@@ -86,7 +86,7 @@ non_cached_data!(AckMessage);
 has_encoding!(AckMessage, ACK_MESSAGE_ENCODING, {
         Encoding::Tags(
             size_of::<u8>(),
-            TagMap::new(&[
+            TagMap::new(vec![
                 Tag::new(0x00, "Ack", Encoding::Unit),
                 Tag::new(0x01, "Nack", NackInfo::encoding()),
                 Tag::new(0xFF, "NackV0", Encoding::Unit),

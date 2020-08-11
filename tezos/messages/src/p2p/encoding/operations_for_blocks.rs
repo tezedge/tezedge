@@ -125,7 +125,7 @@ pub enum Path {
 pub fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
-        TagMap::new(&[
+        TagMap::new(vec![
             Tag::new(0xF0, "Left", Encoding::Lazy(Arc::new(|| PathLeft::encoding().clone()))),
             Tag::new(0x0F, "Right", Encoding::Lazy(Arc::new(|| PathRight::encoding().clone()))),
             Tag::new(0x00, "Op", Encoding::Unit),

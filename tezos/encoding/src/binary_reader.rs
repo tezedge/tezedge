@@ -417,7 +417,7 @@ mod tests {
             Field::new("messages", Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
+                    TagMap::new(vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
                 )
             )))
         ];

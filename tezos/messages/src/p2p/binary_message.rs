@@ -176,7 +176,6 @@ pub mod cache {
 /// Binary messages could be written by a [`MessageWriter`](super::stream::MessageWriter).
 /// To read binary encoding use  [`MessageReader`](super::stream::MessageReader).
 pub trait BinaryMessage: Sized {
-
     /// Produce bytes from the struct.
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error>;
 
@@ -186,13 +185,12 @@ pub trait BinaryMessage: Sized {
 
 impl<T> BinaryMessage for T
     where T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized {
-
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error> {
         // check cache at first
         if let Some(cache) = self.cache_reader() {
             if let Some(data) = cache.get() {
-                return Ok(data)
+                return Ok(data);
             }
         }
 
@@ -216,17 +214,16 @@ impl<T> BinaryMessage for T
 
 /// Represents binary raw encoding received from peer node.
 ///
-/// Difference from [`BinaryMessage`] is that it also contains [`MESSAGE_LENGTH_FIELD_SIZE`] bytes
+/// Difference from [`BinaryMessage`] is that it also contains [`CONTENT_LENGTH_FIELD_BYTES`] bytes
 /// of information about how many bytes is the actual encoding.
 pub struct BinaryChunk(Vec<u8>);
 
 impl BinaryChunk {
-
     /// Create new `BinaryChunk` from input content.
     pub fn from_content(content: &[u8]) -> Result<BinaryChunk, BinaryChunkError> {
         if content.len() <= CONTENT_LENGTH_MAX {
             // add length
-            let mut bytes = vec![];
+            let mut bytes = Vec::with_capacity(CONTENT_LENGTH_FIELD_BYTES + content.len());
             // adds MESSAGE_LENGTH_FIELD_SIZE -- 2 bytes with length of the content
             bytes.put_u16(content.len() as u16);
             // append data
@@ -288,14 +285,12 @@ impl TryFrom<Vec<u8>> for BinaryChunk {
 
 /// Trait for json encoding to implement.
 pub trait JsonMessage {
-
     /// Produce JSON from the struct.
     fn as_json(&self) -> Result<String, ser::Error>;
 }
 
 impl<T> JsonMessage for T
     where T: HasEncoding + Serialize + Sized {
-
     #[inline]
     fn as_json(&self) -> Result<String, ser::Error> {
         let mut writer = JsonWriter::new();
@@ -328,5 +323,30 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
         Ok(blake2b::digest_256(&bytes))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_binary_from_content() -> Result<(), failure::Error> {
+        let chunk = BinaryChunk::from_content(&[])?.0;
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES, chunk.len());
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES, chunk.capacity());
+
+        let chunk = BinaryChunk::from_content(&[1])?.0;
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 1, chunk.len());
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 1, chunk.capacity());
+
+        let chunk = BinaryChunk::from_content(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])?.0;
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 15, chunk.len());
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 15, chunk.capacity());
+
+        let chunk = BinaryChunk::from_content(&[1; CONTENT_LENGTH_MAX])?.0;
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + CONTENT_LENGTH_MAX, chunk.len());
+        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + CONTENT_LENGTH_MAX, chunk.capacity());
+        Ok(())
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Serde Serializer
+//! Inspired by https://serde.rs/impl-serializer.html
 
 use std::error;
 use std::fmt;
@@ -73,12 +74,14 @@ pub struct Serializer {}
 
 pub struct SeqSerializer {
     items: Vec<Value>,
+    base_serializer: Serializer,
 }
 
 pub struct MapSerializer {}
 
 pub struct StructSerializer {
     fields: Vec<(String, Value)>,
+    base_serializer: Serializer,
 }
 
 impl SeqSerializer {
@@ -88,7 +91,10 @@ impl SeqSerializer {
             None => Vec::new(),
         };
 
-        SeqSerializer { items }
+        SeqSerializer {
+            items,
+            base_serializer: Serializer::default(),
+        }
     }
 }
 
@@ -96,6 +102,7 @@ impl StructSerializer {
     pub fn new(len: usize) -> StructSerializer {
         StructSerializer {
             fields: Vec::with_capacity(len),
+            base_serializer: Serializer::default(),
         }
     }
 }
@@ -184,7 +191,7 @@ impl<'b> ser::Serializer for &'b mut Serializer {
         where
             T: Serialize,
     {
-        let v = value.serialize(&mut Serializer::default())?;
+        let v = value.serialize(self)?;
         Ok(Value::Option(Some(Box::new(v))))
     }
 
@@ -294,7 +301,7 @@ impl<'a> ser::SerializeSeq for SeqSerializer {
             T: Serialize,
     {
         self.items
-            .push(value.serialize(&mut Serializer::default())?);
+            .push(value.serialize(&mut self.base_serializer)?);
         Ok(())
     }
 
@@ -388,7 +395,7 @@ impl ser::SerializeStruct for StructSerializer {
     {
         self.fields.push((
             name.to_owned(),
-            value.serialize(&mut Serializer::default())?,
+            value.serialize(&mut self.base_serializer)?,
         ));
         Ok(())
     }

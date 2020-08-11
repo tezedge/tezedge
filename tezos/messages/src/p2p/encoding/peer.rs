@@ -52,7 +52,7 @@ has_encoding!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
         Field::new("messages", Encoding::dynamic(Encoding::list(
             Encoding::Tags(
                 size_of::<u16>(),
-                TagMap::new(&[
+                TagMap::new(vec![
                     Tag::new(0x01, "Disconnect", Encoding::Unit),
                     Tag::new(0x02, "Bootstrap", Encoding::Unit),
                     Tag::new(0x03, "Advertise", AdvertiseMessage::encoding().clone()),
