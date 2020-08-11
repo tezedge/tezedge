@@ -27,5 +27,5 @@ tezos_messages = { path = "../tezos/messages" }
 hex = "0.4"
 rand = "0.7.3"
 maplit = "1.0"
-slog-async = "2.3"
-slog-term = "2.4"
+slog-async = "2.5"
+slog-term = "2.6"
