@@ -22,3 +22,9 @@ tezos_encoding = { path = "../encoding" }
 
 [dev-dependencies]
 assert-json-diff = "1.0.0"
+criterion = "0.3"
+
+[[bench]]
+name = "message_benchmark"
+harness = false
+
