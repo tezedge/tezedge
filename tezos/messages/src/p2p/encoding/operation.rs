@@ -7,7 +7,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, SchemaType};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -32,7 +32,7 @@ impl OperationMessage {
 impl HasEncoding for OperationMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("operation", Operation::encoding())
+            Field::new(FieldName::Operation, Operation::encoding())
         ])
     }
 }
@@ -72,8 +72,8 @@ impl Operation {
 impl HasEncoding for Operation {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("branch", Encoding::Hash(HashType::BlockHash)),
-            Field::new("data", Encoding::Split(Arc::new(|schema_type|
+            Field::new(FieldName::Branch, Encoding::Hash(HashType::BlockHash)),
+            Field::new(FieldName::Data, Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,
                     SchemaType::Binary => Encoding::list(Encoding::Uint8)
@@ -117,7 +117,7 @@ impl GetOperationsMessage {
 impl HasEncoding for GetOperationsMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_operations", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
+            Field::new(FieldName::GetOperations, Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
         ])
     }
 }

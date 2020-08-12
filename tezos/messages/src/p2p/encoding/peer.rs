@@ -7,7 +7,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap, TagVariant};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::prelude::*;
@@ -59,30 +59,30 @@ impl CachedData for PeerMessageResponse {
 
 lazy_static! {
     static ref ENCODING: Encoding = Encoding::Obj(vec![
-                Field::new("messages", Encoding::dynamic(Encoding::list(
+                Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                     Encoding::Tags(
                         size_of::<u16>(),
                         TagMap::new(&[
-                            Tag::new(0x01, "Disconnect", Encoding::Unit),
-                            Tag::new(0x02, "Bootstrap", Encoding::Unit),
-                            Tag::new(0x03, "Advertise", AdvertiseMessage::encoding()),
-                            Tag::new(0x04, "SwapRequest", SwapMessage::encoding()),
-                            Tag::new(0x05, "SwapAck", SwapMessage::encoding()),
-                            Tag::new(0x10, "GetCurrentBranch", GetCurrentBranchMessage::encoding()),
-                            Tag::new(0x11, "CurrentBranch", CurrentBranchMessage::encoding()),
-                            Tag::new(0x12, "Deactivate", DeactivateMessage::encoding()),
-                            Tag::new(0x13, "GetCurrentHead", GetCurrentHeadMessage::encoding()),
-                            Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding()),
-                            Tag::new(0x20, "GetBlockHeaders", GetBlockHeadersMessage::encoding()),
-                            Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding()),
-                            Tag::new(0x30, "GetOperations", GetOperationsMessage::encoding()),
-                            Tag::new(0x31, "Operation", OperationMessage::encoding()),
-                            Tag::new(0x40, "GetProtocols", GetProtocolsMessage::encoding()),
-                            Tag::new(0x41, "Protocol", ProtocolMessage::encoding()),
-                            Tag::new(0x50, "GetOperationHashesForBlocks", GetOperationHashesForBlocksMessage::encoding()),
-                            Tag::new(0x51, "OperationHashesForBlocks", OperationHashesForBlocksMessage::encoding()),
-                            Tag::new(0x60, "GetOperationsForBlocks", GetOperationsForBlocksMessage::encoding()),
-                            Tag::new(0x61, "OperationsForBlocks", OperationsForBlocksMessage::encoding()),
+                            Tag::new(0x01, TagVariant::Disconnect, Encoding::Unit),
+                            Tag::new(0x02, TagVariant::Bootstrap, Encoding::Unit),
+                            Tag::new(0x03, TagVariant::Advertise, AdvertiseMessage::encoding()),
+                            Tag::new(0x04, TagVariant::SwapRequest, SwapMessage::encoding()),
+                            Tag::new(0x05, TagVariant::SwapAck, SwapMessage::encoding()),
+                            Tag::new(0x10, TagVariant::GetCurrentBranch, GetCurrentBranchMessage::encoding()),
+                            Tag::new(0x11, TagVariant::CurrentBranch, CurrentBranchMessage::encoding()),
+                            Tag::new(0x12, TagVariant::Deactivate, DeactivateMessage::encoding()),
+                            Tag::new(0x13, TagVariant::GetCurrentHead, GetCurrentHeadMessage::encoding()),
+                            Tag::new(0x14, TagVariant::CurrentHead, CurrentHeadMessage::encoding()),
+                            Tag::new(0x20, TagVariant::GetBlockHeaders, GetBlockHeadersMessage::encoding()),
+                            Tag::new(0x21, TagVariant::BlockHeader, BlockHeaderMessage::encoding()),
+                            Tag::new(0x30, TagVariant::GetOperations, GetOperationsMessage::encoding()),
+                            Tag::new(0x31, TagVariant::Operation, OperationMessage::encoding()),
+                            Tag::new(0x40, TagVariant::GetProtocols, GetProtocolsMessage::encoding()),
+                            Tag::new(0x41, TagVariant::Protocol, ProtocolMessage::encoding()),
+                            Tag::new(0x50, TagVariant::GetOperationHashesForBlocks, GetOperationHashesForBlocksMessage::encoding()),
+                            Tag::new(0x51, TagVariant::OperationHashesForBlocks, OperationHashesForBlocksMessage::encoding()),
+                            Tag::new(0x60, TagVariant::GetOperationsForBlocks, GetOperationsForBlocksMessage::encoding()),
+                            Tag::new(0x61, TagVariant::OperationsForBlocks, OperationsForBlocksMessage::encoding()),
                         ])
                     )
                 )))

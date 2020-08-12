@@ -8,7 +8,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap, TagVariant};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter, NeverCache};
 use crate::p2p::encoding::operation::Operation;
@@ -38,8 +38,8 @@ impl OperationsForBlock {
 impl HasEncoding for OperationsForBlock {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
-            Field::new("validation_pass", Encoding::Int8),
+            Field::new(FieldName::Hash, Encoding::Hash(HashType::BlockHash)),
+            Field::new(FieldName::ValidationPass, Encoding::Int8),
         ])
     }
 }
@@ -83,9 +83,9 @@ impl OperationsForBlocksMessage {
 impl HasEncoding for OperationsForBlocksMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("operations_for_block", OperationsForBlock::encoding()),
-            Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operations", Encoding::list(Encoding::dynamic(Operation::encoding()))),
+            Field::new(FieldName::OperationsForBlock, OperationsForBlock::encoding()),
+            Field::new(FieldName::OperationHashesPath, path_encoding()),
+            Field::new(FieldName::Operations, Encoding::list(Encoding::dynamic(Operation::encoding()))),
         ])
     }
 }
@@ -116,8 +116,8 @@ pub struct PathRight {
 impl HasEncoding for PathRight {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("left", Encoding::Hash(HashType::OperationListListHash)),
-            Field::new("path", path_encoding()),
+            Field::new(FieldName::Left, Encoding::Hash(HashType::OperationListListHash)),
+            Field::new(FieldName::Path, path_encoding()),
         ])
     }
 }
@@ -148,8 +148,8 @@ pub struct PathLeft {
 impl HasEncoding for PathLeft {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("path", path_encoding()),
-            Field::new("right", Encoding::Hash(HashType::OperationListListHash)),
+            Field::new(FieldName::Path, path_encoding()),
+            Field::new(FieldName::Right, Encoding::Hash(HashType::OperationListListHash)),
         ])
     }
 }
@@ -178,9 +178,9 @@ pub fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(&[
-            Tag::new(0xF0, "Left", Encoding::Lazy(Arc::new(PathLeft::encoding))),
-            Tag::new(0x0F, "Right", Encoding::Lazy(Arc::new(PathRight::encoding))),
-            Tag::new(0x00, "Op", Encoding::Unit),
+            Tag::new(0xF0, TagVariant::Left, Encoding::Lazy(Arc::new(PathLeft::encoding))),
+            Tag::new(0x0F, TagVariant::Right, Encoding::Lazy(Arc::new(PathRight::encoding))),
+            Tag::new(0x00, TagVariant::Op, Encoding::Unit),
         ])
     )
 }
@@ -216,7 +216,7 @@ impl GetOperationsForBlocksMessage {
 impl HasEncoding for GetOperationsForBlocksMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_operations_for_blocks", Encoding::dynamic(Encoding::list(OperationsForBlock::encoding()))),
+            Field::new(FieldName::GetOperationsForBlocks, Encoding::dynamic(Encoding::list(OperationsForBlock::encoding()))),
         ])
     }
 }

@@ -5,7 +5,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Serialize, Deserialize};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::prelude::Path;
@@ -32,7 +32,7 @@ impl GetOperationHashesForBlocksMessage {
 impl HasEncoding for GetOperationHashesForBlocksMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding()))),
+            Field::new(FieldName::GetOperationHashesForBlocks, Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding()))),
         ])
     }
 }
@@ -77,9 +77,9 @@ impl OperationHashesForBlocksMessage {
 impl HasEncoding for OperationHashesForBlocksMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding()),
-            Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operation_hashes", Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
+            Field::new(FieldName::OperationHashesForBlock, OperationHashesForBlock::encoding()),
+            Field::new(FieldName::OperationHashesPath, path_encoding()),
+            Field::new(FieldName::OperationHashes, Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
         ])
     }
 }
@@ -121,8 +121,8 @@ impl OperationHashesForBlock {
 impl HasEncoding for OperationHashesForBlock {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
-            Field::new("validation_pass", Encoding::Int8),
+            Field::new(FieldName::Hash, Encoding::Hash(HashType::BlockHash)),
+            Field::new(FieldName::ValidationPass, Encoding::Int8),
         ])
     }
 }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use getset::Getters;
 
 use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
+    encoding::{Encoding, Field, FieldName, HasEncoding},
     types::BigInt,
 };
 
@@ -41,7 +41,7 @@ impl CachedData for Counter {
 impl HasEncoding for Counter {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("counter", Encoding::Z)
+            Field::new(FieldName::Counter, Encoding::Z)
         ])
     }
 }
