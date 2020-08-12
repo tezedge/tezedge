@@ -19,7 +19,8 @@ use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
+use tezos_messages::p2p::encoding::operations_for_blocks::path_encoding;
 
 pub type RustBytes = Vec<u8>;
 
@@ -905,6 +906,77 @@ impl From<CallError> for ProtocolRpcError {
                 message
             },
             CallError::InvalidResponseData { message } => ProtocolRpcError::InvalidResponseData {
+                message
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ComputePathRequest {
+    pub operations: Vec<Vec<OperationHash>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ComputePathResponse {
+    pub operations_hashes_path: Vec<Path>,
+}
+
+lazy_static! {
+    pub static ref COMPUTE_PATH_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))))),
+    ]);
+}
+
+lazy_static! {
+    pub static ref COMPUTE_PATH_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("operations_hashes_path", Encoding::dynamic(Encoding::list(path_encoding()))),
+    ]);
+}
+
+impl FfiMessage for ComputePathRequest {
+    fn encoding() -> &'static Encoding {
+        &COMPUTE_PATH_REQUEST_ENCODING
+    }
+}
+
+impl FfiMessage for ComputePathResponse {
+    fn encoding() -> &'static Encoding {
+        &COMPUTE_PATH_RESPONSE_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum ComputePathError {
+    #[fail(display = "Path computation failed, message: {}!", message)]
+    PathError {
+        message: String
+    },
+    #[fail(display = "Path computation failed, message: {}!", message)]
+    InvalidRequestResponseData {
+        message: String
+    },
+}
+
+impl From<CallError> for ComputePathError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { parsed_error_message } => {
+                match parsed_error_message {
+                    None => ComputePathError::PathError {
+                        message: "unknown".to_string()
+                    },
+                    Some(message) => {
+                        ComputePathError::PathError {
+                            message: message.to_string()
+                        }
+                    }
+                }
+            }
+            CallError::InvalidRequestData { message } => ComputePathError::InvalidRequestResponseData {
+                message
+            },
+            CallError::InvalidResponseData { message } => ComputePathError::InvalidRequestResponseData {
                 message
             },
         }

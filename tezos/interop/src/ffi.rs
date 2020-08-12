@@ -244,6 +244,11 @@ pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<Result<
     call(String::from("helpers_preapply_block"), request)
 }
 
+/// Call compute path
+pub fn compute_path(request: ComputePathRequest) -> Result<Result<ComputePathResponse, CallError>, OcamlError> {
+    call(String::from("compute_path"), request)
+}
+
 pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
     runtime::execute(move || {
         let ocaml_function = ocaml::named_value("generate_identity").expect("function 'generate_identity' is not registered");

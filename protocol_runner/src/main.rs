@@ -118,9 +118,9 @@ fn main() {
 
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse, ComputePathError, ComputePathRequest, ComputePathResponse};
     use tezos_api::identity::Identity;
-    use tezos_client::client::{apply_block, begin_construction, call_protocol_json_rpc, change_runtime_configuration, generate_identity, genesis_result_data, helpers_preapply_block, helpers_preapply_operations, init_protocol_context, validate_operation};
+    use tezos_client::client::{apply_block, begin_construction, call_protocol_json_rpc, change_runtime_configuration, generate_identity, genesis_result_data, helpers_preapply_block, helpers_preapply_operations, init_protocol_context, validate_operation, compute_path};
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
@@ -148,6 +148,10 @@ mod tezos {
 
         fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
             helpers_preapply_block(request)
+        }
+
+        fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError> {
+            compute_path(request)
         }
 
         fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {

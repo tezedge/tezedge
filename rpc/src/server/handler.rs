@@ -232,7 +232,7 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
     let shell_channel = env.shell_channel();
 
     result_to_json_response(
-        services::mempool_services::inject_block(&body, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        services::mempool_services::inject_block(&body, &env, shell_channel.clone()),
         env.log(),
     )
 }
@@ -337,7 +337,7 @@ pub async fn minimal_valid_time(req: Request<Body>, params: Params, _: Query, en
     )
 }
 
-pub async fn live_blocks(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn live_blocks(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
@@ -377,17 +377,6 @@ pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcService
         env.log(),
     )
 }
-
-// pub async fn level_info(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-//     let _chain_param = params.get_str("chain_id").unwrap();
-//     let block_param = params.get_str("block_id").unwrap();
-//     let offset = query.get_str("offset");
-
-//     result_to_json_response(
-//         services::protocol::get_level_info(block_param, offset, &env),
-//         env.log(),
-//     )
-// }
 
 async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRpcRequest, failure::Error> {
     let context_path = req.uri().path_and_query().unwrap().as_str().to_string();

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use failure::{Error, Fail};
 use riker::actors::*;
-use slog::{debug, info, Logger, trace, warn, crit};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
@@ -329,7 +329,6 @@ fn feed_chain_to_protocol(
                                 }
                             } else {
                                 // we don't have all operations available, do nothing
-                                crit!(log, "Oops operations still missing")
                             }
                         }
                         None => ( /* it's possible that data was not yet written do the storage, so don't panic! */ )

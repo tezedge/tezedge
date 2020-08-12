@@ -58,6 +58,16 @@ impl Operation {
     }
 }
 
+impl From<DecodedOperation> for Operation {
+    fn from(dop: DecodedOperation) -> Operation {
+        Operation {
+            branch: HashType::BlockHash.string_to_bytes(&dop.branch).unwrap(),
+            data: hex::decode(&dop.data).unwrap(),
+            body: Default::default(),
+        }
+    }
+}
+
 cached_data!(Operation, body);
 has_encoding!(Operation, OPERATION_ENCODING, {
         Encoding::Obj(vec![
@@ -70,6 +80,22 @@ has_encoding!(Operation, OPERATION_ENCODING, {
             )))
         ])
 });
+
+// -----------------------------------------------------------------------------------------------
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct DecodedOperation {
+    pub branch: String,
+    pub data: String,
+}
+
+impl From<Operation> for DecodedOperation {
+    fn from(op: Operation) -> DecodedOperation {
+        DecodedOperation {
+            branch: HashType::BlockHash.bytes_to_string(&op.branch()),
+            data: hex::encode(op.data()),
+        }
+    }
+}
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]

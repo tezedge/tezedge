@@ -246,7 +246,6 @@ impl BlockStorageReader for BlockStorage {
 
     #[inline]
     fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError> {
-        // TODO: include the genesis block as well
         let live_blocks: Option<Vec<String>> = self.by_level_index.get_blocks(level, max_ttl)?.iter()
             .map(|location| self.get_block_header_by_location(&location).map(|block_header| HashType::BlockHash.bytes_to_string(&block_header.hash)).ok())
             .collect();

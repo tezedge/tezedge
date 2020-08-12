@@ -12,11 +12,13 @@ use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellC
 use storage::mempool_storage::MempoolOperationType;
 use storage::MempoolStorage;
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{Applied, Errored};
+use tezos_api::ffi::{Applied, Errored, ComputePathRequest};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage, BlockHeader};
+use tezos_messages::p2p::encoding::operation::DecodedOperation;
 
 use crate::rpc_actor::RpcCollectedStateRef;
+use crate::server::RpcServiceEnvironment;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct MempoolOperations {
@@ -31,7 +33,7 @@ pub struct MempoolOperations {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct InjectedBlockWithOperations {
     pub data: String,
-    pub operations: Vec<Vec<Operation>>,
+    pub operations: Vec<Vec<DecodedOperation>>,
 }
 
 pub fn get_pending_operations(
@@ -154,53 +156,52 @@ pub fn inject_operation(
 
 pub fn inject_block(
     injection_data: &str,
-    persistent_storage: &PersistentStorage,
-    _state: &RpcCollectedStateRef,
-    shell_channel: ShellChannelRef,
-    _log: &Logger) -> Result<String, failure::Error> {
+    env: &RpcServiceEnvironment,
+    shell_channel: ShellChannelRef) -> Result<String, failure::Error> {
 
-    let injection_data_json: serde_json::Value = serde_json::from_str(injection_data)?;
+    let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
 
-    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(injection_data_json["data"].to_string().replace("\"", ""))?)?;
+    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?;
 
     let injected_level = header.level();
 
-    let block_hash = HashType::BlockHash.bytes_to_string(&header.message_hash().unwrap());
-    let opers = if injected_level > 1 {
-        let block_with_op: InjectedBlockWithOperations = serde_json::from_value(injection_data_json)?;
-        Some(block_with_op.operations)
+    let block_hash = HashType::BlockHash.bytes_to_string(&header.message_hash()?);
+
+    // special case for block on level 1 - has 0 validation passes
+    let validation_passes: Option<Vec<Vec<Operation>>> = if injected_level > 1 {
+        Some(block_with_op.operations.into_iter()
+            .map(|validation_pass| validation_pass.into_iter()
+                .map(|op| op.into())
+                .collect())
+            .collect())
     } else {
         None
     };
 
+    // compute the paths for each validation passes
+    let paths = if let Some(vps) = validation_passes.clone() {
+        let request = ComputePathRequest {
+            operations: vps.clone().iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
+        };
+        
+        let response = env.tezos_readonly_api().pool.get()?.api.compute_path(request)?;
+        Some(response.operations_hashes_path)
+    } else {
+        None
+    };
+
+    // notify other actors, that a block was injected
     shell_channel.tell(
         Publish {
             msg: InjectBlock {
                 block_header: header.clone(),
-                operations: opers,
+                operations: validation_passes,
+                operation_paths: paths,
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
 
-    // handle injected operations - WARNING - special case for level 1, when protocol is "activated"
-    // if injected_level > 1 {
-    //     println!("Op RAW: {:?}", injection_data_json["operations"].to_string());
-
-    //     let block_with_op: InjectedBlockWithOperations = serde_json::from_value(injection_data_json)?;
-    //     // let validation_passes = block_with_op.operations.len();
-
-    //     // store operations to db
-    //     let operations = block_with_op.operations.clone();
-    //     for (idx, ops) in operations.iter().enumerate() {
-    //         let opb = OperationsForBlock::new(header.message_hash().unwrap(), idx as i8);
-    //         let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, Path::Op, ops.clone());
-    //         operations_storage.put_operations(&msg)?;
-    //         operations_meta_storage.put_operations(&msg)?;
-    //     }
-        
-    //     //println!("Op: {:?}", operations);
-    // } 
-
+    // return the block hash to the caller
     Ok(block_hash)
 }
 

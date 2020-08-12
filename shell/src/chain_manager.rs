@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::Error;
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, info, trace, warn, crit};
+use slog::{debug, info, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
@@ -447,7 +447,6 @@ impl ChainManager {
                                                 trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
 
                                                 if operations_state.process_block_operations(&operations)? {
-                                                    println!("OPS: {:?}", &operations);
                                                     // update stats
                                                     stats.unseen_block_operations_last = Instant::now();
 
@@ -608,15 +607,16 @@ impl ChainManager {
                 }
             }
             ShellChannelMsg::InjectBlock(inject_data) => {
+                let level = inject_data.block_header.level();
                 let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header).unwrap();
                 let log = ctx.system.log().new(slog::o!("injection" => "block".to_string()));
 
+                // this should  allways return true, as we are injecting a forged new block
                 let is_new_block =
                     self.chain_state.process_block_header(&block_header_with_hash, &log)
-                        .and(self.operations_state.process_block_header(&block_header_with_hash))?;
+                        .and(self.operations_state.process_injected_block_header(&block_header_with_hash))?;
 
                 if is_new_block {
-                    crit!(log, "NEW BLOCK DETECTED VIA INJECTION RPC!!!");
                     // update stats
                     self.stats.unseen_block_last = Instant::now();
                     self.stats.unseen_block_count += 1;
@@ -624,7 +624,7 @@ impl ChainManager {
                     // trigger CheckChainCompleteness
                     ctx.myself().tell(CheckChainCompleteness, None);
 
-                    // notify others that new block was received
+                    // notify others that new block (header) was received
                     self.shell_channel.tell(
                         Publish {
                             msg: BlockReceived {
@@ -634,15 +634,23 @@ impl ChainManager {
                             topic: ShellChannelTopic::ShellEvents.into(),
                         }, Some(ctx.myself().into()));
 
-                    if inject_data.block_header.level() > 1 {
+                    // handle operations
+                    // Note: When injecting the first block with the protocol activation, there are no validation passes (therefore no operations)
+                    // so we handle operations only above level 1 
+                    if level > 1 {
                         // safe unwrap after above first block
                         let operations = inject_data.operations.clone().unwrap();
-                        let header = inject_data.block_header.clone();
+                        let header = block_header_with_hash.header;
+                        let op_paths = inject_data.operation_paths.clone().unwrap();
+
+                        // iterate through all validation passes 
                         for (idx, ops) in operations.iter().enumerate() {
                             let opb = OperationsForBlock::new(header.message_hash().unwrap(), idx as i8);
-                            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, Path::Op, ops.clone());
+
+                            // create OperationsForBlocksMessage - the operations are stored in DB as a OperationsForBlocksMessage per validation pass per block
+                            // e.g one block -> 4 validation passes -> 4 OperationsForBlocksMessage to store for the block
+                            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, op_paths.get(idx).unwrap().to_owned(), ops.clone());
                             if self.operations_state.process_block_operations(&msg)? {
-                                //println!("OPS: {:?}", &operations);
                                 // update stats
                                 self.stats.unseen_block_operations_last = Instant::now();
 

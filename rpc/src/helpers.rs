@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::pin::Pin;
-use std::cmp::max;
 
 use chrono::Utc;
 use failure::{bail, Fail};
@@ -393,97 +392,6 @@ impl NodeVersion {
                 commit_hash: UniString::from(env!("GIT_HASH")),
                 commit_date: UniString::from(env!("GIT_COMMIT_DATE")),
             },
-        }
-    }
-}
-// ---------------------------------------------------------------------
-
-/// A structure holding different representations of levels 
-#[derive(Serialize, Debug, Clone)]
-pub struct Level {
-    /// The level of the block relative to genesis
-    level: i32,
-    /// The level of the block relative to the block that starts protocol alpha. This is specific to the protocol alpha. Other protocols might
-    /// or might not include a similar notion.
-    level_position: i32,
-    /// The current cycle's number. Note that cycles are a protocol-specific
-    /// notion. As a result, the cycle number starts at 0 with the first
-    /// block of protocol alpha
-    cycle: i32,
-    /// The current level of the block relative to the first block of the current cycle
-    cycle_position: i32,
-    /// The current voting period's index. Note that cycles are a protocol-specific notion.
-    /// As a result, the voting period index starts at 0 with the first block of protocol alpha
-    voting_period: i32,
-    /// The current level of the block relative to the first block of the current voting period.
-    voting_period_position: i32,
-    /// Tells wether the baker of this block has to commit a seed nonce hash
-    expected_commitment: bool,
-}
-// ---------------------------------------------------------------------
-
-impl From<FullBlockInfo> for Level {
-    fn from(block: FullBlockInfo) -> Self {
-        let level_map = block.metadata["level"].clone();
-        // TODO: TE-199 - unrwraps here are safe, the struct in ocaml conatins only 32 bit integers and expected_commitment is allways a boolean
-        // the rework described in TE-199 will solve the unwrap issue
-        Self {
-            level: level_map["level"].as_i64().unwrap().try_into().unwrap(),
-            level_position: level_map["level_position"].as_i64().unwrap().try_into().unwrap(),
-            cycle: level_map["cycle"].as_i64().unwrap().try_into().unwrap(),
-            cycle_position: level_map["cycle_position"].as_i64().unwrap().try_into().unwrap(),
-            voting_period: level_map["voting_period"].as_i64().unwrap().try_into().unwrap(),
-            voting_period_position: level_map["voting_period_position"].as_i64().unwrap().try_into().unwrap(),
-            expected_commitment: level_map["expected_commitment"].as_bool().unwrap(),
-        }
-    }
-}
-
-impl Level {
-    pub fn new(level: i32, first_level: i32, offset: Option<i32> , constants: LevelConstants) -> Result<Self, failure::Error> {
-        let raw_level = if let Some(offset) = offset {
-            level + offset
-        } else {
-            level 
-        };
-
-        if raw_level > 0 {
-            let level_position = max(0, raw_level - first_level);
-            let cycle = level_position / constants.blocks_per_cycle;
-            let cycle_position = level_position % constants.blocks_per_cycle;
-            let voting_period = level_position / constants.blocks_per_voting_period;
-            let voting_period_position = level_position % constants.blocks_per_voting_period;
-            let expected_commitment = (cycle_position % constants.blocks_per_commitment) == (constants.blocks_per_commitment - 1);
-
-            Ok(Self {
-                level,
-                level_position,
-                cycle,
-                cycle_position,
-                voting_period,
-                voting_period_position,
-                expected_commitment,
-            })
-
-        } else {
-            bail!("Negative level")
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct LevelConstants {
-    blocks_per_cycle: i32,
-    blocks_per_voting_period: i32,
-    blocks_per_commitment: i32,
-}
-
-impl LevelConstants {
-    pub fn new(blocks_per_cycle: i32, blocks_per_voting_period: i32, blocks_per_commitment: i32) -> Self {
-        Self {
-            blocks_per_cycle,
-            blocks_per_voting_period,
-            blocks_per_commitment,
         }
     }
 }

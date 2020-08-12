@@ -55,6 +55,22 @@ impl OperationsState {
         }
     }
 
+    /// Process injected block header. This will create record in meta storage.
+    /// As the the header is injected via RPC, the operations are as well, so we
+    /// won't mark its operations as missing
+    ///
+    /// If block header is not already present in storage, return `true`.
+    ///
+    /// If block is already present in storage return `false`.
+    pub fn process_injected_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
+        if !self.operations_meta_storage.contains(&block_header.hash)? {
+            self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Process block operations. This will mark operations in store for the block as seen.
     ///
     /// If all block operations were processed return `true`.

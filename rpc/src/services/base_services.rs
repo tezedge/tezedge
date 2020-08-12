@@ -22,7 +22,7 @@ use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::ContextList;
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, Level, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 
 // Serialize, Deserialize,
