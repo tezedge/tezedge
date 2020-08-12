@@ -3202,4 +3202,4 @@ dependencies = [
 [[package]]
 name = "znfe"
 version = "0.1.0"
-source = "git+https://github.com/tizoc/znfe.git?tag=v0.1.0#7da9b0d1c927a92bd10565e7101025e8c44d7d4d"
+source = "git+https://github.com/tizoc/znfe.git?tag=v0.1.1#6f9d9a4fe048fa33d3d4bf691f2e0e3512ec4b43"
