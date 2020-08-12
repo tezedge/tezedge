@@ -140,7 +140,7 @@ caml!(ml_context_checkout(context_hash, time_period) {
 });
 
 // External callback function for checkout context
-caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_period) {
+caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_period, info) {
     let parent_context_hash: Option<ContextHash> = to_hash(parent_context_hash.into());
     let block_hash: Option<BlockHash> = to_hash(block_hash.into());
     let new_context_hash: ContextHash = to_hash(new_context_hash.into()).unwrap();
@@ -149,7 +149,12 @@ caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_
     let start_time: f64 = time_period.get(0).unwrap().f64_val();
     let end_time: f64 = time_period.get(1).unwrap().f64_val();
 
-    context_commit(parent_context_hash, block_hash, new_context_hash, start_time, end_time);
+    let info: Tuple = info.into();
+    let author: Option<String> = to_string(info.get(0).unwrap().into());
+    let message: Option<String> = to_string(info.get(1).unwrap().into());
+    let date: i64 = info.get(2).unwrap().i64_val();
+
+    context_commit(parent_context_hash, block_hash, new_context_hash, start_time, end_time, author, message, date);
     return Value::unit();
 });
 
@@ -324,7 +329,10 @@ fn context_commit(
     block_hash: Option<BlockHash>,
     new_context_hash: ContextHash,
     start_time: f64,
-    end_time: f64)
+    end_time: f64,
+    author: Option<String>,
+    message: Option<String>,
+    date: i64)
 {
     context_send(ContextAction::Commit {
         parent_context_hash,
@@ -332,6 +340,9 @@ fn context_commit(
         new_context_hash,
         start_time,
         end_time,
+        author,
+        message,
+        date
     }).expect("context_commit error");
 }
 

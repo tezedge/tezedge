@@ -92,6 +92,9 @@ pub enum ContextAction {
         new_context_hash: Hash,
         start_time: f64,
         end_time: f64,
+        author: Option<String>,
+        message: Option<String>,
+        date: i64,
     },
     Mem {
         context_hash: Option<Hash>,
