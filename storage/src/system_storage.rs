@@ -3,11 +3,12 @@
 
 use std::sync::Arc;
 
+use rocksdb::ColumnFamilyDescriptor;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{BincodeEncoded, default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::StorageError;
 
 pub type SystemStorageKv = dyn KeyValueStoreWithSchema<SystemStorage> + Sync + Send;
@@ -80,10 +81,16 @@ impl SystemStorage {
     }
 }
 
-
 impl KeyValueSchema for SystemStorage {
     type Key = String;
     type Value = SystemValue;
+
+    fn descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options();
+        // 1 MB
+        cf_opts.set_write_buffer_size(1024 * 1024);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
 
     #[inline]
     fn name() -> &'static str {
