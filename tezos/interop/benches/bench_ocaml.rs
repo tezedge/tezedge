@@ -6,16 +6,22 @@ extern crate test;
 
 use test::Bencher;
 
-use ocaml::Str;
+use znfe::{ocaml, ocaml_call, ocaml_alloc, ocaml_frame, FromOCaml, ToOCaml};
 
 use tezos_interop::runtime;
 use tezos_interop::runtime::OcamlResult;
 
+ocaml! {
+    pub fn echo(value: String) -> String;
+}
+
 fn ocaml_fn_echo(arg: String) -> OcamlResult<String> {
     runtime::spawn(move || {
-        let ocaml_function = ocaml::named_value("echo").expect("function 'echo' is not registered");
-        let ocaml_result: Str = ocaml_function.call::<Str>(arg.as_str().into()).unwrap().into();
-        ocaml_result.as_str().to_string()
+        ocaml_frame!(gc, {
+            let value = ocaml_alloc!(arg.to_ocaml(gc));
+            let ocaml_result = ocaml_call!(echo(gc, value));
+            String::from_ocaml(ocaml_result.unwrap())
+        })
     })
 }
 

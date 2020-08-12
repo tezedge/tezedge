@@ -6,35 +6,22 @@ use std::fmt;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
-use std::ptr;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender, SendError};
 use std::task::{Context, Poll, Waker};
 use std::thread;
 
 use futures::executor::LocalPool;
-use ocaml::core::callback::{caml_shutdown, caml_startup};
 
 use lazy_static::lazy_static;
+
+use crate::ffi;
 
 lazy_static! {
     /// Because ocaml runtime should be accessed only by a single thread
     /// we will create the `OCAML_ENV` singleton.
     static ref OCAML_ENV: OcamlEnvironment = initialize_environment();
 }
-
-/// This function will start ocaml runtime.
-/// Ocaml runtime should always be called from a single thread.
-fn start_ocaml_runtime() {
-    unsafe {
-        let mut ptr = ptr::null_mut();
-        let argv: *mut *mut u8 = &mut ptr;
-
-        caml_startup(argv);
-    }
-}
-
-
 
 /// Ocaml execution error
 pub struct OcamlError;
@@ -177,7 +164,7 @@ fn initialize_environment() -> OcamlEnvironment {
     let spawner = OcamlTaskSpawner { spawned_tasks: Arc::new(Mutex::new(task_tx)) };
     let executor = OcamlThreadExecutor { ready_tasks: task_rx };
     thread::spawn(move || {
-        start_ocaml_runtime();
+        ffi::setup();
         executor.run()
     });
 
@@ -214,13 +201,4 @@ pub fn execute<F, T>(f: F) -> Result<T, OcamlError>
         T: 'static + Send
 {
     LocalPool::new().run_until(spawn(f))
-}
-
-/// Tries to shutdown ocaml runtime gracefully - give chance to close resources, trigger GC finalization...
-///
-/// https://caml.inria.fr/pub/docs/manual-ocaml/intfc.html#sec467
-pub fn shutdown() {
-    unsafe {
-        caml_shutdown();
-    }
 }

@@ -8,6 +8,6 @@ edition = "2018"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-ocaml = "0.9.3"
+znfe = { git = "https://github.com/tizoc/znfe.git", tag="v0.1.0" }
 # local dependencies
 tezos_context = { path = "../context" }

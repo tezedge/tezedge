@@ -238,8 +238,8 @@ fn main() {
     rerun_if_ocaml_file_changes();
 
     println!("cargo:rustc-link-search={}", &out_dir);
-    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rustc-link-lib=dylib=tezos_interop_callback");
+    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
     println!("cargo:rerun-if-env-changed=UPDATE_GIT");
 }

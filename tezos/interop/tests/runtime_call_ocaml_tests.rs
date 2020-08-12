@@ -8,15 +8,6 @@ fn can_complete_future_with_return_value() -> Result<(), OcamlError> {
 }
 
 #[test]
-fn can_complete_future_with_unregistered_function() {
-    let res = runtime::execute(|| {
-        let _ = ocaml::named_value("__non_existing_fn")
-            .expect("function '__non_existing_fn' is not registered");
-    });
-    assert!(res.is_err())
-}
-
-#[test]
 fn can_complete_future_with_error() {
     let res = runtime::execute(|| {
         panic!("Error occurred");

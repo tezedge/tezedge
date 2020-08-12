@@ -13,6 +13,7 @@ use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use znfe::OCamlError;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use tezos_encoding::{binary_writer, ser};
@@ -481,11 +482,11 @@ pub enum CallError {
     },
 }
 
-impl From<ocaml::Error> for CallError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for CallError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
-                match parse_error_message(ffi_error) {
+            OCamlError::Exception(exception) => {
+                match exception.message() {
                     None => CallError::FailedToCall {
                         parsed_error_message: None
                     },
@@ -496,7 +497,6 @@ impl From<ocaml::Error> for CallError {
                     }
                 }
             }
-            _ => panic!("Unhandled ocaml error occurred for apply block! Error: {:?}", error)
         }
     }
 }
@@ -509,15 +509,14 @@ pub enum TezosRuntimeConfigurationError {
     }
 }
 
-impl From<ocaml::Error> for TezosRuntimeConfigurationError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for TezosRuntimeConfigurationError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Ocaml settings failed! Reason: {:?}", error)
         }
     }
 }
@@ -534,15 +533,14 @@ pub enum TezosGenerateIdentityError {
     },
 }
 
-impl From<ocaml::Error> for TezosGenerateIdentityError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for TezosGenerateIdentityError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 TezosGenerateIdentityError::GenerationError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Generate identity failed! Reason: {:?}", error)
         }
     }
 }
@@ -555,15 +553,14 @@ pub enum TezosStorageInitError {
     }
 }
 
-impl From<ocaml::Error> for TezosStorageInitError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for TezosStorageInitError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 TezosStorageInitError::InitializeError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Storage initialization failed! Reason: {:?}", error)
         }
     }
 }
@@ -582,15 +579,14 @@ pub enum GetDataError {
     }
 }
 
-impl From<ocaml::Error> for GetDataError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for GetDataError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 GetDataError::ReadError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Get data failed! Reason: {:?}", error)
         }
     }
 }
@@ -746,15 +742,14 @@ pub enum BlockHeaderError {
     ExpectedButNotFound,
 }
 
-impl From<ocaml::Error> for BlockHeaderError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for BlockHeaderError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 BlockHeaderError::ReadError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Storage initialization failed! Reason: {:?}", error)
         }
     }
 }
@@ -767,29 +762,16 @@ pub enum ContextDataError {
     },
 }
 
-impl From<ocaml::Error> for ContextDataError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for ContextDataError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 ContextDataError::DecodeError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Resolve context data failed! Reason: {:?}", error)
         }
     }
-}
-
-fn parse_error_message(ffi_error: ocaml::Value) -> Option<String> {
-    if ffi_error.is_block() {
-        // for exceptions, in the field 2, there is a message for Failure or Ffi_error
-        let error_message = ffi_error.field(1);
-        if error_message.tag() == ocaml::Tag::String {
-            let error_message: ocaml::Str = error_message.into();
-            return Some(error_message.as_str().to_string());
-        }
-    }
-    None
 }
 
 pub type Json = String;
