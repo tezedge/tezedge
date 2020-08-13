@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Defines types of the intermediate data format.
+use crate::encoding::FieldName;
 
 /// This is a wrapper for [num_bigint::BigInt] type.
 #[derive(PartialEq, Debug, Clone)]
@@ -121,7 +122,7 @@ pub enum Value {
     /// This allows schema-less encoding.
     ///
     /// See [Record](types.Record) for a more user-friendly support.
-    Record(Vec<(String, Value)>),
+    Record(Vec<(FieldName, Value)>),
     /// Tuple is heterogeneous collection of values, it should have fixed amount of elements
     Tuple(Vec<Value>),
 }

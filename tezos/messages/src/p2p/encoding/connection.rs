@@ -8,7 +8,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::binary_reader::BinaryReaderError;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
@@ -56,11 +56,11 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 impl HasEncoding for ConnectionMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("port", Encoding::Uint16),
-            Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
-            Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(NetworkVersion::encoding()))
+            Field::new(FieldName::Port, Encoding::Uint16),
+            Field::new(FieldName::PublicKey, Encoding::sized(32, Encoding::Bytes)),
+            Field::new(FieldName::ProofOfWorkStamp, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::MessageNonce, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::Versions, Encoding::list(NetworkVersion::encoding()))
         ])
     }
 }

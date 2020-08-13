@@ -4,7 +4,7 @@
 use getset::Getters;
 use serde::{Serialize, Deserialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -22,8 +22,8 @@ pub struct SwapMessage {
 impl HasEncoding for SwapMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("point", Encoding::String),
-            Field::new("peer_id", Encoding::String),
+            Field::new(FieldName::Point, Encoding::String),
+            Field::new(FieldName::PeerID, Encoding::String),
         ])
     }
 }

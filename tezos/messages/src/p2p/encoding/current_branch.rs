@@ -7,7 +7,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, SchemaType};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::block_header::BlockHeader;
@@ -35,8 +35,8 @@ impl CurrentBranchMessage {
 impl HasEncoding for CurrentBranchMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("current_branch", CurrentBranch::encoding())
+            Field::new(FieldName::ChainID, Encoding::Hash(HashType::ChainId)),
+            Field::new(FieldName::CurrentBranch, CurrentBranch::encoding())
         ])
     }
 }
@@ -77,8 +77,8 @@ impl CurrentBranch {
 impl HasEncoding for CurrentBranch {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("current_head", Encoding::dynamic(BlockHeader::encoding())),
-            Field::new("history", Encoding::Split(Arc::new(|schema_type|
+            Field::new(FieldName::CurrentHead, Encoding::dynamic(BlockHeader::encoding())),
+            Field::new(FieldName::History, Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
                     SchemaType::Binary => Encoding::list(Encoding::Hash(HashType::BlockHash))
@@ -118,7 +118,7 @@ impl GetCurrentBranchMessage {
 impl HasEncoding for GetCurrentBranchMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId))
+            Field::new(FieldName::ChainID, Encoding::Hash(HashType::ChainId))
         ])
     }
 }

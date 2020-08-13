@@ -7,7 +7,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crate::p2p::encoding::prelude::*;
@@ -59,7 +59,7 @@ impl CachedData for PeerMessageResponse {
 
 lazy_static! {
     static ref ENCODING: Encoding = Encoding::Obj(vec![
-                Field::new("messages", Encoding::dynamic(Encoding::list(
+                Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                     Encoding::Tags(
                         size_of::<u16>(),
                         TagMap::new(&[
