@@ -274,7 +274,7 @@ impl Receive<Bootstrap> for Peer {
 
                     // begin to process incoming messages in a loop
                     let log = system.log().new(slog::o!("peer" => peer_id));
-                    begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address.clone()).await;
+                    begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
@@ -370,7 +370,7 @@ async fn bootstrap(
         Err(e) => return Err(PeerError::NetworkError { error: e.into(), message: "No response to connection message was received" })
     };
 
-    let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content().to_vec())?;
+    let connection_message = ConnectionMessage::from_bytes(received_connection_message_bytes.content())?;
 
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_message_bytes, msg.incoming);
@@ -407,7 +407,7 @@ async fn bootstrap(
     if connecting_to_self {
         debug!(log, "Detected self connection");
         // treat as if nack was received
-        return Err(PeerError::NackWithMotiveReceived { nack_info: NackInfo::new(NackMotive::AlreadyConnected, &vec![]) });
+        return Err(PeerError::NackWithMotiveReceived { nack_info: NackInfo::new(NackMotive::AlreadyConnected, &[]) });
     }
 
     // send metadata

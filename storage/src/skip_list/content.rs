@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use failure::_core::marker::PhantomData;
 use failure::Fail;
-use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
+use rocksdb::{ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use crate::num_from_slice;
-use crate::persistent::{BincodeEncoded, Codec, DBError, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::persistent::{BincodeEncoded, Codec, DBError, Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
 use crate::persistent::database::IteratorWithSchema;
 use crate::persistent::sequence::SequenceError;
 use crate::skip_list::{LEVEL_BASE, TryExtend};
@@ -134,7 +134,7 @@ impl ListValue {
     }
 
     /// Merge two values into one, in-place
-    pub fn merge(&mut self, other: &Self) -> Result<(), SkipListError>{
+    pub fn merge(&mut self, other: &Self) -> Result<(), SkipListError> {
         for (key, value) in self.db.prefix_iterator(&ListValueKey::from_id(other.id))? {
             self.db.put(&ListValueKey::new(self.id, &key?.key), &value?)?;
         }
@@ -148,7 +148,7 @@ impl KeyValueSchema for ListValue {
     type Value = Vec<u8>;
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ListValueKey::LEN_ID));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
@@ -200,7 +200,7 @@ impl<'a, K: Codec, V: Decoder> TypedListValue<'a, K, V> for ListValue {
 
 pub struct Iter<'a, K, V> {
     inner: IteratorWithSchema<'a, ListValue>,
-    _phantom: PhantomData<(K, V)>
+    _phantom: PhantomData<(K, V)>,
 }
 
 impl<'a, K, V> Iter<'a, K, V> {
@@ -221,7 +221,7 @@ impl<'a, K: Decoder, V: Decoder> Iterator for Iter<'a, K, V> {
 pub struct IterPrefix<'a, K, V> {
     inner: IteratorWithSchema<'a, ListValue>,
     prefix: Vec<u8>,
-    _phantom: PhantomData<(K, V)>
+    _phantom: PhantomData<(K, V)>,
 }
 
 impl<'a, K: Encoder, V> IterPrefix<'a, K, V> {
@@ -237,9 +237,9 @@ impl<'a, K: Decoder, V: Decoder> Iterator for IterPrefix<'a, K, V> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let next: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)> = self.inner.next();
-        if let Some((Ok(ListValueKey { key, .. }), _)) = &next  {
+        if let Some((Ok(ListValueKey { key, .. }), _)) = &next {
             if !key.starts_with(&self.prefix) {
-                return None
+                return None;
             }
         }
 
@@ -247,7 +247,7 @@ impl<'a, K: Decoder, V: Decoder> Iterator for IterPrefix<'a, K, V> {
     }
 }
 
-fn extract_and_decode<K: Decoder, V: Decoder>(value: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)>) ->  Option<Result<(K, V), SkipListError>> {
+fn extract_and_decode<K: Decoder, V: Decoder>(value: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)>) -> Option<Result<(K, V), SkipListError>> {
     value.map(|(k, v)|
         k.map(|k| k.key)
             .and_then(|key| K::decode(&key))
@@ -265,12 +265,12 @@ impl<T> StartsWith<T> for Vec<T>
 {
     fn starts_with(&self, needle: &[T]) -> bool {
         if needle.len() > self.len() {
-            return false
+            return false;
         }
 
         for idx in (0..needle.len()).rev() {
             if self[idx] != needle[idx] {
-                return false
+                return false;
             }
         }
 
@@ -280,11 +280,10 @@ impl<T> StartsWith<T> for Vec<T>
 
 pub struct ListValueKey {
     id: usize,
-    key: Vec<u8>
+    key: Vec<u8>,
 }
 
 impl ListValueKey {
-
     const LEN_ID: usize = std::mem::size_of::<usize>();
     const IDX_ID: usize = 0;
     const IDX_KEY: usize = Self::IDX_ID + Self::LEN_ID;
@@ -338,7 +337,7 @@ pub enum SkipListError {
     #[fail(display = "List value sequence error: {}", error)]
     SequenceError {
         error: SequenceError
-    }
+    },
 }
 
 impl From<DBError> for SkipListError {

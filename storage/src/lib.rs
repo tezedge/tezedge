@@ -69,7 +69,7 @@ impl Decoder for BlockHeaderWithHash {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         let hash = bytes[0..HashType::BlockHash.size()].to_vec();
-        let header = BlockHeader::from_bytes(bytes[HashType::BlockHash.size()..].to_vec()).map_err(|_| SchemaError::DecodeError)?;
+        let header = BlockHeader::from_bytes(&bytes[HashType::BlockHash.size()..]).map_err(|_| SchemaError::DecodeError)?;
         Ok(BlockHeaderWithHash { hash, header: Arc::new(header) })
     }
 }
@@ -275,7 +275,7 @@ pub fn initialize_storage_with_genesis_block(
         .max_operations_ttl(genesis_additional_data.max_operations_ttl)
         .last_allowed_fork_level(genesis_additional_data.last_allowed_fork_level)
         .build().unwrap();
-    block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data.clone())?;
+    block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data)?;
 
     // context assign
     block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
@@ -293,7 +293,7 @@ pub fn check_database_compatibility(
     expected_database_version: i64,
     tezos_env: &TezosEnvironmentConfiguration,
     log: Logger) -> Result<bool, StorageError> {
-    let mut system_info = SystemStorage::new(db.clone());
+    let mut system_info = SystemStorage::new(db);
     let db_version_ok = match system_info.get_db_version()? {
         Some(db_version) => db_version == expected_database_version,
         None => {

@@ -47,7 +47,7 @@ const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
 /// After this time peer will be disconnected if it fails to respond to our request
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
-const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31536000);
+const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
 /// After this interval we will rehydrate state if no new blocks are applied
 const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
 const BLOCK_HASH_ENCODING: HashType = HashType::BlockHash;
@@ -219,7 +219,7 @@ impl ChainManager {
                         let queued_blocks = missing_blocks.drain(..)
                             .map(|missing_block| {
                                 let missing_block_hash = missing_block.block_hash.clone();
-                                if let None = peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block) {
+                                if peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block).is_none() {
                                     // block was not already present in queue
                                     Some(missing_block_hash)
                                 } else {
@@ -249,7 +249,7 @@ impl ChainManager {
                     if !missing_operations.is_empty() {
                         let queued_operations = missing_operations.iter()
                             .map(|missing_operation| {
-                                if let None = peer.queued_block_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()) {
+                                if peer.queued_block_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()).is_none() {
                                     // operations were not already present in queue
                                     Some(missing_operation)
                                 } else {
@@ -387,7 +387,7 @@ impl ChainManager {
                                             peer.block_response_last = Instant::now();
 
                                             let is_new_block =
-                                                chain_state.process_block_header(&block_header_with_hash, log.clone())
+                                                chain_state.process_block_header(&block_header_with_hash, &log)
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
 
                                             if is_new_block {
@@ -607,11 +607,11 @@ impl ChainManager {
                 }
             }
             ShellChannelMsg::InjectBlock(inject_data) => {
-                let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header.clone()).unwrap();
+                let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header).unwrap();
                 let log = ctx.system.log().new(slog::o!("injection" => "block".to_string()));
 
                 let is_new_block =
-                    self.chain_state.process_block_header(&block_header_with_hash, log.clone())
+                    self.chain_state.process_block_header(&block_header_with_hash, &log)
                         .and(self.operations_state.process_block_header(&block_header_with_hash))?;
 
                 if is_new_block {
@@ -1000,7 +1000,7 @@ fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
 fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
     // collect for mempool
     let known_valid = mempool_state.result.applied.iter().map(|a| a.hash.clone()).collect::<Vec<OperationHash>>();
-    let pending = mempool_state.pending.iter().map(|a| a.clone()).collect::<Vec<OperationHash>>();
+    let pending = mempool_state.pending.iter().cloned().collect::<Vec<OperationHash>>();
 
     Mempool::new(known_valid, pending)
 }
@@ -1012,7 +1012,7 @@ fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Curr
 
     if let Some(mempool_state) = mempool_state {
         if let Some(mempool_head) = &mempool_state.head {
-            if &mempool_head.hash == &current_head.hash {
+            if mempool_head.hash == current_head.hash {
                 resolve_mempool_to_send(mempool_state)
             } else {
                 Mempool::default()

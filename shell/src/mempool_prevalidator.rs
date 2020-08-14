@@ -129,7 +129,7 @@ impl MempoolPrevalidator {
             ShellChannelMsg::BlockApplied(block) => {
                 // add NewHead to queue
                 self.validator_event_sender.lock().unwrap().send(
-                    Event::NewHead(block.header().hash.clone(), block.header().header.level().clone())
+                    Event::NewHead(block.header().hash.clone(), block.header().header.level())
                 )?;
             }
             ShellChannelMsg::MempoolOperationReceived(operation) => {
@@ -213,7 +213,7 @@ impl MempoolState {
         MempoolState {
             prevalidator,
             predecessor,
-            pending: pending_operations.keys().map(|oph| oph.clone()).collect(),
+            pending: pending_operations.keys().cloned().collect(),
             validation_result: ValidateOperationResult::default(),
             operations: pending_operations,
         }

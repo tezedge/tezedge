@@ -40,7 +40,7 @@ impl BlockchainState {
         }
     }
 
-    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: Logger) -> Result<(), StorageError> {
+    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(
             MissingBlock::with_level(
@@ -52,7 +52,7 @@ impl BlockchainState {
         // store block
         self.block_storage.put_block_header(block_header)?;
         // update meta
-        self.block_meta_storage.put_block_header(block_header, &self.chain_id, log)?;
+        self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)?;
 
         Ok(())
     }

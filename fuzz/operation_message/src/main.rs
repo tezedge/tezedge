@@ -7,7 +7,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 fn main() {
     loop {
         fuzz!(|data: &[u8]| {
-            if let Err(e) = OperationMessage::from_bytes(data.to_vec()) {
+            if let Err(e) = OperationMessage::from_bytes(data) {
                 debug!("OperationMessage::from_bytes produced error for input: {:?}\nError:\n{:?}", data, e);
             }
         });

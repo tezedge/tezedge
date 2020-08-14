@@ -168,7 +168,7 @@ fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bloc
             block_header: block_header.clone(),
             pred_header: genesis_block_header,
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -310,7 +310,7 @@ mod test_data {
         "operations": [] }
     "#;
 
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<Option<OperationsForBlocksMessage>> {
+    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<OperationsForBlocksMessage> {
         hex_operations
             .into_iter()
             .map(|bo| {
@@ -318,7 +318,7 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
-                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
+                OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
             })
             .collect()
     }

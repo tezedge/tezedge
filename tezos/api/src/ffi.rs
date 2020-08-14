@@ -95,28 +95,21 @@ pub struct ApplyBlockRequest {
 }
 
 impl ApplyBlockRequest {
-    pub fn convert_operations(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
-        let mut operations = Vec::with_capacity(block_operations.len());
-
-        for block_ops in block_operations {
-            if let Some(bo_ops) = block_ops {
-                operations.push(bo_ops.operations().clone());
-            } else {
-                operations.push(vec![]);
-            }
-        }
-
-        operations
+    pub fn convert_operations(block_operations: Vec<OperationsForBlocksMessage>) -> Vec<Vec<Operation>> {
+        block_operations
+            .into_iter()
+            .map(|ops| ops.operations)
+            .collect()
     }
 }
 
 lazy_static! {
     pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
         Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
-        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
+        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
         Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
+        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
     ]);
 }
 
@@ -205,7 +198,7 @@ pub struct BeginConstructionRequest {
 lazy_static! {
     pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
     ]);
 }
@@ -225,7 +218,7 @@ pub struct ValidateOperationRequest {
 lazy_static! {
     pub static ref VALIDATE_OPERATION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("operation", Encoding::dynamic(Operation::encoding())),
+            Field::new("operation", Encoding::dynamic(Operation::encoding().clone())),
     ]);
 }
 
@@ -279,9 +272,9 @@ pub struct Applied {
 }
 
 #[inline]
-fn format_json_single_line(origin: &String) -> String {
+fn format_json_single_line(origin: &str) -> String {
     let json = serde_json::json!(origin);
-    serde_json::to_string(&json).unwrap_or(origin.clone())
+    serde_json::to_string(&json).unwrap_or_else(|_| origin.to_string())
 }
 
 impl fmt::Debug for Applied {
@@ -330,7 +323,7 @@ impl ValidateOperationResult {
         changed
     }
 
-    fn merge_applied(&mut self, new_items: &Vec<Applied>) -> bool {
+    fn merge_applied(&mut self, new_items: &[Applied]) -> bool {
         let mut changed = false;
         let mut added = false;
         let mut m = HashMap::new();
@@ -351,24 +344,24 @@ impl ValidateOperationResult {
         added || changed
     }
 
-    fn merge_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_refused(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.refused, new_items)
     }
 
-    fn merge_branch_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_branch_refused(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.branch_refused, new_items)
     }
 
-    fn merge_branch_delayed(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_branch_delayed(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.branch_delayed, new_items)
     }
 
-    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &Vec<Errored>) -> bool {
+    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &[Errored]) -> bool {
         let mut changed = false;
         let mut added = false;
         let mut m = HashMap::new();
 
-        for a in old_items.into_iter() {
+        for a in old_items.iter_mut() {
             m.insert(a.hash.clone(), (*a).clone());
         }
         for na in new_items {
@@ -727,7 +720,7 @@ impl From<CallError> for ValidateOperationError {
                     },
                     Some(message) => {
                         ValidateOperationError::FailedToValidateOperation {
-                            message: message.to_string()
+                            message
                         }
                     }
                 }
@@ -849,13 +842,13 @@ pub enum FfiRpcService {
 
 lazy_static! {
     pub static ref PROTOCOL_JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("chain_arg", Encoding::String),
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),
             Field::new("ffi_service", Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[
+                    TagMap::new(vec![
                         Tag::new(0, "HelpersRunOperation", Encoding::Unit),
                         Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
                         Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
@@ -897,7 +890,7 @@ impl From<CallError> for ProtocolRpcError {
                     },
                     Some(message) => {
                         ProtocolRpcError::FailedToCallProtocolRpc {
-                            message: message.to_string()
+                            message
                         }
                     }
                 }

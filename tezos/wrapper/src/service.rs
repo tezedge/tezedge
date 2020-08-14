@@ -491,7 +491,7 @@ impl ProtocolController {
             if !(*was_one_write_success) {
                 if readonly {
                     // release lock here and wait
-                    let _ = cvar.wait(was_one_write_success).unwrap();
+                    let _lock = cvar.wait(was_one_write_success).unwrap();
                 }
                 // TODO: handle situation, thah more writes - we cannot allowed to do so, just one write can exists
             }

@@ -77,6 +77,7 @@ impl Monitor {
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
             if monitor.public_key.is_some() {
+                // TODO: TE-190 - reimplement correctly, now not all messages are counted in (Ack, Metadata, ConnectionMessage is not involved)
                 let size = if let Ok(msg) = msg.message.as_bytes() {
                     msg.len()
                 } else {

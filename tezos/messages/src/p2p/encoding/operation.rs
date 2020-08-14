@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
+use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
 pub struct OperationMessage {
@@ -24,30 +26,17 @@ impl OperationMessage {
     pub fn new(operation: Operation) -> Self {
         Self {
             operation,
-            body: Default::default()
+            body: Default::default(),
         }
     }
 }
 
-impl HasEncoding for OperationMessage {
-    fn encoding() -> Encoding {
-        Encoding::Obj(vec![
-            Field::new("operation", Operation::encoding())
-        ])
-    }
-}
-
-impl CachedData for OperationMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+cached_data!(OperationMessage, body);
+has_encoding!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
+    Encoding::Obj(vec![
+        Field::new("operation", Operation::encoding().clone())
+    ])
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
@@ -69,8 +58,8 @@ impl Operation {
     }
 }
 
-impl HasEncoding for Operation {
-    fn encoding() -> Encoding {
+cached_data!(Operation, body);
+has_encoding!(Operation, OPERATION_ENCODING, {
         Encoding::Obj(vec![
             Field::new("branch", Encoding::Hash(HashType::BlockHash)),
             Field::new("data", Encoding::Split(Arc::new(|schema_type|
@@ -80,20 +69,7 @@ impl HasEncoding for Operation {
                 }
             )))
         ])
-    }
-}
-
-impl CachedData for Operation {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
@@ -109,27 +85,14 @@ impl GetOperationsMessage {
     pub fn new(operations: Vec<OperationHash>) -> Self {
         Self {
             get_operations: operations,
-            body: Default::default()
+            body: Default::default(),
         }
     }
 }
 
-impl HasEncoding for GetOperationsMessage {
-    fn encoding() -> Encoding {
+cached_data!(GetOperationsMessage, body);
+has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("get_operations", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
         ])
-    }
-}
-
-impl CachedData for GetOperationsMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});

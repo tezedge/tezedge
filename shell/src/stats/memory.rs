@@ -7,8 +7,6 @@ use std::path::Path;
 use std::process::Command;
 
 use failure::Fail;
-use nix;
-use page_size;
 use regex::Regex;
 use serde::Serialize;
 

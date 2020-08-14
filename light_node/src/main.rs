@@ -95,7 +95,7 @@ fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runti
 }
 
 fn block_on_actors(
-    env: &crate::configuration::Environment,
+    env: crate::configuration::Environment,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: StorageInitInfo,
     identity: Identity,
@@ -165,7 +165,7 @@ fn block_on_actors(
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => apply_blocks_protocol_runner_endpoint.name, "reason" => e), actor_system),
     };
 
-    let mut tokio_runtime = create_tokio_runtime(env);
+    let mut tokio_runtime = create_tokio_runtime(&env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
         .expect("Failed to create network channel");
@@ -195,14 +195,9 @@ fn block_on_actors(
         network_channel.clone(),
         shell_channel.clone(),
         tokio_runtime.handle().clone(),
-        &env.p2p.bootstrap_lookup_addresses,
-        &env.p2p.initial_peers,
-        env.p2p.peer_threshold,
-        env.p2p.listener_port,
         identity,
         network_version.clone(),
-        env.p2p.disable_mempool,
-        env.p2p.private_node,
+        env.p2p,
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -315,7 +310,7 @@ fn main() {
             &env.storage.tezos_data_dir,
             &env.storage.patch_context,
             log.clone()) {
-            Ok(init_data) => block_on_actors(&env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
+            Ok(init_data) => block_on_actors(env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data. Reason: {}", e), actor_system),
         }
     }
