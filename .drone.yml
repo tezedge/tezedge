@@ -3,7 +3,7 @@
 # - standalone-tests (just rust tests)
 # - sandbox-inject-operation (runs sandboxed ocaml and rust nodes and checks p2p, rpc between them, using tezos_client)
 # - integration-offline-tests (runs snapshoted local ocaml nodes and rust node)
-# - connect-from-different-network-offline test (runs ocaml nodes and rust node)
+# - connect-from-different-network-test (runs ocaml nodes and rust node)
 ##############################################################################################################
 # Ocaml stuff is based on image tezos/tezos:v7.3 (if released new one, fell free to upgrade it here)
 ##############################################################################################################
@@ -135,7 +135,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /tmp/sandbox/protocol-runner --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true
+    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /tmp/sandbox/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true
 
 - name: wait-for-tezedge-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -443,7 +443,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --peers $PEERS --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+    - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
 
 # if we are doing pull request, run also "target branch" build (async) for wrk total compare at the end
 - name: tezedge-target-branch-node-run
@@ -470,7 +470,7 @@ steps:
     - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
     - cd /tmp/tezedge-cache/tezedge
     - cargo build --release --workspace
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --peers $PEERS --network "$${NETWORK}" --identity-file "/artifacts/identities/identity_5.json"
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "/artifacts/identities/identity_5.json"
   when:
     ref:
       - refs/pull/*/head
@@ -614,7 +614,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: connect-from-different-network-offline-test
+name: connect-from-different-network-test
 
 clone:
   disable: true
@@ -658,7 +658,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --network mainnet --identity-file "/artifacts/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network mainnet --identity-file "/artifacts/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest

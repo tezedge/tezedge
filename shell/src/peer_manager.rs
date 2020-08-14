@@ -58,6 +58,17 @@ pub struct ConnectToPeer {
     pub address: SocketAddr
 }
 
+#[derive(Debug, Clone)]
+pub struct P2p {
+    pub listener_port: u16,
+    pub disable_bootstrap_lookup: bool,
+    pub bootstrap_lookup_addresses: Vec<String>,
+    pub initial_peers: Vec<SocketAddr>,
+    pub peer_threshold: Threshold,
+    pub disable_mempool: bool,
+    pub private_node: bool,
+}
+
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
 pub struct Threshold {
@@ -96,6 +107,8 @@ pub struct PeerManager {
     peers: HashMap<ActorUri, PeerState>,
     /// DNS addresses used for bootstrapping
     bootstrap_addresses: Vec<String>,
+    /// Disable DNS bootstrap addresses lookup, if true
+    disable_bootstrap_lookup: bool,
     /// List of initial peers to connect to
     initial_peers: HashSet<SocketAddr>,
     /// Indicates that mempool should be disabled
@@ -133,14 +146,9 @@ impl PeerManager {
                  network_channel: NetworkChannelRef,
                  shell_channel: ShellChannelRef,
                  tokio_executor: Handle,
-                 bootstrap_addresses: &[String],
-                 initial_peers: &[SocketAddr],
-                 threshold: Threshold,
-                 listener_port: u16,
                  identity: Identity,
                  network_version: NetworkVersion,
-                 disable_mempool: bool,
-                 private_node: bool,
+                 p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
             PeerManager::name(),
@@ -148,14 +156,10 @@ impl PeerManager {
                 network_channel,
                 shell_channel,
                 tokio_executor,
-                bootstrap_addresses.to_vec(),
-                HashSet::from_iter(initial_peers.to_vec()),
-                threshold,
-                listener_port,
                 identity,
                 network_version,
-                disable_mempool,
-                private_node)),
+                p2p_config,
+            )),
         )
     }
 
@@ -170,14 +174,16 @@ impl PeerManager {
         if self.peers.is_empty() || self.discovery_last.filter(|discovery_last| discovery_last.elapsed() <= DISCOVERY_INTERVAL).is_none() {
             self.discovery_last = Some(Instant::now());
 
-            info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
-            dns_lookup_peers(&self.bootstrap_addresses, &log).iter()
-                .for_each(|address| {
-                    if !self.is_blacklisted(&address.ip()) {
-                        info!(log, "Found potential peer"; "address" => address);
-                        self.potential_peers.insert(*address);
-                    }
-                });
+            if !self.disable_bootstrap_lookup {
+                info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
+                dns_lookup_peers(&self.bootstrap_addresses, &log).iter()
+                    .for_each(|address| {
+                        if !self.is_blacklisted(&address.ip()) {
+                            info!(log, "Found potential peer"; "address" => address);
+                            self.potential_peers.insert(*address);
+                        }
+                    });
+            }
 
             if self.potential_peers.is_empty() {
                 info!(log, "Using initial peers as a potential peers"; "initial_peers" => format!("{:?}", &self.initial_peers));
@@ -255,22 +261,23 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, NetworkVersion, bool, bool)> for PeerManager {
-    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, network_version, disable_mempool, private_node):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, NetworkVersion, bool, bool)) -> Self
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)> for PeerManager {
+    fn create_args((network_channel, shell_channel, tokio_executor, identity, network_version, p2p_config):
+                   (NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)) -> Self
     {
         PeerManager {
             network_channel,
             shell_channel,
             tokio_executor,
-            bootstrap_addresses,
-            initial_peers,
-            threshold,
-            listener_port,
+            bootstrap_addresses: p2p_config.bootstrap_lookup_addresses,
+            disable_bootstrap_lookup: p2p_config.disable_bootstrap_lookup,
+            initial_peers: HashSet::from_iter(p2p_config.initial_peers),
+            threshold: p2p_config.peer_threshold,
+            listener_port: p2p_config.listener_port,
             identity,
             network_version,
-            disable_mempool,
-            private_node,
+            disable_mempool: p2p_config.disable_mempool,
+            private_node: p2p_config.private_node,
             rx_run: Arc::new(AtomicBool::new(true)),
             potential_peers: HashSet::new(),
             peers: HashMap::new(),

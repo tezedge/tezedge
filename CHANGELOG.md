@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- New configuration parameter `--disable-bootstrap-lookup` to turn off dns lookup for peers (e.g. used for tests or sandbox)
 
 ### Changed
 
-- Nothing.
+- Resolved various clippy warnings/errors.
+- Drone test runs offline with carthagenet-snapshoted nodes.
 
 ### Deprecated
 

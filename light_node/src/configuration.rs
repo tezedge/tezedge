@@ -11,21 +11,11 @@ use std::time::Duration;
 
 use clap::{App, Arg};
 
-use shell::peer_manager::Threshold;
+use shell::peer_manager::{P2p, Threshold};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
-
-#[derive(Debug, Clone)]
-pub struct P2p {
-    pub listener_port: u16,
-    pub bootstrap_lookup_addresses: Vec<String>,
-    pub initial_peers: Vec<SocketAddr>,
-    pub peer_threshold: Threshold,
-    pub disable_mempool: bool,
-    pub private_node: bool,
-}
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -164,6 +154,11 @@ pub fn tezos_app() -> App<'static, 'static> {
             .conflicts_with("peers")
             .conflicts_with("private-node")
             .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
+        .arg(Arg::with_name("disable-bootstrap-lookup")
+            .long("disable-bootstrap-lookup")
+            .takes_value(false)
+            .conflicts_with("bootstrap-lookup-address")
+            .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
         .arg(Arg::with_name("log-file")
             .long("log-file")
             .takes_value(true)
@@ -453,6 +448,8 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of p2p-port"),
+                disable_bootstrap_lookup: args
+                    .is_present("disable-bootstrap-lookup"),
                 bootstrap_lookup_addresses: args.
                     value_of("bootstrap-lookup-address")
                     .map(|addresses_str| addresses_str
