@@ -241,7 +241,7 @@ mod tests {
 
     use crypto::hash::HashType;
 
-    use crate::persistent::open_kv;
+    use crate::persistent::{DbConfiguration, open_kv};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -337,7 +337,7 @@ mod tests {
             let t = true as u8;
             let f = false as u8;
 
-            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()])?;
+            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()], &DbConfiguration::default())?;
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,

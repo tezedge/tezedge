@@ -366,6 +366,8 @@ pub mod tests_common {
                 fs::remove_dir_all(&path).unwrap();
             }
 
+            let cfg = DbConfiguration::default();
+
             let kv = open_kv(&path, vec![
                 block_storage::BlockPrimaryIndex::descriptor(),
                 block_storage::BlockByLevelIndex::descriptor(),
@@ -383,7 +385,7 @@ pub mod tests_common {
                 ListValue::descriptor(),
                 MempoolStorage::descriptor(),
                 ContextActionStorage::descriptor()
-            ])?;
+            ], &cfg)?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),
             ])?;

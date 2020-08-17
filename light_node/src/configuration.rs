@@ -12,6 +12,7 @@ use std::time::Duration;
 use clap::{App, Arg};
 
 use shell::peer_manager::{P2p, Threshold};
+use storage::persistent::{DbConfiguration, DbConfigurationBuilder};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
@@ -33,7 +34,8 @@ pub struct Logging {
 
 #[derive(Debug, Clone)]
 pub struct Storage {
-    pub bootstrap_db_path: PathBuf,
+    pub db_cfg: DbConfiguration,
+    pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
     pub patch_context: Option<PatchContext>,
@@ -148,6 +150,18 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to bootstrap database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("db-cfg-max-threads")
+            .long("db-cfg-max-threads")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("db-cfg-max-open-files")
+            .long("db-cfg-max-open-files")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Max open files for database. If specified '-1', means unlimited. Default value: 512")
+            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
         .arg(Arg::with_name("bootstrap-lookup-address")
             .long("bootstrap-lookup-address")
             .takes_value(true)
@@ -530,7 +544,25 @@ impl Environment {
             },
             storage: crate::configuration::Storage {
                 tezos_data_dir: data_dir.clone(),
-                bootstrap_db_path: {
+                db_cfg: {
+                    let mut db_cfg = DbConfigurationBuilder::default();
+
+                    if let Some(value) = args.value_of("db-cfg-max-threads") {
+                        let max_treads = value
+                            .parse::<usize>()
+                            .expect("Provided value cannot be converted to number");
+                        db_cfg.max_threads(Some(max_treads));
+                    }
+                    if let Some(value) = args.value_of("db-cfg-max-open-files") {
+                        let max_open_files = value
+                            .parse::<i32>()
+                            .expect("Provided value cannot be converted to number");
+                        db_cfg.max_open_files(max_open_files);
+                    }
+
+                    db_cfg.build().unwrap()
+                },
+                db_path: {
                     let db_path = args.value_of("bootstrap-db-path")
                         .unwrap_or("")
                         .parse::<PathBuf>()
