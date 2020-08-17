@@ -28,6 +28,7 @@ In case it starts with "./" or "../", it is relative path to the current dir, ot
 --identity-file <PATH>
 ```
 
+## Database configuration
 ### Bootstrap database path
 Path to bootstrap database directory. 
 In case it starts with "./" or "../", it is relative path to the current dir, otherwise to the --tezos-data-dir. 
@@ -37,6 +38,19 @@ contains valid database, node will continue in bootstrap process on that databas
 ```
 --bootstrap-db-path <PATH>
 ```
+
+### (Optional) parameters
+```
+#Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.
+--db-cfg-max-threads <NUM>
+```
+
+```
+#Max open files for database. If specified '-1', means unlimited. Default value: 512
+--db-cfg-max-open-files <NUM>
+```
+
+-----
 
 ### Bootstrap lookup addresses
 List of peers to bootstrap the network from. Peers are delimited by a colon. 
@@ -152,3 +166,6 @@ Flag for turn on/off record mode
 ```
 --record <BOOL>
 ```
+
+# Performance and optimization
+TODO: write hints for best performance and parameter configuration

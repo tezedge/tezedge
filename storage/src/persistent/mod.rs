@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
+use derive_builder::Builder;
 use rocksdb::{BlockBasedOptions, ColumnFamilyDescriptor, DB, Options};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
@@ -21,34 +22,63 @@ pub mod schema;
 pub mod database;
 pub mod commit_log;
 
+/// Rocksdb database system configuration
+/// - [max_open_files] - default is 512, but depends on system limits (like ulimit)
+/// - [max_num_of_threads] - if not set, num of cpus is used
+#[derive(Builder, Debug, Clone)]
+pub struct DbConfiguration {
+    #[builder(default = "512")]
+    max_open_files: i32,
+    #[builder(default = "None")]
+    max_threads: Option<usize>,
+}
+
+impl Default for DbConfiguration {
+    fn default() -> Self {
+        DbConfigurationBuilder::default()
+            .build()
+            .unwrap()
+    }
+}
+
 /// Open RocksDB database at given path with specified Column Family configurations
 ///
 /// # Arguments
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
-pub fn open_kv<P, I>(path: P, cfs: I) -> Result<DB, DBError>
+pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
     where
         P: AsRef<Path>,
         I: IntoIterator<Item=ColumnFamilyDescriptor>,
 {
-    DB::open_cf_descriptors(&default_kv_options(), path, cfs)
+    DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs)
         .map_err(DBError::from)
 }
 
 /// Create default database configuration options,
 /// based on recommended setting: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-fn default_kv_options() -> Options {
+fn default_kv_options(cfg: &DbConfiguration) -> Options {
     // default db options
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
 
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+    db_opts.set_bytes_per_sync(1048576);
     db_opts.set_level_compaction_dynamic_level_bytes(true);
-    db_opts.increase_parallelism(2);
     db_opts.set_max_background_compactions(4);
     db_opts.set_max_background_flushes(2);
-    db_opts.set_bytes_per_sync(1048576);
+    db_opts.set_max_open_files(cfg.max_open_files);
+
+    // resolve thread count to use
+    let num_of_threads = match cfg.max_threads {
+        Some(num) => std::cmp::min(num, num_cpus::get()),
+        None => num_cpus::get()
+    };
+    // rocksdb default is 1, so we increase only, if above 1
+    if num_of_threads > 1 {
+        db_opts.increase_parallelism(num_of_threads as i32);
+    }
 
     db_opts
 }

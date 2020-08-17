@@ -427,7 +427,7 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::open_kv;
+    use crate::persistent::{DbConfiguration, open_kv};
 
     use super::*;
 
@@ -441,7 +441,7 @@ mod tests {
         }
 
         {
-            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()]).unwrap();
+            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()], &DbConfiguration::default()).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {

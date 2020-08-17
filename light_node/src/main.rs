@@ -281,9 +281,9 @@ fn main() {
         Sequences::descriptor(),
         MempoolStorage::descriptor(),
     ];
-    let rocks_db = match open_kv(&env.storage.bootstrap_db_path, schemas) {
+    let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
-        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.bootstrap_db_path), actor_system)
+        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.db_path), actor_system)
     };
     debug!(log, "Loaded RocksDB database");
 
@@ -298,7 +298,7 @@ fn main() {
     ];
 
     {
-        let commit_logs = match open_cl(&env.storage.bootstrap_db_path, schemas) {
+        let commit_logs = match open_cl(&env.storage.db_path, schemas) {
             Ok(commit_logs) => Arc::new(commit_logs),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to open commit logs"; "reason" => e), actor_system)
         };
@@ -306,7 +306,7 @@ fn main() {
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
         match resolve_storage_init_chain_data(
             &tezos_env,
-            &env.storage.bootstrap_db_path,
+            &env.storage.db_path,
             &env.storage.tezos_data_dir,
             &env.storage.patch_context,
             log.clone()) {
