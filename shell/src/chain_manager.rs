@@ -645,7 +645,7 @@ impl ChainManager {
 
                         // iterate through all validation passes 
                         for (idx, ops) in operations.iter().enumerate() {
-                            let opb = OperationsForBlock::new(header.message_hash().unwrap(), idx as i8);
+                            let opb = OperationsForBlock::new(header.message_hash()?, idx as i8);
 
                             // create OperationsForBlocksMessage - the operations are stored in DB as a OperationsForBlocksMessage per validation pass per block
                             // e.g one block -> 4 validation passes -> 4 OperationsForBlocksMessage to store for the block
@@ -658,7 +658,7 @@ impl ChainManager {
                                 ctx.myself().tell(CheckChainCompleteness, None);
 
                                 // notify others that new all operations for block were received
-                                let block = self.block_storage.get(&header.message_hash().unwrap())?.ok_or(StorageError::MissingKey)?;
+                                let block = self.block_storage.get(&header.message_hash()?)?.ok_or(StorageError::MissingKey)?;
                                 self.shell_channel.tell(
                                     Publish {
                                         msg: AllBlockOperationsReceived {
