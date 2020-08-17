@@ -132,7 +132,7 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
 #[serial]
 fn test_current_level_call() -> Result<(), failure::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_preapply_block_storage_02");
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_current_level_call_storage");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -162,7 +162,7 @@ fn test_current_level_call() -> Result<(), failure::Error> {
 #[serial]
 fn test_minimal_valid_time() -> Result<(), failure::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_preapply_block_storage_02");
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(" test_minimal_valid_time_storage");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -193,7 +193,7 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
 #[serial]
 fn test_compute_path() -> Result<(), failure::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_preapply_block_storage_02");
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_compute_path_storage");
 
     // apply block 1
     let _ = apply_blocks_1(&chain_id, genesis_block_header);
