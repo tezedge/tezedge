@@ -43,7 +43,7 @@ impl BlockchainState {
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(
-            MissingBlock::with_level(
+            MissingBlock::with_level_guess(
                 block_header.header.predecessor().clone(),
                 block_header.header.level() - 1,
             )
@@ -99,6 +99,11 @@ impl BlockchainState {
     #[inline]
     pub fn has_missing_blocks(&self) -> bool {
         !self.missing_blocks.is_empty()
+    }
+
+    #[inline]
+    pub fn missing_blocks_count(&self) -> usize {
+        self.missing_blocks.len()
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
@@ -193,7 +198,7 @@ impl MissingBlock {
         }
     }
 
-    pub fn fits_to_max(&self, level_max: i32) -> bool {
+    fn fits_to_max(&self, level_max: i32) -> bool {
         if let Some(level) = self.level {
             return level <= level_max;
         }

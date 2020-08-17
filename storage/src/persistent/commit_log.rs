@@ -66,7 +66,7 @@ type ItemCount = u32;
 
 /// Precisely identifies location of a record in a commit log.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Location(Offset, ByteLimit);
+pub struct Location(pub Offset, pub ByteLimit);
 
 impl Location {
     #[inline]
@@ -85,7 +85,7 @@ impl BincodeEncoded for Location {}
 
 /// Range of values to get from a commit log
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Range(Offset, ByteLimit, ItemCount);
+pub struct Range(pub Offset, pub ByteLimit, pub ItemCount);
 
 /// Implement this trait for a commit log engine.
 pub trait CommitLogWithSchema<S: CommitLogSchema> {
@@ -182,7 +182,7 @@ impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
         where
             P: AsRef<Path>,
-            I: IntoIterator<Item = CommitLogDescriptor>,
+            I: IntoIterator<Item=CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),

@@ -108,6 +108,11 @@ impl OperationsState {
         !self.missing_operations_for_blocks.is_empty()
     }
 
+    #[inline]
+    pub fn missing_block_operations_count(&self) -> usize {
+        self.missing_operations_for_blocks.len()
+    }
+
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.operations_meta_storage.iter(IteratorMode::Start)? {
             let (key, value) = (key?, value?);

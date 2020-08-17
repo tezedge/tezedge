@@ -1,13 +1,17 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::Arc;
+
 use failure::Error;
 
+use crypto::hash::HashType;
 use storage::*;
+use storage::block_storage::BlockStorageCommitLog;
+use storage::persistent::commit_log::Range;
 use storage::tests_common::TmpStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
-use crypto::hash::HashType;
 
 #[test]
 fn block_storage_read_write() -> Result<(), Error> {
@@ -19,6 +23,35 @@ fn block_storage_read_write() -> Result<(), Error> {
     storage.put_block_header(&block_header)?;
     let block_header_res = storage.get(&block_header.hash)?.unwrap();
     assert_eq!(block_header_res, block_header);
+
+    Ok(())
+}
+
+#[test]
+fn test_put_block_header_twice() -> Result<(), Error> {
+    let tmp_storage = TmpStorage::create("__block_storage_write_twice")?;
+    let mut storage = BlockStorage::new(tmp_storage.storage());
+
+    // test block
+    let block_header = make_test_block_header()?;
+
+    // write block to storage FIRST time
+    storage.put_block_header(&block_header)?;
+
+    // check primary_index and commit_log
+    assert_eq!(block_header, storage.get(&block_header.hash)?.unwrap());
+
+    // stored in commit_log
+    let stored_location1 = storage.get_location(&block_header.hash)?.unwrap();
+    assert_eq!(0, stored_location1.block_header.0);
+
+    // write the same block to storage SECOND time
+    storage.put_block_header(&block_header)?;
+    assert_eq!(block_header, storage.get(&block_header.hash)?.unwrap());
+
+    // location shold not be updated, means, header is not rewritten or writen twice in commit_log
+    let stored_location2 = storage.get_location(&block_header.hash)?.unwrap();
+    assert_eq!(stored_location1.block_header.0, stored_location2.block_header.0);
 
     Ok(())
 }

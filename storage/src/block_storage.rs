@@ -15,6 +15,8 @@ use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, Ke
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
 /// That location is then stored as a value in the key-value store.
+///
+/// The assumption is that, if primary_index contains block_hash, then also commit_log contains header data
 #[derive(Clone)]
 pub struct BlockStorage {
     primary_index: BlockPrimaryIndex,
@@ -45,6 +47,8 @@ pub struct BlockAdditionalData {
 
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
+
+    fn get_location(&self, block_hash: &BlockHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError>;
 
     fn get_with_json_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
@@ -77,7 +81,15 @@ impl BlockStorage {
         }
     }
 
+    /// Stores header in key-value store and commit_log.
+    /// If called multiple times for the same header, data are stored just first time.
     pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+
+        if self.primary_index.contains(&block_header.hash)? {
+            // we assume that, if primary_index contains hash, then also commit_log contains header data, header data cannot be change, so there is nothing to do
+            return Ok(())
+        }
+
         self.clog.append(&BlockStorageColumn::BlockHeader(block_header.clone()))
             .map_err(StorageError::from)
             .and_then(|block_header_location| {
@@ -86,7 +98,8 @@ impl BlockStorage {
                     block_json_data: None,
                     block_additional_data: None,
                 };
-                self.primary_index.put(&block_header.hash, &location).and(self.by_level_index.put(block_header.header.level(), &location))
+                self.primary_index.put(&block_header.hash, &location)
+                    .and(self.by_level_index.put(block_header.header.level(), &location))
             })
     }
 
@@ -172,6 +185,11 @@ impl BlockStorageReader for BlockStorage {
         self.primary_index.get(block_hash)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
+    }
+
+    #[inline]
+    fn get_location(&self, block_hash: &BlockHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
+        self.primary_index.get(block_hash)
     }
 
     #[inline]
@@ -280,9 +298,9 @@ impl BincodeEncoded for BlockStorageColumn {}
 /// Holds reference to all stored columns.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BlockStorageColumnsLocation {
-    block_header: Location,
-    block_json_data: Option<Location>,
-    block_additional_data: Option<Location>,
+    pub block_header: Location,
+    pub block_json_data: Option<Location>,
+    pub block_additional_data: Option<Location>,
 }
 
 impl BincodeEncoded for BlockStorageColumnsLocation {}
