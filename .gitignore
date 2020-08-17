@@ -17,6 +17,6 @@ target/
 
 # Miscellaneous
 /bootstrap_db
-/.vscode
+.vscode
 
 light_node/etc/tezedge/identity.json
