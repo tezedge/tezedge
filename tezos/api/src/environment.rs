@@ -162,9 +162,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
             protocol: "ProtoGenesisGenesisGenesisGenesisGenesisGenesk612im".to_string(),
         },
-        bootstrap_lookup_addresses: vec![
-            "localhost".to_string()
-        ],
+        bootstrap_lookup_addresses: vec![],
         version: "SANDBOXED_TEZOS".to_string(),
         protocol_overrides: ProtocolOverrides {
             forced_protocol_upgrades: vec![],

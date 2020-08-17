@@ -607,12 +607,14 @@ impl ChainManager {
                 }
             }
             ShellChannelMsg::InjectBlock(inject_data) => {
+                let level = inject_data.block_header.level();
                 let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header).unwrap();
                 let log = ctx.system.log().new(slog::o!("injection" => "block".to_string()));
 
+                // this should  allways return true, as we are injecting a forged new block
                 let is_new_block =
                     self.chain_state.process_block_header(&block_header_with_hash, &log)
-                        .and(self.operations_state.process_block_header(&block_header_with_hash))?;
+                        .and(self.operations_state.process_injected_block_header(&block_header_with_hash))?;
 
                 if is_new_block {
                     // update stats
@@ -622,7 +624,7 @@ impl ChainManager {
                     // trigger CheckChainCompleteness
                     ctx.myself().tell(CheckChainCompleteness, None);
 
-                    // notify others that new block was received
+                    // notify others that new block (header) was received
                     self.shell_channel.tell(
                         Publish {
                             msg: BlockReceived {
@@ -631,6 +633,43 @@ impl ChainManager {
                             }.into(),
                             topic: ShellChannelTopic::ShellEvents.into(),
                         }, Some(ctx.myself().into()));
+
+                    // handle operations
+                    // Note: When injecting the first block with the protocol activation, there are no validation passes (therefore no operations)
+                    // so we handle operations only above level 1 
+                    if level > 1 {
+                        // safe unwrap after above first block
+                        let operations = inject_data.operations.clone().unwrap();
+                        let header = block_header_with_hash.header;
+                        let op_paths = inject_data.operation_paths.clone().unwrap();
+
+                        // iterate through all validation passes 
+                        for (idx, ops) in operations.iter().enumerate() {
+                            let opb = OperationsForBlock::new(header.message_hash()?, idx as i8);
+
+                            // create OperationsForBlocksMessage - the operations are stored in DB as a OperationsForBlocksMessage per validation pass per block
+                            // e.g one block -> 4 validation passes -> 4 OperationsForBlocksMessage to store for the block
+                            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, op_paths.get(idx).unwrap().to_owned(), ops.clone());
+                            if self.operations_state.process_block_operations(&msg)? {
+                                // update stats
+                                self.stats.unseen_block_operations_last = Instant::now();
+
+                                // trigger CheckChainCompleteness
+                                ctx.myself().tell(CheckChainCompleteness, None);
+
+                                // notify others that new all operations for block were received
+                                let block = self.block_storage.get(&header.message_hash()?)?.ok_or(StorageError::MissingKey)?;
+                                self.shell_channel.tell(
+                                    Publish {
+                                        msg: AllBlockOperationsReceived {
+                                            hash: block.hash,
+                                            level: block.header.level(),
+                                        }.into(),
+                                        topic: ShellChannelTopic::ShellEvents.into(),
+                                    }, Some(ctx.myself().into()));
+                            }
+                        }
+                    }
                 }
             }
             ShellChannelMsg::ShuttingDown(_) => {

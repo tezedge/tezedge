@@ -232,7 +232,7 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
     let shell_channel = env.shell_channel();
 
     result_to_json_response(
-        services::mempool_services::inject_block(&body, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        services::mempool_services::inject_block(&body, &env, shell_channel.clone()),
         env.log(),
     )
 }
@@ -305,16 +305,44 @@ pub async fn run_operation(req: Request<Body>, params: Params, _: Query, env: Rp
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
-    let body = hyper::body::to_bytes(req.into_body()).await?;
-    let body = String::from_utf8(body.to_vec())?;
-    let json_request = JsonRpcRequest {
-        body,
-        context_path,
-    };
+    let json_request = create_ffi_json_request(req).await?;
 
     result_to_json_response(
         services::protocol::run_operation(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn current_level(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    let json_request = create_ffi_json_request(req).await?;
+
+    result_to_json_response(
+        services::protocol::current_level(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn minimal_valid_time(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    let json_request = create_ffi_json_request(req).await?;
+
+    result_to_json_response(
+        services::protocol::minimal_valid_time(chain_param, block_param, json_request, &env),
+        env.log(),
+    )
+}
+
+pub async fn live_blocks(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_param = params.get_str("chain_id").unwrap();
+    let block_param = params.get_str("block_id").unwrap();
+
+    result_to_json_response(
+        services::protocol::live_blocks(chain_param, block_param, &env),
         env.log(),
     )
 }
@@ -323,13 +351,7 @@ pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, e
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
-    let body = hyper::body::to_bytes(req.into_body()).await?;
-    let body = String::from_utf8(body.to_vec())?;
-    let json_request = JsonRpcRequest {
-        body,
-        context_path,
-    };
+    let json_request = create_ffi_json_request(req).await?;
 
     result_to_json_response(
         services::protocol::preapply_operations(chain_param, block_param, json_request, &env),
@@ -341,13 +363,7 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
-    let body = hyper::body::to_bytes(req.into_body()).await?;
-    let body = String::from_utf8(body.to_vec())?;
-    let json_request = JsonRpcRequest {
-        body,
-        context_path,
-    };
+    let json_request = create_ffi_json_request(req).await?;
 
     result_to_json_response(
         services::protocol::preapply_block(chain_param, block_param, json_request, &env),
@@ -360,4 +376,15 @@ pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcService
         base_services::get_node_version(env.network_version()),
         env.log(),
     )
+}
+
+async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRpcRequest, failure::Error> {
+    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+
+    Ok(JsonRpcRequest {
+        body,
+        context_path,
+    })
 }
