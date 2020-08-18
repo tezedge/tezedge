@@ -395,7 +395,6 @@ impl NodeVersion {
         }
     }
 }
-// ---------------------------------------------------------------------
 
 /// Return block level based on block_id url parameter
 /// 

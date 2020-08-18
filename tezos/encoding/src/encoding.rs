@@ -59,21 +59,23 @@ impl Tag {
 #[derive(Debug, Clone)]
 pub struct TagMap {
     id_to_tag: HashMap<u16, Tag>,
-    variant_to_tag: HashMap<String, Tag>,
+    variant_to_id: HashMap<String, u16>,
 }
 
 impl TagMap {
-    pub fn new(tags: &[Tag]) -> TagMap {
+    pub fn new(tags: Vec<Tag>) -> TagMap {
         let mut id_to_tag = HashMap::new();
-        let mut variant_to_tag = HashMap::new();
+        let mut variant_to_id = HashMap::new();
 
         for tag in tags {
-            let prev_item = id_to_tag.insert(tag.get_id(), tag.clone());
-            assert!(prev_item.is_none(), "Tag id: 0x{:X} is already present in TagMap", tag.get_id());
-            variant_to_tag.insert(tag.get_variant().to_string(), tag.clone());
+            let tag_id = tag.get_id();
+            let variant = tag.get_variant().to_string();
+            let prev_item = id_to_tag.insert(tag_id, tag);
+            assert!(prev_item.is_none(), "Tag id: 0x{:X} is already present in TagMap", tag_id);
+            variant_to_id.insert(variant, tag_id);
         }
 
-        TagMap { id_to_tag, variant_to_tag }
+        TagMap { id_to_tag, variant_to_id }
     }
 
     pub fn find_by_id(&self, id: u16) -> Option<&Tag> {
@@ -81,7 +83,8 @@ impl TagMap {
     }
 
     pub fn find_by_variant(&self, variant: &str) -> Option<&Tag> {
-        self.variant_to_tag.get(variant)
+        self.variant_to_id.get(variant)
+            .and_then(|tag_id| self.id_to_tag.get(tag_id))
     }
 }
 
@@ -264,7 +267,25 @@ impl Encoding {
 
 /// Indicates that type has it's own ser/de schema.
 pub trait HasEncoding {
-    fn encoding() -> Encoding;
+    fn encoding() -> &'static Encoding;
+}
+
+/// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
+#[macro_export]
+macro_rules! has_encoding {
+    ($struct_name:ident, $enc_ref_name:ident, $code:block) => {
+        lazy_static::lazy_static! {
+            static ref $enc_ref_name: Encoding = {
+                $code
+            };
+        }
+
+        impl HasEncoding for $struct_name {
+            fn encoding() -> &'static Encoding {
+                &$enc_ref_name
+            }
+        }
+    }
 }
 
 #[cfg(test)]

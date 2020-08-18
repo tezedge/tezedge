@@ -62,7 +62,6 @@ macro_rules! roundtrip_test {
         };
 }
 
-// fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, encoding: &'static Encoding, ffi_fn_name: String) -> Result<(), OcamlError> {
 fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_fn_name: String) -> Result<(), OcamlError> {
     runtime::execute(move || {
         // sent bytes to ocaml
@@ -285,7 +284,7 @@ fn test_apply_block_request_roundtrip(iteration: i32) -> Result<(), failure::Err
         .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
         .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
         .max_operations_ttl(MAX_OPERATIONS_TTL)
-        .operations(ApplyBlockRequest::convert_operations(&block_operations_from_hex(HEADER_HASH, sample_operations_for_request())))
+        .operations(ApplyBlockRequest::convert_operations(block_operations_from_hex(HEADER_HASH, sample_operations_for_request())))
         .build().unwrap();
 
     Ok(
@@ -534,7 +533,7 @@ fn call_to_send_context_events(
     }).unwrap()
 }
 
-fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<RustBytes>>) -> Vec<Option<OperationsForBlocksMessage>> {
+fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<RustBytes>>) -> Vec<OperationsForBlocksMessage> {
     hex_operations
         .into_iter()
         .map(|bo| {
@@ -542,7 +541,7 @@ fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<RustBytes
                 .into_iter()
                 .map(|op| Operation::from_bytes(op).unwrap())
                 .collect();
-            Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
+            OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
         })
         .collect()
 }

@@ -149,7 +149,7 @@ fn get_time(action: &ContextAction) -> f64 {
         ContextAction::DirMem { start_time, end_time, .. } => *end_time - *start_time,
         ContextAction::Get { start_time, end_time, .. } => *end_time - *start_time,
         ContextAction::Fold { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Shutdown => 0f64,
+        ContextAction::Shutdown => 0_f64,
     }
 }
 

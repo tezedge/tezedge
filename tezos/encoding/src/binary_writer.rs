@@ -90,7 +90,7 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
 fn encode_tuple(data: &mut Vec<u8>, value: &Value, encodings: &[Encoding]) -> Result<usize, Error> {
     if let Value::Tuple(ref values) = value {
         let mut bytes_sz: usize = 0;
-        for (index, encoding) in encodings.into_iter().enumerate() {
+        for (index, encoding) in encodings.iter().enumerate() {
             if let Some(value) = values.get(index) {
                 bytes_sz += encode_any(data, value, encoding)?;
             } else {
@@ -632,7 +632,7 @@ mod tests {
             Field::new("messages", Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
+                    TagMap::new(vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
                 )
             )))
         ];

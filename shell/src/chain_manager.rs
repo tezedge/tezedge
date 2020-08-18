@@ -47,7 +47,7 @@ const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
 /// After this time peer will be disconnected if it fails to respond to our request
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
-const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31536000);
+const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
 /// After this interval we will rehydrate state if no new blocks are applied
 const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
 const BLOCK_HASH_ENCODING: HashType = HashType::BlockHash;
@@ -219,7 +219,7 @@ impl ChainManager {
                         let queued_blocks = missing_blocks.drain(..)
                             .map(|missing_block| {
                                 let missing_block_hash = missing_block.block_hash.clone();
-                                if let None = peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block) {
+                                if peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block).is_none() {
                                     // block was not already present in queue
                                     Some(missing_block_hash)
                                 } else {
@@ -249,7 +249,7 @@ impl ChainManager {
                     if !missing_operations.is_empty() {
                         let queued_operations = missing_operations.iter()
                             .map(|missing_operation| {
-                                if let None = peer.queued_block_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()) {
+                                if peer.queued_block_operations.insert(missing_operation.block_hash.clone(), missing_operation.clone()).is_none() {
                                     // operations were not already present in queue
                                     Some(missing_operation)
                                 } else {
@@ -387,7 +387,7 @@ impl ChainManager {
                                             peer.block_response_last = Instant::now();
 
                                             let is_new_block =
-                                                chain_state.process_block_header(&block_header_with_hash, log.clone())
+                                                chain_state.process_block_header(&block_header_with_hash, &log)
                                                     .and(operations_state.process_block_header(&block_header_with_hash))?;
 
                                             if is_new_block {
@@ -607,12 +607,14 @@ impl ChainManager {
                 }
             }
             ShellChannelMsg::InjectBlock(inject_data) => {
-                let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header.clone()).unwrap();
+                let level = inject_data.block_header.level();
+                let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header).unwrap();
                 let log = ctx.system.log().new(slog::o!("injection" => "block".to_string()));
 
+                // this should  allways return true, as we are injecting a forged new block
                 let is_new_block =
-                    self.chain_state.process_block_header(&block_header_with_hash, log.clone())
-                        .and(self.operations_state.process_block_header(&block_header_with_hash))?;
+                    self.chain_state.process_block_header(&block_header_with_hash, &log)
+                        .and(self.operations_state.process_injected_block_header(&block_header_with_hash))?;
 
                 if is_new_block {
                     // update stats
@@ -622,7 +624,7 @@ impl ChainManager {
                     // trigger CheckChainCompleteness
                     ctx.myself().tell(CheckChainCompleteness, None);
 
-                    // notify others that new block was received
+                    // notify others that new block (header) was received
                     self.shell_channel.tell(
                         Publish {
                             msg: BlockReceived {
@@ -631,6 +633,43 @@ impl ChainManager {
                             }.into(),
                             topic: ShellChannelTopic::ShellEvents.into(),
                         }, Some(ctx.myself().into()));
+
+                    // handle operations
+                    // Note: When injecting the first block with the protocol activation, there are no validation passes (therefore no operations)
+                    // so we handle operations only above level 1 
+                    if level > 1 {
+                        // safe unwrap after above first block
+                        let operations = inject_data.operations.clone().unwrap();
+                        let header = block_header_with_hash.header;
+                        let op_paths = inject_data.operation_paths.clone().unwrap();
+
+                        // iterate through all validation passes 
+                        for (idx, ops) in operations.iter().enumerate() {
+                            let opb = OperationsForBlock::new(header.message_hash()?, idx as i8);
+
+                            // create OperationsForBlocksMessage - the operations are stored in DB as a OperationsForBlocksMessage per validation pass per block
+                            // e.g one block -> 4 validation passes -> 4 OperationsForBlocksMessage to store for the block
+                            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, op_paths.get(idx).unwrap().to_owned(), ops.clone());
+                            if self.operations_state.process_block_operations(&msg)? {
+                                // update stats
+                                self.stats.unseen_block_operations_last = Instant::now();
+
+                                // trigger CheckChainCompleteness
+                                ctx.myself().tell(CheckChainCompleteness, None);
+
+                                // notify others that new all operations for block were received
+                                let block = self.block_storage.get(&header.message_hash()?)?.ok_or(StorageError::MissingKey)?;
+                                self.shell_channel.tell(
+                                    Publish {
+                                        msg: AllBlockOperationsReceived {
+                                            hash: block.hash,
+                                            level: block.header.level(),
+                                        }.into(),
+                                        topic: ShellChannelTopic::ShellEvents.into(),
+                                    }, Some(ctx.myself().into()));
+                            }
+                        }
+                    }
                 }
             }
             ShellChannelMsg::ShuttingDown(_) => {
@@ -1000,7 +1039,7 @@ fn tell_peer(msg: PeerMessageResponse, peer: &mut PeerState) {
 fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
     // collect for mempool
     let known_valid = mempool_state.result.applied.iter().map(|a| a.hash.clone()).collect::<Vec<OperationHash>>();
-    let pending = mempool_state.pending.iter().map(|a| a.clone()).collect::<Vec<OperationHash>>();
+    let pending = mempool_state.pending.iter().cloned().collect::<Vec<OperationHash>>();
 
     Mempool::new(known_valid, pending)
 }
@@ -1012,7 +1051,7 @@ fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Curr
 
     if let Some(mempool_state) = mempool_state {
         if let Some(mempool_head) = &mempool_state.head {
-            if &mempool_head.hash == &current_head.hash {
+            if mempool_head.hash == current_head.hash {
                 resolve_mempool_to_send(mempool_state)
             } else {
                 Mempool::default()

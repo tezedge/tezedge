@@ -7,7 +7,7 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContextHash};
+use crypto::hash::{BlockHash, ContextHash, HashType};
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage};
@@ -61,6 +61,8 @@ pub trait BlockStorageReader: Sync + Send {
     fn get_by_block_level(&self, level: i32) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn get_by_block_level_with_json_data(&self, level: BlockLevel) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
+    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
@@ -243,6 +245,14 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError> {
+        let live_blocks: Option<Vec<String>> = self.by_level_index.get_blocks(level, max_ttl)?.iter()
+            .map(|location| self.get_block_header_by_location(&location).map(|block_header| HashType::BlockHash.bytes_to_string(&block_header.hash)).ok())
+            .collect();
+        Ok(live_blocks)
+    }
+
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.primary_index.contains(block_hash)
     }
@@ -417,7 +427,7 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::open_kv;
+    use crate::persistent::{DbConfiguration, open_kv};
 
     use super::*;
 
@@ -431,7 +441,7 @@ mod tests {
         }
 
         {
-            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()]).unwrap();
+            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()], &DbConfiguration::default()).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {

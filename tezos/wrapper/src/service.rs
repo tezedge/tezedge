@@ -50,6 +50,7 @@ enum ProtocolMessage {
     ProtocolJsonRpcCall(ProtocolJsonRpcRequest),
     HelpersPreapplyOperationsCall(ProtocolJsonRpcRequest),
     HelpersPreapplyBlockCall(ProtocolJsonRpcRequest),
+    ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
     GenesisResultDataCall(GenesisResultDataParams),
@@ -93,6 +94,7 @@ enum NodeMessage {
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
     GenerateIdentityResult(Result<Identity, TezosGenerateIdentityError>),
+    ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
     ShutdownResult,
 }
 
@@ -143,6 +145,10 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
             ProtocolMessage::HelpersPreapplyBlockCall(request) => {
                 let res = Proto::helpers_preapply_block(request);
                 tx.send(&NodeMessage::JsonRpcResponse(res))?;
+            }
+            ProtocolMessage::ComputePathCall(request) => {
+                let res = Proto::compute_path(request);
+                tx.send(&NodeMessage::ComputePathResponse(res))?;
             }
             ProtocolMessage::ChangeRuntimeConfigurationCall(params) => {
                 let res = Proto::change_runtime_configuration(params);
@@ -203,6 +209,10 @@ pub enum ProtocolError {
     #[fail(display = "Protocol rpc call error: {}", reason)]
     ProtocolRpcError {
         reason: ProtocolRpcError
+    },
+    #[fail(display = "Compute path call error: {}", reason)]
+    ComputePathError {
+        reason: ComputePathError
     },
     /// Error in configuration.
     #[fail(display = "OCaml runtime configuration error: {}", reason)]
@@ -384,6 +394,7 @@ impl ProtocolController {
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
     const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
+    const COMPUTE_PATH_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Apply block
     pub fn apply_block(&self, request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ProtocolServiceError> {
@@ -426,6 +437,21 @@ impl ProtocolController {
         io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
             NodeMessage::ValidateOperationResponse(result) => result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into()),
+            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+        }
+    }
+
+    /// ComputePath
+    pub fn compute_path(&self, request: ComputePathRequest) -> Result<ComputePathResponse, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::ComputePathCall(request))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx.set_read_timeout(Some(Self::COMPUTE_PATH_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::ComputePathResponse(result) => result.map_err(|err| ProtocolError::ComputePathError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }
@@ -491,7 +517,7 @@ impl ProtocolController {
             if !(*was_one_write_success) {
                 if readonly {
                     // release lock here and wait
-                    let _ = cvar.wait(was_one_write_success).unwrap();
+                    let _lock = cvar.wait(was_one_write_success).unwrap();
                 }
                 // TODO: handle situation, thah more writes - we cannot allowed to do so, just one write can exists
             }

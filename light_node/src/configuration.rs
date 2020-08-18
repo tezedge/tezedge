@@ -11,21 +11,12 @@ use std::time::Duration;
 
 use clap::{App, Arg};
 
-use shell::peer_manager::Threshold;
+use shell::peer_manager::{P2p, Threshold};
+use storage::persistent::{DbConfiguration, DbConfigurationBuilder};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
-
-#[derive(Debug, Clone)]
-pub struct P2p {
-    pub listener_port: u16,
-    pub bootstrap_lookup_addresses: Vec<String>,
-    pub initial_peers: Vec<SocketAddr>,
-    pub peer_threshold: Threshold,
-    pub disable_mempool: bool,
-    pub private_node: bool,
-}
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -43,7 +34,8 @@ pub struct Logging {
 
 #[derive(Debug, Clone)]
 pub struct Storage {
-    pub bootstrap_db_path: PathBuf,
+    pub db_cfg: DbConfiguration,
+    pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
     pub patch_context: Option<PatchContext>,
@@ -158,12 +150,29 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to bootstrap database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("db-cfg-max-threads")
+            .long("db-cfg-max-threads")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("db-cfg-max-open-files")
+            .long("db-cfg-max-open-files")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Max open files for database. If specified '-1', means unlimited. Default value: 512")
+            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
         .arg(Arg::with_name("bootstrap-lookup-address")
             .long("bootstrap-lookup-address")
             .takes_value(true)
             .conflicts_with("peers")
             .conflicts_with("private-node")
             .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
+        .arg(Arg::with_name("disable-bootstrap-lookup")
+            .long("disable-bootstrap-lookup")
+            .takes_value(false)
+            .conflicts_with("bootstrap-lookup-address")
+            .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
         .arg(Arg::with_name("log-file")
             .long("log-file")
             .takes_value(true)
@@ -453,6 +462,8 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of p2p-port"),
+                disable_bootstrap_lookup: args
+                    .is_present("disable-bootstrap-lookup"),
                 bootstrap_lookup_addresses: args.
                     value_of("bootstrap-lookup-address")
                     .map(|addresses_str| addresses_str
@@ -533,7 +544,25 @@ impl Environment {
             },
             storage: crate::configuration::Storage {
                 tezos_data_dir: data_dir.clone(),
-                bootstrap_db_path: {
+                db_cfg: {
+                    let mut db_cfg = DbConfigurationBuilder::default();
+
+                    if let Some(value) = args.value_of("db-cfg-max-threads") {
+                        let max_treads = value
+                            .parse::<usize>()
+                            .expect("Provided value cannot be converted to number");
+                        db_cfg.max_threads(Some(max_treads));
+                    }
+                    if let Some(value) = args.value_of("db-cfg-max-open-files") {
+                        let max_open_files = value
+                            .parse::<i32>()
+                            .expect("Provided value cannot be converted to number");
+                        db_cfg.max_open_files(max_open_files);
+                    }
+
+                    db_cfg.build().unwrap()
+                },
+                db_path: {
                     let db_path = args.value_of("bootstrap-db-path")
                         .unwrap_or("")
                         .parse::<PathBuf>()

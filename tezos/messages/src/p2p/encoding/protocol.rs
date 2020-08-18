@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, ProtocolHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolMessage {
@@ -16,25 +18,12 @@ pub struct ProtocolMessage {
     body: BinaryDataCache,
 }
 
-impl HasEncoding for ProtocolMessage {
-    fn encoding() -> Encoding {
+cached_data!(ProtocolMessage, body);
+has_encoding!(ProtocolMessage, PROTOCOL_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("protocol", Protocol::encoding())
+            Field::new("protocol", Protocol::encoding().clone())
         ])
-    }
-}
-
-impl CachedData for ProtocolMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -47,27 +36,14 @@ pub struct Component {
     body: BinaryDataCache,
 }
 
-impl HasEncoding for Component {
-    fn encoding() -> Encoding {
+cached_data!(Component, body);
+has_encoding!(Component, COMPONENT_ENCODING, {
         Encoding::Obj(vec![
             Field::new("name", Encoding::String),
             Field::new("interface", Encoding::option_field(Encoding::String)),
             Field::new("implementation", Encoding::String),
         ])
-    }
-}
-
-impl CachedData for Component {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -89,26 +65,13 @@ impl Protocol {
     }
 }
 
-impl HasEncoding for Protocol {
-    fn encoding() -> Encoding {
+cached_data!(Protocol, body);
+has_encoding!(Protocol, PROTOCOL_ENCODING, {
         Encoding::Obj(vec![
             Field::new("expected_env_version", Encoding::Int16),
-            Field::new("components", Encoding::dynamic(Encoding::list(Component::encoding())))
+            Field::new("components", Encoding::dynamic(Encoding::list(Component::encoding().clone())))
         ])
-    }
-}
-
-impl CachedData for Protocol {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -119,22 +82,9 @@ pub struct GetProtocolsMessage {
     body: BinaryDataCache,
 }
 
-impl HasEncoding for GetProtocolsMessage {
-    fn encoding() -> Encoding {
+cached_data!(GetProtocolsMessage, body);
+has_encoding!(GetProtocolsMessage, GET_PROTOCOLS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("get_protocols", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash)))),
         ])
-    }
-}
-
-impl CachedData for GetProtocolsMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});

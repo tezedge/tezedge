@@ -38,6 +38,7 @@ use tezos_messages::protocol::{
 use crate::helpers::{get_block_hash_by_block_id, get_context, get_context_protocol_params, get_level_by_block_id};
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::server::RpcServiceEnvironment;
+use crate::services::base_services::get_block_level_by_block_id;
 
 mod proto_001;
 mod proto_002;
@@ -384,7 +385,7 @@ pub(crate) fn proto_get_contract_counter(
                 pkh,
                 context)
         }
-        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+        _ => panic!("Missing contract counter implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
 }
 
@@ -427,33 +428,12 @@ pub(crate) fn proto_get_contract_manager_key(
                 pkh,
                 context)
         }
-        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+        _ => panic!("Missing manager key implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
 }
 
 pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let persistent_storage = env.persistent_storage();
-    let state = env.state();
-
-    // get header
-    let block_storage = BlockStorage::new(persistent_storage);
-    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
-    let block_header = block_storage.get(&block_hash)?;
-    let block_header = match block_header {
-        Some(header) => header.header.as_ref().clone(),
-        None => bail!("No block header found for hash: {}", block_param)
-    };
-    let state = state.read().unwrap();
-    let chain_id = state.chain_id().clone();
-
-    // create request to ffi
-    let request = ProtocolJsonRpcRequest {
-        chain_arg: chain_param.to_string(),
-        block_header,
-        ffi_service: FfiRpcService::HelpersRunOperation,
-        request: json_request,
-        chain_id,
-    };
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersRunOperation, &env)?;
 
     // TODO: retry?
     let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
@@ -461,29 +441,54 @@ pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: 
     Ok(serde_json::from_str(&response.body)?)
 }
 
-pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+pub(crate) fn current_level(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersCurrentLevel, &env)?;
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn minimal_valid_time(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::DelegatesMinimalValidTime, &env)?;
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn live_blocks(_chain_param: &str, block_param: &str, env: &RpcServiceEnvironment) -> Result<Option<Vec<String>>, failure::Error> {
     let persistent_storage = env.persistent_storage();
     let state = env.state();
-
-    // get header
+    
     let block_storage = BlockStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
-    let block_header = block_storage.get(&block_hash)?;
-    let block_header = match block_header {
-        Some(header) => header.header.as_ref().clone(),
-        None => bail!("No block header found for hash: {}", block_param)
+    let current_block = block_storage.get_with_additional_data(&block_hash)?;
+    let max_ttl: usize = match current_block {
+        Some((_, json_data)) => {
+            json_data.max_operations_ttl().into()
+        }
+        None => bail!("Block not found for block id: {}", block_param)
     };
-    let state = state.read().unwrap();
-    let chain_id = state.chain_id().clone();
+    let block_level = get_block_level_by_block_id(block_param, 0, persistent_storage, state)?;
 
-    // create request to ffi
-    let request = ProtocolJsonRpcRequest {
-        chain_arg: chain_param.to_string(),
-        block_header,
-        ffi_service: FfiRpcService::HelpersPreapplyOperations,
-        request: json_request,
-        chain_id,
-    };
+    let mut live_blocks = block_storage.get_live_blocks(block_level.try_into()?, max_ttl)?;
+
+    // include genesis block (the storage iterator skips the genesis block)
+    if (block_level as usize) - max_ttl <= 0 {
+        if let Some(live_blocks) = &mut live_blocks {
+            live_blocks.insert(0, env.genesis_hash().to_owned())
+        }
+    }
+
+    Ok(live_blocks)
+}
+
+
+pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersPreapplyOperations, &env)?;
 
     // TODO: retry?
     let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_operations(request)?;
@@ -492,11 +497,19 @@ pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_req
 }
 
 pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    // get header
+    // create request to ffi
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersPreapplyBlock, &env)?;
 
+    // TODO: TE-192 - refactor to protocol runner call
+    let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_block(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+fn create_protocol_json_rpc_request(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, service: FfiRpcService, env: &RpcServiceEnvironment) -> Result<ProtocolJsonRpcRequest, failure::Error> {
     let persistent_storage = env.persistent_storage();
     let state = env.state();
-
+    
     let block_storage = BlockStorage::new(persistent_storage);
     let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
     let block_header = block_storage.get(&block_hash)?;
@@ -508,16 +521,11 @@ pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request:
     let chain_id = state.chain_id().clone();
 
     // create request to ffi
-    let request = ProtocolJsonRpcRequest {
+    Ok(ProtocolJsonRpcRequest {
         chain_arg: chain_param.to_string(),
         block_header,
-        ffi_service: FfiRpcService::HelpersPreapplyBlock,
+        ffi_service: service,
         request: json_request,
         chain_id,
-    };
-
-    // TODO: TE-192 - refactor to protocol runner call
-    let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_block(request)?;
-
-    Ok(serde_json::from_str(&response.body)?)
+    })
 }

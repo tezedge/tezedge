@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver as QueueReceiver};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, Instant};
 
 use jsonpath::Selector;
 use riker::actors::*;
@@ -146,6 +146,10 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     // we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
     let requests = test_data::read_apply_block_requests_until_1326();
 
+
+    let clocks = Instant::now();
+    let memory_before = procinfo::pid::statm_self().unwrap().resident;
+
     // 1. test - apply and context - prepare data for apply blocks and wait for current head, and check context
     assert!(
         test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
@@ -166,6 +170,16 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
             &requests[1324],
             &requests[1325],
         ).is_ok()
+    );
+
+    let clocks = clocks.elapsed();
+    let memory_after = procinfo::pid::statm_self().unwrap().resident;
+    println!(
+        "\nDone in {:?}! mem_before: {}, mem_after: {}, diff: {}",
+        clocks,
+        memory_before,
+        memory_after,
+        memory_after - memory_before
     );
 
     // clean up
@@ -288,6 +302,9 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
 
     let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
+    let clocks = Instant::now();
+    let memory_before = procinfo::pid::statm_self().unwrap().resident;
+
     // let's insert stored requests to database
     for request in requests {
 
@@ -302,14 +319,13 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
             header: Arc::new(header),
         };
         block_storage.put_block_header(&block)?;
-        block_meta_storage.put_block_header(&block, &chain_id, log.clone())?;
+        block_meta_storage.put_block_header(&block, &chain_id, &log)?;
         operations_meta_storage.put_block_header(&block, &chain_id)?;
 
         // store operations to db
-        let operations = request.operations.clone();
-        for (idx, ops) in operations.iter().enumerate() {
+        for (idx, ops) in request.operations.into_iter().enumerate() {
             let opb = OperationsForBlock::new(block.hash.clone(), idx as i8);
-            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, operations_for_blocks::Path::Op, ops.clone());
+            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, operations_for_blocks::Path::Op, ops);
             operations_storage.put_operations(&msg)?;
             operations_meta_storage.put_operations(&msg)?;
         }
@@ -319,6 +335,16 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
             break;
         }
     }
+
+    let clocks = clocks.elapsed();
+    let memory_after = procinfo::pid::statm_self().unwrap().resident;
+    println!(
+        "\n[Insert] done in {:?}! mem_before: {}, mem_after: {}, diff: {}",
+        clocks,
+        memory_before,
+        memory_after,
+        memory_after - memory_before
+    );
 
     // wait context_listener to finished context for applied blocks
     info!(log, "Waiting for context processing"; "level" => apply_to_level);

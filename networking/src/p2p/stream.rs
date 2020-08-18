@@ -257,7 +257,7 @@ impl EncryptedMessageReader {
                     input_data.append(&mut message_decrypted);
 
                     if input_remaining == 0 {
-                        match M::from_bytes(input_data.clone()) {
+                        match M::from_bytes(&input_data) {
                             Ok(message) => break Ok(message),
                             Err(BinaryReaderError::Underflow { bytes }) => input_remaining += bytes,
                             Err(e) => break Err(e.into()),

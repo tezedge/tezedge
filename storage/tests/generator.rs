@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use failure::Error;
 
-use storage::persistent::{KeyValueSchema, open_kv};
+use storage::persistent::{DbConfiguration, KeyValueSchema, open_kv};
 use storage::persistent::sequence::Sequences;
 
 #[test]
@@ -19,7 +19,7 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
     }
 
     {
-        let db = open_kv(path, vec![Sequences::descriptor()]).unwrap();
+        let db = open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default()).unwrap();
         let sequences = Sequences::new(Arc::new(db), 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
@@ -43,7 +43,7 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
     }
 
     {
-        let db = open_kv(path, vec![Sequences::descriptor()]).unwrap();
+        let db = open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default()).unwrap();
         let sequences = Sequences::new(Arc::new(db), 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
@@ -69,7 +69,7 @@ fn generator_test_batch() -> Result<(), Error> {
     }
 
     {
-        let db = open_kv(path, vec![Sequences::descriptor()])?;
+        let db = open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default())?;
         let sequences = Sequences::new(Arc::new(db), 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
@@ -89,7 +89,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
     }
 
     {
-        let db = Arc::new(open_kv(path, vec![Sequences::descriptor()])?);
+        let db = Arc::new(open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default())?);
 
         // First run
         {

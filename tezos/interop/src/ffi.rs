@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use ocaml::{List, Str, ToValue, Tuple, Value};
-use serde_json;
 
 use tezos_api::ffi::*;
 use tezos_api::identity::Identity;
@@ -243,6 +242,11 @@ pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<Re
 /// Call helpers_preapply_block shell service
 pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
     call(String::from("helpers_preapply_block"), request)
+}
+
+/// Call compute path
+pub fn compute_path(request: ComputePathRequest) -> Result<Result<ComputePathResponse, CallError>, OcamlError> {
+    call(String::from("compute_path"), request)
 }
 
 pub fn generate_identity(expected_pow: f64) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {

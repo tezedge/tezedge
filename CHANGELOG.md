@@ -8,11 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- New configuration parameter `--disable-bootstrap-lookup` to turn off dns lookup for peers (e.g. used for tests or sandbox)
+- New configuration parameter `--db-cfg-max-threads` and `--db-cfg-max-open-files` to better control system resources
+- New RPCs to make baking in sandbox mode possible with tezos-client
 
 ### Changed
 
-- Nothing.
+- Resolved various clippy warnings/errors.
+- Drone test runs offline with carthagenet-snapshoted nodes.
 
 ### Deprecated
 
