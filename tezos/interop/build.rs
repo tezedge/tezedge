@@ -38,6 +38,7 @@ fn get_remote_lib() -> RemoteLib {
     println!("Resolved known artifacts: {:?}", &artifacts);
 
     let artifact_for_platform = match platform.os_type {
+        OSType::OSX => Some("libtezos-ffi-macos.dylib"),
         OSType::Ubuntu => match platform.version.as_str() {
             "16.04" => Some("libtezos-ffi-ubuntu16.so"),
             "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
@@ -128,7 +129,12 @@ fn run_builder(build_chain: &str) {
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "remote" => {
-            let libtezos_path = Path::new("lib_tezos").join("artifacts").join("libtezos.so");
+            let platform = current_platform();
+            let libtezos_filename = match platform.os_type {
+                OSType::OSX => "libtezos.dylib",
+                _ => "libtezos.so",
+            };
+            let libtezos_path = Path::new("lib_tezos").join("artifacts").join(libtezos_filename);
             let remote_lib = get_remote_lib();
             println!("Resolved platform-dependent remote_lib: {:?}", &remote_lib);
 
