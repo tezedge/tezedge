@@ -163,6 +163,91 @@ run_docker() {
   docker run -i -t tezedge-run "$@"
 }
 
+run_sandbox() {
+  # Default light-node commandline arguments:
+  #
+  # -d | --tezos-data-dir
+  TEZOS_DIR=/tmp/tezedge/tezos-node
+  # -B | --bootstrap-db-path
+  BOOTSTRAP_DIR=/tmp/tezedge/light-node
+  # -n | --network
+  NETWORK=sandbox
+
+  # set compilation profile and cargo commandline argument
+  PROFILE=""
+  case $1 in
+    debug)
+      PROFILE="debug"
+      shift
+      ;;
+    release)
+      CARGO_PROFILE_ARG="--release"
+      PROFILE="release"
+      shift
+      ;;
+    *)
+      echo "Invalid function argument"
+      exit 1
+      ;;
+  esac
+
+  shift # shift past <MODE>
+
+  # The following loop is used to replace default light-node commandline parameters.
+  # It also allows to specify additional commandline parameters.
+  # Supports '--arg=val' and '--arg val' syntax of the commandline arguments.
+  while [ "$#" -gt 0 ]; do
+    case $1 in
+      --tezos-data-dir=*)
+        TEZOS_DIR="${1#*=}"
+        shift
+        ;;
+      --tezos-data-dir)
+        shift
+        TEZOS_DIR="$1"
+        shift
+        ;;
+      --bootstrap-db-path=*)
+        BOOTSTRAP_DIR="${1#*=}"
+        shift
+        ;;
+      --bootstrap-db-path)
+        shift
+        BOOTSTRAP_DIR="$1"
+        shift
+        ;;
+      --network=*)
+        NETWORK="${1#*=}"
+        shift
+        ;;
+      --network)
+        shift
+        NETWORK="$1"
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+
+  # cleanup data directory
+  if [ -z "$KEEP_DATA" ]; then
+    rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
+    rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
+  fi
+
+  # protocol_runner needs 'libtezos.so' to run
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
+
+  cargo run $CARGO_PROFILE_ARG --bin sandbox -- \
+                                --log-level "info" \
+                                --sandbox-rpc-port "3030" \
+                                --light-node-path "./target/$PROFILE/light-node" "${args[@]}"
+}
+
 case $1 in
 
   node)
@@ -177,6 +262,13 @@ case $1 in
     printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
     build_all "release"
     run_node "release" "$@"
+    ;;
+
+  sandbox)
+    warn_if_not_using_recommended_rust
+    printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
+    build_all "release"
+    run_sandbox "release" "$@"
     ;;
 
   docker)
