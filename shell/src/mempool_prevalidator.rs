@@ -51,6 +51,7 @@ pub struct MempoolPrevalidator {
 enum Event {
     NewHead(BlockHash, Level),
     ValidateOperation(OperationHash, MempoolOperationType),
+    ShuttingDown,
 }
 
 /// Reference to [chain feeder](ChainFeeder) actor
@@ -136,6 +137,11 @@ impl MempoolPrevalidator {
                 // add operation to queue for validation
                 self.validator_event_sender.lock().unwrap().send(
                     Event::ValidateOperation(operation.operation_hash.clone(), operation.operation_type)
+                )?;
+            }
+            ShellChannelMsg::ShuttingDown(_) => {
+                self.validator_event_sender.lock().unwrap().send(
+                    Event::ShuttingDown
                 )?;
             }
             _ => ()
@@ -362,6 +368,9 @@ fn process_prevalidation(
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                     }
+                }
+                Event::ShuttingDown => {
+                    validator_run.store(false, Ordering::Release);
                 }
             }
         }
