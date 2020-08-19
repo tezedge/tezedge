@@ -158,7 +158,7 @@ pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration
                                        storage_db_path: &PathBuf,
                                        context_db_path: &PathBuf,
                                        patch_context: &Option<PatchContext>,
-                                       log: Logger) -> Result<StorageInitInfo, StorageError> {
+                                       log: &Logger) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
         chain_id: tezos_env.main_chain_id()?,
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
@@ -258,7 +258,7 @@ pub fn initialize_storage_with_genesis_block(
     init_storage_data: &StorageInitInfo,
     tezos_env: &TezosEnvironmentConfiguration,
     context_hash: &ContextHash,
-    log: Logger) -> Result<BlockHeaderWithHash, StorageError> {
+    log: &Logger) -> Result<BlockHeaderWithHash, StorageError> {
 
     // TODO: check context checksum or context_hash
 
@@ -292,7 +292,7 @@ pub fn check_database_compatibility(
     db: Arc<rocksdb::DB>,
     expected_database_version: i64,
     tezos_env: &TezosEnvironmentConfiguration,
-    log: Logger) -> Result<bool, StorageError> {
+    log: &Logger) -> Result<bool, StorageError> {
     let mut system_info = SystemStorage::new(db);
     let db_version_ok = match system_info.get_db_version()? {
         Some(db_version) => db_version == expected_database_version,

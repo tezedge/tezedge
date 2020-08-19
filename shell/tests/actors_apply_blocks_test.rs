@@ -63,7 +63,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     let storage_db_path = PathBuf::from(storage_db_path);
     let context_db_path = PathBuf::from(context_db_path);
-    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, log.clone())
+    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, &log)
         .expect("Failed to resolve init storage chain data");
 
     // apply block protocol runner endpoint

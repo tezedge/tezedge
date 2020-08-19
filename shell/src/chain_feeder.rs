@@ -384,7 +384,7 @@ pub(crate) fn initialize_protocol_context(
                 &init_storage_data,
                 &tezos_env,
                 &genesis_context_hash,
-                log.clone(),
+                &log,
             )?;
 
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)

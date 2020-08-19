@@ -61,7 +61,7 @@ pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), Identit
 }
 
 /// Ensures (load or create) identity exists according to the configuration
-pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: Logger) -> Result<Identity, IdentityError> {
+pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: &Logger) -> Result<Identity, IdentityError> {
     if identity_cfg.identity_json_file_path.exists() {
         load_identity(&identity_cfg.identity_json_file_path)
     } else {
