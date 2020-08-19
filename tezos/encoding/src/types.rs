@@ -71,7 +71,7 @@ pub const BYTE_FIELD_NONE: u8 = 0;
 /// ```
 ///
 /// After that the intermediate form can be converted to binary by passing it to [crate::binary_writer::BinaryWriter].
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Value {
     /// Nothing: data is omitted from binary.
     Unit,

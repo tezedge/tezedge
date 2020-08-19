@@ -210,12 +210,19 @@ impl BinaryReader {
 
                 let mut buf_slice = buf.take(bytes_sz);
 
-                let mut values = vec![];
-                while buf_slice.remaining() > 0 {
-                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                match **encoding_inner {
+                    Encoding::Uint8 => { // TODO: optimize other encodings.
+                        let values:Vec<Value> = buf.to_bytes().into_iter().map(|x| Value::Uint8(x)).collect();
+                        Ok(Value::List(values))
+                    },
+                    _ => {
+                        let mut values = vec![];
+                        while buf_slice.remaining() > 0 {
+                                values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                        }
+                        Ok(Value::List(values))
+                    }
                 }
-
-                Ok(Value::List(values))
             }
             Encoding::Option(_) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
