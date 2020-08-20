@@ -1,17 +1,12 @@
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage,
-    // encoding::operation::Operation,
-    // binary_message::cache::CachedData,
+    binary_message::{BinaryMessage, BinaryChunk, BinaryChunkError, CONTENT_LENGTH_FIELD_BYTES},
     encoding::prelude::ConnectionMessage,
     encoding::peer::PeerMessageResponse,
     encoding::metadata::MetadataMessage,
 };
-// use tezos_encoding::{binary_reader::BinaryReader, encoding::HasEncoding};
-// use tezos_encoding::de::from_value as deserialize_from_value;
 use crypto::{
-    crypto_box::{precompute, decrypt},
-    // hash::HashType,
-    nonce::{generate_nonces, NoncePair, Nonce},
+    crypto_box::{precompute, decrypt, CryptoError},
+    nonce::{generate_nonces, NoncePair},
 };
 
 use csv;
@@ -20,6 +15,7 @@ use hex::FromHex;
 use std::fs::File;
 use std::io::prelude::*;
 use serde_json;
+use bytes::Buf;
 
 #[derive(Deserialize, Debug)]
 pub struct Identity {
@@ -27,6 +23,31 @@ pub struct Identity {
     pub public_key: String,
     pub secret_key: String,
     pub proof_of_work_stamp: String,
+}
+
+pub struct BinaryStream(Vec<u8>);
+
+impl BinaryStream {
+    fn new() -> Self {
+        BinaryStream(vec![])
+    }
+
+    fn drain_chunk(&mut self) -> Result<BinaryChunk, BinaryChunkError> {
+        if self.0.len() < CONTENT_LENGTH_FIELD_BYTES {
+            return Err(BinaryChunkError::MissingSizeInformation);
+        }
+        let chunk_length = (&self.0[0..CONTENT_LENGTH_FIELD_BYTES]).get_u16() as usize;
+        if self.0.len() >= chunk_length + CONTENT_LENGTH_FIELD_BYTES {
+            let chunk = BinaryChunk::from_content(&self.0[CONTENT_LENGTH_FIELD_BYTES..chunk_length+CONTENT_LENGTH_FIELD_BYTES]);
+            self.0.drain(0..chunk_length+CONTENT_LENGTH_FIELD_BYTES);
+            return chunk;
+        }
+        return Err(BinaryChunkError::IncorrectSizeInformation{expected: chunk_length, actual: self.0.len()-CONTENT_LENGTH_FIELD_BYTES});
+    }
+
+    fn add_payload(&mut self, payload: &Vec<u8>) {
+        self.0.extend_from_slice(payload);
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -59,7 +80,7 @@ pub fn decode_stream() {
 
     let sent_data = &messages[0].message[2..];
     let recv_data = &messages[1].message[2..];
-    let connection_message_local = match ConnectionMessage::from_bytes(sent_data.to_vec()) {
+    let _connection_message_local = match ConnectionMessage::from_bytes(sent_data.to_vec()) {
         Ok(m) => m,
         Err(e) => {
             println!("Error in connection message {:?}", e);
@@ -73,7 +94,6 @@ pub fn decode_stream() {
             return;
         }
     };
-    println!("Received connection message: {:?}", connection_message_remote);
     let peer_public_key = connection_message_remote.public_key();
     let precomputed_key = match precompute(&hex::encode(peer_public_key), &identity.secret_key) {
         Ok(key) => key,
@@ -81,60 +101,73 @@ pub fn decode_stream() {
     };
 
     let is_incoming = messages[0].direction == TxRx::Received;
-    let NoncePair { remote, local } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
-    println!("noncences: {:?};{:?}", remote, local);
+    let NoncePair { mut remote, mut local } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
 
-    let decrypted_message = decrypt(&messages[2].message[2..], &local, &precomputed_key).unwrap();
-    let meta_sent = MetadataMessage::from_bytes(decrypted_message);
-    println!("Metadata sent: {:?}", meta_sent);
-    local.increment();
+    let decrypted_message = decrypt(&messages[2].message[2..], &local, &precomputed_key);
+    assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");
+    let meta_sent = MetadataMessage::from_bytes(decrypted_message.unwrap());
+    assert!(meta_sent.is_ok(), "can't deserialize sent metadata");
+    local = local.increment();
 
-    let decrypted_message = decrypt(&messages[3].message[2..], &remote, &precomputed_key).unwrap();
-    let meta_received = MetadataMessage::from_bytes(decrypted_message);
-    println!("Metadata received: {:?}", meta_received);
-    remote.increment();
+    let decrypted_message = decrypt(&messages[3].message[2..], &remote, &precomputed_key);
+    assert!(decrypted_message.is_ok(), "can't decrypt received metadata");
+    let _meta_received = MetadataMessage::from_bytes(decrypted_message.unwrap());
+    assert!(meta_sent.is_ok(), "can't deserialize received metadata");
+    remote = remote.increment();
 
-    let mut outgoing:Vec<u8> = vec![];
-    let mut incoming:Vec<u8> = vec![];
-    for i in 4..100 {
+    let mut outgoing = BinaryStream::new();
+    let mut incoming = BinaryStream::new();
+    let mut decrypted_messages:Vec<Vec<u8>> = vec![];
+    for i in 4..messages.len() {
         let decrypted_message = match messages[i].direction {
             TxRx::Sent => {
-                outgoing.extend_from_slice(&messages[i].message[2..]);
-                match decrypt(&outgoing, &local, &precomputed_key) {
-                    Ok(dm) => {
-                        local.increment();
-                        Ok(dm)
+                outgoing.add_payload(&messages[i].message);
+                match outgoing.drain_chunk() {
+                    Ok(chunk) => {
+                        match decrypt(&chunk.content(), &local, &precomputed_key) {
+                            Ok(dm) => {
+                                local = local.increment();
+                                Ok(dm)
+                            },
+                            Err(e) => {
+                                Err(e)
+                            }
+                        }
                     },
-                    Err(e) => {
-                        Err(e)
-                    }
+                    Err(_) => Err(CryptoError::FailedToDecrypt),
                 }
             },
             TxRx::Received => {
-                incoming.extend_from_slice(&messages[i].message[2..]);
-                match decrypt(&incoming, &remote, &precomputed_key) {
-                    Ok(dm) => {
-                        remote.increment();
-                        Ok(dm)
+                incoming.add_payload(&messages[i].message);
+                match incoming.drain_chunk() {
+                    Ok(chunk) => {
+                        match decrypt(&chunk.content(), &remote, &precomputed_key) {
+                            Ok(dm) => {
+                                remote = remote.increment();
+                                Ok(dm)
+                            },
+                            Err(e) => {
+                                Err(e)
+                            }
+                        }
                     },
-                    Err(e) => {
-                        Err(e)
-                    }
+                    Err(_) => Err(CryptoError::FailedToDecrypt),
                 }
             }
         };
 
         match decrypted_message {
-            Ok(dm) => { println!("{}: {:?}", i, dm) },
-            _ => ()
+            Ok(dm) => {
+                match PeerMessageResponse::from_bytes(dm.to_owned()) {
+                    Ok(_) => decrypted_messages.push(dm),
+                    _ => (),
+                }
+            },
+            _ => (),
         }
     }
-    // let decrypted_message = decrypt(&messages[8].message[2..], &local, &precomputed_key);
-    // println!("Decrypted message7: {:?}", decrypted_message);
-    // // let pm_response = PeerMessageResponse::from_bytes(decrypted_message);
-    // // println!("Deserialized message4: {:?}", pm_response);
-    // let decrypted_message = decrypt(&messages[5].message[2..], &remote, &precomputed_key);
-    // println!("Decrypted message5: {:?}", decrypted_message);
+    assert!(decrypted_messages.len()>0, "could not decrypt any message");
+    assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages");
 }
 
 fn hex_to_buffer<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>

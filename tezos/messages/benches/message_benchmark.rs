@@ -1,15 +1,19 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage,
+    binary_message::{BinaryMessage, BinaryChunk, BinaryChunkError, CONTENT_LENGTH_FIELD_BYTES},
     encoding::operation::Operation,
     binary_message::cache::CachedData,
-    encoding::prelude::ConnectionMessage
+    encoding::prelude::ConnectionMessage,
+    encoding::peer::PeerMessageResponse,
+    encoding::metadata::MetadataMessage,
 };
-use tezos_encoding::{binary_reader::BinaryReader, encoding::HasEncoding};
-use tezos_encoding::de::from_value as deserialize_from_value;
+use tezos_encoding::{
+    binary_reader::BinaryReader,
+    encoding::HasEncoding,
+    de::from_value as deserialize_from_value,
+};
 use crypto::{
-    crypto_box::{precompute, decrypt},
-    hash::HashType,
+    crypto_box::{precompute, decrypt, CryptoError},
     nonce::{generate_nonces, NoncePair},
 };
 
@@ -19,6 +23,7 @@ use hex::FromHex;
 use std::fs::File;
 use std::io::prelude::*;
 use serde_json;
+use bytes::Buf;
 
 #[derive(Deserialize, Debug)]
 pub struct Identity {
@@ -26,6 +31,31 @@ pub struct Identity {
     pub public_key: String,
     pub secret_key: String,
     pub proof_of_work_stamp: String,
+}
+
+pub struct BinaryStream(Vec<u8>);
+
+impl BinaryStream {
+    fn new() -> Self {
+        BinaryStream(vec![])
+    }
+
+    fn drain_chunk(&mut self) -> Result<BinaryChunk, BinaryChunkError> {
+        if self.0.len() < CONTENT_LENGTH_FIELD_BYTES {
+            return Err(BinaryChunkError::MissingSizeInformation);
+        }
+        let chunk_length = (&self.0[0..CONTENT_LENGTH_FIELD_BYTES]).get_u16() as usize;
+        if self.0.len() >= chunk_length + CONTENT_LENGTH_FIELD_BYTES {
+            let chunk = BinaryChunk::from_content(&self.0[CONTENT_LENGTH_FIELD_BYTES..chunk_length+CONTENT_LENGTH_FIELD_BYTES]);
+            self.0.drain(0..chunk_length+CONTENT_LENGTH_FIELD_BYTES);
+            return chunk;
+        }
+        return Err(BinaryChunkError::IncorrectSizeInformation{expected: chunk_length, actual: self.0.len()-CONTENT_LENGTH_FIELD_BYTES});
+    }
+
+    fn add_payload(&mut self, payload: &Vec<u8>) {
+        self.0.extend_from_slice(payload);
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -36,10 +66,11 @@ enum TxRx {
 
 #[derive(Debug, Deserialize)]
 struct Message {
-    Direction: TxRx,
+    direction: TxRx,
     #[serde(deserialize_with = "hex_to_buffer")]
-    Message: Vec<u8>,
+    message: Vec<u8>,
 }
+
 
 // deserialize_benchmark mimics execution of main operations in BinaryMessage::from_bytes
 pub fn deserialize_benchmark(c: &mut Criterion) {
@@ -55,12 +86,13 @@ pub fn deserialize_benchmark(c: &mut Criterion) {
 }
 
 // real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
-pub fn real_data_benchmark(c: &mut Criterion) {
+
+// real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
+pub fn decode_stream(c: &mut Criterion) {
     let mut identity_file = File::open("benches/identity.json").unwrap();
     let mut identity_raw = String::new();
     identity_file.read_to_string(&mut identity_raw).unwrap();
     let identity:Identity = serde_json::from_str(&identity_raw).unwrap();
-    println!("{}",identity.secret_key);
 
     let mut reader = csv::Reader::from_path("benches/tezedge_communication.csv").unwrap();
     let mut messages:Vec<Message> = vec![];
@@ -68,22 +100,98 @@ pub fn real_data_benchmark(c: &mut Criterion) {
         let record:Message = result.unwrap();
         messages.push(record);
     }
-    println!("{}",messages.len());
 
-    let recv_data = &messages[0].Message;
-    let sent_data = &messages[1].Message;
-    let connection_message = ConnectionMessage::from_bytes(recv_data.to_vec()).unwrap();
-    let peer_public_key = connection_message.public_key();
+    let sent_data = &messages[0].message[2..];
+    let recv_data = &messages[1].message[2..];
+    let _connection_message_local = match ConnectionMessage::from_bytes(sent_data.to_vec()) {
+        Ok(m) => m,
+        Err(e) => {
+            println!("Error in connection message {:?}", e);
+            return;
+        }
+    };
+    let connection_message_remote = match ConnectionMessage::from_bytes(recv_data.to_vec()) {
+        Ok(m) => m,
+        Err(e) => {
+            println!("Error in connection message {:?}", e);
+            return;
+        }
+    };
+    let peer_public_key = connection_message_remote.public_key();
     let precomputed_key = match precompute(&hex::encode(peer_public_key), &identity.secret_key) {
         Ok(key) => key,
         Err(_) => panic!("can't read precomputed key from data stream"),
     };
 
-    let is_incoming = messages[4].Direction == TxRx::Received;
-    let NoncePair { remote, local } = generate_nonces(sent_data, recv_data, is_incoming);
-    println!("noncences: {:?};{:?}", remote, local);
+    let is_incoming = messages[0].direction == TxRx::Received;
+    let NoncePair { mut remote, mut local } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
 
-    let decrypted_message = decrypt(&messages[4].Message, &                                                               local, &precomputed_key);
+    let decrypted_message = decrypt(&messages[2].message[2..], &local, &precomputed_key);
+    assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");
+    let meta_sent = MetadataMessage::from_bytes(decrypted_message.unwrap());
+    assert!(meta_sent.is_ok(), "can't deserialize sent metadata");
+    local = local.increment();
+
+    let decrypted_message = decrypt(&messages[3].message[2..], &remote, &precomputed_key);
+    assert!(decrypted_message.is_ok(), "can't decrypt received metadata");
+    let _meta_received = MetadataMessage::from_bytes(decrypted_message.unwrap());
+    assert!(meta_sent.is_ok(), "can't deserialize received metadata");
+    remote = remote.increment();
+
+    let mut outgoing = BinaryStream::new();
+    let mut incoming = BinaryStream::new();
+    let mut decrypted_messages:Vec<Vec<u8>> = vec![];
+    for i in 4..messages.len() {
+        let decrypted_message = match messages[i].direction {
+            TxRx::Sent => {
+                outgoing.add_payload(&messages[i].message);
+                match outgoing.drain_chunk() {
+                    Ok(chunk) => {
+                        match decrypt(&chunk.content(), &local, &precomputed_key) {
+                            Ok(dm) => {
+                                local = local.increment();
+                                Ok(dm)
+                            },
+                            Err(e) => {
+                                Err(e)
+                            }
+                        }
+                    },
+                    Err(_) => Err(CryptoError::FailedToDecrypt),
+                }
+            },
+            TxRx::Received => {
+                incoming.add_payload(&messages[i].message);
+                match incoming.drain_chunk() {
+                    Ok(chunk) => {
+                        match decrypt(&chunk.content(), &remote, &precomputed_key) {
+                            Ok(dm) => {
+                                remote = remote.increment();
+                                Ok(dm)
+                            },
+                            Err(e) => {
+                                Err(e)
+                            }
+                        }
+                    },
+                    Err(_) => Err(CryptoError::FailedToDecrypt),
+                }
+            }
+        };
+
+        match decrypted_message {
+            Ok(dm) => {
+                match PeerMessageResponse::from_bytes(dm.to_owned()) {
+                    Ok(_) => decrypted_messages.push(dm),
+                    _ => (),
+                }
+            },
+            _ => (),
+        }
+    }
+    assert!(decrypted_messages.len()>0, "could not decrypt any message");
+    assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages");
+    c.bench_function("decode_stream", |b| b.iter(|| { for message in decrypted_messages.to_owned() { PeerMessageResponse::from_bytes(message);}}));
 }
 
 fn hex_to_buffer<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -93,12 +201,11 @@ where D: Deserializer<'de> {
         .and_then(|string| Vec::from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 }
 
-
 criterion_group!{
     name = benches;
     config = Criterion::default();
     // targets = deserialize_benchmark, real_data_benchmark
-    targets = real_data_benchmark
+    targets = decode_stream
 }
 
 criterion_main!(benches);
