@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Resolved various clippy warnings/errors.
 - Drone test runs offline with carthagenet-snapshoted nodes.
+- New ocaml ffi - `ocaml-rs` was replaced with custom new library based on `ocaml-oxide` to get GC under control and better performance
 
 ### Deprecated
 

@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "4f4930165f08bc0ae61ac496875e3742743be41e";
+const GIT_COMMIT_HASH: &str = "298e26ffb8b60a5541c5d308bbac78e412699233";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
@@ -238,8 +238,8 @@ fn main() {
     rerun_if_ocaml_file_changes();
 
     println!("cargo:rustc-link-search={}", &out_dir);
-    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rustc-link-lib=dylib=tezos_interop_callback");
+    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
     println!("cargo:rerun-if-env-changed=UPDATE_GIT");
 }
