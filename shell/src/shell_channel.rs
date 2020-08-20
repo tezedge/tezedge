@@ -13,9 +13,8 @@ use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
 use tezos_api::ffi::ValidateOperationResult;
-use tezos_messages::p2p::encoding::prelude::{Operation, BlockHeader, Path};
-
-use crate::Head;
+use tezos_messages::Head;
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, Path};
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -59,7 +58,7 @@ pub struct MempoolOperationReceived {
 
 #[derive(Clone, Debug)]
 pub struct CurrentMempoolState {
-    pub head: Option<Head>,
+    pub head: Option<BlockHash>,
     pub protocol: Option<ProtocolHash>,
     pub result: ValidateOperationResult,
     pub operations: HashMap<OperationHash, Operation>,
@@ -76,6 +75,10 @@ pub struct InjectBlock {
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
+    /// If chain_manager resolved new current head for chain
+    NewCurrentHead(Head, BlockApplied),
+    /// Chain_feeder propagates if block successfully validated and applied
+    /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
     BlockApplied(BlockApplied),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),

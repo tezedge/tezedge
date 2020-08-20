@@ -61,10 +61,8 @@ impl RpcServer {
         tezos_env: TezosEnvironmentConfiguration,
         network_version: NetworkVersion,
         init_storage_data: &StorageInitInfo) -> Result<RpcServerRef, CreateError> {
-
-        // TODO: refactor - call load_current_head in pre_start
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(persistent_storage, &sys.log()),
+            current_head: load_current_head(persistent_storage, &init_storage_data.chain_id, &sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
             current_mempool_state: None,
             head_update_time: current_time_timestamp(),
@@ -127,16 +125,9 @@ impl Receive<ShellChannelMsg> for RpcServer {
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
         match msg {
-            ShellChannelMsg::BlockApplied(block) => {
+            ShellChannelMsg::NewCurrentHead(_, block) => {
                 let current_head_ref = &mut *self.state.write().unwrap();
-                match &mut current_head_ref.current_head {
-                    Some(current_head) => {
-                        if current_head.header().header.level() < block.header().header.level() {
-                            *current_head = block;
-                        }
-                    }
-                    None => current_head_ref.current_head = Some(block)
-                }
+                current_head_ref.current_head = Some(block);
                 current_head_ref.head_update_time = current_time_timestamp();
             }
             ShellChannelMsg::MempoolStateChanged(result) => {
@@ -149,14 +140,15 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(persistent_storage: &PersistentStorage, log: &Logger) -> Option<BlockApplied> {
-    use storage::{BlockStorage, BlockStorageReader, BlockMetaStorage, BlockMetaStorageReader, StorageError};
+fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId, log: &Logger) -> Option<BlockApplied> {
+    use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
+    use storage::chain_meta_storage::ChainMetaStorageReader;
 
-    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
-    match block_meta_storage.load_current_head() {
-        Ok(Some((block_hash, ..))) => {
+    let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
+    match chain_meta_storage.get_current_head(chain_id) {
+        Ok(Some(head)) => {
             let block_applied = BlockStorage::new(persistent_storage)
-                .get_with_json_data(&block_hash)
+                .get_with_json_data(&head.hash)
                 .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));
             match block_applied {
                 Ok(block) => Some(block),

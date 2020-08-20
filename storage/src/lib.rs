@@ -13,11 +13,13 @@ use slog::{error, info, Logger};
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TezosEnvironmentConfiguration, TezosEnvironmentError};
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
+use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
+pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage};
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
@@ -37,6 +39,7 @@ pub mod mempool_storage;
 pub mod system_storage;
 pub mod skip_list;
 pub mod context;
+pub mod chain_meta_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -183,8 +186,8 @@ pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration
 
 /// Stores apply result to storage and mark block as applied, if everythnig is ok.
 pub fn store_applied_block_result(
-    block_storage: &mut BlockStorage,
-    block_meta_storage: &mut BlockMetaStorage,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
     block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
@@ -218,9 +221,10 @@ pub fn store_applied_block_result(
 /// !Important, this rewrites context_hash on stored genesis - because in initialize_storage_with_genesis_block we stored wiht Context_hash_zero
 /// And context hash of block is used for appling of successor
 pub fn store_commit_genesis_result(
-    block_storage: &mut BlockStorage,
-    block_meta_storage: &mut BlockMetaStorage,
-    operations_meta_storage: &mut OperationsMetaStorage,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    chain_meta_storage: &ChainMetaStorage,
+    operations_meta_storage: &OperationsMetaStorage,
     init_storage_data: &StorageInitInfo,
     bock_result: CommitGenesisResult) -> Result<BlockJsonData, StorageError> {
 
@@ -241,7 +245,21 @@ pub fn store_commit_genesis_result(
         .build().unwrap();
     block_storage.put_block_json_data(&genesis_block_hash, block_json_data.clone())?;
 
-    Ok(block_json_data)
+    // set genesis as current head - it is empty storage
+    match block_storage.get(&genesis_block_hash)? {
+        Some(genesis) => {
+            chain_meta_storage.set_current_head(
+                &chain_id,
+                &Head {
+                    hash: genesis.hash.clone(),
+                    level: genesis.header.level(),
+                },
+            )?;
+
+            Ok(block_json_data)
+        }
+        None => return Err(StorageError::MissingKey)
+    }
 }
 
 /// Genesis block needs extra handling because predecessor of the genesis block is genesis itself.
@@ -254,7 +272,7 @@ pub fn store_commit_genesis_result(
 /// So when "commit_genesis" event occurrs, we must use Context_hash and create genesis header within.
 /// Commit_genesis also updates block json/additional metadata resolved by protocol.
 pub fn initialize_storage_with_genesis_block(
-    block_storage: &mut BlockStorage,
+    block_storage: &BlockStorage,
     init_storage_data: &StorageInitInfo,
     tezos_env: &TezosEnvironmentConfiguration,
     context_hash: &ContextHash,
@@ -346,6 +364,7 @@ pub mod tests_common {
     use failure::Error;
 
     use crate::block_storage;
+    use crate::chain_meta_storage::ChainMetaStorage;
     use crate::mempool_storage::MempoolStorage;
     use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
@@ -384,7 +403,8 @@ pub mod tests_common {
                 Lane::descriptor(),
                 ListValue::descriptor(),
                 MempoolStorage::descriptor(),
-                ContextActionStorage::descriptor()
+                ContextActionStorage::descriptor(),
+                ChainMetaStorage::descriptor(),
             ], &cfg)?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),

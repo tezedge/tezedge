@@ -20,7 +20,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
 
     // init block storage (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let mut block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(&persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -57,7 +57,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
 
     // init block with level 0 (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let mut block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(&persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -101,7 +101,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
-    let mut block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(&persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
@@ -151,7 +151,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
 
     // init block with level 0 (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let mut block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(&persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -191,7 +191,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
-    let mut block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(&persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified

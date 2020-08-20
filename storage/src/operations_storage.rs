@@ -31,7 +31,7 @@ impl OperationsStorage {
     }
 
     #[inline]
-    pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn put_operations(&self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let key = OperationKey {
             block_hash: message.operations_for_block().hash().clone(),
             validation_pass: message.operations_for_block().validation_pass() as u8,
@@ -40,7 +40,7 @@ impl OperationsStorage {
     }
 
     #[inline]
-    pub fn put(&mut self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn put(&self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         self.kv.put(key, value)
             .map_err(StorageError::from)
     }

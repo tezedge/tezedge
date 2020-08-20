@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver as QueueReceiver};
 use std::thread;
-use std::time::{Duration, SystemTime, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use jsonpath::Selector;
 use riker::actors::*;
@@ -21,12 +21,15 @@ use riker::system::SystemBuilder;
 use serde_json::Value;
 use slog::{info, Logger};
 
-use crypto::hash::{HashType, OperationHash};
+use crypto::hash::{BlockHash, HashType, OperationHash};
+use networking::p2p::network_channel::NetworkChannel;
 use shell::chain_feeder::ChainFeeder;
+use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data};
+use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, ContextIndex, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::{ContextList, PersistentStorage};
@@ -54,6 +57,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
+    let is_sandbox = false;
 
     // storage
     let storage_db_path = "__shell_context_listener_test_apply_blocks";
@@ -131,9 +135,11 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     // run actor's
     let actor_system = SystemBuilder::new().name("test_actors_apply_blocks_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+    let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let _ = test_actor::TestActor::actor(&actor_system, shell_channel.clone(), test_result_sender);
     let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox).expect("Failed to create chain manager");
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),
@@ -166,6 +172,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
             test_result_receiver,
             shell_channel.clone(),
             &persistent_storage,
+            &requests[1323],
             &requests[1324],
             &requests[1325],
         ).is_ok()
@@ -287,10 +294,11 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     requests: &Vec<String>,
     apply_to_level: i32) -> Result<(), failure::Error> {
     // prepare dbs
-    let mut block_storage = BlockStorage::new(&persistent_storage);
-    let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
-    let mut operations_storage = OperationsStorage::new(&persistent_storage);
-    let mut operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
+    let operations_storage = OperationsStorage::new(&persistent_storage);
+    let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
 
     let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
@@ -333,19 +341,16 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     // wait context_listener to finished context for applied blocks
     info!(log, "Waiting for context processing"; "level" => apply_to_level);
     loop {
-        match block_meta_storage.load_current_head()? {
+        match chain_meta_storage.get_current_head(&chain_id)? {
             None => (),
-            Some((h, _)) => {
-                let meta = block_meta_storage.get(&h)?;
-                if let Some(m) = meta {
-                    let header = block_storage.get(&h).expect("failed to read current head").expect("current head not found");
-                    if m.level() >= apply_to_level {
-                        // TE-168: check if context is also asynchronously stored
-                        let context_hash = header.header.context();
-                        let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");
-                        if found_by_context_hash.is_some() {
-                            break;
-                        }
+            Some(head) => {
+                if head.level >= apply_to_level {
+                    let header = block_storage.get(&head.hash).expect("failed to read current head").expect("current head not found");
+                    // TE-168: check if context is also asynchronously stored
+                    let context_hash = header.header.context();
+                    let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");
+                    if found_by_context_hash.is_some() {
+                        break;
                     }
                 }
             }
@@ -366,16 +371,17 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     test_result_receiver: QueueReceiver<CurrentMempoolState>,
     shell_channel: ShellChannelRef,
     persistent_storage: &PersistentStorage,
+    last_applied_request_1324: &String,
     request_1325: &String,
     request_1326: &String) -> Result<(), failure::Error> {
-    let last_applied_level = 1324;
+    let last_applied_block: BlockHash = ApplyBlockRequest::from_rust_bytes(hex::decode(last_applied_request_1324)?)?.block_header.message_hash()?;
     let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
-    // wait mempool for last_applied_level
+    // wait mempool for last_applied_block
     let mut current_mempool_state: Option<CurrentMempoolState> = None;
     while let Ok(result) = test_result_receiver.recv_timeout(Duration::from_secs(10)) {
         let done = if let Some(head) = &result.head {
-            head.level == last_applied_level
+            *head == last_applied_block
         } else {
             false
         };
@@ -391,7 +397,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     let current_mempool_state = current_mempool_state.unwrap();
     assert!(current_mempool_state.head.is_some());
     let mempool_head = current_mempool_state.head.unwrap();
-    assert_eq!(mempool_head.level, last_applied_level);
+    assert_eq!(mempool_head, last_applied_block);
 
     // check operations in mempool - should by empty all
     assert!(current_mempool_state.result.applied.is_empty());

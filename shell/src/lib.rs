@@ -3,9 +3,6 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
-use crypto::hash::{BlockHash, HashType};
-use tezos_messages::p2p::encoding::block_header::Level;
-
 mod collections;
 mod state;
 
@@ -16,21 +13,6 @@ pub mod context_listener;
 pub mod chain_manager;
 pub mod peer_manager;
 pub mod mempool_prevalidator;
-
-/// This struct holds info about head and his level
-#[derive(Clone, Debug)]
-pub struct Head {
-    /// BlockHash of head.
-    hash: BlockHash,
-    /// Level of the head.
-    pub level: Level,
-}
-
-impl Head {
-    fn to_debug_info(&self) -> (String, Level) {
-        (HashType::BlockHash.bytes_to_string(&self.hash), self.level)
-    }
-}
 
 pub(crate) mod subscription {
     use riker::actors::*;

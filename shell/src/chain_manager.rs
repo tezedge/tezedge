@@ -4,6 +4,12 @@
 //! Manages chain synchronisation process.
 //! - tries to download most recent header from the other peers
 //! - also supplies downloaded data to other peers
+//!
+//! Also responsible for:
+//! -- managing attribute current head (BlockApplied event is trigger)
+//! -- start test chain (if needed)
+//!
+//! see more description in [process_shell_channel_message][ShellChannelMsg::BlockApplied]
 
 use std::cmp;
 use std::collections::HashMap;
@@ -17,14 +23,14 @@ use slog::{debug, info, trace, warn};
 use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
-use storage::block_meta_storage::BlockMetaStorageReader;
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
+use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::Head;
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, CurrentMempoolState, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockchainState, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
@@ -135,8 +141,8 @@ pub struct ChainManager {
     peers: HashMap<ActorUri, PeerState>,
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
-    /// Block meta storage
-    block_meta_storage: Box<dyn BlockMetaStorageReader>,
+    /// Chain meta storage
+    chain_meta_storage: Box<dyn ChainMetaStorageReader>,
     /// Operations storage
     operations_storage: Box<dyn OperationsStorageReader>,
     /// Mempool operation storage
@@ -564,18 +570,39 @@ impl ChainManager {
     fn process_shell_channel_message(&mut self, ctx: &Context<ChainManagerMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
             ShellChannelMsg::BlockApplied(message) => {
-                self.current_head.local = Some(Head {
-                    hash: message.header().hash.clone(),
-                    level: message.header().header.level(),
-                });
-                self.stats.applied_block_level = Some(message.header().header.level());
-                self.stats.applied_block_last = Some(Instant::now());
+
+                // this logic is equivalent to [chain_validator.ml][let on_request]
+                // if applied block is winner we need to:
+                // - set current head
+                // - broadcast new current head/branch to peers (if bootstrapped)
+                // - start test chain (if needed) (TODO: TE-123 - not implemented yet)
+                // - update checkpoint (TODO: TE-210 - not implemented yet)
+                // - reset mempool_prevalidator
+
+                // we try to set it as "new current head", if some means set, if none means just ignore block
+                if let Some(new_head) = self.chain_state.try_set_new_current_head(&message)? {
+
+                    // update internal state
+                    self.current_head.local = Some(new_head.clone());
+                    self.stats.applied_block_level = Some(new_head.level);
+                    self.stats.applied_block_last = Some(Instant::now());
+
+                    // notify other actors that new current head was changed
+                    // (this also notifies [mempool_prevalidator])
+                    self.shell_channel.tell(
+                        Publish {
+                            msg: ShellChannelMsg::NewCurrentHead(new_head, message),
+                            topic: ShellChannelTopic::ShellEvents.into(),
+                        }, Some(ctx.myself().into()));
+
+                    // broadcast new head/branch to other peers
+                }
             }
             ShellChannelMsg::MempoolStateChanged(new_mempool_state) => {
                 // prepare mempool/header to send to peers
                 let (mempool_to_send, header_to_send) = match &new_mempool_state.head {
-                    Some(head) => {
-                        if let Some(header) = self.block_storage.get(&head.hash)? {
+                    Some(head_hash) => {
+                        if let Some(header) = self.block_storage.get(&head_hash)? {
                             (resolve_mempool_to_send(&new_mempool_state), Some((*header.header).clone()))
                         } else {
                             (Mempool::default(), None)
@@ -690,8 +717,7 @@ impl ChainManager {
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
 
         info!(ctx.system.log(), "Loading current head");
-        self.current_head.local = self.block_meta_storage.load_current_head().expect("Failed to load current head")
-            .map(|(hash, level)| Head { hash, level });
+        self.current_head.local = self.chain_meta_storage.get_current_head(self.chain_state.get_chain_id()).expect("Failed to load current head");
 
         let (local_head, local_head_level) = self.current_head.local_debug_info();
         info!(
@@ -712,7 +738,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ch
             network_channel,
             shell_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
-            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
+            chain_meta_storage: Box::new(ChainMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
             chain_state: BlockchainState::new(&persistent_storage, &chain_id),
@@ -1052,8 +1078,8 @@ fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Curr
     }
 
     if let Some(mempool_state) = mempool_state {
-        if let Some(mempool_head) = &mempool_state.head {
-            if mempool_head.hash == current_head.hash {
+        if let Some(mempool_head_hash) = &mempool_state.head {
+            if *mempool_head_hash == current_head.hash {
                 resolve_mempool_to_send(mempool_state)
             } else {
                 Mempool::default()

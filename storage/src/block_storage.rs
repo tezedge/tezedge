@@ -83,7 +83,7 @@ impl BlockStorage {
 
     /// Stores header in key-value store and commit_log.
     /// If called multiple times for the same header, data are stored just first time.
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
 
         if self.primary_index.contains(&block_header.hash)? {
             // we assume that, if primary_index contains hash, then also commit_log contains header data, header data cannot be change, so there is nothing to do
@@ -103,7 +103,8 @@ impl BlockStorage {
             })
     }
 
-    pub fn put_block_json_data(&mut self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
+    pub fn put_block_json_data(&self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
+
         let updated_column_location = {
             let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
@@ -116,7 +117,7 @@ impl BlockStorage {
             .and(self.by_level_index.put(block_header.header.level(), &updated_column_location))
     }
 
-    pub fn put_block_additional_data(&mut self, block_hash: &BlockHash, additional_data: BlockAdditionalData) -> Result<(), StorageError> {
+    pub fn put_block_additional_data(&self, block_hash: &BlockHash, additional_data: BlockAdditionalData) -> Result<(), StorageError> {
         let updated_column_location = {
             let block_additional_data_location = self.clog.append(&BlockStorageColumn::BlockAdditionalData(additional_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
@@ -129,7 +130,7 @@ impl BlockStorage {
             .and(self.by_level_index.put(block_header.header.level(), &updated_column_location))
     }
 
-    pub fn assign_to_context(&mut self, block_hash: &BlockHash, context_hash: &ContextHash) -> Result<(), StorageError> {
+    pub fn assign_to_context(&self, block_hash: &BlockHash, context_hash: &ContextHash) -> Result<(), StorageError> {
         match self.primary_index.get(block_hash)? {
             Some(location) => self.by_context_hash_index.put(context_hash, &location),
             None => Err(StorageError::MissingKey)
@@ -320,7 +321,7 @@ impl BlockPrimaryIndex {
     }
 
     #[inline]
-    fn put(&mut self, block_hash: &BlockHash, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
+    fn put(&self, block_hash: &BlockHash, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
         self.kv.put(block_hash, &location)
             .map_err(StorageError::from)
     }

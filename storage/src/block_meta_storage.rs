@@ -33,7 +33,7 @@ impl BlockMetaStorage {
     }
 
     /// Create new metadata record in storage from given block header
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<(), StorageError> {
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {
@@ -111,7 +111,7 @@ impl BlockMetaStorage {
     }
 
     #[inline]
-    pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
+    pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.kv.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
@@ -351,7 +351,7 @@ mod tests {
         let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
         let v = Meta::genesis_meta(&k, &chain_id, true);
-        let mut storage = BlockMetaStorage::new(tmp_storage.storage());
+        let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {
             Some(value) => {
@@ -382,7 +382,7 @@ mod tests {
             level: 1_245_762,
             chain_id: vec![44; 4],
         };
-        let mut storage = BlockMetaStorage::new(tmp_storage.storage());
+        let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         let p = storage.get(&k)?;
         assert!(p.is_some());

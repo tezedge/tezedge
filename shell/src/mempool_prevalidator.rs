@@ -21,17 +21,17 @@ use failure::{Error, Fail};
 use riker::actors::*;
 use slog::{debug, info, Logger, trace, warn};
 
-use crypto::hash::{BlockHash, HashType, OperationHash};
-use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
+use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
+use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
+use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, BeginConstructionRequest, Errored, PrevalidatorWrapper, ValidateOperationRequest, ValidateOperationResult};
-use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::prelude::Operation;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::Head;
 use crate::shell_channel::{CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
 
@@ -49,7 +49,7 @@ pub struct MempoolPrevalidator {
 }
 
 enum Event {
-    NewHead(BlockHash, Level),
+    NewHead(BlockHash, Arc<BlockHeader>),
     ValidateOperation(OperationHash, MempoolOperationType),
     ShuttingDown,
 }
@@ -72,12 +72,12 @@ impl MempoolPrevalidator {
         let validator_thread = {
             let persistent_storage = persistent_storage.clone();
             let shell_channel = shell_channel.clone();
-            let init_storage_data = init_storage_data.clone();
             let validator_run = validator_run.clone();
+            let chain_id = init_storage_data.chain_id.clone();
 
             thread::spawn(move || {
                 let mut block_storage = BlockStorage::new(&persistent_storage);
-                let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+                let mut chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
                 let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
                 while validator_run.load(Ordering::Acquire) {
@@ -85,9 +85,9 @@ impl MempoolPrevalidator {
                         Ok(protocol_controller) =>
                             match process_prevalidation(
                                 &mut block_storage,
-                                &mut block_meta_storage,
+                                &mut chain_meta_storage,
                                 &mut mempool_storage,
-                                &init_storage_data,
+                                &chain_id,
                                 &validator_run,
                                 &shell_channel,
                                 &protocol_controller.api,
@@ -127,10 +127,10 @@ impl MempoolPrevalidator {
 
     fn process_shell_channel_message(&mut self, _: &Context<MempoolPrevalidatorMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
-            ShellChannelMsg::BlockApplied(block) => {
+            ShellChannelMsg::NewCurrentHead(head, block) => {
                 // add NewHead to queue
                 self.validator_event_sender.lock().unwrap().send(
-                    Event::NewHead(block.header().hash.clone(), block.header().header.level())
+                    Event::NewHead(head.hash, block.header().header.clone())
                 )?;
             }
             ShellChannelMsg::MempoolOperationReceived(operation) => {
@@ -206,7 +206,7 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
 #[derive(Clone, Debug)]
 pub struct MempoolState {
     prevalidator: Option<PrevalidatorWrapper>,
-    predecessor: Option<Head>,
+    predecessor: Option<BlockHash>,
 
     validation_result: ValidateOperationResult,
     operations: HashMap<OperationHash, Operation>,
@@ -215,7 +215,7 @@ pub struct MempoolState {
 }
 
 impl MempoolState {
-    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<Head>, pending_operations: HashMap<OperationHash, Operation>) -> MempoolState {
+    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<BlockHash>, pending_operations: HashMap<OperationHash, Operation>) -> MempoolState {
         MempoolState {
             prevalidator,
             predecessor,
@@ -296,10 +296,10 @@ impl From<StorageError> for PrevalidationError {
 }
 
 fn process_prevalidation(
-    block_storage: &mut BlockStorage,
-    block_meta_storage: &mut BlockMetaStorage,
-    mempool_storage: &mut MempoolStorage,
-    init_storage_data: &StorageInitInfo,
+    block_storage: &BlockStorage,
+    chain_meta_storage: &ChainMetaStorage,
+    mempool_storage: &MempoolStorage,
+    chain_id: &ChainId,
     validator_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
     protocol_controller: &ProtocolController,
@@ -309,32 +309,27 @@ fn process_prevalidation(
     info!(log, "Mempool prevalidator started processing");
 
     // hydrate state
-    let mut state = hydrate_state(&shell_channel, block_storage, block_meta_storage, mempool_storage, &protocol_controller, &init_storage_data, &log)?;
+    let mut state = hydrate_state(
+        &shell_channel,
+        block_storage,
+        chain_meta_storage,
+        mempool_storage,
+        &protocol_controller,
+        &chain_id,
+        &log,
+    )?;
 
     // start receiving event
     while validator_run.load(Ordering::Acquire) {
         // 1. at first let's handle event
         if let Ok(event) = validator_event_receiver.recv() {
             match event {
-                Event::NewHead(header, level) => {
-                    // check if NewHeader is bigger than actual, if present
-                    if let Some(current_mempool_block) = &mut state.predecessor {
-                        if level <= current_mempool_block.level {
-                            warn!(log, "Mempool - new head has smaller level than actual mempool head, so we just ignore it!";
-                                        "received_level" => level,
-                                        "received_block_hash" => HashType::BlockHash.bytes_to_string(&header),
-                                        "current_mempool_level" => current_mempool_block.level,
-                                        "current_mempool_block_hash" => HashType::BlockHash.bytes_to_string(&current_mempool_block.hash));
-                            continue;
-                        }
-                    }
-
-                    debug!(log, "Mempool - new higher head received, so begin construction a new context";
-                                "received_level" => level,
-                                "received_block_hash" => HashType::BlockHash.bytes_to_string(&header));
+                Event::NewHead(header_hash, header) => {
+                    debug!(log, "Mempool - new head received, so begin construction a new context";
+                                "received_block_hash" => HashType::BlockHash.bytes_to_string(&header_hash));
 
                     // try to begin construction new context
-                    let (prevalidator, head) = begin_construction(block_storage, &protocol_controller, &init_storage_data, &header, &log)?;
+                    let (prevalidator, head) = begin_construction(&protocol_controller, &chain_id, &header_hash, header, &log)?;
 
                     // recreate state, reuse just pendings
                     let (pending_operations, mut operations_to_delete) = state.split_operations_to_pending_and_others();
@@ -384,20 +379,22 @@ fn process_prevalidation(
 
 fn hydrate_state(
     shell_channel: &ShellChannelRef,
-    block_storage: &mut BlockStorage,
-    block_meta_storage: &mut BlockMetaStorage,
-    mempool_storage: &mut MempoolStorage,
+    block_storage: &BlockStorage,
+    chain_meta_storage: &ChainMetaStorage,
+    mempool_storage: &MempoolStorage,
     protocol_controller: &ProtocolController,
-    init_storage_data: &StorageInitInfo,
+    chain_id: &ChainId,
     log: &Logger) -> Result<MempoolState, PrevalidationError> {
 
     // load current head
-    let current_head = block_meta_storage.load_current_head()?
-        .map(|(hash, level)| Head { hash, level });
+    let current_head = match chain_meta_storage.get_current_head(&chain_id)? {
+        Some(head) => block_storage.get(&head.hash)?.map(|header| (head, header.header)),
+        None => None,
+    };
 
     // begin construction for a current head
     let (prevalidator, head) = match current_head {
-        Some(head) => begin_construction(block_storage, protocol_controller, init_storage_data, &head.hash, &log)?,
+        Some((head, header)) => begin_construction(protocol_controller, &chain_id, &head.hash, header, &log)?,
         None => (None, None)
     };
 
@@ -419,37 +416,29 @@ fn hydrate_state(
     Ok(state)
 }
 
-fn begin_construction(block_storage: &mut BlockStorage,
-                      protocol_controller: &ProtocolController,
-                      init_storage_data: &StorageInitInfo,
+fn begin_construction(protocol_controller: &ProtocolController,
+                      chain_id: &ChainId,
                       block_hash: &BlockHash,
-                      log: &Logger) -> Result<(Option<PrevalidatorWrapper>, Option<Head>), PrevalidationError> {
-    // read whole header
-    let result = block_storage.get(&block_hash)?
-        .map_or((None, None), |block| {
-            // try to begin construction
-            match protocol_controller.begin_construction(
-                BeginConstructionRequest {
-                    chain_id: init_storage_data.chain_id.clone(),
-                    predecessor: (&*block.header).clone(),
-                    protocol_data: None,
-                }
-            ) {
-                Ok(prevalidator) => (
-                    Some(prevalidator),
-                    Some(
-                        Head {
-                            hash: block.hash,
-                            level: block.header.level(),
-                        }
-                    )
-                ),
-                Err(err) => {
-                    warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.bytes_to_string(&block_hash), "error" => format!("{:?}", err));
-                    (None, None)
-                }
-            }
-        });
+                      block_header: Arc<BlockHeader>,
+                      log: &Logger) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
+
+    // try to begin construction
+    let result = match protocol_controller.begin_construction(
+        BeginConstructionRequest {
+            chain_id: chain_id.clone(),
+            predecessor: (&*block_header).clone(),
+            protocol_data: None,
+        }
+    ) {
+        Ok(prevalidator) => (
+            Some(prevalidator),
+            Some(block_hash.clone()),
+        ),
+        Err(err) => {
+            warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.bytes_to_string(&block_hash), "error" => format!("{:?}", err));
+            (None, None)
+        }
+    };
     Ok(result)
 }
 

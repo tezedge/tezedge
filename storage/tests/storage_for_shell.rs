@@ -9,9 +9,11 @@ use slog::{Drain, Level, Logger};
 
 use crypto::hash::{chain_id_from_block_hash, ContextHash, HashType};
 use storage::*;
+use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides};
+use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -24,9 +26,10 @@ fn test_storage() -> Result<(), Error> {
     let context_dir = PathBuf::from("__storage_for_shell");
     let tmp_storage_dir = test_storage_dir_path("__storage_for_shell");
     let tmp_storage = TmpStorage::create(tmp_storage_dir.clone())?;
-    let mut block_storage = BlockStorage::new(tmp_storage.storage());
-    let mut block_meta_storage = BlockMetaStorage::new(tmp_storage.storage());
-    let mut operations_meta_storage = OperationsMetaStorage::new(tmp_storage.storage());
+    let block_storage = BlockStorage::new(tmp_storage.storage());
+    let block_meta_storage = BlockMetaStorage::new(tmp_storage.storage());
+    let chain_meta_storage = ChainMetaStorage::new(tmp_storage.storage());
+    let operations_meta_storage = OperationsMetaStorage::new(tmp_storage.storage());
 
     // tezos env - sample
     let tezos_env = TezosEnvironmentConfiguration {
@@ -56,7 +59,7 @@ fn test_storage() -> Result<(), Error> {
     assert_eq!(init_data.chain_id, chain_id_from_block_hash(&HashType::BlockHash.string_to_bytes(&tezos_env.genesis.block)?));
 
     // load current head (non)
-    let current_head = block_meta_storage.load_current_head();
+    let current_head = chain_meta_storage.get_current_head(&init_data.chain_id);
     assert!(current_head.is_ok());
     assert!(current_head.unwrap().is_none());
 
@@ -67,7 +70,7 @@ fn test_storage() -> Result<(), Error> {
     // simulate commit genesis in two steps
     let new_context_hash: ContextHash = HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
     let _ = initialize_storage_with_genesis_block(
-        &mut block_storage,
+        &block_storage,
         &init_data,
         &tezos_env,
         &new_context_hash,
@@ -80,12 +83,18 @@ fn test_storage() -> Result<(), Error> {
         operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),
     };
     let _ = store_commit_genesis_result(
-        &mut block_storage,
-        &mut block_meta_storage,
-        &mut operations_meta_storage,
+        &block_storage,
+        &block_meta_storage,
+        &chain_meta_storage,
+        &operations_meta_storage,
         &init_data,
         commit_genesis_result.clone(),
     )?;
+
+    // check current head is on genesis
+    let current_head = chain_meta_storage.get_current_head(&init_data.chain_id)?;
+    let current_head = current_head.expect("Current header should be set");
+    assert_eq!(current_head.hash, init_data.genesis_block_header_hash.clone());
 
     // genesis is stored with replaced context hash
     let genesis = block_storage.get(&init_data.genesis_block_header_hash)?.expect("Genesis was not stored!");
@@ -121,11 +130,20 @@ fn test_storage() -> Result<(), Error> {
         forking_testchain_data: None,
     };
     let (block_json_data, block_additional_data) = store_applied_block_result(
-        &mut block_storage,
-        &mut block_meta_storage,
+        &block_storage,
+        &block_meta_storage,
         &block.hash,
         apply_result.clone(),
         &mut metadata,
+    )?;
+
+    // set block as current head
+    chain_meta_storage.set_current_head(
+        &init_data.chain_id,
+        &Head {
+            hash: block.hash.clone(),
+            level: block.header.level(),
+        },
     )?;
 
     // check if data stored
@@ -149,9 +167,10 @@ fn test_storage() -> Result<(), Error> {
     assert_eq!(block_json_data.block_header_proto_metadata_json(), &apply_result.block_header_proto_metadata_json);
     assert_eq!(block_json_data.operations_proto_metadata_json(), &apply_result.operations_proto_metadata_json);
 
-    // load current head - should be changeg
-    let (current_head, ..) = block_meta_storage.load_current_head()?.expect("Current header should be set");
-    assert_eq!(current_head, block.hash);
+    // load current head - should be changed
+    let current_head = chain_meta_storage.get_current_head(&init_data.chain_id)?;
+    let current_head = current_head.expect("Current header should be set");
+    assert_eq!(current_head.hash, block.hash);
 
     Ok(())
 }

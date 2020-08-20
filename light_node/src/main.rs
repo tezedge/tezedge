@@ -20,7 +20,7 @@ use shell::context_listener::ContextListener;
 use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::{block_storage, BlockMetaStorage, BlockStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
+use storage::{block_storage, BlockMetaStorage, BlockStorage, ChainMetaStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
 use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
@@ -237,7 +237,7 @@ fn block_on_actors(
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage)
+    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage, &init_storage_data)
         .expect("Failed to create monitor actor");
     let _ = RpcServer::actor(
         &actor_system,
@@ -327,6 +327,7 @@ fn main() {
         ListValue::descriptor(),
         Sequences::descriptor(),
         MempoolStorage::descriptor(),
+        ChainMetaStorage::descriptor(),
     ];
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
