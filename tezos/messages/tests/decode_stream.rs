@@ -159,7 +159,10 @@ pub fn decode_stream() {
         match decrypted_message {
             Ok(dm) => {
                 match PeerMessageResponse::from_bytes(dm.to_owned()) {
-                    Ok(_) => decrypted_messages.push(dm),
+                    Ok(peer_message_response) => {
+                        // println!("{}: {:?}", i, peer_message_response.messages());
+                        decrypted_messages.push(dm)
+                    },
                     _ => (),
                 }
             },
@@ -167,7 +170,7 @@ pub fn decode_stream() {
         }
     }
     assert!(decrypted_messages.len()>0, "could not decrypt any message");
-    assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages");
+    assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages, only done {}",decrypted_messages.len());
 }
 
 fn hex_to_buffer<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
