@@ -1,21 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use tezos_messages::p2p::{
     binary_message::{BinaryMessage, BinaryChunk, BinaryChunkError, CONTENT_LENGTH_FIELD_BYTES},
-    encoding::operation::Operation,
-    binary_message::cache::CachedData,
     encoding::prelude::ConnectionMessage,
     encoding::peer::PeerMessageResponse,
     encoding::metadata::MetadataMessage,
 };
-use tezos_encoding::{
-    binary_reader::BinaryReader,
-    encoding::{Encoding, HasEncoding},
-    de::from_value as deserialize_from_value,
-};
 use crypto::{
     crypto_box::{precompute, decrypt, CryptoError},
     nonce::{generate_nonces, NoncePair},
-    hash::HashType,
 };
 
 use csv;
@@ -72,23 +63,9 @@ struct Message {
     message: Vec<u8>,
 }
 
-// deserialize_benchmark mimics execution of main operations in BinaryMessage::from_bytes
-pub fn deserialize_benchmark(c: &mut Criterion) {
-    let message_bytes = hex::decode("0090304939374e4f0f260928d4879fd5f359b4ff146f3fd37142436fb8ce1ab57af68648964efff6ca56a82b61185aec6538fa000125a2a1468416d65247660efcba15111467b9feab07dfc3dafac2d2a8c4c6dbca0b97b7239bcc4bd7ab2229b9c506022870539f6505ff56af81e5d344baa82465bae2a023afa5de27a6600e4dc85b050471ef8c3d887bb7a65700caaa98").unwrap();
-    c.bench_function("operation_from_bytes", |b| b.iter(|| { Operation::from_bytes(black_box(message_bytes.clone()))}));
-    c.bench_function("from_bytes_reader", |b| b.iter(|| { BinaryReader::new().read(black_box(message_bytes.clone()), &Operation::encoding()).unwrap() }));
-    let value = BinaryReader::new().read(black_box(message_bytes.clone()), &Operation::encoding()).unwrap();
-    c.bench_function("from_bytes_deserialize", |b| b.iter(|| deserialize_from_value::<Operation>(black_box(&value)).unwrap()));
-    let mut msg: Operation = deserialize_from_value(&value).unwrap();
-    if let Some(cache_writer) = msg.cache_writer() {
-        c.bench_function("from_bytes_write_cache", |b| b.iter(|| cache_writer.put(black_box(&message_bytes)) ));
-    }
-}
-
 // real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
-
-// real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
-pub fn decode_stream(c: &mut Criterion) {
+#[test]
+pub fn decode_stream() {
     let mut identity_file = File::open("benches/identity.json").unwrap();
     let mut identity_raw = String::new();
     identity_file.read_to_string(&mut identity_raw).unwrap();
@@ -182,7 +159,10 @@ pub fn decode_stream(c: &mut Criterion) {
         match decrypted_message {
             Ok(dm) => {
                 match PeerMessageResponse::from_bytes(dm.to_owned()) {
-                    Ok(_) => decrypted_messages.push(dm),
+                    Ok(peer_message_response) => {
+                        // println!("{}: {:?}", i, peer_message_response.messages());
+                        decrypted_messages.push(dm)
+                    },
                     _ => (),
                 }
             },
@@ -190,8 +170,7 @@ pub fn decode_stream(c: &mut Criterion) {
         }
     }
     assert!(decrypted_messages.len()>0, "could not decrypt any message");
-    assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages");
-    c.bench_function("decode_stream", |b| b.iter(|| { for message in decrypted_messages.to_owned() { PeerMessageResponse::from_bytes(message);}}));
+    assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages, only done {}",decrypted_messages.len());
 }
 
 fn hex_to_buffer<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -201,20 +180,3 @@ where D: Deserializer<'de> {
         .and_then(|string| Vec::from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 }
 
-// decode_value benchmark measures raw performance of BinaryReader's decode_value function.
-pub fn decode_value_hash_benchmark(c: &mut Criterion) {
-    let mut buf =  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].as_ref();
-    let br = BinaryReader::new();
-    c.bench_function("decode_value_hash", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Hash(HashType::PublicKeyEd25519)) }));
-}
-
-
-
-criterion_group!{
-    name = benches;
-    config = Criterion::default();
-    // targets = deserialize_benchmark, decode_stream
-    targets = decode_value_hash_benchmark, decode_stream
-}
-
-criterion_main!(benches);
