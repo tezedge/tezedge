@@ -209,7 +209,6 @@ impl BinaryReader {
                 let bytes_sz = buf.remaining();
 
                 let mut buf_slice = buf.take(bytes_sz);
-
                 match **encoding_inner {
                     Encoding::Uint8 => { // TODO: optimize other encodings.
                         let values:Vec<Value> = buf.to_bytes().into_iter().map(|x| Value::Uint8(x)).collect();
@@ -335,9 +334,14 @@ impl BinaryReader {
             }
             Encoding::Hash(hash_type) => {
                 let bytes_sz = hash_type.size();
-                let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
-                safe!(buf, bytes_sz, buf.copy_to_slice(&mut buf_slice));
-                Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
+                if buf.remaining() < bytes_sz {
+                    return Err(BinaryReaderError::Underflow{bytes: bytes_sz - buf.remaining()});
+                }
+                let mut values = Vec::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    values.push(Value::Uint8(buf.get_u8()));
+                }
+                Ok(Value::List(values))
             }
             Encoding::Split(inner_encoding) => {
                 let inner_encoding = inner_encoding(SchemaType::Binary);
