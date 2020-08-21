@@ -9,12 +9,13 @@ use tezos_messages::p2p::{
 };
 use tezos_encoding::{
     binary_reader::BinaryReader,
-    encoding::HasEncoding,
+    encoding::{Encoding, HasEncoding},
     de::from_value as deserialize_from_value,
 };
 use crypto::{
     crypto_box::{precompute, decrypt, CryptoError},
     nonce::{generate_nonces, NoncePair},
+    hash::HashType,
 };
 
 use csv;
@@ -70,7 +71,6 @@ struct Message {
     #[serde(deserialize_with = "hex_to_buffer")]
     message: Vec<u8>,
 }
-
 
 // deserialize_benchmark mimics execution of main operations in BinaryMessage::from_bytes
 pub fn deserialize_benchmark(c: &mut Criterion) {
@@ -201,11 +201,20 @@ where D: Deserializer<'de> {
         .and_then(|string| Vec::from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 }
 
+// decode_value benchmark measures raw performance of BinaryReader's decode_value function.
+pub fn decode_value_hash_benchmark(c: &mut Criterion) {
+    let mut buf =  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].as_ref();
+    let br = BinaryReader::new();
+    c.bench_function("decode_value_hash", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Hash(HashType::PublicKeyEd25519)) }));
+}
+
+
+
 criterion_group!{
     name = benches;
     config = Criterion::default();
-    // targets = deserialize_benchmark, real_data_benchmark
-    targets = decode_stream
+    // targets = deserialize_benchmark, decode_stream
+    targets = decode_value_hash_benchmark, decode_stream
 }
 
 criterion_main!(benches);
