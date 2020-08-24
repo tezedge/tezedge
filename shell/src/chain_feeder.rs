@@ -126,6 +126,11 @@ impl ChainFeeder {
 
     fn process_shell_channel_message(&mut self, _ctx: &Context<ChainFeederMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
+            ShellChannelMsg::ApplyBlock(_) => {
+                if let Some(join_handle) = self.block_applier_thread.lock().unwrap().as_ref() {
+                    join_handle.thread().unpark();
+                }
+            }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.block_applier_run.store(false, Ordering::Release);
             }

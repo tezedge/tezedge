@@ -4,7 +4,7 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
-use getset::{Getters, Setters};
+use getset::{CopyGetters, Getters, Setters};
 use riker::actors::*;
 use slog::{Logger, warn};
 use tokio::runtime::Handle;
@@ -28,7 +28,7 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 
 /// Represents various collected information about
 /// internal state of the node.
-#[derive(Getters, Setters)]
+#[derive(CopyGetters, Getters, Setters)]
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<BlockApplied>,
@@ -38,6 +38,8 @@ pub struct RpcCollectedState {
     current_mempool_state: Option<CurrentMempoolState>,
     #[get = "pub(crate)"]
     head_update_time: TimeStamp,
+    #[get_copy = "pub(crate)"]
+    is_sandbox: bool,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -60,12 +62,14 @@ impl RpcServer {
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_env: TezosEnvironmentConfiguration,
         network_version: NetworkVersion,
-        init_storage_data: &StorageInitInfo) -> Result<RpcServerRef, CreateError> {
+        init_storage_data: &StorageInitInfo,
+        is_sandbox: bool) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(persistent_storage, &init_storage_data.chain_id, &sys.log()),
             chain_id: init_storage_data.chain_id.clone(),
             current_mempool_state: None,
             head_update_time: current_time_timestamp(),
+            is_sandbox
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),

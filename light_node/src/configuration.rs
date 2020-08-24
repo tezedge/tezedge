@@ -11,7 +11,8 @@ use std::time::Duration;
 
 use clap::{App, Arg};
 
-use shell::peer_manager::{P2p, Threshold};
+use shell::peer_manager::P2p;
+use shell::PeerConnectionThreshold;
 use storage::persistent::{DbConfiguration, DbConfigurationBuilder};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
@@ -481,7 +482,7 @@ impl Environment {
                         .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
                         .collect()
                     ).unwrap_or_default(),
-                peer_threshold: Threshold::new(
+                peer_threshold: PeerConnectionThreshold::new(
                     args.value_of("peer-thresh-low")
                         .unwrap_or("")
                         .parse::<usize>()

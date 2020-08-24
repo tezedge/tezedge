@@ -357,7 +357,7 @@ pub fn check_database_compatibility(
 }
 
 pub mod tests_common {
-    use std::fs;
+    use std::{env, fs};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
@@ -378,6 +378,14 @@ pub mod tests_common {
     }
 
     impl TmpStorage {
+        pub fn create_to_out_dir(dir_name: &str) -> Result<Self, Error> {
+            let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined - check build.rs");
+            let path = Path::new(out_dir.as_str())
+                .join(Path::new(dir_name))
+                .to_path_buf();
+            Self::create(path)
+        }
+
         pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
             let path = path.as_ref().to_path_buf();
             // remove previous data if exists

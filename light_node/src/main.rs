@@ -213,7 +213,7 @@ fn block_on_actors(
         .expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox)
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &env.p2p.peer_threshold)
         .expect("Failed to create chain manager");
 
     let _ = MempoolPrevalidator::actor(
@@ -249,6 +249,7 @@ fn block_on_actors(
         tezos_env.clone(),
         network_version,
         &init_storage_data,
+        is_sandbox,
     ).expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {

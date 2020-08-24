@@ -1,14 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
-
 use failure::Error;
 
 use crypto::hash::HashType;
 use storage::*;
-use storage::block_storage::BlockStorageCommitLog;
-use storage::persistent::commit_log::Range;
 use storage::tests_common::TmpStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;

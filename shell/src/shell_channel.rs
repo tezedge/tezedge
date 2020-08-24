@@ -80,6 +80,7 @@ pub enum ShellChannelMsg {
     /// Chain_feeder propagates if block successfully validated and applied
     /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
     BlockApplied(BlockApplied),
+    ApplyBlock(BlockHash),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),

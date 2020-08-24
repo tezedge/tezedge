@@ -27,6 +27,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool_prevalidator::MempoolPrevalidator;
+use shell::PeerConnectionThreshold;
 use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data};
 use storage::chain_meta_storage::ChainMetaStorageReader;
@@ -58,6 +59,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
     let is_sandbox = false;
+    let p2p_threshold = PeerConnectionThreshold::new(1, 1);
 
     // storage
     let storage_db_path = "__shell_context_listener_test_apply_blocks";
@@ -139,7 +141,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     let _ = test_actor::TestActor::actor(&actor_system, shell_channel.clone(), test_result_sender);
     let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox).expect("Failed to create chain manager");
+    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),

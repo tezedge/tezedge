@@ -10,7 +10,7 @@ use path_tree::PathTree;
 use crate::server::{Handler, HResult, Params, Query, RpcServiceEnvironment};
 use crate::server::{dev_handler, handler};
 
-pub(crate) fn create_routes() -> PathTree<Handler> {
+pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     let mut routes = PathTree::<Handler>::new();
 
     // Shell rpc - implemented
@@ -31,7 +31,11 @@ pub(crate) fn create_routes() -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/hash", handler::get_block_hash);
     routes.handle("/chains/:chain_id/blocks/:block_id/operation_hashes", handler::get_block_operation_hashes);
     routes.handle("/injection/operation", handler::inject_operation);
-    routes.handle("/injection/block", handler::inject_block);
+
+    // TODO: TE-174: just for sandbox
+    if is_sandbox {
+        routes.handle("/injection/block", handler::inject_block);
+    }
 
     // Shell rpcs - routed through ffi calls
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/preapply/operations", handler::preapply_operations);
