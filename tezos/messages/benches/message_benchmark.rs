@@ -86,8 +86,6 @@ pub fn deserialize_benchmark(c: &mut Criterion) {
 }
 
 // real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
-
-// real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
 pub fn decode_stream(c: &mut Criterion) {
     let mut identity_file = File::open("benches/identity.json").unwrap();
     let mut identity_raw = String::new();
@@ -201,20 +199,31 @@ where D: Deserializer<'de> {
         .and_then(|string| Vec::from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 }
 
-// decode_value benchmark measures raw performance of BinaryReader's decode_value function.
+// decode_value benchmarks measure raw performance of BinaryReader's decode_value function.
 pub fn decode_value_hash_benchmark(c: &mut Criterion) {
     let mut buf =  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].as_ref();
     let br = BinaryReader::new();
     c.bench_function("decode_value_hash", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Hash(HashType::PublicKeyEd25519)) }));
 }
 
+pub fn decode_value_bytes_benchmark(c: &mut Criterion) {
+    let mut buf =  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].as_ref();
+    let br = BinaryReader::new();
+    c.bench_function("decode_value_bytes", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Bytes) }));
+}
 
+pub fn decode_value_string_benchmark(c: &mut Criterion) {
+    let s = String::from("This is a thirty-two byte stringThis is a thirty-two byte stringThis is a thirty-two byte stringThis is a thirty-two byte string"); // A 128-byte string.
+    let mut buf =  s.as_ref();
+    let br = BinaryReader::new();
+    c.bench_function("decode_value_string", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::String) }));
+}
 
 criterion_group!{
     name = benches;
     config = Criterion::default();
     // targets = deserialize_benchmark, decode_stream
-    targets = decode_value_hash_benchmark, decode_stream
+    targets = decode_value_hash_benchmark, decode_value_bytes_benchmark, decode_value_string_benchmark, decode_stream
 }
 
 criterion_main!(benches);
