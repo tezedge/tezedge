@@ -20,8 +20,8 @@ create or access this directory, it will die gracefully.
 ```
 
 ### Identity file
-Path to the json identity file with peer-id, public-key, secret-key and pow-stamp. 
-New identity is automatically generated if it does not exist in the specified path. 
+The path to the json identity file with peer-id, public-key, secret-key and pow-stamp. 
+If an identity does not exist in the specified path, a new one will be automatically generated. 
 In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir
 
 ```
@@ -76,7 +76,7 @@ Enable OCaml runtime logger.
 ```
 
 ### Network
-Specify the Tezos environment for this node. Accepted values are: 
+Specifies the Tezos environment for this node. Accepted values are: 
 `alphanet, babylonnet, babylon, mainnet or zeronet`, where `babylon` and `babylonnet` refer to the same environment.
 
 ```
