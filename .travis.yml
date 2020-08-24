@@ -34,6 +34,12 @@ addons:
       - libev
       - libsodium
 
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      mkdir ~/.cargo;
+      echo "[build]\nrustflags = [\"-C\", \"link-args=-Wl,-undefined,dynamic_lookup\"] > ~/.cargo/config;
+    fi;
+
 branches:
   only:
     - master
