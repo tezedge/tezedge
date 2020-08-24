@@ -170,10 +170,12 @@ impl BinaryReader {
             }
             Encoding::String => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
-                let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
-                safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
-                let str_buf = str_buf.into_vec();
-                Ok(Value::String(String::from_utf8(str_buf)?))
+                let mut str_buf = String::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    str_buf.push(buf.get_u8() as char);
+                }
+                Ok(Value::String(str_buf))
+
             }
             Encoding::Enum => Ok(Value::Enum(None, Some(u32::from(safe!(buf, get_u8, u8))))),
             Encoding::Dynamic(dynamic_encoding) => {
@@ -210,7 +212,7 @@ impl BinaryReader {
 
                 let mut buf_slice = buf.take(bytes_sz);
                 match **encoding_inner {
-                    Encoding::Uint8 => { // TODO: optimize other encodings.
+                    Encoding::Uint8 => { // Uint8 is the most common encoding, so it's done more efficiently. TODO: optimize other encodings.
                         let values:Vec<Value> = buf.to_bytes().into_iter().map(|x| Value::Uint8(x)).collect();
                         Ok(Value::List(values))
                     },
@@ -328,9 +330,11 @@ impl BinaryReader {
             }
             Encoding::Bytes => {
                 let bytes_sz = buf.remaining();
-                let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
-                buf.copy_to_slice(&mut buf_slice);
-                Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
+                let mut values = Vec::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    values.push(Value::Uint8(buf.get_u8()));
+                }
+                Ok(Value::List(values))
             }
             Encoding::Hash(hash_type) => {
                 let bytes_sz = hash_type.size();
