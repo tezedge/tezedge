@@ -212,18 +212,11 @@ pub fn decode_value_bytes_benchmark(c: &mut Criterion) {
     c.bench_function("decode_value_bytes", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Bytes) }));
 }
 
-pub fn decode_value_string_benchmark(c: &mut Criterion) {
-    let s = String::from("This is a thirty-two byte stringThis is a thirty-two byte stringThis is a thirty-two byte stringThis is a thirty-two byte string"); // A 128-byte string.
-    let mut buf =  s.as_ref();
-    let br = BinaryReader::new();
-    c.bench_function("decode_value_string", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::String) }));
-}
-
 criterion_group!{
     name = benches;
     config = Criterion::default();
     // targets = deserialize_benchmark, decode_stream
-    targets = decode_value_hash_benchmark, decode_value_bytes_benchmark, decode_value_string_benchmark, decode_stream
+    targets = decode_value_hash_benchmark, decode_value_bytes_benchmark, decode_stream
 }
 
 criterion_main!(benches);
