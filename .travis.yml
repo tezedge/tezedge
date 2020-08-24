@@ -31,6 +31,7 @@ addons:
     update: true
     packages:
       - pkg-config
+      - gmp
       - libev
       - libsodium
 
