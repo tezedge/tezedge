@@ -9,6 +9,140 @@ use std::sync::Arc;
 use std::str::FromStr;
 
 use crypto::hash::HashType;
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum TagVariant {
+    Ack,
+    Advertise,
+    AlreadyConnected,
+    BlockHeader,
+    Bootstrap,
+    CurrentBranch,
+    CurrentHead,
+    Deactivate,
+    DeprecatedDistributedDbVersion,
+    DeprecatedP2pVersion,
+    Disconnect,
+    GetBlockHeaders,
+    GetCurrentBranch,
+    GetCurrentHead,
+    GetHead,
+    GetOperationHashesForBlocks,
+    GetOperations,
+    GetOperationsForBlocks,
+    GetProtocols,
+    HelpersPreapplyBlock,
+    HelpersPreapplyOperations,
+    HelpersRunOperation,
+    Left,
+    Nack,
+    NackV0,
+    NoMotive,
+    Op,
+    Operation,
+    OperationHashesForBlocks,
+    OperationsForBlocks,
+    Protocol,
+    Right,
+    SwapAck,
+    SwapRequest,
+    TooManyConnections,
+    UnknownChainName,  
+}
+
+impl fmt::Display for TagVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl TagVariant {
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            TagVariant::Ack => "Ack",
+            TagVariant::Advertise => "Advertise",
+            TagVariant::AlreadyConnected => "AlreadyConnected",
+            TagVariant::BlockHeader => "BlockHeader",
+            TagVariant::Bootstrap => "Bootstrap",
+            TagVariant::CurrentBranch => "CurrentBranch",
+            TagVariant::CurrentHead => "CurrentHead",
+            TagVariant::Deactivate => "Deactivate",
+            TagVariant::DeprecatedDistributedDbVersion => "DeprecatedDistributedDbVersion",
+            TagVariant::DeprecatedP2pVersion => "DeprecatedP2pVersion",
+            TagVariant::Disconnect => "Disconnect",
+            TagVariant::GetBlockHeaders => "GetBlockHeaders",
+            TagVariant::GetCurrentBranch => "GetCurrentBranch",
+            TagVariant::GetCurrentHead => "GetCurrentHead",
+            TagVariant::GetHead => "GetHead",
+            TagVariant::GetOperationHashesForBlocks => "GetOperationHashesForBlocks",
+            TagVariant::GetOperations => "GetOperations",
+            TagVariant::GetOperationsForBlocks => "GetOperationsForBlocks",
+            TagVariant::GetProtocols => "GetProtocols",
+            TagVariant::HelpersPreapplyBlock => "HelpersPreapplyBlock",
+            TagVariant::HelpersPreapplyOperations => "HelpersPreapplyOperations",
+            TagVariant::HelpersRunOperation => "HelpersRunOperation",
+            TagVariant::Left => "Left",
+            TagVariant::Nack => "Nack",
+            TagVariant::NackV0 => "NackV0",
+            TagVariant::NoMotive => "NoMotive",
+            TagVariant::Op => "Op",
+            TagVariant::Operation => "Operation",
+            TagVariant::OperationHashesForBlocks => "OperationHashesForBlocks",
+            TagVariant::OperationsForBlocks => "OperationsForBlocks",
+            TagVariant::Protocol => "Protocol",
+            TagVariant::Right => "Right",
+            TagVariant::SwapAck => "SwapAck",
+            TagVariant::SwapRequest => "SwapRequest",
+            TagVariant::TooManyConnections => "TooManyConnections",
+            TagVariant::UnknownChainName => "UnknownChainName",
+        }
+    }
+}
+
+impl FromStr for TagVariant {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<TagVariant, Self::Err> {
+        match input {
+            "Ack" => Ok(TagVariant::Ack),
+            "Advertise" => Ok(TagVariant::Advertise),
+            "AlreadyConnected" => Ok(TagVariant::AlreadyConnected),
+            "BlockHeader" => Ok(TagVariant::BlockHeader),
+            "Bootstrap" => Ok(TagVariant::Bootstrap),
+            "CurrentBranch" => Ok(TagVariant::CurrentBranch),
+            "CurrentHead" => Ok(TagVariant::CurrentHead),
+            "Deactivate" => Ok(TagVariant::Deactivate),
+            "DeprecatedDistributedDbVersion" => Ok(TagVariant::DeprecatedDistributedDbVersion),
+            "DeprecatedP2pVersion" => Ok(TagVariant::DeprecatedP2pVersion),
+            "Disconnect" => Ok(TagVariant::Disconnect),
+            "GetBlockHeaders" => Ok(TagVariant::GetBlockHeaders),
+            "GetCurrentBranch" => Ok(TagVariant::GetCurrentBranch),
+            "GetCurrentHead" => Ok(TagVariant::GetCurrentHead),
+            "GetHead" => Ok(TagVariant::GetHead),
+            "GetOperationHashesForBlocks" => Ok(TagVariant::GetOperationHashesForBlocks),
+            "GetOperations" => Ok(TagVariant::GetOperations),
+            "GetOperationsForBlocks" => Ok(TagVariant::GetOperationsForBlocks),
+            "GetProtocols" => Ok(TagVariant::GetProtocols),
+            "HelpersPreapplyBlock" => Ok(TagVariant::HelpersPreapplyBlock),
+            "HelpersPreapplyOperations" => Ok(TagVariant::HelpersPreapplyOperations),
+            "HelpersRunOperation" => Ok(TagVariant::HelpersRunOperation),
+            "Left" => Ok(TagVariant::Left),
+            "Nack" => Ok(TagVariant::Nack),
+            "NackV0" => Ok(TagVariant::NackV0),
+            "NoMotive" => Ok(TagVariant::NoMotive),
+            "Op" => Ok(TagVariant::Op),
+            "Operation" => Ok(TagVariant::Operation),
+            "OperationHashesForBlocks" => Ok(TagVariant::OperationHashesForBlocks),
+            "OperationsForBlocks" => Ok(TagVariant::OperationsForBlocks),
+            "Protocol" => Ok(TagVariant::Protocol),
+            "Right" => Ok(TagVariant::Right),
+            "SwapAck" => Ok(TagVariant::SwapAck),
+            "SwapRequest" => Ok(TagVariant::SwapRequest),
+            "TooManyConnections" => Ok(TagVariant::TooManyConnections),
+            "UnknownChainName" => Ok(TagVariant::UnknownChainName),
+            _      => panic!(input.to_owned()),//Err(()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum FieldName {
@@ -453,13 +587,13 @@ pub type Schema = Vec<Field>;
 #[derive(Debug, Clone)]
 pub struct Tag {
     id: u16,
-    variant: String,
+    variant: TagVariant,
     encoding: Encoding,
 }
 
 impl Tag {
-    pub fn new(id: u16, variant: &str, encoding: Encoding) -> Tag {
-        Tag { id, variant: String::from(variant), encoding }
+    pub fn new(id: u16, variant: TagVariant, encoding: Encoding) -> Tag {
+        Tag { id, variant, encoding }
     }
 
     pub fn get_id(&self) -> u16 {
@@ -470,7 +604,7 @@ impl Tag {
         &self.encoding
     }
 
-    pub fn get_variant(&self) -> &String {
+    pub fn get_variant(&self) -> &TagVariant {
         &self.variant
     }
 }

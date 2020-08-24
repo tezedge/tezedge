@@ -11,7 +11,7 @@ use serde::de::Error as SerdeError;
 
 use crate::bit_utils::{BitReverse, Bits, BitTrim, ToBytes};
 use crate::de;
-use crate::encoding::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field, TagVariant, SchemaType};
 use crate::types::{self, Value};
 
 /// Error produced by a [BinaryReader].
@@ -417,7 +417,7 @@ mod tests {
             Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
+                    TagMap::new(&[Tag::new(0x10, TagVariant::GetHead, Encoding::Obj(get_head_record_schema))]),
                 )
             )))
         ];

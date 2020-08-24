@@ -8,7 +8,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap, TagVariant};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter, NeverCache};
 use crate::p2p::encoding::operation::Operation;
@@ -178,9 +178,9 @@ pub fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(&[
-            Tag::new(0xF0, "Left", Encoding::Lazy(Arc::new(PathLeft::encoding))),
-            Tag::new(0x0F, "Right", Encoding::Lazy(Arc::new(PathRight::encoding))),
-            Tag::new(0x00, "Op", Encoding::Unit),
+            Tag::new(0xF0, TagVariant::Left, Encoding::Lazy(Arc::new(PathLeft::encoding))),
+            Tag::new(0x0F, TagVariant::Right, Encoding::Lazy(Arc::new(PathRight::encoding))),
+            Tag::new(0x00, TagVariant::Op, Encoding::Unit),
         ])
     )
 }
