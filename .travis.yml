@@ -3,7 +3,8 @@ rust:
   - nightly-2020-05-15
 
 os:
-  - linux
+#  - linux
+  - osx
 
 dist: focal
 
@@ -26,6 +27,10 @@ addons:
       - clang
       - libsodium-dev
       - libev4
+  homebrew:
+    packages:
+      - libev
+      - libsodium
 
 branches:
   only:
