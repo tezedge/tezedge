@@ -199,9 +199,11 @@ where
         split(stream)
             .map_err(|err| IpcError::SplitError { reason: err })
             .map(|(r, s)| {
-                // Required by macOS and FreeBSD because new socket inherit flags from accepting fd,
+                // On macOS and FreeBSD new sockets inherit flags from accepting fd,
                 // but we expect this to be in blocking by default.
-                s.0.set_nonblocking(false).expect("Failed set_nonblocking after accept");
+                if cfg!(target_os = "macos") || cfg!(target_os = "freebsd") {
+                    s.0.set_nonblocking(false).expect("Failed set_nonblocking after accept")
+                }
                 (r, s)
             })
     }
