@@ -170,12 +170,10 @@ impl BinaryReader {
             }
             Encoding::String => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
-                let mut str_buf = String::with_capacity(bytes_sz);
-                for _ in 0..bytes_sz {
-                    str_buf.push(buf.get_u8() as char);
-                }
-                Ok(Value::String(str_buf))
-
+                let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
+                safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
+                let str_buf = str_buf.into_vec();
+                Ok(Value::String(String::from_utf8(str_buf)?))
             }
             Encoding::Enum => Ok(Value::Enum(None, Some(u32::from(safe!(buf, get_u8, u8))))),
             Encoding::Dynamic(dynamic_encoding) => {
