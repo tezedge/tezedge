@@ -35,6 +35,17 @@ addons:
       - libev
       - libsodium
 
+before_cache:
+  - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then
+      brew cleanup
+      find /usr/local/Homebrew \! -regex ".+\.git.+" -delete
+    fi
+
+cache:
+  directories:
+    - $HOME/Library/Caches/Homebrew
+    - /usr/local/Homebrew
+
 branches:
   only:
     - master
