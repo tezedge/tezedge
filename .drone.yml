@@ -160,21 +160,9 @@ steps:
   commands:
     - sleep 5
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/stop" | jq -S .)
-    - sleep 5
-  
-- name: test-node-exited
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - sleep 5
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - curl "$TEZEDGE_URL/chains/main/blocks/head"
-    # check the status code of curl, should be 7 (Failed to connect to host)
-    - /tmp/sandbox/assert_equals.sh 7 $?
+    - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
+    # On a successfull stop, HTTP code 200 is returned
+    - /tmp/sandbox/assert_equals.sh 200 $resp
 
 volumes:
   - name: build
@@ -219,10 +207,8 @@ steps:
   image: alpine/git
   user: root
   volumes:
-    - name: tezedge-node-data
-      path: /tmp/tezedge_developer
-    - name: tezedge-target-branch-node-data
-      path: /tmp/tezedge_target-branch_developer
+    - name: sandbox-data
+      path: /tmp/sandbox
   commands:
     - rm -rf /tmp/sandbox/light-node
     - rm -rf /tmp/sandbox/tezos-node

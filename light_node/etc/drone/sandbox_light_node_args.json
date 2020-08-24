@@ -9,7 +9,6 @@
     "tezos_data_dir": "/tmp/tezedge_developer/tezos-node",
     "identity_file": "/tmp/sandbox/light-node/identity.json",
     "bootstrap_db_path": "bootstrap_db",
-    "db_cfg_max_open_files": "512",
     "db_cfg_max_threads": "4",
     "log_format": "simple",
     "log_level": "info",

@@ -41,10 +41,9 @@ pub struct LightNodeRunner {
     executable_path: PathBuf,
     _name: String,
     process: Option<Child>,
-    // TODO: anything else? Do we need a name? Maybe in the furture when launching multiple nodes with the sandbox
+    // TODO: TE-213 Launch multiple nodes
 }
 
-// TODO: maybe implement (and possible rename to just Runner?) the trait ProtocolRunner found in tezos/wrapper/src/service.rs
 impl LightNodeRunner {
     const PROCESS_WAIT_TIMEOUT: Duration = Duration::from_secs(4);
 
@@ -90,16 +89,6 @@ impl LightNodeRunner {
         }
     }
 
-    // pub fn terminate(mut process: Child) {
-    //     match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
-    //         Some(_) => (),
-    //         None => {
-    //             // child hasn't exited yet
-    //             let _ = process.kill();
-    //         }
-    //     };
-    // }
-
     fn terminate_ref(process: &mut Child) {
         match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
             Some(_) => (),
@@ -130,14 +119,12 @@ impl LightNodeRunner {
                 args.push(format!("--{}", key.replace("_", "-").replace("\"", "")));
                 let str_val = value.to_string().replace("\"", "");
 
-                // string 
+                // options are defined as a key with an empty string
                 if !str_val.is_empty() {
                     args.push(str_val);
                 }
             }
-            println!("args: {:?}", args);
             Ok(args)
-
         } else {
             Err(LightNodeRunnerError::JsonParsingError)
         }

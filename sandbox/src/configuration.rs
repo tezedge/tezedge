@@ -6,9 +6,10 @@ pub struct LauncherEnvironment {
     pub light_node_path: PathBuf,
     pub log_level: slog::Level,
     pub sandbox_rpc_port: u16,
+    pub tezos_client_path: PathBuf,
+    pub tezos_client_base_dir_path: PathBuf,
 }
 
-// TODO: borrowed from light_node/src/configuration; expose this macro
 macro_rules! parse_validator_fn {
     ($t:ident, $err:expr) => {
         |v| {
@@ -37,6 +38,34 @@ fn sandbox_app() -> App<'static, 'static> {
                         Ok(())
                     } else {
                         Err(format!("Light-node binary not found at '{}'", v))
+                    }
+                }),
+        )
+        .arg(
+            Arg::with_name("tezos-client-path")
+                .long("tezos-client-path")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to the tezos-client binary")
+                .validator(|v| {
+                    if Path::new(&v).exists() {
+                        Ok(())
+                    } else {
+                        Err(format!("Tezos-client binary not found at '{}'", v))
+                    }
+                }),
+        )
+        .arg(
+            Arg::with_name("tezos-client-base-dir-path")
+                .long("tezos-client-base-dir-path")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to the tezos-client base directory")
+                .validator(|v| {
+                    if Path::new(&v).exists() {
+                        Ok(())
+                    } else {
+                        Err(format!("Tezos-client directory not found at '{}'", v))
                     }
                 }),
         )
@@ -83,6 +112,16 @@ impl LauncherEnvironment {
                 .unwrap_or("")
                 .parse::<u16>()
                 .expect("Was expecting value of sandbox-rpc-port"),
+            tezos_client_path: args
+                .value_of("tezos-client-path")
+                .unwrap_or("")
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path"),
+            tezos_client_base_dir_path: args
+                .value_of("tezos-client-base-dir-path")
+                .unwrap_or("")
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path"),
         }
     }
 }

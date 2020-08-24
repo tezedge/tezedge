@@ -6,6 +6,7 @@ mod configuration;
 mod filters;
 mod handlers;
 mod node_runner;
+mod tezos_client_runner;
 
 #[tokio::main]
 async fn main() {
@@ -21,11 +22,17 @@ async fn main() {
         env.light_node_path,
     )));
 
+    let client_runner = tezos_client_runner::TezosClientRunner::new(
+        "tezos-client",
+        env.tezos_client_path,
+        env.tezos_client_base_dir_path,
+    );
+
     // the port to open the rpc server on
     let rpc_port = env.sandbox_rpc_port;
 
     // combined warp filter
-    let api = filters::sandbox(log.clone(), runner);
+    let api = filters::sandbox(log.clone(), runner, client_runner);
 
     info!(log, "Starting the sandbox RPC server");
 

@@ -242,10 +242,14 @@ run_sandbox() {
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
 
+  rm -rf ./light_node/etc/tezedge_sandbox/tezos-client/*
+
   cargo run $CARGO_PROFILE_ARG --bin sandbox -- \
                                 --log-level "info" \
                                 --sandbox-rpc-port "3030" \
-                                --light-node-path "./target/$PROFILE/light-node" "${args[@]}"
+                                --light-node-path "./target/$PROFILE/light-node" \
+                                --tezos-client-path "../tezos/tezos-client" \
+                                --tezos-client-base-dir-path "./light_node/etc/tezedge_sandbox/tezos-client" "${args[@]}"
 }
 
 case $1 in
