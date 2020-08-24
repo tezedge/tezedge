@@ -1,3 +1,0 @@
-[build]
-# Required in OSX so that the compiler allows undefined symbols in dynamic libraries
-rustflags = ["-C", "link-args=-Wl,-undefined,dynamic_lookup"]

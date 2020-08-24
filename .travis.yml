@@ -2,10 +2,14 @@ language: rust
 rust:
   - nightly-2020-07-12
 
-os:
-  - linux
-
-dist: focal
+jobs:
+  include:
+  - os: linux
+    dist: focal
+    name: Ubuntu Focal (20.04)
+  - os: osx
+    name: macOS Catalina (10.15)
+    osx_image: xcode12
 
 sudo: false
 
@@ -26,6 +30,23 @@ addons:
       - clang
       - libsodium-dev
       - libev4
+  homebrew:
+    packages:
+      - pkg-config
+      - gmp
+      - libev
+      - libsodium
+
+before_cache:
+  - if [[ "${TRAVIS_OS_NAME}" == "osx" ]]; then
+      brew cleanup;
+      find /usr/local/Homebrew \! -regex ".+\.git.+" -delete;
+    fi;
+
+cache:
+  directories:
+    - $HOME/Library/Caches/Homebrew
+    - /usr/local/Homebrew
 
 branches:
   only:
