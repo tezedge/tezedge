@@ -28,6 +28,7 @@ addons:
       - libsodium-dev
       - libev4
   homebrew:
+    update: true
     packages:
       - pkg-config
       - libev
