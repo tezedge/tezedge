@@ -136,7 +136,7 @@ ocaml_export! {
         parent_context_hash: OCaml<Option<String>>,
         block_hash: OCaml<Option<String>>,
         new_context_hash: OCaml<String>,
-        info: OCaml<(Option<String>, Option<String>, OCamlInt64, OCamlList<OCamlBytes>)>,
+        info: OCaml<(OCamlInt64, Option<String>, Option<String>, OCamlList<OCamlBytes>)>,
         start_time: f64,
         end_time: f64,
     ) {
@@ -144,9 +144,9 @@ ocaml_export! {
         let block_hash = block_hash.into_rust();
         let new_context_hash = new_context_hash.into_rust();
 
-        let (author, message, date, parents) = info.into_rust();
+        let (date, author, message, parents) = info.into_rust();
 
-        context_commit(parent_context_hash, block_hash, new_context_hash, author, message, date, parents, start_time, end_time);
+        context_commit(parent_context_hash, block_hash, new_context_hash, date, author, message, parents, start_time, end_time);
         OCaml::unit()
     }
 
@@ -326,9 +326,9 @@ fn context_commit(
     parent_context_hash: Option<ContextHash>,
     block_hash: Option<BlockHash>,
     new_context_hash: ContextHash,
+    date: i64,
     author: Option<String>,
     message: Option<String>,
-    date: i64,
     parents: Vec<Vec<u8>>,
     start_time: f64,
     end_time: f64)
