@@ -77,7 +77,8 @@ steps:
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
-    - cp ./light_node/etc/drone/assert_equals.sh /tmp/sandbox/ && chmod 755 /tmp/sandbox/assert_equals.sh
+    - cp ./light_node/etc/drone/assert_equals.sh /artifacts/ && chmod 755 /artifacts/assert_equals.sh
+    - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
 
@@ -202,6 +203,8 @@ steps:
   user: root
   image: cfmanteiga/alpine-bash-curl-jq
   volumes:
+    - name: build
+      path: /artifacts
     - name: sandbox-data
       path: /tmp/sandbox
   commands:
@@ -213,10 +216,10 @@ steps:
     - echo "Ocaml mempool - $ocaml_mempool"
     - echo "Tezedge mempool - $tezedge_mempool"
     # check if both are equals
-    - /tmp/sandbox/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+    - /artifacts/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
     # check if applied is 0
     - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - /tmp/sandbox/assert_equals.sh 0 $applied_count
+    - /artifacts/assert_equals.sh 0 $applied_count
 
 # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
 - name: do-transfer-with-tezos_client
@@ -235,6 +238,8 @@ steps:
   user: root
   image: cfmanteiga/alpine-bash-curl-jq
   volumes:
+    - name: build
+      path: /artifacts
     - name: sandbox-data
       path: /tmp/sandbox
   commands:
@@ -246,10 +251,10 @@ steps:
     - echo "Ocaml mempool - $ocaml_mempool"
     - echo "Tezedge mempool - $tezedge_mempool"
     # check if both are equals
-    - /tmp/sandbox/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+    - /artifacts/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
     # check if applied is 1
     - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - /tmp/sandbox/assert_equals.sh 1 $applied_count
+    - /artifacts/assert_equals.sh 1 $applied_count
 
 # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
 - name: bake-a-block-with-tezos_client
@@ -684,7 +689,7 @@ steps:
       - cp /artifacts/identities/identity_7.json /home/tezos/data/identity.json
       - rm -f /home/tezos/data/config.json
       - tezos-node config init --data-dir /home/tezos/data --network carthagenet
-      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network carthagenet
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network carthagenet --no-bootstrap-peers
 
   - name: wait-ocaml-node-carthage-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -694,17 +699,32 @@ steps:
   - name: ocaml-node-carthage-connect-to-tezedge
     user: root
     image: tezos/tezos:v7.3
-    detach: true
     volumes:
       - name: cache
         path: /tmp/tezedge-cache
     commands:
-      - tezos-admin-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 connect address `cat /tmp/tezedge-cache/tezedge_ip.txt`:9732
+      # catch error from tezos-admin-client
+      - tezos-admin-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 connect address `cat /tmp/tezedge-cache/tezedge_ip.txt`:9732 &> /tmp/tezedge-cache/tezos-admin-client-error.log &
+      - sleep 1
+      - cat /tmp/tezedge-cache/tezos-admin-client-error.log
 
-  - name: bootstrapping-ocaml
+  - name: check-ocaml-error
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /tmp/tezedge-cache
+    commands:
+      - error=$(cat /tmp/tezedge-cache/tezos-admin-client-error.log)
+      - /artifacts/assert_contains.sh "$error" "Rejected peer connection"
+      - /artifacts/assert_contains.sh "$error" "no common network protocol"
+
+  - name: check-ocaml-still-running
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
-      - tezos-node-bootstrap --bootstrap --level=10 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
 volumes:
   - name: tezedge-node-data
