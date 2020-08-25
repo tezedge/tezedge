@@ -11,12 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New configuration parameter `--disable-bootstrap-lookup` to turn off dns lookup for peers (e.g. used for tests or sandbox)
 - New configuration parameter `--db-cfg-max-threads` and `--db-cfg-max-open-files` to better control system resources
 - New RPCs to make baking in sandbox mode possible with tezos-client
+- Support for macOS (10.13 and newer).
 
 ### Changed
 
 - Resolved various clippy warnings/errors.
 - Drone test runs offline with carthagenet-snapshoted nodes.
-- New ocaml ffi - `ocaml-rs` was replaced with custom new library based on `ocaml-oxide` to get GC under control and better performance
+- New ocaml ffi - `ocaml-rs` was replaced with custom new library based on `caml-oxide` to get GC under control and better performance
 - P2P bootstrap process - NACK version control after metadata exchange
 
 ### Deprecated
@@ -100,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Remove bitvec dependency
 - Refactored FFI to Ocaml not using BigArray1's for better GC processing
- 
+
 ## [0.0.1] - 2020-03-31
 
 ### Added
