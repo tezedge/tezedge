@@ -1,6 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(const_fn, const_if_match)]
+#![feature(const_fn)]
 
 use std::convert::TryInto;
 use std::path::PathBuf;
