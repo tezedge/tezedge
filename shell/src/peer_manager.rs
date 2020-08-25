@@ -421,7 +421,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                     .for_each(|message| match message {
                         PeerMessage::Advertise(message) => {
                             // extract potential peers from the advertise message
-                            info!(ctx.system.log(), "Received advertise message"; "peer" => received.peer.name());
+                            info!(ctx.system.log(), "Received advertise message"; "peer" => received.peer.name(), "peers" => format!("{:?}", message.id().join(", ")));
                             self.process_potential_peers(message.id());
                         }
                         PeerMessage::Bootstrap => {
@@ -442,7 +442,6 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 // received message that bootstrap process failed for the peer
                 match potential_peers_to_connect {
                     Some(peers) => {
-                        info!(ctx.system.log(), "Received list of potential peers in the NACK message"; "ip" => format!("{}", address.ip()), "peers" => format!("{:?}", &peers));
                         self.process_potential_peers(&peers);
                         self.trigger_check_peer_count(ctx);
                     }
