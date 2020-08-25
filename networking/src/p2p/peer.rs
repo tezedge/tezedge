@@ -390,19 +390,6 @@ async fn bootstrap(
     let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, peer_id.clone(), log.clone());
     let mut msg_rx = EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, peer_id, log.clone());
 
-    let protocol_not_supported = !connection_message.versions().iter().any(|version| supported_protocol_version.supports(version));
-    if protocol_not_supported {
-        // send nack
-        timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::NackV0)).await??;
-
-        return Err(
-            PeerError::UnsupportedProtocol {
-                supported_version: format!("{:?}", &supported_protocol_version),
-                incompatible_versions: format!("{:?}", &connection_message.versions()),
-            }
-        );
-    }
-
     let connecting_to_self = hex::encode(connection_message.public_key()) == info.public_key;
     if connecting_to_self {
         debug!(log, "Detected self connection");
@@ -417,6 +404,19 @@ async fn bootstrap(
     // receive metadata
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
+
+    let protocol_not_supported = !connection_message.versions().iter().any(|version| supported_protocol_version.supports(version));
+    if protocol_not_supported {
+        // send nack
+        timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::NackV0)).await??;
+
+        return Err(
+            PeerError::UnsupportedProtocol {
+                supported_version: format!("{:?}", &supported_protocol_version),
+                incompatible_versions: format!("{:?}", &connection_message.versions()),
+            }
+        );
+    }
 
     // send ack
     timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::Ack)).await??;
