@@ -35,6 +35,7 @@ steps:
     - rm -rf /tmp/sandbox/tezos-client
     - rm -rf /home/tezos/data/
     # - rm -rf /artifacts/*
+    - cp ./light_node/etc/tezedge_sandbox/sign_first_block_with_activator.py /artifacts && chmod 755 /artifacts/sign_first_block_with_activator.py
 
 # - name: test-and-build-artifacts
 #   image: simplestakingcom/tezedge-ci-builder:latest
@@ -181,16 +182,16 @@ steps:
 # TODO: write rpc test for check network/peers
 
 # we will only use the tezos-client for signatures
-- name: prepare-tezos-client-for-signing
-  user: root
-  image: tezos/tezos:v7.3
-  volumes:
-    - name: sandbox-data
-      path: /tmp/sandbox
-  commands:
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+# - name: prepare-tezos-client-for-signing
+#   user: root
+#   image: tezos/tezos:v7.3
+#   volumes:
+#     - name: sandbox-data
+#       path: /tmp/sandbox
+#   commands:
+#     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
+#     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+#     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
     # - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/sandbox/006-carthage-protocol-parameters.json --timestamp $(TZ='AAA+1' date +%FT%TZ)
 
 # activates the protocol by injecting the first block 
@@ -227,22 +228,25 @@ steps:
 # activates the protocol by injecting the first block 
 - name: activate-protocol-sign-data
   user: root
-  image: tezos/tezos:v7.3
+  image: fnndsc/ubuntu-python3
   volumes:
     - name: build
       path: /artifacts
     - name: sandbox-data
       path: /tmp/sandbox
   commands:
-    - signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 sign bytes 0x01$(cat /tmp/sandbox/data_to_sign.hex) for activator | cut -d$' ' -f2)
+    - pip3 install pyblake2 ed25519 base58check
+    - signature=$(/artifacts/sign_first_block_with_activator.py `cat /tmp/sandbox/data_to_sign.hex` $${ACTIVATOR_SECRET})
+    # - signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 sign bytes 0x01$(cat /tmp/sandbox/data_to_sign.hex) for activator | cut -d$' ' -f2)
     - echo "signature - $signature"
-    # data: from the forge_header operation + appeneded with the signature
-    # operations: empty array (0 validation passes)
-    - raw_signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 hash data $signature | head -n 1 | cut -d$' ' -f4)
-    - echo "raw signature - $raw_signature"
-    - data=$data_no_signature$raw_signature
+    # # data: from the forge_header operation + appeneded with the signature
+    # # operations: empty array (0 validation passes)
+    # - raw_signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 hash data $signature | head -n 1 | cut -d$' ' -f4)
+    # - echo "raw signature - $raw_signature"
+    - data=$(cat /tmp/sandbox/data_to_sign.hex)$signature
     - echo "data - $data"
     - echo "$data" > /tmp/sandbox/signed_data.hex
+
 
 # activates the protocol by injecting the first block 
 - name: activate-protocol-injection
@@ -254,7 +258,12 @@ steps:
     - name: sandbox-data
       path: /tmp/sandbox
   commands:
-    - injection=$(curl -X POST "$TEZEDGE_URL/injection/block" -H "Content-Type:application/json" --data '{"data":$(cat /tmp/sandbox/signed_data.hex),"operations":[]}')
+    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - signed_data=$(cat /tmp/sandbox/signed_data.hex)
+    - echo "data - $signed_data"
+    - JSON_STRING=$( jq -n -c --arg d "$signed_data" '{"data":$d, "operations":[]}' )
+    - echo "JSON TO SEND - $JSON_STRING"
+    - injection=$(curl -X POST "$TEZEDGE_URL/injection/block" -H "Content-Type:application/json" --data $JSON_STRING)
     - echo "Block injected - $injection"
 
 # test checks if this block is synchronized to rust node through p2p
