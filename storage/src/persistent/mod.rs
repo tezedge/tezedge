@@ -23,12 +23,9 @@ pub mod database;
 pub mod commit_log;
 
 /// Rocksdb database system configuration
-/// - [max_open_files] - default is 512, but depends on system limits (like ulimit)
 /// - [max_num_of_threads] - if not set, num of cpus is used
 #[derive(Builder, Debug, Clone)]
 pub struct DbConfiguration {
-    #[builder(default = "512")]
-    max_open_files: i32,
     #[builder(default = "None")]
     max_threads: Option<usize>,
 }
@@ -68,7 +65,6 @@ fn default_kv_options(cfg: &DbConfiguration) -> Options {
     db_opts.set_level_compaction_dynamic_level_bytes(true);
     db_opts.set_max_background_compactions(4);
     db_opts.set_max_background_flushes(2);
-    db_opts.set_max_open_files(cfg.max_open_files);
 
     // resolve thread count to use
     let num_of_threads = match cfg.max_threads {

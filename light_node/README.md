@@ -45,11 +45,6 @@ contains valid database, node will continue in bootstrap process on that databas
 --db-cfg-max-threads <NUM>
 ```
 
-```
-#Max open files for database. If specified '-1', means unlimited. Default value: 512
---db-cfg-max-open-files <NUM>
-```
-
 -----
 
 ### Bootstrap lookup addresses
