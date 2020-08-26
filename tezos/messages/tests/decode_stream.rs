@@ -63,7 +63,8 @@ struct Message {
     message: Vec<u8>,
 }
 
-// real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
+// decode_stream verifies if the file with sample communication between two nodes is correct
+// for performing a benchmark of decryption, deserialization and decoding.
 #[test]
 pub fn decode_stream() {
     let mut identity_file = File::open("benches/identity.json").unwrap();
@@ -159,8 +160,7 @@ pub fn decode_stream() {
         match decrypted_message {
             Ok(dm) => {
                 match PeerMessageResponse::from_bytes(dm.to_owned()) {
-                    Ok(peer_message_response) => {
-                        // println!("{}: {:?}", i, peer_message_response.messages());
+                    Ok(_) => {
                         decrypted_messages.push(dm)
                     },
                     _ => (),
@@ -179,4 +179,3 @@ where D: Deserializer<'de> {
     String::deserialize(deserializer)
         .and_then(|string| Vec::from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 }
-

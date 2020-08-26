@@ -148,7 +148,7 @@ impl BinaryReader {
         Ok(Value::Tuple(values))
     }
 
-    pub fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
+    fn decode_value(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError> {
         match encoding {
             Encoding::Unit => Ok(Value::Unit),
             Encoding::Int8 => Ok(Value::Int8(safe!(buf, get_i8, i8))),

@@ -85,7 +85,8 @@ pub fn deserialize_benchmark(c: &mut Criterion) {
     }
 }
 
-// real data benchmark reads a real-life communication between two nodes and performs decrypting, deserialization and decoding
+// decode_stream benchmark reads a sample communication between two nodes and performs
+// decryption, deserialization and decoding.
 pub fn decode_stream(c: &mut Criterion) {
     let mut identity_file = File::open("benches/identity.json").unwrap();
     let mut identity_raw = String::new();
@@ -189,7 +190,7 @@ pub fn decode_stream(c: &mut Criterion) {
     }
     assert!(decrypted_messages.len()>0, "could not decrypt any message");
     assert!(decrypted_messages.len()==5472, "should be able do decrypt 5472 messages");
-    c.bench_function("decode_stream", |b| b.iter(|| { for message in decrypted_messages.to_owned() { PeerMessageResponse::from_bytes(message);}}));
+    c.bench_function("decode_stream", |b| b.iter(|| { for message in decrypted_messages.to_owned() { PeerMessageResponse::from_bytes(message).unwrap();}}));
 }
 
 fn hex_to_buffer<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
@@ -203,13 +204,13 @@ where D: Deserializer<'de> {
 pub fn decode_value_hash_benchmark(c: &mut Criterion) {
     let mut buf =  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].as_ref();
     let br = BinaryReader::new();
-    c.bench_function("decode_value_hash", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Hash(HashType::PublicKeyEd25519)) }));
+    c.bench_function("decode_value_hash", |b| b.iter(|| { br.read(&mut buf, &Encoding::Hash(HashType::PublicKeyEd25519)) }));
 }
 
 pub fn decode_value_bytes_benchmark(c: &mut Criterion) {
     let mut buf =  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].as_ref();
     let br = BinaryReader::new();
-    c.bench_function("decode_value_bytes", |b| b.iter(|| { br.decode_value(&mut buf, &Encoding::Bytes) }));
+    c.bench_function("decode_value_bytes", |b| b.iter(|| { br.read(&mut buf, &Encoding::Bytes) }));
 }
 
 criterion_group!{
