@@ -11,7 +11,7 @@ use serde::de::Error as SerdeError;
 
 use crate::bit_utils::{BitReverse, Bits, BitTrim, ToBytes};
 use crate::de;
-use crate::encoding::{Encoding, Field, TagVariant, SchemaType};
+use crate::encoding::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
 
 /// Error produced by a [BinaryReader].
@@ -89,7 +89,7 @@ impl BinaryReader {
     /// use serde::Deserialize;
     /// use tezos_encoding::binary_reader::BinaryReader;
     /// use tezos_encoding::de;
-    /// use tezos_encoding::encoding::{Field, Encoding};
+    /// use tezos_encoding::encoding::{Field, FieldName, Encoding};
     ///
     /// #[derive(Deserialize, Debug, PartialEq)]
     /// struct Version {
@@ -367,7 +367,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use crate::{binary_writer, de};
-    use crate::encoding::{Tag, TagMap, FieldName};
+    use crate::encoding::{Tag, TagMap, TagVariant, FieldName};
     use crate::ser::Serializer;
     use crate::types::BigInt;
 

@@ -18,7 +18,7 @@ use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, Pro
 use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::de::from_value as deserialize_from_value;
-use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap, TagVariant};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
 
 pub type RustBytes = Vec<u8>;
@@ -856,9 +856,9 @@ lazy_static! {
             Field::new(FieldName::FFIService, Encoding::Tags(
                     size_of::<u16>(),
                     TagMap::new(&[
-                        Tag::new(0, "HelpersRunOperation", Encoding::Unit),
-                        Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
-                        Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
+                        Tag::new(0, TagVariant::HelpersRunOperation, Encoding::Unit),
+                        Tag::new(1, TagVariant::HelpersPreapplyOperations, Encoding::Unit),
+                        Tag::new(2, TagVariant::HelpersPreapplyBlock, Encoding::Unit),
                     ]),
                 )
             ),

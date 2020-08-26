@@ -195,6 +195,7 @@ pub enum FieldName {
     Fitness,                        // fitness
     ForkingBlockHash,               // forking_block_hash
     ForkingTestchain,               // forking_testchain
+    ForkingTestchainData,           // forking_testchain_data
     GetBlockHeaders,                // get_block_headers
     GetOperationHashesForBlocks,    // get_operation_hashes_for_blocks
     GetOperationsForBlocks,         // get_operations_for_blocks
@@ -336,6 +337,7 @@ impl FieldName {
             FieldName::Fitness => "fitness",
             FieldName::ForkingBlockHash => "forking_block_hash",
             FieldName::ForkingTestchain => "forking_testchain",
+            FieldName::ForkingTestchainData => "forking_testchain_data",
             FieldName::GetBlockHeaders => "get_block_headers",
             FieldName::GetOperationHashesForBlocks => "get_operation_hashes_for_blocks",
             FieldName::GetOperationsForBlocks => "get_operations_for_blocks",
@@ -475,6 +477,7 @@ impl FromStr for FieldName {
             "fitness" => Ok(FieldName::Fitness),
             "forking_block_hash" => Ok(FieldName::ForkingBlockHash),
             "forking_testchain" => Ok(FieldName::ForkingTestchain),
+            "forking_testchain_data" => Ok(FieldName::ForkingTestchainData),
             "get_block_headers" => Ok(FieldName::GetBlockHeaders),
             "get_operation_hashes_for_blocks" => Ok(FieldName::GetOperationHashesForBlocks),
             "get_operations_for_blocks" => Ok(FieldName::GetOperationsForBlocks),
@@ -560,7 +563,6 @@ impl FromStr for FieldName {
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Field {

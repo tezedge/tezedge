@@ -12,7 +12,7 @@ use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::{Bits, BitTrim};
-use crate::encoding::{Encoding, Field, FieldName, TagVariant, SchemaType};
+use crate::encoding::{Encoding, Field, FieldName, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -25,7 +25,7 @@ use crate::types::{self, Value};
 /// ```
 /// use serde::Serialize;
 /// use tezos_encoding::binary_writer;
-/// use tezos_encoding::encoding::{Field, Encoding};
+/// use tezos_encoding::encoding::{Field, FieldName, Encoding};
 ///
 /// #[derive(Serialize, Debug)]
 /// struct Version {
@@ -485,7 +485,7 @@ fn find_value_in_record_values<'a>(name: &'a FieldName, values: &'a [(FieldName,
 mod tests {
     use serde::Serialize;
 
-    use crate::encoding::{Tag, TagMap};
+    use crate::encoding::{FieldName, Tag, TagVariant, TagMap};
     use crate::types::BigInt;
 
     use super::*;
