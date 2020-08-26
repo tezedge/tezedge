@@ -7,7 +7,7 @@ use chrono::{TimeZone, Utc};
 use num_traits::Num;
 use serde::ser::{Error as SerdeError, Serialize};
 
-use crate::encoding::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field, FieldName, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::Value;
 
@@ -47,7 +47,7 @@ impl JsonWriter {
                     if idx > 0 {
                         self.push_delimiter();
                     }
-                    self.push_key(&name);
+                    self.push_key(&name.as_str());
 
                     if let Encoding::Obj(ref schema) = encoding {
                         self.encode_record(value, schema)?
@@ -308,7 +308,7 @@ impl JsonWriter {
         }
     }
 
-    fn find_value_in_record_values<'a>(&self, name: &'a str, values: &'a [(String, Value)]) -> Option<&'a Value> {
+    fn find_value_in_record_values<'a>(&self, name: &'a FieldName, values: &'a [(FieldName, Value)]) -> Option<&'a Value> {
         values.iter()
             .find(|&(v_name, _)| { v_name == name })
             .map(|(_, value)| value)
@@ -383,29 +383,29 @@ mod tests {
         };
 
         let version_schema = vec![
-            Field::new("name", Encoding::String),
-            Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Major, Encoding::Uint16),
+            Field::new(FieldName::Minor, Encoding::Uint16)
         ];
 
         let sub_record_schema = vec![
-            Field::new("x", Encoding::Int31),
-            Field::new("y", Encoding::Int31),
-            Field::new("v", Encoding::dynamic(Encoding::list(Encoding::Int31)))
+            Field::new(FieldName::X, Encoding::Int31),
+            Field::new(FieldName::Y, Encoding::Int31),
+            Field::new(FieldName::V, Encoding::dynamic(Encoding::list(Encoding::Int31)))
         ];
 
         let record_schema = vec![
-            Field::new("a", Encoding::Int31),
-            Field::new("b", Encoding::Bool),
-            Field::new("t", Encoding::Timestamp),
-            Field::new("s", Encoding::Obj(sub_record_schema)),
-            Field::new("p", Encoding::sized(32, Encoding::Bytes)),
-            Field::new("c", Encoding::Option(Box::new(Encoding::Z))),
-            Field::new("d", Encoding::Float),
-            Field::new("e", Encoding::Enum),
-            Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema)))),
-            Field::new("h", Encoding::Hash(HashType::ChainId)),
-            Field::new("ofs", Encoding::OptionalField(Box::new(Encoding::String))),
+            Field::new(FieldName::A, Encoding::Int31),
+            Field::new(FieldName::B, Encoding::Bool),
+            Field::new(FieldName::T, Encoding::Timestamp),
+            Field::new(FieldName::S, Encoding::Obj(sub_record_schema)),
+            Field::new(FieldName::P, Encoding::sized(32, Encoding::Bytes)),
+            Field::new(FieldName::C, Encoding::Option(Box::new(Encoding::Z))),
+            Field::new(FieldName::D, Encoding::Float),
+            Field::new(FieldName::E, Encoding::Enum),
+            Field::new(FieldName::F, Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema)))),
+            Field::new(FieldName::H, Encoding::Hash(HashType::ChainId)),
+            Field::new(FieldName::Ofs, Encoding::OptionalField(Box::new(Encoding::String))),
         ];
 
         let mut writer = JsonWriter::new();

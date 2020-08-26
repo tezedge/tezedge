@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, ProtocolHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -19,7 +19,7 @@ pub struct ProtocolMessage {
 impl HasEncoding for ProtocolMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("protocol", Protocol::encoding())
+            Field::new(FieldName::Protocol, Protocol::encoding())
         ])
     }
 }
@@ -50,9 +50,9 @@ pub struct Component {
 impl HasEncoding for Component {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("name", Encoding::String),
-            Field::new("interface", Encoding::option_field(Encoding::String)),
-            Field::new("implementation", Encoding::String),
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Interface, Encoding::option_field(Encoding::String)),
+            Field::new(FieldName::Implementation, Encoding::String),
         ])
     }
 }
@@ -92,8 +92,8 @@ impl Protocol {
 impl HasEncoding for Protocol {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("expected_env_version", Encoding::Int16),
-            Field::new("components", Encoding::dynamic(Encoding::list(Component::encoding())))
+            Field::new(FieldName::ExpectedEnvVersion, Encoding::Int16),
+            Field::new(FieldName::Components, Encoding::dynamic(Encoding::list(Component::encoding())))
         ])
     }
 }
@@ -122,7 +122,7 @@ pub struct GetProtocolsMessage {
 impl HasEncoding for GetProtocolsMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("get_protocols", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash)))),
+            Field::new(FieldName::GetProtocols, Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash)))),
         ])
     }
 }

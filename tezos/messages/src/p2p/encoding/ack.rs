@@ -7,7 +7,7 @@ use std::mem::size_of;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap};
 
 use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
 
@@ -66,7 +66,7 @@ impl NackInfo {
     fn encoding() -> Encoding {
         Encoding::Obj(
             vec![
-                Field::new("motive", Encoding::Tags(
+                Field::new(FieldName::Motive, Encoding::Tags(
                     size_of::<u16>(),
                     TagMap::new(&[
                         Tag::new(0, "NoMotive", Encoding::Unit),
@@ -77,7 +77,7 @@ impl NackInfo {
                         Tag::new(5, "AlreadyConnected", Encoding::Unit),
                     ]),
                 )),
-                Field::new("potential_peers_to_connect", Encoding::dynamic(Encoding::list(Encoding::String))),
+                Field::new(FieldName::PotentialPeersToConnect, Encoding::dynamic(Encoding::list(Encoding::String))),
             ]
         )
     }

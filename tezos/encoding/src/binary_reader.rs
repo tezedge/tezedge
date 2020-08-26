@@ -99,9 +99,9 @@ impl BinaryReader {
     /// }
     ///
     /// let version_schema = Encoding::Obj(vec![
-    ///     Field::new("name", Encoding::String),
-    ///     Field::new("major", Encoding::Uint16),
-    ///     Field::new("minor", Encoding::Uint16)
+    ///     Field::new(FieldName::Name, Encoding::String),
+    ///     Field::new(FieldName::Major, Encoding::Uint16),
+    ///     Field::new(FieldName::Minor, Encoding::Uint16)
     /// ]);
     ///
     /// let reader = BinaryReader::new();
@@ -135,7 +135,7 @@ impl BinaryReader {
         for field in schema {
             let name = field.get_name();
             let encoding = field.get_encoding();
-            values.push((name.clone(), self.decode_value(buf, encoding)?))
+            values.push((*name, self.decode_value(buf, encoding)?))
         }
         Ok(Value::Record(values))
     }
@@ -354,7 +354,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use crate::{binary_writer, de};
-    use crate::encoding::{Tag, TagMap};
+    use crate::encoding::{Tag, TagMap, FieldName};
     use crate::ser::Serializer;
     use crate::types::BigInt;
 
@@ -367,13 +367,13 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Mutez)
+            Field::new(FieldName::A, Encoding::Mutez)
         ];
 
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
-        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("13b50f1e".to_string()))]), value)
+        assert_eq!(Value::Record(vec![(FieldName::A, Value::String("13b50f1e".to_string()))]), value)
     }
 
     #[test]
@@ -383,13 +383,13 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
 
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
-        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("9da879e".to_string()))]), value)
+        assert_eq!(Value::Record(vec![(FieldName::A, Value::String("9da879e".to_string()))]), value)
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod tests {
         }
 
         let get_head_record_schema = vec![
-            Field::new("chain_id", Encoding::Sized(4, Box::new(Encoding::Bytes)))
+            Field::new(FieldName::ChainID, Encoding::Sized(4, Box::new(Encoding::Bytes)))
         ];
 
         #[derive(Deserialize, Debug, PartialEq)]
@@ -414,7 +414,7 @@ mod tests {
         }
 
         let response_schema = vec![
-            Field::new("messages", Encoding::dynamic(Encoding::list(
+            Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
                     TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
@@ -441,7 +441,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -482,17 +482,17 @@ mod tests {
         }
 
         let version_schema = vec![
-            Field::new("name", Encoding::String),
-            Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Major, Encoding::Uint16),
+            Field::new(FieldName::Minor, Encoding::Uint16)
         ];
 
         let connection_message_schema = vec![
-            Field::new("port", Encoding::Uint16),
-            Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
-            Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Encoding::Obj(version_schema)))
+            Field::new(FieldName::Port, Encoding::Uint16),
+            Field::new(FieldName::PublicKey, Encoding::sized(32, Encoding::Bytes)),
+            Field::new(FieldName::ProofOfWorkStamp, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::MessageNonce, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::Versions, Encoding::list(Encoding::Obj(version_schema)))
         ];
         let connection_message_encoding = Encoding::Obj(connection_message_schema);
 
@@ -520,7 +520,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+            Field::new(FieldName::ForkingBlockHash, Encoding::list(Encoding::Uint8)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -546,7 +546,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+            Field::new(FieldName::ForkingBlockHash, Encoding::list(Encoding::Uint8)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 

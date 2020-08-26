@@ -4,7 +4,7 @@
 use getset::Getters;
 use serde::{Serialize, Deserialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 use crypto::hash::{ChainId, HashType};
@@ -30,7 +30,7 @@ impl DeactivateMessage {
 impl HasEncoding for DeactivateMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("deactivate", Encoding::Hash(HashType::ChainId)),
+            Field::new(FieldName::Deactivate, Encoding::Hash(HashType::ChainId)),
         ])
     }
 }

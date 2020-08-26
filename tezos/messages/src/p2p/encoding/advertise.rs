@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 
 use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
 
@@ -31,7 +31,7 @@ impl AdvertiseMessage {
 impl HasEncoding for AdvertiseMessage {
     fn encoding() -> Encoding {
         Encoding::Obj(vec![
-            Field::new("id", Encoding::list(Encoding::String)),
+            Field::new(FieldName::ID, Encoding::list(Encoding::String)),
         ])
     }
 }
