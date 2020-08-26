@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use znfe::{ocaml_export, IntoRust, OCaml, OCamlBytes, OCamlInt64, OCamlList, RawOCaml};
+use znfe::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
 
 use tezos_context::channel::*;
 
@@ -136,7 +136,7 @@ ocaml_export! {
         parent_context_hash: OCaml<Option<String>>,
         block_hash: OCaml<Option<String>>,
         new_context_hash: OCaml<String>,
-        info: OCaml<(OCamlInt64, Option<String>, Option<String>, OCamlList<OCamlBytes>)>,
+        info: OCaml<(OCamlInt64, String, String, OCamlList<String>)>,
         start_time: f64,
         end_time: f64,
     ) {
@@ -327,8 +327,8 @@ fn context_commit(
     block_hash: Option<BlockHash>,
     new_context_hash: ContextHash,
     date: i64,
-    author: Option<String>,
-    message: Option<String>,
+    author: String,
+    message: String,
     parents: Vec<Vec<u8>>,
     start_time: f64,
     end_time: f64)
