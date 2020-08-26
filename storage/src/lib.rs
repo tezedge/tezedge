@@ -30,6 +30,7 @@ use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
 
 pub mod persistent;
+pub mod merkle_storage;
 pub mod operations_storage;
 pub mod operations_meta_storage;
 pub mod block_storage;
