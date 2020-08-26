@@ -12,7 +12,7 @@ use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::{Bits, BitTrim};
-use crate::encoding::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field, FieldName, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -25,7 +25,7 @@ use crate::types::{self, Value};
 /// ```
 /// use serde::Serialize;
 /// use tezos_encoding::binary_writer;
-/// use tezos_encoding::encoding::{Field, Encoding};
+/// use tezos_encoding::encoding::{Field, FieldName, Encoding};
 ///
 /// #[derive(Serialize, Debug)]
 /// struct Version {
@@ -36,9 +36,9 @@ use crate::types::{self, Value};
 /// let version = Version { name: "v1.0".into(), major: 1, minor: 0 };
 ///
 /// let version_schema = Encoding::Obj(vec![
-///     Field::new("name", Encoding::String),
-///     Field::new("major", Encoding::Uint16),
-///     Field::new("minor", Encoding::Uint16)
+///     Field::new(FieldName::Name, Encoding::String),
+///     Field::new(FieldName::Major, Encoding::Uint16),
+///     Field::new(FieldName::Minor, Encoding::Uint16)
 /// ]);
 ///
 /// let binary = binary_writer::write(&version, &version_schema).unwrap();
@@ -75,7 +75,7 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
             let mut bytes_sz: usize = 0;
             for field in schema {
                 let name = field.get_name();
-                let value = find_value_in_record_values(name, values).unwrap_or_else(|| panic!("No values found for {}", name));
+                let value = find_value_in_record_values(name, values.as_slice()).unwrap_or_else(|| panic!("No values found for {}", name));
                 let encoding = field.get_encoding();
 
                 bytes_sz += encode_any(data, value, encoding)?;
@@ -475,7 +475,7 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
     }
 }
 
-fn find_value_in_record_values<'a>(name: &'a str, values: &'a [(String, Value)]) -> Option<&'a Value> {
+fn find_value_in_record_values<'a>(name: &'a FieldName, values: &'a [(FieldName, Value)]) -> Option<&'a Value> {
     values.iter()
         .find(|&(v_name, _)| { v_name == name })
         .map(|(_, value)| value)
@@ -485,7 +485,7 @@ fn find_value_in_record_values<'a>(name: &'a str, values: &'a [(String, Value)])
 mod tests {
     use serde::Serialize;
 
-    use crate::encoding::{Tag, TagMap};
+    use crate::encoding::{FieldName, Tag, TagVariant, TagMap};
     use crate::types::BigInt;
 
     use super::*;
@@ -497,7 +497,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -527,7 +527,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Mutez)
+            Field::new(FieldName::A, Encoding::Mutez)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -557,7 +557,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -576,7 +576,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -595,7 +595,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -615,7 +615,7 @@ mod tests {
         }
 
         let get_head_record_schema = vec![
-            Field::new("chain_id", Encoding::Sized(4, Box::new(Encoding::Bytes)))
+            Field::new(FieldName::ChainID, Encoding::Sized(4, Box::new(Encoding::Bytes)))
         ];
 
         #[derive(Serialize, Debug)]
@@ -629,10 +629,10 @@ mod tests {
         }
 
         let response_schema = vec![
-            Field::new("messages", Encoding::dynamic(Encoding::list(
+            Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
+                    TagMap::new(&[Tag::new(0x10, TagVariant::GetHead, Encoding::Obj(get_head_record_schema))]),
                 )
             )))
         ];
@@ -701,25 +701,25 @@ mod tests {
         };
 
         let version_schema = vec![
-            Field::new("name", Encoding::String),
-            Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Major, Encoding::Uint16),
+            Field::new(FieldName::Minor, Encoding::Uint16)
         ];
 
         let sub_record_schema = vec![
-            Field::new("x", Encoding::Int31),
-            Field::new("y", Encoding::Int31),
-            Field::new("v", Encoding::dynamic(Encoding::list(Encoding::Int31)))
+            Field::new(FieldName::X, Encoding::Int31),
+            Field::new(FieldName::Y, Encoding::Int31),
+            Field::new(FieldName::V, Encoding::dynamic(Encoding::list(Encoding::Int31)))
         ];
 
         let record_schema = vec![
-            Field::new("a", Encoding::Int31),
-            Field::new("b", Encoding::Bool),
-            Field::new("s", Encoding::Obj(sub_record_schema)),
-            Field::new("c", Encoding::Option(Box::new(Encoding::Z))),
-            Field::new("d", Encoding::Float),
-            Field::new("e", Encoding::Enum),
-            Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema))))
+            Field::new(FieldName::A, Encoding::Int31),
+            Field::new(FieldName::B, Encoding::Bool),
+            Field::new(FieldName::S, Encoding::Obj(sub_record_schema)),
+            Field::new(FieldName::C, Encoding::Option(Box::new(Encoding::Z))),
+            Field::new(FieldName::D, Encoding::Float),
+            Field::new(FieldName::E, Encoding::Enum),
+            Field::new(FieldName::F, Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema))))
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -749,17 +749,17 @@ mod tests {
         }
 
         let version_schema = vec![
-            Field::new("name", Encoding::String),
-            Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Major, Encoding::Uint16),
+            Field::new(FieldName::Minor, Encoding::Uint16)
         ];
 
         let connection_message_schema = vec![
-            Field::new("port", Encoding::Uint16),
-            Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
-            Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Encoding::Obj(version_schema)))
+            Field::new(FieldName::Port, Encoding::Uint16),
+            Field::new(FieldName::PublicKey, Encoding::sized(32, Encoding::Bytes)),
+            Field::new(FieldName::ProofOfWorkStamp, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::MessageNonce, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::Versions, Encoding::list(Encoding::Obj(version_schema)))
         ];
         let connection_message_encoding = Encoding::Obj(connection_message_schema);
 
@@ -785,7 +785,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+            Field::new(FieldName::ForkingBlockHash, Encoding::list(Encoding::Uint8)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -807,7 +807,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+            Field::new(FieldName::ForkingBlockHash, Encoding::list(Encoding::Uint8)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -825,7 +825,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("arg", Encoding::option_field(Encoding::String)),
+            Field::new(FieldName::Arg, Encoding::option_field(Encoding::String)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -845,7 +845,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("arg", Encoding::option_field(Encoding::String)),
+            Field::new(FieldName::Arg, Encoding::option_field(Encoding::String)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 

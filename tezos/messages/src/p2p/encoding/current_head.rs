@@ -5,7 +5,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -40,9 +40,9 @@ impl CurrentHeadMessage {
 cached_data!(CurrentHeadMessage, body);
 has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("current_mempool", Mempool::encoding().clone())
+            Field::new(FieldName::ChainID, Encoding::Hash(HashType::ChainId)),
+            Field::new(FieldName::CurrentBlockHeader, Encoding::dynamic(BlockHeader::encoding().clone())),
+            Field::new(FieldName::CurrentMempool, Mempool::encoding().clone())
         ])
 });
 
@@ -68,6 +68,6 @@ impl GetCurrentHeadMessage {
 cached_data!(GetCurrentHeadMessage, body);
 has_encoding!(GetCurrentHeadMessage, GET_CURRENT_HEAD_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId))
+            Field::new(FieldName::ChainID, Encoding::Hash(HashType::ChainId))
         ])
 });

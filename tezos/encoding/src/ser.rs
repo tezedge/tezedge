@@ -7,10 +7,11 @@
 use std::error;
 use std::fmt;
 use std::io;
+use std::str::FromStr;
 
 use serde::ser::{self, Error as _, Serialize};
 
-use crate::encoding::Encoding;
+use crate::encoding::{Encoding, FieldName};
 use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -401,7 +402,7 @@ impl ser::SerializeStruct for StructSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(Value::Record(self.fields))
+        Ok(Value::Record(self.fields.into_iter().map(|(string_field, val)| (FieldName::from_str(string_field.as_str()).unwrap(), val)).collect()))
     }
 }
 
@@ -474,13 +475,13 @@ mod tests {
             Ok(Value::Record(fields)) => {
                 assert_eq!(fields.len(), 2);
                 let fld_1 = &fields[0];
-                assert_eq!("a", fld_1.0);
+                assert_eq!(FieldName::A, fld_1.0);
                 match fld_1.1 {
                     Value::Int32(v) => assert_eq!(23, v),
                     _ => panic!("Was expecting Value::Int32(v)")
                 }
                 let fld_2 = &fields[1];
-                assert_eq!("p", fld_2.0);
+                assert_eq!(FieldName::P, fld_2.0);
                 match fld_2.1 {
                     Value::Record(ref v) => assert_eq!(4, v.len()),
                     _ => panic!("Was expecting &Value::Record(v)")

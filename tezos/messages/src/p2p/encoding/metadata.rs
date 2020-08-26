@@ -6,7 +6,7 @@ use std::fmt;
 use getset::CopyGetters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::non_cached_data;
@@ -37,7 +37,7 @@ impl fmt::Debug for MetadataMessage {
 non_cached_data!(MetadataMessage);
 has_encoding!(MetadataMessage, METADATA_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("disable_mempool", Encoding::Bool),
-            Field::new("private_node", Encoding::Bool)
+            Field::new(FieldName::DisableMempool, Encoding::Bool),
+            Field::new(FieldName::PrivateNode, Encoding::Bool)
         ])
 });

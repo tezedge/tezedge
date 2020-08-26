@@ -4,7 +4,7 @@
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -24,7 +24,7 @@ pub struct SwapMessage {
 cached_data!(SwapMessage, body);
 has_encoding!(SwapMessage, SWAP_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("point", Encoding::String),
-            Field::new("peer_id", Encoding::String),
+            Field::new(FieldName::Point, Encoding::String),
+            Field::new(FieldName::PeerID, Encoding::String),
         ])
 });

@@ -7,7 +7,7 @@ use std::mem::size_of;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap, TagVariant};
 use tezos_encoding::has_encoding;
 
 use crate::non_cached_data;
@@ -65,18 +65,18 @@ impl NackInfo {
     fn encoding() -> Encoding {
         Encoding::Obj(
             vec![
-                Field::new("motive", Encoding::Tags(
+                Field::new(FieldName::Motive, Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(vec![
-                        Tag::new(0, "NoMotive", Encoding::Unit),
-                        Tag::new(1, "TooManyConnections", Encoding::Unit),
-                        Tag::new(2, "UnknownChainName", Encoding::Unit),
-                        Tag::new(3, "DeprecatedP2pVersion", Encoding::Unit),
-                        Tag::new(4, "DeprecatedDistributedDbVersion", Encoding::Unit),
-                        Tag::new(5, "AlreadyConnected", Encoding::Unit),
+                    TagMap::new(&[
+                        Tag::new(0, TagVariant::NoMotive, Encoding::Unit),
+                        Tag::new(1, TagVariant::TooManyConnections, Encoding::Unit),
+                        Tag::new(2, TagVariant::UnknownChainName, Encoding::Unit),
+                        Tag::new(3, TagVariant::DeprecatedP2pVersion, Encoding::Unit),
+                        Tag::new(4, TagVariant::DeprecatedDistributedDbVersion, Encoding::Unit),
+                        Tag::new(5, TagVariant::AlreadyConnected, Encoding::Unit),
                     ]),
                 )),
-                Field::new("potential_peers_to_connect", Encoding::dynamic(Encoding::list(Encoding::String))),
+                Field::new(FieldName::PotentialPeersToConnect, Encoding::dynamic(Encoding::list(Encoding::String))),
             ]
         )
     }
@@ -86,10 +86,10 @@ non_cached_data!(AckMessage);
 has_encoding!(AckMessage, ACK_MESSAGE_ENCODING, {
         Encoding::Tags(
             size_of::<u8>(),
-            TagMap::new(vec![
-                Tag::new(0x00, "Ack", Encoding::Unit),
-                Tag::new(0x01, "Nack", NackInfo::encoding()),
-                Tag::new(0xFF, "NackV0", Encoding::Unit),
+            TagMap::new(&[
+                Tag::new(0x00, TagVariant::Ack, Encoding::Unit),
+                Tag::new(0x01, TagVariant::Nack, NackInfo::encoding()),
+                Tag::new(0xFF, TagVariant::NackV0, Encoding::Unit),
             ]),
         )
 });

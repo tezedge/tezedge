@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, ProtocolHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -21,7 +21,7 @@ pub struct ProtocolMessage {
 cached_data!(ProtocolMessage, body);
 has_encoding!(ProtocolMessage, PROTOCOL_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("protocol", Protocol::encoding().clone())
+            Field::new(FieldName::Protocol, Protocol::encoding().clone())
         ])
 });
 
@@ -39,9 +39,9 @@ pub struct Component {
 cached_data!(Component, body);
 has_encoding!(Component, COMPONENT_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("name", Encoding::String),
-            Field::new("interface", Encoding::option_field(Encoding::String)),
-            Field::new("implementation", Encoding::String),
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Interface, Encoding::option_field(Encoding::String)),
+            Field::new(FieldName::Implementation, Encoding::String),
         ])
 });
 
@@ -68,8 +68,8 @@ impl Protocol {
 cached_data!(Protocol, body);
 has_encoding!(Protocol, PROTOCOL_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("expected_env_version", Encoding::Int16),
-            Field::new("components", Encoding::dynamic(Encoding::list(Component::encoding().clone())))
+            Field::new(FieldName::ExpectedEnvVersion, Encoding::Int16),
+            Field::new(FieldName::Components, Encoding::dynamic(Encoding::list(Component::encoding().clone())))
         ])
 });
 
@@ -85,6 +85,6 @@ pub struct GetProtocolsMessage {
 cached_data!(GetProtocolsMessage, body);
 has_encoding!(GetProtocolsMessage, GET_PROTOCOLS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("get_protocols", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash)))),
+            Field::new(FieldName::GetProtocols, Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash)))),
         ])
 });

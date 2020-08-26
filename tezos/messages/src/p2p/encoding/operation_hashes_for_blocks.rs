@@ -5,7 +5,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -35,7 +35,7 @@ impl GetOperationHashesForBlocksMessage {
 cached_data!(GetOperationHashesForBlocksMessage, body);
 has_encoding!(GetOperationHashesForBlocksMessage, GET_OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
     Encoding::Obj(vec![
-        Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding().clone()))),
+        Field::new(FieldName::GetOperationHashesForBlocks, Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding().clone()))),
     ])
 });
 
@@ -67,9 +67,9 @@ impl OperationHashesForBlocksMessage {
 cached_data!(OperationHashesForBlocksMessage, body);
 has_encoding!(OperationHashesForBlocksMessage, OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding().clone()),
-            Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operation_hashes", Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
+            Field::new(FieldName::OperationHashesForBlock, OperationHashesForBlock::encoding().clone()),
+            Field::new(FieldName::OperationHashesPath, path_encoding()),
+            Field::new(FieldName::OperationHashes, Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
         ])
 });
 
@@ -98,7 +98,7 @@ impl OperationHashesForBlock {
 cached_data!(OperationHashesForBlock, body);
 has_encoding!(OperationHashesForBlock, OPERATION_HASHES_FOR_BLOCK_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
-            Field::new("validation_pass", Encoding::Int8),
+            Field::new(FieldName::Hash, Encoding::Hash(HashType::BlockHash)),
+            Field::new(FieldName::ValidationPass, Encoding::Int8),
         ])
 });

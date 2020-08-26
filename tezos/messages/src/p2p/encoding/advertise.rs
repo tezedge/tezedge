@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -33,6 +33,6 @@ impl AdvertiseMessage {
 cached_data!(AdvertiseMessage, body);
 has_encoding!(AdvertiseMessage, ADVERTISE_MESSAGE_ENCODING, {
     Encoding::Obj(vec![
-        Field::new("id", Encoding::list(Encoding::String)),
+        Field::new(FieldName::ID, Encoding::list(Encoding::String)),
     ])
 });

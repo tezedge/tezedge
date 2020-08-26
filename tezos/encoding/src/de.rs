@@ -12,7 +12,7 @@ use serde::de::{self, Deserialize, DeserializeSeed, Error as _, IntoDeserializer
 use serde::forward_to_deserialize_any;
 
 use crate::binary_reader::BinaryReaderError;
-use crate::encoding::Encoding;
+use crate::encoding::{Encoding, FieldName};
 use crate::types::{BigInt, Value};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -78,7 +78,7 @@ struct SeqDeserializer<'de> {
 }
 
 struct StructDeserializer<'de> {
-    input: Iter<'de, (String, Value)>,
+    input: Iter<'de, (FieldName, Value)>,
     value: Option<&'de Value>,
 }
 
@@ -97,7 +97,7 @@ impl<'de> SeqDeserializer<'de> {
 }
 
 impl<'de> StructDeserializer<'de> {
-    pub fn new(input: &'de [(String, Value)]) -> Self {
+    pub fn new(input: &'de [(FieldName, Value)]) -> Self {
         StructDeserializer {
             input: input.iter(),
             value: None,
@@ -324,7 +324,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             V: Visitor<'de>,
     {
         match *self.input {
-            Value::Record(ref fields) => visitor.visit_map(StructDeserializer::new(fields)),
+            Value::Record(ref fields) => visitor.visit_map(StructDeserializer::new(fields.as_slice())),
             _ => Err(Error::custom(format!("not a record but a {:?}", self.input))),
         }
     }
@@ -397,7 +397,7 @@ impl<'de> de::MapAccess<'de> for StructDeserializer<'de> {
                 let (ref field, ref value) = *item;
                 self.value = Some(value);
                 seed.deserialize(StringDeserializer {
-                    input: field.clone(),
+                    input: String::from(field.as_str()), // TODO: check if custom deserializer for FieldName is appropriate
                 }).map(Some)
             },
             None => Ok(None),
@@ -577,12 +577,12 @@ mod tests {
     fn can_deserialize() {
 
         let serialized = Value::Record(vec![
-            ("a".to_string(), Value::Int32(23)),
-            ("p".to_string(), Value::Record(vec![
-                ("a".to_string(), Value::Int32(6)),
-                ("b".to_string(), Value::Option(Some(Box::new(Value::Bool(false))))),
-                ("c".to_string(), Value::Option(Some(Box::new(Value::Int64(4_752_163_899))))),
-                ("d".to_string(), Value::Float(123.4))
+            (FieldName::A, Value::Int32(23)),
+            (FieldName::P, Value::Record(vec![
+                (FieldName::A, Value::Int32(6)),
+                (FieldName::B, Value::Option(Some(Box::new(Value::Bool(false))))),
+                (FieldName::C, Value::Option(Some(Box::new(Value::Int64(4_752_163_899))))),
+                (FieldName::D, Value::Float(123.4))
             ]))
         ]);
         let deserialized = from_value(&serialized).unwrap();

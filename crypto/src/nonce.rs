@@ -24,7 +24,7 @@ macro_rules! merge_slices {
 /// Arbitrary number that can be used once in communication.
 #[derive(Debug, Clone)]
 pub struct Nonce {
-    value: BigUint
+    pub value: BigUint
 }
 
 impl Nonce {

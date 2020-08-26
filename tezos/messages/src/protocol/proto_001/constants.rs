@@ -6,7 +6,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
+    encoding::{Encoding, Field, FieldName, HasEncoding},
     has_encoding,
     types::BigInt,
 };
@@ -200,25 +200,25 @@ impl ToRpcJsonMap for ParametricConstants {
 non_cached_data!(ParametricConstants);
 has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("preserved_cycles", Encoding::option_field(Encoding::Uint8)),
-            Field::new("blocks_per_cycle", Encoding::option_field(Encoding::Int32)),
-            Field::new("blocks_per_commitment", Encoding::option_field(Encoding::Int32)),
-            Field::new("blocks_per_roll_snapshot", Encoding::option_field(Encoding::Int32)),
-            Field::new("blocks_per_voting_period", Encoding::option_field(Encoding::Int32)),
-            Field::new("time_between_blocks", Encoding::option_field(Encoding::dynamic(Encoding::list(Encoding::Int64)))),
-            Field::new("endorsers_per_block", Encoding::option_field(Encoding::Uint16)),
-            Field::new("hard_gas_limit_per_operation", Encoding::option_field(Encoding::Z)),
-            Field::new("hard_gas_limit_per_block", Encoding::option_field(Encoding::Z)),
-            Field::new("proof_of_work_threshold", Encoding::option_field(Encoding::Int64)),
-            Field::new("tokens_per_roll", Encoding::option_field(Encoding::Mutez)),
-            Field::new("michelson_maximum_type_size", Encoding::option_field(Encoding::Uint16)),
-            Field::new("seed_nonce_revelation_tip", Encoding::option_field(Encoding::Mutez)),
-            Field::new("origination_burn", Encoding::option_field(Encoding::Mutez)),
-            Field::new("block_security_deposit", Encoding::option_field(Encoding::Mutez)),
-            Field::new("endorsement_security_deposit", Encoding::option_field(Encoding::Mutez)),
-            Field::new("block_reward", Encoding::option_field(Encoding::Mutez)),
-            Field::new("endorsement_reward", Encoding::option_field(Encoding::Mutez)),
-            Field::new("cost_per_byte", Encoding::option_field(Encoding::Mutez)),
-            Field::new("hard_storage_limit_per_operation", Encoding::option_field(Encoding::Z)),
+            Field::new(FieldName::PreservedCycles, Encoding::option_field(Encoding::Uint8)),
+            Field::new(FieldName::BlocksPerCycle, Encoding::option_field(Encoding::Int32)),
+            Field::new(FieldName::BlocksPerCommitment, Encoding::option_field(Encoding::Int32)),
+            Field::new(FieldName::BlocksPerRollSnapshot, Encoding::option_field(Encoding::Int32)),
+            Field::new(FieldName::BlocksPerVotingPeriod, Encoding::option_field(Encoding::Int32)),
+            Field::new(FieldName::TimeBetweenBlocks, Encoding::option_field(Encoding::dynamic(Encoding::list(Encoding::Int64)))),
+            Field::new(FieldName::EndorsersPerBlock, Encoding::option_field(Encoding::Uint16)),
+            Field::new(FieldName::HardGasLimitPerOperation, Encoding::option_field(Encoding::Z)),
+            Field::new(FieldName::HardGasLimitPerBlock, Encoding::option_field(Encoding::Z)),
+            Field::new(FieldName::ProofOfWorkThreshold, Encoding::option_field(Encoding::Int64)),
+            Field::new(FieldName::TokensPerRoll, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::MichelsonMaximumTypeSize, Encoding::option_field(Encoding::Uint16)),
+            Field::new(FieldName::SeedNonceRevelationTip, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::OriginationBurn, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::BlockSecurityDeposit, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::EndorsementSecurityDeposit, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::BlockReward, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::EndorsementReward, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::CostPerByte, Encoding::option_field(Encoding::Mutez)),
+            Field::new(FieldName::HardStorageLimitPerOperation, Encoding::option_field(Encoding::Z)),
         ])
 });

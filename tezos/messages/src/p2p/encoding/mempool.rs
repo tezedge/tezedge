@@ -5,7 +5,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, OperationHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -38,7 +38,7 @@ impl Mempool {
 cached_data!(Mempool, body);
 has_encoding!(Mempool, MEMPOOL_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
-            Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))))),
+            Field::new(FieldName::KnownValid, Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
+            Field::new(FieldName::Pending, Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))))),
         ])
 });

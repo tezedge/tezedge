@@ -5,7 +5,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -47,9 +47,9 @@ impl NetworkVersion {
 cached_data!(NetworkVersion, body);
 has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("chain_name", Encoding::String),
-            Field::new("distributed_db_version", Encoding::Uint16),
-            Field::new("p2p_version", Encoding::Uint16)
+            Field::new(FieldName::ChainName, Encoding::String),
+            Field::new(FieldName::DistributedDbVersion, Encoding::Uint16),
+            Field::new(FieldName::P2PVersion, Encoding::Uint16)
         ])
 });
 

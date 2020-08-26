@@ -6,21 +6,585 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use std::str::FromStr;
 
 use crypto::hash::HashType;
+#[derive(Debug, Clone, PartialEq, Copy, Eq)]
+pub enum TagVariant {
+    Ack,
+    Advertise,
+    AlreadyConnected,
+    BlockHeader,
+    Bootstrap,
+    CurrentBranch,
+    CurrentHead,
+    Deactivate,
+    DelegatesMinimalValidTime,
+    DeprecatedDistributedDbVersion,
+    DeprecatedP2pVersion,
+    Disconnect,
+    GetBlockHeaders,
+    GetCurrentBranch,
+    GetCurrentHead,
+    GetHead,
+    GetOperationHashesForBlocks,
+    GetOperations,
+    GetOperationsForBlocks,
+    GetProtocols,
+    HelpersCurrentLevel,
+    HelpersPreapplyBlock,
+    HelpersPreapplyOperations,
+    HelpersRunOperation,
+    Left,
+    LiveBlocks,
+    Nack,
+    NackV0,
+    NoMotive,
+    Op,
+    Operation,
+    OperationHashesForBlocks,
+    OperationsForBlocks,
+    Protocol,
+    Right,
+    SwapAck,
+    SwapRequest,
+    TooManyConnections,
+    UnknownChainName,  
+}
+
+impl fmt::Display for TagVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl TagVariant {
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            TagVariant::Ack => "Ack",
+            TagVariant::Advertise => "Advertise",
+            TagVariant::AlreadyConnected => "AlreadyConnected",
+            TagVariant::BlockHeader => "BlockHeader",
+            TagVariant::Bootstrap => "Bootstrap",
+            TagVariant::CurrentBranch => "CurrentBranch",
+            TagVariant::CurrentHead => "CurrentHead",
+            TagVariant::Deactivate => "Deactivate",
+            TagVariant::DelegatesMinimalValidTime => "DelegatesMinimalValidTime",
+            TagVariant::DeprecatedDistributedDbVersion => "DeprecatedDistributedDbVersion",
+            TagVariant::DeprecatedP2pVersion => "DeprecatedP2pVersion",
+            TagVariant::Disconnect => "Disconnect",
+            TagVariant::GetBlockHeaders => "GetBlockHeaders",
+            TagVariant::GetCurrentBranch => "GetCurrentBranch",
+            TagVariant::GetCurrentHead => "GetCurrentHead",
+            TagVariant::GetHead => "GetHead",
+            TagVariant::GetOperationHashesForBlocks => "GetOperationHashesForBlocks",
+            TagVariant::GetOperations => "GetOperations",
+            TagVariant::GetOperationsForBlocks => "GetOperationsForBlocks",
+            TagVariant::GetProtocols => "GetProtocols",
+            TagVariant::HelpersCurrentLevel => "HelpersCurrentLevel",
+            TagVariant::HelpersPreapplyBlock => "HelpersPreapplyBlock",
+            TagVariant::HelpersPreapplyOperations => "HelpersPreapplyOperations",
+            TagVariant::HelpersRunOperation => "HelpersRunOperation",
+            TagVariant::Left => "Left",
+            TagVariant::LiveBlocks => "LiveBlocks",
+            TagVariant::Nack => "Nack",
+            TagVariant::NackV0 => "NackV0",
+            TagVariant::NoMotive => "NoMotive",
+            TagVariant::Op => "Op",
+            TagVariant::Operation => "Operation",
+            TagVariant::OperationHashesForBlocks => "OperationHashesForBlocks",
+            TagVariant::OperationsForBlocks => "OperationsForBlocks",
+            TagVariant::Protocol => "Protocol",
+            TagVariant::Right => "Right",
+            TagVariant::SwapAck => "SwapAck",
+            TagVariant::SwapRequest => "SwapRequest",
+            TagVariant::TooManyConnections => "TooManyConnections",
+            TagVariant::UnknownChainName => "UnknownChainName",
+        }
+    }
+}
+
+impl FromStr for TagVariant {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<TagVariant, Self::Err> {
+        match input {
+            "Ack" => Ok(TagVariant::Ack),
+            "Advertise" => Ok(TagVariant::Advertise),
+            "AlreadyConnected" => Ok(TagVariant::AlreadyConnected),
+            "BlockHeader" => Ok(TagVariant::BlockHeader),
+            "Bootstrap" => Ok(TagVariant::Bootstrap),
+            "CurrentBranch" => Ok(TagVariant::CurrentBranch),
+            "CurrentHead" => Ok(TagVariant::CurrentHead),
+            "Deactivate" => Ok(TagVariant::Deactivate),
+            "DelegatesMinimalValidTime" => Ok(TagVariant::DelegatesMinimalValidTime),
+            "DeprecatedDistributedDbVersion" => Ok(TagVariant::DeprecatedDistributedDbVersion),
+            "DeprecatedP2pVersion" => Ok(TagVariant::DeprecatedP2pVersion),
+            "Disconnect" => Ok(TagVariant::Disconnect),
+            "GetBlockHeaders" => Ok(TagVariant::GetBlockHeaders),
+            "GetCurrentBranch" => Ok(TagVariant::GetCurrentBranch),
+            "GetCurrentHead" => Ok(TagVariant::GetCurrentHead),
+            "GetHead" => Ok(TagVariant::GetHead),
+            "GetOperationHashesForBlocks" => Ok(TagVariant::GetOperationHashesForBlocks),
+            "GetOperations" => Ok(TagVariant::GetOperations),
+            "GetOperationsForBlocks" => Ok(TagVariant::GetOperationsForBlocks),
+            "GetProtocols" => Ok(TagVariant::GetProtocols),
+            "HelpersCurrentLevel" => Ok(TagVariant::HelpersCurrentLevel),
+            "HelpersPreapplyBlock" => Ok(TagVariant::HelpersPreapplyBlock),
+            "HelpersPreapplyOperations" => Ok(TagVariant::HelpersPreapplyOperations),
+            "HelpersRunOperation" => Ok(TagVariant::HelpersRunOperation),
+            "Left" => Ok(TagVariant::Left),
+            "LiveBlocks" => Ok(TagVariant::LiveBlocks),
+            "Nack" => Ok(TagVariant::Nack),
+            "NackV0" => Ok(TagVariant::NackV0),
+            "NoMotive" => Ok(TagVariant::NoMotive),
+            "Op" => Ok(TagVariant::Op),
+            "Operation" => Ok(TagVariant::Operation),
+            "OperationHashesForBlocks" => Ok(TagVariant::OperationHashesForBlocks),
+            "OperationsForBlocks" => Ok(TagVariant::OperationsForBlocks),
+            "Protocol" => Ok(TagVariant::Protocol),
+            "Right" => Ok(TagVariant::Right),
+            "SwapAck" => Ok(TagVariant::SwapAck),
+            "SwapRequest" => Ok(TagVariant::SwapRequest),
+            "TooManyConnections" => Ok(TagVariant::TooManyConnections),
+            "UnknownChainName" => Ok(TagVariant::UnknownChainName),
+            _      => panic!(input.to_owned()),//Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum FieldName {
+    A,                              // a
+    Applied,                        // applied
+    Arg,                            // arg
+    B,                              // b
+    BakingRewardPerEndorsement,     // baking_reward_per_endorsement
+    BlockHeader,                    // block_header
+    BlockHeaderProtoJson,           // block_header_proto_json
+    BlockHeaderProtoMetadataJson,   // block_header_proto_metadata_json
+    BlockReward,                    // block_reward
+    BlockSecurityDeposit,           // block_security_deposit
+    BlocksPerCommitment,            // blocks_per_commitment
+    BlocksPerCycle,                 // blocks_per_cycle
+    BlocksPerRollSnapshot,          // blocks_per_roll_snapshot
+    BlocksPerVotingPeriod,          // blocks_per_voting_period
+    Body,                           // body
+    Branch,                         // branch
+    BranchDelayed,                  // branch_delayed
+    BranchRefused,                  // branch_refused
+    C,                              // c
+    ChainArg,                       // chain_arg
+    ChainID,                        // chain_id
+    ChainName,                      // chain_name
+    Components,                     // components
+    Context,                        // context
+    ContextHash,                    // context_hash
+    ContextPath,                    // context_path
+    CostPerByte,                    // cost_per_byte
+    Counter,                        // counter
+    CurrentBlockHeader,             // current_block_header
+    CurrentBranch,                  // current_branch
+    CurrentHead,                    // current_head
+    CurrentMempool,                 // current_mempool
+    Data,                           // data
+    D,                              // d
+    Deactivate,                     // deactivate
+    DelayPerMissingEndorsement,     // delay_per_missing_endorsement
+    DisableMempool,                 // disable_mempool
+    DistributedDbVersion,           // distributed_db_version
+    E,                              // e
+    EndorsementReward,              // endorsement_reward
+    EndorsementSecurityDeposit,     // endorsement_security_deposit
+    EndorsersPerBlock,              // endorsers_per_block
+    ErrorJson,                      // error_json
+    ExpectedEnvVersion,             // expected_env_version
+    F,                              // f
+    FFIService,                     // ffi_service
+    Fitness,                        // fitness
+    ForkingBlockHash,               // forking_block_hash
+    ForkingTestchain,               // forking_testchain
+    ForkingTestchainData,           // forking_testchain_data
+    GetBlockHeaders,                // get_block_headers
+    GetOperationHashesForBlocks,    // get_operation_hashes_for_blocks
+    GetOperationsForBlocks,         // get_operations_for_blocks
+    GetOperations,                  // get_operations
+    GetProtocols,                   // get_protocols
+    HardGasLimitPerBlock,           // hard_gas_limit_per_block
+    HardGasLimitPerOperation,       // hard_gas_limit_per_operation
+    HardStorageLimitPerOperation,   // hard_storage_limit_per_operation
+    Hash,                           // hash
+    H,                              // h
+    History,                        // history
+    ID,                             // id
+    Implementation,                 // implementation
+    InitialEndorsers,               // initial_endorsers
+    Interface,                      // interface
+    IsEndorsement,                  // is_endorsement
+    KnownValid,                     // known_valid
+    LastAllowedForkLevel,           // last_allowed_fork_level
+    Left,                           // left
+    Level,                          // level
+    Major,                          // major
+    MaxOperationsTTL,               // max_operations_ttl
+    MessageNonce,                   // message_nonce
+    Messages,                       // messages
+    MichelsonMaximumTypeSize,       // michelson_maximum_type_size
+    Minor,                          // minor
+    MinProposalQuorum,              // min_proposal_quorum
+    Motive,                         // motive
+    Name,                           // name
+    Ofs,                            // ofs
+    OperationHashesForBlock,        // operation_hashes_for_block
+    OperationHashes,                // operation_hashes
+    OperationHashesPath,            // operation_hashes_path
+    Operation,                      // operation
+    OperationsHash,                 // operations_hash
+    Operations,                     // operations
+    OperationsForBlock,             // operations_for_block
+    OperationsProtoMetadataJson,    // operations_proto_metadata_json
+    OriginationBurn,                // origination_burn
+    OriginationSize,                // origination_size
+    P2PVersion,                     // p2p_version
+    Path,                           // path
+    PeerID,                         // peer_id
+    Pending,                        // pending
+    Point,                          // point
+    Port,                           // port
+    PotentialPeersToConnect,        // potential_peers_to_connect
+    P,                              // p
+    Predecessor,                    // predecessor
+    PredHeader,                     // pred_header
+    PreservedCycles,                // preserved_cycles
+    Prevalidator,                   // prevalidator
+    PrivateNode,                    // private_node
+    ProofOfWorkStamp,               // proof_of_work_stamp
+    ProofOfWorkThreshold,           // proof_of_work_threshold
+    ProtocolDataJson,               // protocol_data_json
+    ProtocolDataJsonWithErrorJson,  // protocol_data_json_with_error_json
+    ProtocolData,                   // protocol_data
+    Protocol,                       // protocol
+    Proto,                          // proto
+    PublicKey,                      // public_key
+    QuorumMax,                      // quorum_max
+    QuorumMin,                      // quorum_min
+    Refused,                        // refused
+    Request,                        // request
+    Result,                         // result
+    Right,                          // right
+    SeedNonceRevelationTip,         // seed_nonce_revelation_tip
+    S,                              // s
+    TestChainDuration,              // test_chain_duration
+    TestChainID,                    // test_chain_id
+    TimeBetweenBlocks,              // time_between_blocks
+    Timestamp,                      // timestamp
+    TokensPerRoll,                  // tokens_per_roll
+    T,                              // t
+    ValidationPass,                 // validation_pass
+    ValidationResultMessage,        // validation_result_message
+    Versions,                       // versions
+    V,                              // v
+    X,                              // x
+    Y,                              // y
+}
+
+impl fmt::Display for FieldName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FieldName {
+    pub fn as_str(&self) -> &'static str {
+        match *self {
+            FieldName::A => "a",
+            FieldName::Applied => "applied",
+            FieldName::Arg => "arg",
+            FieldName::B => "b",
+            FieldName::BakingRewardPerEndorsement => "baking_reward_per_endorsement",
+            FieldName::BlockHeader => "block_header",
+            FieldName::BlockHeaderProtoJson => "block_header_proto_json",
+            FieldName::BlockHeaderProtoMetadataJson => "block_header_proto_metadata_json",
+            FieldName::BlockReward => "block_reward",
+            FieldName::BlockSecurityDeposit => "block_security_deposit",
+            FieldName::BlocksPerCommitment => "blocks_per_commitment",
+            FieldName::BlocksPerCycle => "blocks_per_cycle",
+            FieldName::BlocksPerRollSnapshot => "blocks_per_roll_snapshot",
+            FieldName::BlocksPerVotingPeriod => "blocks_per_voting_period",
+            FieldName::Body => "body",
+            FieldName::Branch => "branch",
+            FieldName::BranchDelayed => "branch_delayed",
+            FieldName::BranchRefused => "branch_refused",
+            FieldName::C => "c",
+            FieldName::ChainArg => "chain_arg",
+            FieldName::ChainID => "chain_id",
+            FieldName::ChainName => "chain_name",
+            FieldName::Components => "components",
+            FieldName::Context => "context",
+            FieldName::ContextHash => "context_hash",
+            FieldName::ContextPath => "context_path",
+            FieldName::CostPerByte => "cost_per_byte",
+            FieldName::Counter => "counter",
+            FieldName::CurrentBlockHeader => "current_block_header",
+            FieldName::CurrentBranch => "current_branch",
+            FieldName::CurrentHead => "current_head",
+            FieldName::CurrentMempool => "current_mempool",
+            FieldName::Data => "data",
+            FieldName::D => "d",
+            FieldName::Deactivate => "deactivate",
+            FieldName::DelayPerMissingEndorsement => "delay_per_missing_endorsement",
+            FieldName::DisableMempool => "disable_mempool",
+            FieldName::DistributedDbVersion => "distributed_db_version",
+            FieldName::E => "e",
+            FieldName::EndorsementReward => "endorsement_reward",
+            FieldName::EndorsementSecurityDeposit => "endorsement_security_deposit",
+            FieldName::EndorsersPerBlock => "endorsers_per_block",
+            FieldName::ErrorJson => "error_json",
+            FieldName::ExpectedEnvVersion => "expected_env_version",
+            FieldName::F => "f",
+            FieldName::FFIService => "ffi_service",
+            FieldName::Fitness => "fitness",
+            FieldName::ForkingBlockHash => "forking_block_hash",
+            FieldName::ForkingTestchain => "forking_testchain",
+            FieldName::ForkingTestchainData => "forking_testchain_data",
+            FieldName::GetBlockHeaders => "get_block_headers",
+            FieldName::GetOperationHashesForBlocks => "get_operation_hashes_for_blocks",
+            FieldName::GetOperationsForBlocks => "get_operations_for_blocks",
+            FieldName::GetOperations => "get_operations",
+            FieldName::GetProtocols => "get_protocols",
+            FieldName::HardGasLimitPerBlock => "hard_gas_limit_per_block",
+            FieldName::HardGasLimitPerOperation => "hard_gas_limit_per_operation",
+            FieldName::HardStorageLimitPerOperation => "hard_storage_limit_per_operation",
+            FieldName::Hash => "hash",
+            FieldName::H => "h",
+            FieldName::History => "history",
+            FieldName::ID => "id",
+            FieldName::Implementation => "implementation",
+            FieldName::InitialEndorsers => "initial_endorsers",
+            FieldName::Interface => "interface",
+            FieldName::IsEndorsement => "is_endorsement",
+            FieldName::KnownValid => "known_valid",
+            FieldName::LastAllowedForkLevel => "last_allowed_fork_level",
+            FieldName::Left => "left",
+            FieldName::Level => "level",
+            FieldName::Major => "major",
+            FieldName::MaxOperationsTTL => "max_operations_ttl",
+            FieldName::MessageNonce => "message_nonce",
+            FieldName::Messages => "messages",
+            FieldName::MichelsonMaximumTypeSize => "michelson_maximum_type_size",
+            FieldName::Minor => "minor",
+            FieldName::MinProposalQuorum => "min_proposal_quorum",
+            FieldName::Motive => "motive",
+            FieldName::Name => "name",
+            FieldName::Ofs => "ofs",
+            FieldName::OperationHashesForBlock => "operation_hashes_for_block",
+            FieldName::OperationHashes => "operation_hashes",
+            FieldName::OperationHashesPath => "operation_hashes_path",
+            FieldName::Operation => "operation",
+            FieldName::OperationsHash => "operations_hash",
+            FieldName::Operations => "operations",
+            FieldName::OperationsForBlock => "operations_for_block",
+            FieldName::OperationsProtoMetadataJson => "operations_proto_metadata_json",
+            FieldName::OriginationBurn => "origination_burn",
+            FieldName::OriginationSize => "origination_size",
+            FieldName::P2PVersion => "p2p_version",
+            FieldName::Path => "path",
+            FieldName::PeerID => "peer_id",
+            FieldName::Pending => "pending",
+            FieldName::Point => "point",
+            FieldName::Port => "port",
+            FieldName::PotentialPeersToConnect => "potential_peers_to_connect",
+            FieldName::P => "p",
+            FieldName::Predecessor => "predecessor",
+            FieldName::PredHeader => "pred_header",
+            FieldName::PreservedCycles => "preserved_cycles",
+            FieldName::Prevalidator => "prevalidator",
+            FieldName::PrivateNode => "private_node",
+            FieldName::ProofOfWorkStamp => "proof_of_work_stamp",
+            FieldName::ProofOfWorkThreshold => "proof_of_work_threshold",
+            FieldName::ProtocolDataJson => "protocol_data_json",
+            FieldName::ProtocolDataJsonWithErrorJson => "protocol_data_json_with_error_json",
+            FieldName::ProtocolData => "protocol_data",
+            FieldName::Protocol => "protocol",
+            FieldName::Proto => "proto",
+            FieldName::PublicKey => "public_key",
+            FieldName::QuorumMax => "quorum_max",
+            FieldName::QuorumMin => "quorum_min",
+            FieldName::Refused => "refused",
+            FieldName::Request => "request",
+            FieldName::Result => "result",
+            FieldName::Right => "right",
+            FieldName::SeedNonceRevelationTip => "seed_nonce_revelation_tip",
+            FieldName::S => "s",
+            FieldName::TestChainDuration => "test_chain_duration",
+            FieldName::TestChainID => "test_chain_id",
+            FieldName::TimeBetweenBlocks => "time_between_blocks",
+            FieldName::Timestamp => "timestamp",
+            FieldName::TokensPerRoll => "tokens_per_roll",
+            FieldName::T => "t",
+            FieldName::ValidationPass => "validation_pass",
+            FieldName::ValidationResultMessage => "validation_result_message",
+            FieldName::Versions => "versions",
+            FieldName::V => "v",
+            FieldName::X => "x",
+            FieldName::Y => "y",
+        }
+    }
+}
+
+impl FromStr for FieldName {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<FieldName, Self::Err> {
+        match input {
+            "a" => Ok(FieldName::A),
+            "applied" => Ok(FieldName::Applied),
+            "arg" => Ok(FieldName::Arg),
+            "b" => Ok(FieldName::B),
+            "baking_reward_per_endorsement" => Ok(FieldName::BakingRewardPerEndorsement),
+            "block_header" => Ok(FieldName::BlockHeader),
+            "block_header_proto_json" => Ok(FieldName::BlockHeaderProtoJson),
+            "block_header_proto_metadata_json" => Ok(FieldName::BlockHeaderProtoMetadataJson),
+            "block_reward" => Ok(FieldName::BlockReward),
+            "block_security_deposit" => Ok(FieldName::BlockSecurityDeposit),
+            "blocks_per_commitment" => Ok(FieldName::BlocksPerCommitment),
+            "blocks_per_cycle" => Ok(FieldName::BlocksPerCycle),
+            "blocks_per_roll_snapshot" => Ok(FieldName::BlocksPerRollSnapshot),
+            "blocks_per_voting_period" => Ok(FieldName::BlocksPerVotingPeriod),
+            "body" => Ok(FieldName::Body),
+            "branch" => Ok(FieldName::Branch),
+            "branch_delayed" => Ok(FieldName::BranchDelayed),
+            "branch_refused" => Ok(FieldName::BranchRefused),
+            "c" => Ok(FieldName::C),
+            "chain_arg" => Ok(FieldName::ChainArg),
+            "chain_id" => Ok(FieldName::ChainID),
+            "chain_name" => Ok(FieldName::ChainName),
+            "components" => Ok(FieldName::Components),
+            "context" => Ok(FieldName::Context),
+            "context_hash" => Ok(FieldName::ContextHash),
+            "context_path" => Ok(FieldName::ContextPath),
+            "cost_per_byte" => Ok(FieldName::CostPerByte),
+            "counter" => Ok(FieldName::Counter),
+            "current_block_header" => Ok(FieldName::CurrentBlockHeader),
+            "current_branch" => Ok(FieldName::CurrentBranch),
+            "current_head" => Ok(FieldName::CurrentHead),
+            "current_mempool" => Ok(FieldName::CurrentMempool),
+            "data" => Ok(FieldName::Data),
+            "d" => Ok(FieldName::D),
+            "deactivate" => Ok(FieldName::Deactivate),
+            "delay_per_missing_endorsement" => Ok(FieldName::DelayPerMissingEndorsement),
+            "disable_mempool" => Ok(FieldName::DisableMempool),
+            "distributed_db_version" => Ok(FieldName::DistributedDbVersion),
+            "e" => Ok(FieldName::E),
+            "endorsement_reward" => Ok(FieldName::EndorsementReward),
+            "endorsement_security_deposit" => Ok(FieldName::EndorsementSecurityDeposit),
+            "endorsers_per_block" => Ok(FieldName::EndorsersPerBlock),
+            "error_json" => Ok(FieldName::ErrorJson),
+            "expected_env_version" => Ok(FieldName::ExpectedEnvVersion),
+            "f" => Ok(FieldName::F),
+            "ffi_service" => Ok(FieldName::FFIService),
+            "fitness" => Ok(FieldName::Fitness),
+            "forking_block_hash" => Ok(FieldName::ForkingBlockHash),
+            "forking_testchain" => Ok(FieldName::ForkingTestchain),
+            "forking_testchain_data" => Ok(FieldName::ForkingTestchainData),
+            "get_block_headers" => Ok(FieldName::GetBlockHeaders),
+            "get_operation_hashes_for_blocks" => Ok(FieldName::GetOperationHashesForBlocks),
+            "get_operations_for_blocks" => Ok(FieldName::GetOperationsForBlocks),
+            "get_operations" => Ok(FieldName::GetOperations),
+            "get_protocols" => Ok(FieldName::GetProtocols),
+            "hard_gas_limit_per_block" => Ok(FieldName::HardGasLimitPerBlock),
+            "hard_gas_limit_per_operation" => Ok(FieldName::HardGasLimitPerOperation),
+            "hard_storage_limit_per_operation" => Ok(FieldName::HardStorageLimitPerOperation),
+            "hash" => Ok(FieldName::Hash),
+            "h" => Ok(FieldName::H),
+            "history" => Ok(FieldName::History),
+            "id" => Ok(FieldName::ID),
+            "implementation" => Ok(FieldName::Implementation),
+            "initial_endorsers" => Ok(FieldName::InitialEndorsers),
+            "interface" => Ok(FieldName::Interface),
+            "is_endorsement" => Ok(FieldName::IsEndorsement),
+            "known_valid" => Ok(FieldName::KnownValid),
+            "last_allowed_fork_level" => Ok(FieldName::LastAllowedForkLevel),
+            "left" => Ok(FieldName::Left),
+            "level" => Ok(FieldName::Level),
+            "major" => Ok(FieldName::Major),
+            "max_operations_ttl" => Ok(FieldName::MaxOperationsTTL),
+            "message_nonce" => Ok(FieldName::MessageNonce),
+            "messages" => Ok(FieldName::Messages),
+            "michelson_maximum_type_size" => Ok(FieldName::MichelsonMaximumTypeSize),
+            "minor" => Ok(FieldName::Minor),
+            "min_proposal_quorum" => Ok(FieldName::MinProposalQuorum),
+            "motive" => Ok(FieldName::Motive),
+            "name" => Ok(FieldName::Name),
+            "ofs" => Ok(FieldName::Ofs),
+            "operation_hashes_for_block" => Ok(FieldName::OperationHashesForBlock),
+            "operation_hashes" => Ok(FieldName::OperationHashes),
+            "operation_hashes_path" => Ok(FieldName::OperationHashesPath),
+            "operation" => Ok(FieldName::Operation),
+            "operations_hash" => Ok(FieldName::OperationsHash),
+            "operations" => Ok(FieldName::Operations),
+            "operations_for_block" => Ok(FieldName::OperationsForBlock),
+            "operations_proto_metadata_json" => Ok(FieldName::OperationsProtoMetadataJson),
+            "origination_burn" => Ok(FieldName::OriginationBurn),
+            "origination_size" => Ok(FieldName::OriginationSize),
+            "p2p_version" => Ok(FieldName::P2PVersion),
+            "path" => Ok(FieldName::Path),
+            "peer_id" => Ok(FieldName::PeerID),
+            "pending" => Ok(FieldName::Pending),
+            "point" => Ok(FieldName::Point),
+            "port" => Ok(FieldName::Port),
+            "potential_peers_to_connect" => Ok(FieldName::PotentialPeersToConnect),
+            "p" => Ok(FieldName::P),
+            "predecessor" => Ok(FieldName::Predecessor),
+            "pred_header" => Ok(FieldName::PredHeader),
+            "preserved_cycles" => Ok(FieldName::PreservedCycles),
+            "prevalidator" => Ok(FieldName::Prevalidator),
+            "private_node" => Ok(FieldName::PrivateNode),
+            "proof_of_work_stamp" => Ok(FieldName::ProofOfWorkStamp),
+            "proof_of_work_threshold" => Ok(FieldName::ProofOfWorkThreshold),
+            "protocol_data_json" => Ok(FieldName::ProtocolDataJson),
+            "protocol_data_json_with_error_json" => Ok(FieldName::ProtocolDataJsonWithErrorJson),
+            "protocol_data" => Ok(FieldName::ProtocolData),
+            "protocol" => Ok(FieldName::Protocol),
+            "proto" => Ok(FieldName::Proto),
+            "public_key" => Ok(FieldName::PublicKey),
+            "quorum_max" => Ok(FieldName::QuorumMax),
+            "quorum_min" => Ok(FieldName::QuorumMin),
+            "refused" => Ok(FieldName::Refused),
+            "request" => Ok(FieldName::Request),
+            "result" => Ok(FieldName::Result),
+            "right" => Ok(FieldName::Right),
+            "seed_nonce_revelation_tip" => Ok(FieldName::SeedNonceRevelationTip),
+            "s" => Ok(FieldName::S),
+            "test_chain_duration" => Ok(FieldName::TestChainDuration),
+            "test_chain_id" => Ok(FieldName::TestChainID),
+            "time_between_blocks" => Ok(FieldName::TimeBetweenBlocks),
+            "timestamp" => Ok(FieldName::Timestamp),
+            "tokens_per_roll" => Ok(FieldName::TokensPerRoll),
+            "t" => Ok(FieldName::T),
+            "validation_pass" => Ok(FieldName::ValidationPass),
+            "validation_result_message" => Ok(FieldName::ValidationResultMessage),
+            "versions" => Ok(FieldName::Versions),
+            "v" => Ok(FieldName::V),
+            "x" => Ok(FieldName::X),
+            "y" => Ok(FieldName::Y),
+            _      => panic!(input.to_owned()),//Err(()),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Field {
-    name: String,
+    name: FieldName,
     encoding: Encoding,
 }
 
 impl Field {
-    pub fn new(name: &str, encoding: Encoding) -> Field {
-        Field { name: String::from(name), encoding }
+    pub fn new(name: FieldName, encoding: Encoding) -> Field {
+        Field { name, encoding }
     }
 
-    pub fn get_name(&self) -> &String {
+    pub fn get_name(&self) -> &FieldName {
         &self.name
     }
 
@@ -34,13 +598,13 @@ pub type Schema = Vec<Field>;
 #[derive(Debug, Clone)]
 pub struct Tag {
     id: u16,
-    variant: String,
+    variant: TagVariant,
     encoding: Encoding,
 }
 
 impl Tag {
-    pub fn new(id: u16, variant: &str, encoding: Encoding) -> Tag {
-        Tag { id, variant: String::from(variant), encoding }
+    pub fn new(id: u16, variant: TagVariant, encoding: Encoding) -> Tag {
+        Tag { id, variant, encoding }
     }
 
     pub fn get_id(&self) -> u16 {
@@ -51,7 +615,7 @@ impl Tag {
         &self.encoding
     }
 
-    pub fn get_variant(&self) -> &String {
+    pub fn get_variant(&self) -> &TagVariant {
         &self.variant
     }
 }
@@ -63,14 +627,14 @@ pub struct TagMap {
 }
 
 impl TagMap {
-    pub fn new(tags: Vec<Tag>) -> TagMap {
+    pub fn new(tags: &[Tag]) -> TagMap {
         let mut id_to_tag = HashMap::new();
         let mut variant_to_id = HashMap::new();
 
         for tag in tags {
             let tag_id = tag.get_id();
             let variant = tag.get_variant().to_string();
-            let prev_item = id_to_tag.insert(tag_id, tag);
+            let prev_item = id_to_tag.insert(tag_id, tag.clone());
             assert!(prev_item.is_none(), "Tag id: 0x{:X} is already present in TagMap", tag_id);
             variant_to_id.insert(variant, tag_id);
         }

@@ -5,7 +5,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -32,6 +32,6 @@ impl DeactivateMessage {
 cached_data!(DeactivateMessage, body);
 has_encoding!(DeactivateMessage, DEACTIVATE_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("deactivate", Encoding::Hash(HashType::ChainId)),
+            Field::new(FieldName::Deactivate, Encoding::Hash(HashType::ChainId)),
         ])
 });

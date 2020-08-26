@@ -89,7 +89,7 @@ impl BinaryReader {
     /// use serde::Deserialize;
     /// use tezos_encoding::binary_reader::BinaryReader;
     /// use tezos_encoding::de;
-    /// use tezos_encoding::encoding::{Field, Encoding};
+    /// use tezos_encoding::encoding::{Field, FieldName, Encoding};
     ///
     /// #[derive(Deserialize, Debug, PartialEq)]
     /// struct Version {
@@ -99,9 +99,9 @@ impl BinaryReader {
     /// }
     ///
     /// let version_schema = Encoding::Obj(vec![
-    ///     Field::new("name", Encoding::String),
-    ///     Field::new("major", Encoding::Uint16),
-    ///     Field::new("minor", Encoding::Uint16)
+    ///     Field::new(FieldName::Name, Encoding::String),
+    ///     Field::new(FieldName::Major, Encoding::Uint16),
+    ///     Field::new(FieldName::Minor, Encoding::Uint16)
     /// ]);
     ///
     /// let reader = BinaryReader::new();
@@ -135,7 +135,7 @@ impl BinaryReader {
         for field in schema {
             let name = field.get_name();
             let encoding = field.get_encoding();
-            values.push((name.clone(), self.decode_value(buf, encoding)?))
+            values.push((*name, self.decode_value(buf, encoding)?))
         }
         Ok(Value::Record(values))
     }
@@ -209,13 +209,19 @@ impl BinaryReader {
                 let bytes_sz = buf.remaining();
 
                 let mut buf_slice = buf.take(bytes_sz);
-
-                let mut values = vec![];
-                while buf_slice.remaining() > 0 {
-                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                match **encoding_inner {
+                    Encoding::Uint8 => { // Uint8 is the most common encoding, so it's done more efficiently. TODO: optimize other encodings.
+                        let values:Vec<Value> = buf.to_bytes().into_iter().map(|x| Value::Uint8(x)).collect();
+                        Ok(Value::List(values))
+                    },
+                    _ => {
+                        let mut values = vec![];
+                        while buf_slice.remaining() > 0 {
+                                values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                        }
+                        Ok(Value::List(values))
+                    }
                 }
-
-                Ok(Value::List(values))
             }
             Encoding::Option(_) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
@@ -322,15 +328,22 @@ impl BinaryReader {
             }
             Encoding::Bytes => {
                 let bytes_sz = buf.remaining();
-                let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
-                buf.copy_to_slice(&mut buf_slice);
-                Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
+                let mut values = Vec::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    values.push(Value::Uint8(buf.get_u8()));
+                }
+                Ok(Value::List(values))
             }
             Encoding::Hash(hash_type) => {
                 let bytes_sz = hash_type.size();
-                let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
-                safe!(buf, bytes_sz, buf.copy_to_slice(&mut buf_slice));
-                Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
+                if buf.remaining() < bytes_sz {
+                    return Err(BinaryReaderError::Underflow{bytes: bytes_sz - buf.remaining()});
+                }
+                let mut values = Vec::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    values.push(Value::Uint8(buf.get_u8()));
+                }
+                Ok(Value::List(values))
             }
             Encoding::Split(inner_encoding) => {
                 let inner_encoding = inner_encoding(SchemaType::Binary);
@@ -354,7 +367,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use crate::{binary_writer, de};
-    use crate::encoding::{Tag, TagMap};
+    use crate::encoding::{Tag, TagMap, TagVariant, FieldName};
     use crate::ser::Serializer;
     use crate::types::BigInt;
 
@@ -367,13 +380,13 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Mutez)
+            Field::new(FieldName::A, Encoding::Mutez)
         ];
 
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
-        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("13b50f1e".to_string()))]), value)
+        assert_eq!(Value::Record(vec![(FieldName::A, Value::String("13b50f1e".to_string()))]), value)
     }
 
     #[test]
@@ -383,13 +396,13 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
 
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
         let value = reader.read(record_buf, &Encoding::Obj(record_schema)).unwrap();
-        assert_eq!(Value::Record(vec![("a".to_string(), Value::String("9da879e".to_string()))]), value)
+        assert_eq!(Value::Record(vec![(FieldName::A, Value::String("9da879e".to_string()))]), value)
     }
 
     #[test]
@@ -400,7 +413,7 @@ mod tests {
         }
 
         let get_head_record_schema = vec![
-            Field::new("chain_id", Encoding::Sized(4, Box::new(Encoding::Bytes)))
+            Field::new(FieldName::ChainID, Encoding::Sized(4, Box::new(Encoding::Bytes)))
         ];
 
         #[derive(Deserialize, Debug, PartialEq)]
@@ -414,10 +427,10 @@ mod tests {
         }
 
         let response_schema = vec![
-            Field::new("messages", Encoding::dynamic(Encoding::list(
+            Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
+                    TagMap::new(&[Tag::new(0x10, TagVariant::GetHead, Encoding::Obj(get_head_record_schema))]),
                 )
             )))
         ];
@@ -441,7 +454,7 @@ mod tests {
             a: BigInt
         }
         let record_schema = vec![
-            Field::new("a", Encoding::Z)
+            Field::new(FieldName::A, Encoding::Z)
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -482,17 +495,17 @@ mod tests {
         }
 
         let version_schema = vec![
-            Field::new("name", Encoding::String),
-            Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new(FieldName::Name, Encoding::String),
+            Field::new(FieldName::Major, Encoding::Uint16),
+            Field::new(FieldName::Minor, Encoding::Uint16)
         ];
 
         let connection_message_schema = vec![
-            Field::new("port", Encoding::Uint16),
-            Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
-            Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Encoding::Obj(version_schema)))
+            Field::new(FieldName::Port, Encoding::Uint16),
+            Field::new(FieldName::PublicKey, Encoding::sized(32, Encoding::Bytes)),
+            Field::new(FieldName::ProofOfWorkStamp, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::MessageNonce, Encoding::sized(24, Encoding::Bytes)),
+            Field::new(FieldName::Versions, Encoding::list(Encoding::Obj(version_schema)))
         ];
         let connection_message_encoding = Encoding::Obj(connection_message_schema);
 
@@ -520,7 +533,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+            Field::new(FieldName::ForkingBlockHash, Encoding::list(Encoding::Uint8)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -546,7 +559,7 @@ mod tests {
         }
 
         let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
+            Field::new(FieldName::ForkingBlockHash, Encoding::list(Encoding::Uint8)),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 

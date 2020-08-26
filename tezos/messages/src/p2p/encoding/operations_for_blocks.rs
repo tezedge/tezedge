@@ -8,7 +8,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, Tag, TagMap, TagVariant};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -38,8 +38,8 @@ impl OperationsForBlock {
 cached_data!(OperationsForBlock, body);
 has_encoding!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
-            Field::new("validation_pass", Encoding::Int8),
+            Field::new(FieldName::Hash, Encoding::Hash(HashType::BlockHash)),
+            Field::new(FieldName::ValidationPass, Encoding::Int8),
         ])
 });
 
@@ -70,9 +70,9 @@ impl OperationsForBlocksMessage {
 cached_data!(OperationsForBlocksMessage, body);
 has_encoding!(OperationsForBlocksMessage, OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("operations_for_block", OperationsForBlock::encoding().clone()),
-            Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operations", Encoding::list(Encoding::dynamic(Operation::encoding().clone()))),
+            Field::new(FieldName::OperationsForBlock, OperationsForBlock::encoding().clone()),
+            Field::new(FieldName::OperationHashesPath, path_encoding()),
+            Field::new(FieldName::Operations, Encoding::list(Encoding::dynamic(Operation::encoding().clone()))),
         ])
 });
 
@@ -90,8 +90,8 @@ pub struct PathRight {
 cached_data!(PathRight, body);
 has_encoding!(PathRight, PATH_RIGHT_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("left", Encoding::Hash(HashType::OperationListListHash)),
-            Field::new("path", path_encoding()),
+            Field::new(FieldName::Left, Encoding::Hash(HashType::OperationListListHash)),
+            Field::new(FieldName::Path, path_encoding()),
         ])
 });
 
@@ -109,8 +109,8 @@ pub struct PathLeft {
 cached_data!(PathLeft, body);
 has_encoding!(PathLeft, PATH_LEFT_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("path", path_encoding()),
-            Field::new("right", Encoding::Hash(HashType::OperationListListHash)),
+            Field::new(FieldName::Path, path_encoding()),
+            Field::new(FieldName::Right, Encoding::Hash(HashType::OperationListListHash)),
         ])
 });
 
@@ -125,11 +125,11 @@ pub enum Path {
 pub fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
-        TagMap::new(vec![
-            Tag::new(0xF0, "Left", Encoding::Lazy(Arc::new(|| PathLeft::encoding().clone()))),
-            Tag::new(0x0F, "Right", Encoding::Lazy(Arc::new(|| PathRight::encoding().clone()))),
-            Tag::new(0x00, "Op", Encoding::Unit),
-        ]),
+        TagMap::new(&[
+            Tag::new(0xF0, TagVariant::Left, Encoding::Lazy(Arc::new(|| PathLeft::encoding().clone()))),
+            Tag::new(0x0F, TagVariant::Right, Encoding::Lazy(Arc::new(|| PathRight::encoding().clone()))),
+            Tag::new(0x00, TagVariant::Op, Encoding::Unit),
+        ])
     )
 }
 
@@ -154,6 +154,6 @@ impl GetOperationsForBlocksMessage {
 cached_data!(GetOperationsForBlocksMessage, body);
 has_encoding!(GetOperationsForBlocksMessage, GET_OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("get_operations_for_blocks", Encoding::dynamic(Encoding::list(OperationsForBlock::encoding().clone()))),
+            Field::new(FieldName::GetOperationsForBlocks, Encoding::dynamic(Encoding::list(OperationsForBlock::encoding().clone()))),
         ])
 });

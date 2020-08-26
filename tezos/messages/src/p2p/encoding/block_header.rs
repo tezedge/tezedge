@@ -8,7 +8,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash, HashType, OperationListListHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field, FieldName, HasEncoding, SchemaType};
 use tezos_encoding::has_encoding;
 
 use crate::cached_data;
@@ -40,7 +40,7 @@ pub struct BlockHeaderMessage {
 cached_data!(BlockHeaderMessage, body);
 has_encoding!(BlockHeaderMessage, BLOCK_HEADER_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("block_header", BlockHeader::encoding().clone()),
+            Field::new(FieldName::BlockHeader, BlockHeader::encoding().clone()),
         ])
 });
 
@@ -72,7 +72,7 @@ impl GetBlockHeadersMessage {
 cached_data!(GetBlockHeadersMessage, body);
 has_encoding!(GetBlockHeadersMessage, GET_BLOCK_HEADERS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("get_block_headers", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::BlockHash)))),
+            Field::new(FieldName::GetBlockHeaders, Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::BlockHash)))),
         ])
 });
 
@@ -106,15 +106,15 @@ pub struct BlockHeader {
 cached_data!(BlockHeader, body);
 has_encoding!(BlockHeader, BLOCK_HEADER_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("level", Encoding::Int32),
-            Field::new("proto", Encoding::Uint8),
-            Field::new("predecessor", Encoding::Hash(HashType::BlockHash)),
-            Field::new("timestamp", Encoding::Timestamp),
-            Field::new("validation_pass", Encoding::Uint8),
-            Field::new("operations_hash", Encoding::Hash(HashType::OperationListListHash)),
-            Field::new("fitness", fitness_encoding()),
-            Field::new("context", Encoding::Hash(HashType::ContextHash)),
-            Field::new("protocol_data", Encoding::Split(Arc::new(|schema_type|
+            Field::new(FieldName::Level, Encoding::Int32),
+            Field::new(FieldName::Proto, Encoding::Uint8),
+            Field::new(FieldName::Predecessor, Encoding::Hash(HashType::BlockHash)),
+            Field::new(FieldName::Timestamp, Encoding::Timestamp),
+            Field::new(FieldName::ValidationPass, Encoding::Uint8),
+            Field::new(FieldName::OperationsHash, Encoding::Hash(HashType::OperationListListHash)),
+            Field::new(FieldName::Fitness, fitness_encoding()),
+            Field::new(FieldName::Context, Encoding::Hash(HashType::ContextHash)),
+            Field::new(FieldName::ProtocolData, Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Bytes,
                     SchemaType::Binary => Encoding::list(Encoding::Uint8)
