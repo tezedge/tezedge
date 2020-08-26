@@ -32,7 +32,6 @@ tezos_wrapper = { path = "../tezos/wrapper" }
 
 [dev-dependencies]
 jsonpath = "0.1.1"
-procinfo = "0.4.2"
 r2d2 = "0.8.9"
 serial_test = "0.4"
 slog-async = "2.5"

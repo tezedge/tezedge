@@ -148,7 +148,6 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
 
     let clocks = Instant::now();
-    let memory_before = procinfo::pid::statm_self().unwrap().resident;
 
     // 1. test - apply and context - prepare data for apply blocks and wait for current head, and check context
     assert!(
@@ -173,14 +172,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     );
 
     let clocks = clocks.elapsed();
-    let memory_after = procinfo::pid::statm_self().unwrap().resident;
-    println!(
-        "\nDone in {:?}! mem_before: {}, mem_after: {}, diff: {}",
-        clocks,
-        memory_before,
-        memory_after,
-        memory_after - memory_before
-    );
+    println!("\nDone in {:?}!", clocks);
 
     // clean up
     // shutdown events listening
@@ -303,7 +295,6 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
     let clocks = Instant::now();
-    let memory_before = procinfo::pid::statm_self().unwrap().resident;
 
     // let's insert stored requests to database
     for request in requests {
@@ -337,14 +328,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     }
 
     let clocks = clocks.elapsed();
-    let memory_after = procinfo::pid::statm_self().unwrap().resident;
-    println!(
-        "\n[Insert] done in {:?}! mem_before: {}, mem_after: {}, diff: {}",
-        clocks,
-        memory_before,
-        memory_after,
-        memory_after - memory_before
-    );
+    println!("\n[Insert] done in {:?}!", clocks);
 
     // wait context_listener to finished context for applied blocks
     info!(log, "Waiting for context processing"; "level" => apply_to_level);
