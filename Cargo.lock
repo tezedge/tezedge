@@ -1356,6 +1356,7 @@ dependencies = [
  "monitoring",
  "networking",
  "riker",
+ "rlimit",
  "rpc",
  "serde 1.0.114",
  "serde_json",
@@ -2112,6 +2113,16 @@ name = "rle-decode-fast"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cabe4fa914dec5870285fa7f71f602645da47c486e68486d2b4ceb4a343e90ac"
+
+[[package]]
+name = "rlimit"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49b02d62c38353a6fce45c25ca19783e25dd5f495ca681c674a4ee15aa4c1536"
+dependencies = [
+ "cfg-if",
+ "libc",
+]
 
 [[package]]
 name = "rocksdb"
