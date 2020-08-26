@@ -12,7 +12,7 @@ use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::{Bits, BitTrim};
-use crate::encoding::{Encoding, Field, FieldName, SchemaType};
+use crate::encoding::{Encoding, Field, FieldName, TagVariant, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -632,7 +632,7 @@ mod tests {
             Field::new(FieldName::Messages, Encoding::dynamic(Encoding::list(
                 Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
+                    TagMap::new(&[Tag::new(0x10, TagVariant::GetHead, Encoding::Obj(get_head_record_schema))]),
                 )
             )))
         ];
