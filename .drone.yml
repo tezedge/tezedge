@@ -234,11 +234,11 @@ steps:
     - name: sandbox-data
       path: /tmp/sandbox
   commands:
-    - signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 sign bytes 0x01$(cat /tmp/sandbox/data_to_sign.hex) for activator | cut -d$' ' -f2)
+    - signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 sign bytes 0x01$(cat /tmp/sandbox/data_to_sign.hex) for activator | cut -d$' ' -f2)
     - echo "signature - $signature"
     # data: from the forge_header operation + appeneded with the signature
     # operations: empty array (0 validation passes)
-    - raw_signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 hash data $signature | head -n 1 | cut -d$' ' -f4)
+    - raw_signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 hash data $signature | head -n 1 | cut -d$' ' -f4)
     - echo "raw signature - $raw_signature"
     - data=$data_no_signature$raw_signature
     - echo "data - $data"
