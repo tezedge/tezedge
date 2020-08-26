@@ -209,13 +209,19 @@ impl BinaryReader {
                 let bytes_sz = buf.remaining();
 
                 let mut buf_slice = buf.take(bytes_sz);
-
-                let mut values = vec![];
-                while buf_slice.remaining() > 0 {
-                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                match **encoding_inner {
+                    Encoding::Uint8 => { // Uint8 is the most common encoding, so it's done more efficiently. TODO: optimize other encodings.
+                        let values:Vec<Value> = buf.to_bytes().into_iter().map(|x| Value::Uint8(x)).collect();
+                        Ok(Value::List(values))
+                    },
+                    _ => {
+                        let mut values = vec![];
+                        while buf_slice.remaining() > 0 {
+                                values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                        }
+                        Ok(Value::List(values))
+                    }
                 }
-
-                Ok(Value::List(values))
             }
             Encoding::Option(_) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
@@ -322,15 +328,22 @@ impl BinaryReader {
             }
             Encoding::Bytes => {
                 let bytes_sz = buf.remaining();
-                let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
-                buf.copy_to_slice(&mut buf_slice);
-                Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
+                let mut values = Vec::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    values.push(Value::Uint8(buf.get_u8()));
+                }
+                Ok(Value::List(values))
             }
             Encoding::Hash(hash_type) => {
                 let bytes_sz = hash_type.size();
-                let mut buf_slice = vec![0u8; bytes_sz].into_boxed_slice();
-                safe!(buf, bytes_sz, buf.copy_to_slice(&mut buf_slice));
-                Ok(Value::List(buf_slice.into_vec().iter().map(|&byte| Value::Uint8(byte)).collect()))
+                if buf.remaining() < bytes_sz {
+                    return Err(BinaryReaderError::Underflow{bytes: bytes_sz - buf.remaining()});
+                }
+                let mut values = Vec::with_capacity(bytes_sz);
+                for _ in 0..bytes_sz {
+                    values.push(Value::Uint8(buf.get_u8()));
+                }
+                Ok(Value::List(values))
             }
             Encoding::Split(inner_encoding) => {
                 let inner_encoding = inner_encoding(SchemaType::Binary);
