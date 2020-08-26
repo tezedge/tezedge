@@ -34,53 +34,53 @@ steps:
     - rm -rf /tmp/sandbox/tezos-node
     - rm -rf /tmp/sandbox/tezos-client
     - rm -rf /home/tezos/data/
-    - rm -rf /artifacts/*
+    # - rm -rf /artifacts/*
 
-- name: test-and-build-artifacts
-  image: simplestakingcom/tezedge-ci-builder:latest
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: sandbox-data
-      path: /tmp/sandbox
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LOG_LEVEL: info
-    OCAML_LOG_ENABLED: false
-  commands:
-    # prepare rust toolchain dir
-    - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
-    # build and test
-    - cargo build --release --workspace
-    - cargo test --release --workspace
-    # build and run special tests
-    - export LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts
-    - export PROTOCOL_RUNNER=/drone/src/target/release/protocol-runner
-    - cargo test --package shell --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
-    - cargo test --package shell --release -- --nocapture --ignored test_readonly_protocol_runner_connection_pool
-    - cargo test --package shell --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
-    # build and run benches
-    - cargo bench -- --nocapture
-    - cargo bench --tests -- --nocapture
-    # collect binary artefacts
-    - mkdir /artifacts/ffi
-    - mkdir /artifacts/tezedge
-    - mkdir -p /artifacts/identities
-    - cp ./target/release/light-node /artifacts
-    - cp ./target/release/protocol-runner /artifacts
-    - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
-    - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
-    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
-    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
-    - cp ./light_node/etc/drone/assert_equals.sh /artifacts/ && chmod 755 /artifacts/assert_equals.sh
-    - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
-    - cp ./light_node/etc/drone/identities/* /artifacts/identities/
-    - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
+# - name: test-and-build-artifacts
+#   image: simplestakingcom/tezedge-ci-builder:latest
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /artifacts
+#     - name: sandbox-data
+#       path: /tmp/sandbox
+#   environment:
+#     RUST_BACKTRACE: 1
+#     SODIUM_USE_PKG_CONFIG: 1
+#     OCAML_BUILD_CHAIN: remote
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#   commands:
+#     # prepare rust toolchain dir
+#     - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
+#     # build and test
+#     - cargo build --release --workspace
+#     - cargo test --release --workspace
+#     # build and run special tests
+#     - export LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts
+#     - export PROTOCOL_RUNNER=/drone/src/target/release/protocol-runner
+#     - cargo test --package shell --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+#     - cargo test --package shell --release -- --nocapture --ignored test_readonly_protocol_runner_connection_pool
+#     - cargo test --package shell --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
+#     # build and run benches
+#     - cargo bench -- --nocapture
+#     - cargo bench --tests -- --nocapture
+#     # collect binary artefacts
+#     - mkdir /artifacts/ffi
+#     - mkdir /artifacts/tezedge
+#     - mkdir -p /artifacts/identities
+#     - cp ./target/release/light-node /artifacts
+#     - cp ./target/release/protocol-runner /artifacts
+#     - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
+#     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
+#     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
+#     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
+#     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
+#     - cp ./light_node/etc/drone/assert_equals.sh /artifacts/ && chmod 755 /artifacts/assert_equals.sh
+#     - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
+#     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
+#     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
 
 volumes:
   - name: build
@@ -96,7 +96,7 @@ trigger:
     - develop
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration and does transfer with tezos_client
+# This pipeline runs tezedge node with sandbox configuration and does transfer without the tezos_client
 ##############################################################################################################
 ---
 kind: pipeline
@@ -180,8 +180,8 @@ steps:
 # TODO: instead of sleep 3, check status established
 # TODO: write rpc test for check network/peers
 
-# inject protocol to ocaml node, means it creates the first block with level 1
-- name: inject-first-block-with-tezos_client
+# we will only use the tezos-client for signatures
+- name: prepare-tezos-client-for-signing
   user: root
   image: tezos/tezos:v7.3
   volumes:
@@ -191,7 +191,37 @@ steps:
     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
     - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
-    - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/sandbox/006-carthage-protocol-parameters.json --timestamp $(TZ='AAA+1' date +%FT%TZ)
+    # - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb with fitness 1 and key activator and parameters /tmp/sandbox/006-carthage-protocol-parameters.json --timestamp $(TZ='AAA+1' date +%FT%TZ)
+
+# activates the protocol by injecting the first block 
+- name: activate-protocol
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - protocol=$(curl -X GET "$TEZEDGE_URL/chains/main/blocks/genesis/protocols" | jq '.next_protocol')
+    - timestamp=$(date +%s)
+    # <curl forge parameters>
+    # protocol_parameters - from the forge operation
+    # signature is the zero signature (edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q)
+    - preapply=$(curl -X POST "$TEZEDGE_URL/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1598445170" -H "Content-Type:application/json" --data '{"protocol_data":{"protocol":"ProtoGenesisGenesisGenesisGenesisGenesisGenesk612im","content":{"command":"activate","hash":"PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb","fitness":["00","0000000000000001"],"protocol_parameters":"0000056d6d05000004626f6f7473747261705f6163636f756e747300cc01000004300058000000023000370000006564706b75426b6e5732386e5737324b4736526f48745957377031325436474b63376e4162775958356d385764397344564339796176000231000e00000034303030303030303030303030000004310058000000023000370000006564706b747a4e624441556a556b36393757376759673243527542516a79507862456738644c63635959774b534b766b50766a745639000231000e00000034303030303030303030303030000004320058000000023000370000006564706b7554586b4a4447634664356e683656764d7a38706858785533426937683668716779774e466931765a5466514e6e53315256000231000e00000034303030303030303030303030000004330058000000023000370000006564706b754672526f445345624a59677852744c783270733832556461596331577766533973453131796861755a7435446743486255000231000e00000034303030303030303030303030000004340058000000023000370000006564706b76384555554836386a6d6f336637556d3550657a6d66477252463234676e664c70483373564e774a6e5635625643784c326e000231000e00000034303030303030303030303030000000017072657365727665645f6379636c657300000000000000004001626c6f636b735f7065725f6379636c6500000000000000204001626c6f636b735f7065725f636f6d6d69746d656e7400000000000000104001626c6f636b735f7065725f726f6c6c5f736e617073686f7400000000000000104001626c6f636b735f7065725f766f74696e675f706572696f640000000000000050400474696d655f6265747765656e5f626c6f636b7300170000000230000200000031000231000200000030000001656e646f72736572735f7065725f626c6f636b00000000000000404002686172645f6761735f6c696d69745f7065725f6f7065726174696f6e0008000000313034303030300002686172645f6761735f6c696d69745f7065725f626c6f636b00090000003130343030303030000270726f6f665f6f665f776f726b5f7468726573686f6c6400030000002d310002746f6b656e735f7065725f726f6c6c000b0000003830303030303030303000016d696368656c736f6e5f6d6178696d756d5f747970655f73697a65000000000000408f4002736565645f6e6f6e63655f726576656c6174696f6e5f746970000700000031323530303000016f726967696e6174696f6e5f73697a6500000000000010704002626c6f636b5f73656375726974795f6465706f736974000a0000003531323030303030300002656e646f7273656d656e745f73656375726974795f6465706f73697400090000003634303030303030000462616b696e675f7265776172645f7065725f656e646f7273656d656e74002200000002300008000000313235303030300002310007000000313837353030000004656e646f7273656d656e745f726577617264002200000002300008000000313235303030300002310007000000383333333333000002636f73745f7065725f627974650005000000313030300002686172645f73746f726167655f6c696d69745f7065725f6f7065726174696f6e000600000036303030300002746573745f636861696e5f6475726174696f6e000800000031393636303830000171756f72756d5f6d696e000000000000409f400171756f72756d5f6d617800000000000058bb40016d696e5f70726f706f73616c5f71756f72756d000000000000407f4001696e697469616c5f656e646f727365727300000000000000f03f0264656c61795f7065725f6d697373696e675f656e646f7273656d656e740002000000310000"},"signature":"edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q"},"operations":[]}' | jq -S .)
+    - data_no_signature=00000001018fcf233671b6a04fcf679d2a381c2544ea6c1ea29ba6157776ed8424c7ccd00b000000005f465672000e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a800000011000000010000000008000000000000000119f3a1126198fb2e3b0fc98d99916844a38e25cf4c8a29def706f3ce85d927d0003e5e3a606afab74a59ca09e333633e2770b6492c5e594455b71e9a2f0ea92afb0000001100000001000000000800000000000000010000056d6d05000004626f6f7473747261705f6163636f756e747300cc01000004300058000000023000370000006564706b75426b6e5732386e5737324b4736526f48745957377031325436474b63376e4162775958356d385764397344564339796176000231000e00000034303030303030303030303030000004310058000000023000370000006564706b747a4e624441556a556b36393757376759673243527542516a79507862456738644c63635959774b534b766b50766a745639000231000e00000034303030303030303030303030000004320058000000023000370000006564706b7554586b4a4447634664356e683656764d7a38706858785533426937683668716779774e466931765a5466514e6e53315256000231000e00000034303030303030303030303030000004330058000000023000370000006564706b754672526f445345624a59677852744c783270733832556461596331577766533973453131796861755a7435446743486255000231000e00000034303030303030303030303030000004340058000000023000370000006564706b76384555554836386a6d6f336637556d3550657a6d66477252463234676e664c70483373564e774a6e5635625643784c326e000231000e00000034303030303030303030303030000000017072657365727665645f6379636c657300000000000000004001626c6f636b735f7065725f6379636c6500000000000000204001626c6f636b735f7065725f636f6d6d69746d656e7400000000000000104001626c6f636b735f7065725f726f6c6c5f736e617073686f7400000000000000104001626c6f636b735f7065725f766f74696e675f706572696f640000000000000050400474696d655f6265747765656e5f626c6f636b7300170000000230000200000031000231000200000030000001656e646f72736572735f7065725f626c6f636b00000000000000404002686172645f6761735f6c696d69745f7065725f6f7065726174696f6e0008000000313034303030300002686172645f6761735f6c696d69745f7065725f626c6f636b00090000003130343030303030000270726f6f665f6f665f776f726b5f7468726573686f6c6400030000002d310002746f6b656e735f7065725f726f6c6c000b0000003830303030303030303000016d696368656c736f6e5f6d6178696d756d5f747970655f73697a65000000000000408f4002736565645f6e6f6e63655f726576656c6174696f6e5f746970000700000031323530303000016f726967696e6174696f6e5f73697a6500000000000010704002626c6f636b5f73656375726974795f6465706f736974000a0000003531323030303030300002656e646f7273656d656e745f73656375726974795f6465706f73697400090000003634303030303030000462616b696e675f7265776172645f7065725f656e646f7273656d656e74002200000002300008000000313235303030300002310007000000313837353030000004656e646f7273656d656e745f726577617264002200000002300008000000313235303030300002310007000000383333333333000002636f73745f7065725f627974650005000000313030300002686172645f73746f726167655f6c696d69745f7065725f6f7065726174696f6e000600000036303030300002746573745f636861696e5f6475726174696f6e000800000031393636303830000171756f72756d5f6d696e000000000000409f400171756f72756d5f6d617800000000000058bb40016d696e5f70726f706f73616c5f71756f72756d000000000000407f4001696e697469616c5f656e646f727365727300000000000000f03f0264656c61795f7065725f6d697373696e675f656e646f7273656d656e740002000000310000
+    # - data_no_signature=<curl forge block header>
+    - signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 sign bytes 0x01$data_no_signature for activator | cut -d$' ' -f2)
+    - echo "signature - $signature"
+    # data: from the forge_header operation + appeneded with the signature
+    # operations: empty array (0 validation passes)
+    - raw_signature=$(tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 hash data $signature | head -n 1 | cut -d$' ' -f4)
+    - echo "raw signature - $raw_signature"
+    - data=$data_no_signature$raw_signature
+    - echo "data - $data"
+    - injection=$(curl -X POST "$TEZEDGE_URL/injection/block" -H "Content-Type:application/json" --data '{"data":$data,"operations":[]}')
+    - echo "Block injected - $injection"
 
 # test checks if this block is synchronized to rust node through p2p
 - name: wait-for-sync-on-level-1
