@@ -156,12 +156,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("db-cfg-max-open-files")
-            .long("db-cfg-max-open-files")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Max open files for database. If specified '-1', means unlimited. Default value: 512")
-            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
         .arg(Arg::with_name("bootstrap-lookup-address")
             .long("bootstrap-lookup-address")
             .takes_value(true)
@@ -552,12 +546,6 @@ impl Environment {
                             .parse::<usize>()
                             .expect("Provided value cannot be converted to number");
                         db_cfg.max_threads(Some(max_treads));
-                    }
-                    if let Some(value) = args.value_of("db-cfg-max-open-files") {
-                        let max_open_files = value
-                            .parse::<i32>()
-                            .expect("Provided value cannot be converted to number");
-                        db_cfg.max_open_files(max_open_files);
                     }
 
                     db_cfg.build().unwrap()

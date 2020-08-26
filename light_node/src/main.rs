@@ -36,6 +36,7 @@ use crate::configuration::LogFormat;
 
 mod configuration;
 mod identity;
+mod system;
 
 const DATABASE_VERSION: i64 = 15;
 const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
@@ -251,6 +252,9 @@ fn main() {
 
     // Creates default logger
     let log = create_logger(&env);
+
+    // Enable core dumps and increase open files limit
+    system::init_limits(&log);
 
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
