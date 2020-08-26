@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use znfe::{ocaml_export, IntoRust, OCaml, OCamlList, RawOCaml};
+use znfe::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
 
 use tezos_context::channel::*;
 
@@ -21,7 +21,7 @@ extern "C" {
         ml_context_remove_rec: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
         ml_context_copy: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
         ml_context_checkout: unsafe extern "C" fn(RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_commit: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_commit: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
         ml_context_mem: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
         ml_context_dir_mem: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
         ml_context_raw_get: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
@@ -136,6 +136,7 @@ ocaml_export! {
         parent_context_hash: OCaml<Option<String>>,
         block_hash: OCaml<Option<String>>,
         new_context_hash: OCaml<String>,
+        info: OCaml<(OCamlInt64, String, String, OCamlList<String>)>,
         start_time: f64,
         end_time: f64,
     ) {
@@ -143,7 +144,9 @@ ocaml_export! {
         let block_hash = block_hash.into_rust();
         let new_context_hash = new_context_hash.into_rust();
 
-        context_commit(parent_context_hash, block_hash, new_context_hash, start_time, end_time);
+        let (date, author, message, parents) = info.into_rust();
+
+        context_commit(parent_context_hash, block_hash, new_context_hash, date, author, message, parents, start_time, end_time);
         OCaml::unit()
     }
 
@@ -323,17 +326,24 @@ fn context_commit(
     parent_context_hash: Option<ContextHash>,
     block_hash: Option<BlockHash>,
     new_context_hash: ContextHash,
+    date: i64,
+    author: String,
+    message: String,
+    parents: Vec<Vec<u8>>,
     start_time: f64,
-    end_time: f64,
-) {
+    end_time: f64)
+{
     context_send(ContextAction::Commit {
         parent_context_hash,
         block_hash,
         new_context_hash,
+        author,
+        message,
+        date,
+        parents,
         start_time,
         end_time,
-    })
-    .expect("context_commit error");
+    }).expect("context_commit error");
 }
 
 fn context_mem(

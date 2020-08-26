@@ -37,7 +37,7 @@ use crate::configuration::LogFormat;
 mod configuration;
 mod identity;
 
-const DATABASE_VERSION: i64 = 14;
+const DATABASE_VERSION: i64 = 15;
 const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
 const SUPPORTED_P2P_VERSION: u16 = 1;
 
