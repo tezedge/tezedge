@@ -185,7 +185,7 @@ pub fn inject_block(
         };
         
         let response = env.tezos_readonly_api().pool.get()?.api.compute_path(request)?;
-        Some(response.operations_hashes_path)
+        Some(response.operation_hashes_path)
     } else {
         None
     };

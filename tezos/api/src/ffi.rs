@@ -901,7 +901,7 @@ pub struct ComputePathRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ComputePathResponse {
-    pub operations_hashes_path: Vec<Path>,
+    pub operation_hashes_path: Vec<Path>,
 }
 
 lazy_static! {
