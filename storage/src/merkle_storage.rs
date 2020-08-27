@@ -45,7 +45,7 @@
 use std::path::Path;
 use rocksdb::{DB, Options, IteratorMode};
 use std::hash::Hash;
-use im_rc::OrdMap as OrdMap;
+use im::OrdMap as OrdMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;

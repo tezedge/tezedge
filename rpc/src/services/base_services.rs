@@ -239,7 +239,8 @@ pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persiste
     //     }
     // };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone(),
+        persistent_storage.merkle());
     let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
     let context_data = context.get_by_key_prefix(&context_index, &vec!["data/cycle/".to_string()])?;
 
@@ -331,7 +332,8 @@ pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, lis
         None => bail!("Block level not found")
     };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone(),
+        persistent_storage.merkle());
     let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
 
     let random_seed = context.get_key(&context_index, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?; // list.get_key(level, &format!("data/cycle/{}/random_seed", &cycle_id));
@@ -358,7 +360,8 @@ pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, list: Context
         None => bail!("Block level not found")
     };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone(),
+        persistent_storage.merkle());
     let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
     let context_data = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/current/".to_string()])?;
 

@@ -18,7 +18,7 @@ num_cpus = "1.13"
 rocksdb = "0.14"
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = "2.5"
-im-rc = { version = "15.0.0", features = ["serde"] }
+im = { version = "15.0.0", features = ["serde"] }
 sodiumoxide = "0.2.5"
 # local dependencies
 crypto = { path = "../crypto" }
