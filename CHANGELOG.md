@@ -8,17 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New configuration parameter `--disable-bootstrap-lookup` to turn off dns lookup for peers (e.g. used for tests or sandbox)
-- New configuration parameter `--db-cfg-max-threads` to better control system resources
-- New RPCs to make baking in sandbox mode possible with tezos-client
-- Support for macOS (10.13 and newer).
+- New configuration parameter `--disable-bootstrap-lookup` to turn off DNS lookup for peers (e.g. used for tests or sandbox).
+- New configuration parameter `--db-cfg-max-threads` to better control system resources.
+- New RPCs to make baking in sandbox mode possible with tezos-client.
+- Support for MacOS (10.13 and newer).
 
 ### Changed
 
 - Resolved various clippy warnings/errors.
 - Drone test runs offline with carthagenet-snapshoted nodes.
-- New ocaml ffi - `ocaml-rs` was replaced with custom new library based on `caml-oxide` to get GC under control and better performance
-- P2P bootstrap process - NACK version control after metadata exchange
+- New OCaml FFI - `ocaml-rs` was replaced with a new custom library based on `caml-oxide` to get GC under control and improve performance.
+- P2P bootstrap process - NACK version control after metadata exchange.
 
 ### Deprecated
 
@@ -40,14 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- RPC's for every protocol to support Tezos indexer 'blockwatch/tzindex'
-- Support for connect Mainnet
-- Support for sandboxing, means empty Tezedge can be initialized with `tezos-client` for "activate protocol" and do "transfer" operation
+- RPCs for every protocol now support the Tezos indexer 'blockwatch/tzindex'.
+- Support for connecting to Mainnet.
+- Support for sandboxing, which means an empty TezEdge can be initialized with `tezos-client` for "activate protocol" and do "transfer" operation.
 
 ### Changed
 
-- Ffi upgrade based on Tezos gitlab latest-release (v7.2), supports now ocaml 4.09.1
-- Support for parallel access (readonly context) to Tezos ffi ocaml runtime through r2d2 connection pooling
+- FFI upgrade based on Tezos gitlab latest-release (v7.2), now supports OCaml 4.09.1
+- Support for parallel access (readonly context) to Tezos FFI OCaml runtime through r2d2 connection pooling.
 
 ### Deprecated
 
@@ -69,47 +69,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Mempool p2p support + ffi prevalidator protocol validation
-- Support for sandboxing (used in drone tests)
-- RPC for /inject/operation (draft)
-- RPC's for developer for blocks and contracts
-- Possibility to run mulitple sub-process with ffi integration to ocaml
+- Mempool P2P support + FFI prevalidator protocol validation.
+- Support for sandboxing (used in drone tests).
+- RPC for /inject/operation (draft).
+- RPCs for developers for blocks and contracts.
+- Possibility to run mulitple sub-process with FFI integration to OCaml.
 
 ### Changed
 
-- Upgraded version of riker, rocksdb
-- Improved DRONE integration tests
+- Upgraded version of riker, RocksDB.
+- Improved DRONE integration tests.
 
 ## [0.0.2] - 2020-06-01
 
 ### Added
 
-- Support for connect to Carthagenet/Mainnet
-- Support for Ubuntu 20 and OpenSUSE Tumbleweed
-- RPC's for indexer blockwatch/tzindex (with drone integration test, which compares indexed data with Ocaml node against Tezedge node)
+- Support for connection to Carthagenet/Mainnet.
+- Support for Ubuntu 20 and OpenSUSE Tumbleweed.
+- RPCs for indexer blockwatch/tzindex (with drone integration test, which compares indexed data with Ocaml node against TezEdge node).
 - Flags `--store-context-actions=BOOL.` If this flag is set to false, the node will persist less data to disk, which increases runtime speed.
 
 ### Changed
 
-- P2p speed-up bootstrap - support for p2p_version 1 feature Nack_with_list, extended Nack - with potential peers to connect
+- P2P speed-up bootstrap - support for p2p_version 1 feature Nack_with_list, extended Nack - with potential peers to connect.
 
 ### Removed
 
-- Storing all p2p messages (moved to tezedge-debugger), the node will persist less data to disk
+- Storing all P2P messages (moved to tezedge-debugger), the node will persist less data to disk.
 
 ### Fixed / Security
 
-- Remove bitvec dependency
-- Refactored FFI to Ocaml not using BigArray1's for better GC processing
+- Remove bitvec dependency.
+- Refactored FFI to Ocaml not using BigArray1's for better GC processing.
 
 ## [0.0.1] - 2020-03-31
 
 ### Added
 
-- P2P Explorer support with dedicated RPC exposed
-- Expose RPC for Tezos indexers
-- Ability to connect and bootstrap data from Tezos Babylonnet
-- Protocol FFI integration
+- P2P Explorer support with dedicated RPC exposed.
+- Exposed RPC for Tezos indexers.
+- Ability to connect and bootstrap data from Tezos Babylonnet.
+- Protocol FFI integration.
 
 [Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.0.2...HEAD
 [0.0.1]: https://github.com/simplestaking/tezedge/releases/v0.0.1
