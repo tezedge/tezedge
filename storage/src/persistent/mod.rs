@@ -15,6 +15,7 @@ pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
 use crate::skip_list::{Bucket, DatabaseBackedSkipList, TypedSkipList};
+use crate::merkle_storage::MerkleStorage;
 
 pub mod sequence;
 pub mod codec;
@@ -129,16 +130,20 @@ pub struct PersistentStorage {
     seq: Arc<Sequences>,
     /// skip list backed context storage
     cs: ContextList,
+    /// merkle-tree based context storage
+    merkle: Arc<RwLock<MerkleStorage>>,
 }
 
 impl PersistentStorage {
     pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
+        let db = MerkleStorage::get_db("_merkle_db_test");
         Self {
             clog,
             kv: kv.clone(),
             cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv, seq.generator("skip_list")).expect("failed to initialize context storage"))),
             seq,
+            merkle: Arc::new(RwLock::new(MerkleStorage::new(db))),
         }
     }
 
@@ -155,6 +160,11 @@ impl PersistentStorage {
     #[inline]
     pub fn seq(&self) -> Arc<Sequences> {
         self.seq.clone()
+    }
+
+    #[inline]
+    pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
+        self.merkle.clone()
     }
 
     #[inline]
