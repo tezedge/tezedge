@@ -30,12 +30,14 @@ addons:
       - clang
       - libsodium-dev
       - libev4
+      - libhidapi-dev
   homebrew:
     packages:
       - pkg-config
       - gmp
       - libev
       - libsodium
+      - hidapi
 
 branches:
   only:
