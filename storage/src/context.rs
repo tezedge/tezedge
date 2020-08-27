@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::fmt;
+use std::sync::{Arc, RwLock};
 
 use failure::Fail;
 
@@ -10,6 +11,7 @@ use crypto::hash::{BlockHash, ContextHash, HashType};
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 use crate::persistent::{ContextList, ContextMap};
 use crate::skip_list::{Bucket, SkipListError};
+use crate::merkle_storage::MerkleStorage;
 
 /// Possible errors for context
 #[derive(Debug, Fail)]
@@ -150,11 +152,12 @@ impl ContextDiff {
 pub struct TezedgeContext {
     block_storage: BlockStorage,
     storage: ContextList,
+    merkle: Arc<RwLock<MerkleStorage>>,
 }
 
 impl TezedgeContext {
-    pub fn new(block_storage: BlockStorage, storage: ContextList) -> Self {
-        TezedgeContext { block_storage, storage }
+    pub fn new(block_storage: BlockStorage, storage: ContextList, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
+        TezedgeContext { block_storage, storage, merkle }
     }
 
     fn level_by_context_hash(&self, context_hash: &ContextHash) -> Result<usize, ContextError> {

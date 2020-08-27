@@ -52,7 +52,7 @@ impl ContextListener {
             let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || -> Result<(), Error> {
-                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), context_storage));
+                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), context_storage, persistent_storage.merkle()));
                 let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
