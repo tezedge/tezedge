@@ -13,7 +13,10 @@ pub fn sandbox(
     client_runner: TezosClientRunner,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     // Allow cors from any origin
-    let cors = warp::cors().allow_any_origin();
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_headers(vec!["content-type"])
+        .allow_methods(vec!["GET", "POST"]);
 
     start(log.clone(), runner.clone())
         .or(stop(log.clone(), runner, client_runner.clone()))

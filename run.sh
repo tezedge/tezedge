@@ -192,47 +192,7 @@ run_sandbox() {
   esac
 
   shift # shift past <MODE>
-
-  # The following loop is used to replace default light-node commandline parameters.
-  # It also allows to specify additional commandline parameters.
-  # Supports '--arg=val' and '--arg val' syntax of the commandline arguments.
-  while [ "$#" -gt 0 ]; do
-    case $1 in
-      --tezos-data-dir=*)
-        TEZOS_DIR="${1#*=}"
-        shift
-        ;;
-      --tezos-data-dir)
-        shift
-        TEZOS_DIR="$1"
-        shift
-        ;;
-      --bootstrap-db-path=*)
-        BOOTSTRAP_DIR="${1#*=}"
-        shift
-        ;;
-      --bootstrap-db-path)
-        shift
-        BOOTSTRAP_DIR="$1"
-        shift
-        ;;
-      --network=*)
-        NETWORK="${1#*=}"
-        shift
-        ;;
-      --network)
-        shift
-        NETWORK="$1"
-        shift
-        ;;
-      *)
-        args+=("$1")
-        shift
-        ;;
-    esac
-  done
-
-
+  
   # cleanup data directory
   if [ -z "$KEEP_DATA" ]; then
     rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
