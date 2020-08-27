@@ -18,6 +18,7 @@ pub mod service;
 /// Configuration for tezos api pool
 #[derive(Debug, Clone)]
 pub struct TezosApiConnectionPoolConfiguration {
+    /// Nuber of connections to create on startup of pool (can be 0, so the connections are created on demand)
     pub min_connections: u8,
     pub max_connections: u8,
     /// wait for connection to protocol_runner
@@ -36,7 +37,6 @@ pub type RunnerType = ExecutableProtocolRunner;
 /// Automatically refreshes old protocol_runner sub-processes [idle_timeout][max_lifetime]
 ///
 /// One connection means one protocol_runner sub-process and one IPC
-///
 pub struct TezosApiConnectionPool {
     pub pool: Pool<ProtocolRunnerManager<RunnerType>>,
     pub pool_name: String,
@@ -99,5 +99,11 @@ impl TezosApiConnectionPool {
             pool,
             pool_name,
         }
+    }
+}
+
+impl Drop for TezosApiConnectionPool {
+    fn drop(&mut self) {
+        // TODO: ensure all connections are dropped and protocol_runners are closed
     }
 }

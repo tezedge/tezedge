@@ -9,10 +9,12 @@ use rand::Rng;
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, IteratorMode, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError};
 use storage::persistent::PersistentStorage;
+use tezos_messages::Head;
 
 use crate::collections::{BlockData, UniqueBlockData};
+use crate::shell_channel::BlockApplied;
 
 /// Holds state of all known blocks
 pub struct BlockchainState {
@@ -20,6 +22,8 @@ pub struct BlockchainState {
     block_storage: BlockStorage,
     ///persistent block metadata storage
     block_meta_storage: BlockMetaStorage,
+    ///persistent chain metadata storage
+    chain_meta_storage: ChainMetaStorage,
     /// Current missing blocks.
     /// This represents a set of missing block we will try to retrieve in the future.
     /// Before we try to fetch missing block it is removed from this queue.
@@ -35,15 +39,34 @@ impl BlockchainState {
         BlockchainState {
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
+            chain_meta_storage: ChainMetaStorage::new(persistent_storage),
             missing_blocks: UniqueBlockData::new(),
             chain_id: chain_id.clone(),
         }
     }
 
+    /// Resolve if new applied block can be set as new current head.
+    /// Original algorithm is in [chain_validator][on_request], where just fitness is checked.
+    /// Returns:
+    /// - None, if head was not updated
+    /// - Some(head), if head was updated
+    pub fn try_set_new_current_head(&self, block: &BlockApplied) -> Result<Option<Head>, StorageError> {
+
+        let head = Head {
+            hash: block.header().hash.clone(),
+            level: block.header().header.level(),
+        };
+
+        // set head to db
+        self.chain_meta_storage.set_current_head(&self.chain_id, &head)?;
+
+        Ok(Some(head))
+    }
+
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(
-            MissingBlock::with_level(
+            MissingBlock::with_level_guess(
                 block_header.header.predecessor().clone(),
                 block_header.header.level() - 1,
             )
@@ -99,6 +122,11 @@ impl BlockchainState {
     #[inline]
     pub fn has_missing_blocks(&self) -> bool {
         !self.missing_blocks.is_empty()
+    }
+
+    #[inline]
+    pub fn missing_blocks_count(&self) -> usize {
+        self.missing_blocks.len()
     }
 
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
@@ -193,7 +221,7 @@ impl MissingBlock {
         }
     }
 
-    pub fn fits_to_max(&self, level_max: i32) -> bool {
+    fn fits_to_max(&self, level_max: i32) -> bool {
         if let Some(level) = self.level {
             return level <= level_max;
         }

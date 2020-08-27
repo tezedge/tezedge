@@ -10,12 +10,14 @@ use riker::{
 };
 use slog::{Logger, warn};
 
+use crypto::hash::ChainId;
 use networking::p2p::{
     network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
 };
 use networking::p2p::network_channel::PeerBootstrapped;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockMetaStorage, BlockMetaStorageReader, IteratorMode};
+use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo};
+use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
@@ -53,10 +55,10 @@ impl Monitor {
         "monitor-manager"
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage) -> Result<MonitorRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, init_storage_data: &StorageInitInfo) -> Result<MonitorRef, CreateError> {
         sys.actor_of_props::<Monitor>(
             Self::name(),
-            Props::new_args((event_channel, msg_channel, shell_channel, persistent_storage.clone())),
+            Props::new_args((event_channel, msg_channel, shell_channel, persistent_storage.clone(), init_storage_data.chain_id.clone())),
         )
     }
 
@@ -91,18 +93,19 @@ impl Monitor {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)> for Monitor {
-    fn create_args((event_channel, msg_channel, shell_channel, persistent_storage): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage)) -> Self {
+impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage, ChainId)> for Monitor {
+    fn create_args((event_channel, msg_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
         let blocks_meta = BlockMetaStorage::new(&persistent_storage);
+        let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
         // TODO: TE-184 - monitor - count all downloaded blocks - is this necessery?
         // get downloaded count
         let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
             iter.count()
         } else { 0 };
         // get last header level
-        let level = blocks_meta.load_current_head()
+        let level = chain_meta_storage.get_current_head(&chain_id)
             .unwrap_or(None)
-            .map(|(_, level)| level)
+            .map(|head| head.level)
             .unwrap_or(0);
 
         let mut bootstrap_monitor = BootstrapMonitor::new();
@@ -256,12 +259,12 @@ impl Receive<ShellChannelMsg> for Monitor {
                 // update stats for block header
                 self.chain_monitor.process_block_header(msg.level as usize);
             }
-            ShellChannelMsg::BlockApplied(msg) => {
+            ShellChannelMsg::NewCurrentHead(head, ..) => {
                 // update stats for block applications
-                self.chain_monitor.process_block_application(msg.header().header.level() as usize);
+                self.chain_monitor.process_block_application(head.level as usize);
 
                 self.blocks_monitor.block_was_applied_by_protocol();
-                self.block_application_monitor.block_was_applied(msg);
+                self.block_application_monitor.block_was_applied(head);
             }
             ShellChannelMsg::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();
@@ -270,11 +273,7 @@ impl Receive<ShellChannelMsg> for Monitor {
                 // update stats for block operations
                 self.chain_monitor.process_block_operations(msg.level as usize);
             }
-            ShellChannelMsg::ShuttingDown(_) => (),
-            // TODO: TE-173: mempool stats
-            ShellChannelMsg::MempoolOperationReceived(_) => (),
-            ShellChannelMsg::MempoolStateChanged(_) => (),
-            ShellChannelMsg::InjectBlock(_) => (),
+            _ => (),
         }
     }
 }

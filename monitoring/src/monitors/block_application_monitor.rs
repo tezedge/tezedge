@@ -4,14 +4,14 @@
 use std::time::Instant;
 
 use crypto::hash::HashType;
-use shell::shell_channel::BlockApplied;
+use tezos_messages::Head;
 
 use crate::handlers::handler_messages::{BlockApplicationMessage, BlockInfo};
 
 pub struct ApplicationMonitor {
     total_applied: usize,
     current_applied: usize,
-    last_applied_block: Option<BlockApplied>,
+    last_applied_block: Option<Head>,
     first_update: Instant,
     last_update: Instant,
 }
@@ -28,7 +28,7 @@ impl ApplicationMonitor {
         }
     }
 
-    pub fn block_was_applied(&mut self, block_info: BlockApplied) {
+    pub fn block_was_applied(&mut self, block_info: Head) {
         self.total_applied += 1;
         self.current_applied += 1;
         self.last_applied_block = Some(block_info);
@@ -45,8 +45,8 @@ impl ApplicationMonitor {
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
         let last_block = if let Some(ref block) = self.last_applied_block {
             Some(BlockInfo {
-                hash: HashType::BlockHash.bytes_to_string(&block.header().hash),
-                level: block.header().header.level(),
+                hash: HashType::BlockHash.bytes_to_string(&block.hash),
+                level: block.level,
             })
         } else {
             None

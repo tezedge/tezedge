@@ -29,7 +29,7 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
                  &Meta {
                      validation_passes: block_header.header.validation_pass(),
@@ -41,7 +41,7 @@ impl OperationsMetaStorage {
         )
     }
 
-    pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn put_operations(&self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let block_hash = message.operations_for_block().hash().clone();
 
         match self.get(&block_hash)? {
@@ -68,7 +68,7 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
+    pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.kv.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
@@ -266,7 +266,7 @@ mod tests {
 
         let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let v = Meta::genesis_meta(&vec![44; 4]);
-        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {
             Some(value) => {
@@ -300,7 +300,7 @@ mod tests {
             level: 785,
             chain_id: vec![44; 4],
         };
-        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         v.is_validation_pass_present[2] = t;
         storage.put(&k, &v)?;
@@ -387,7 +387,7 @@ mod tests {
         let k_missing_1 = vec![0, 1, 2];
         let k_added_later = vec![6, 7, 8, 9];
 
-        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        let storage = OperationsMetaStorage::new(tmp_storage.storage());
         assert!(!storage.contains(&k)?);
         assert!(!storage.contains(&k_missing_1)?);
         assert!(!storage.contains(&k_added_later)?);

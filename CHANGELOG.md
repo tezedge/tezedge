@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New configuration parameter `--db-cfg-max-threads` to better control system resources.
 - New RPCs to make baking in sandbox mode possible with tezos-client.
 - Support for MacOS (10.13 and newer).
+- Enabling core dumps in debug mode (if not set), set max open files for process
 
 ### Changed
 

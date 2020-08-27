@@ -25,6 +25,7 @@ use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use tezos_api::identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::PeerConnectionThreshold;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::*;
 
@@ -64,30 +65,9 @@ pub struct P2p {
     pub disable_bootstrap_lookup: bool,
     pub bootstrap_lookup_addresses: Vec<String>,
     pub initial_peers: Vec<SocketAddr>,
-    pub peer_threshold: Threshold,
+    pub peer_threshold: PeerConnectionThreshold,
     pub disable_mempool: bool,
     pub private_node: bool,
-}
-
-/// Simple threshold, for representing integral ranges.
-#[derive(Copy, Clone, Debug)]
-pub struct Threshold {
-    low: usize,
-    high: usize,
-}
-
-impl Threshold {
-    /// Create new threshold, by specifying mnimum and maximum (inclusively).
-    ///
-    /// # Arguments
-    /// * `low` - Lower threshold bound
-    /// * `higher` - Upper threshold bound
-    ///
-    /// `low` cannot be bigger than `high`, otherwise function will panic
-    pub fn new(low: usize, high: usize) -> Self {
-        assert!(low <= high, "low must be less than or equal to high");
-        Threshold { low, high }
-    }
 }
 
 /// This actor is responsible for peer management.
@@ -102,7 +82,7 @@ pub struct PeerManager {
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
     /// Peer count threshold
-    threshold: Threshold,
+    threshold: PeerConnectionThreshold,
     /// Map of all peers
     peers: HashMap<ActorUri, PeerState>,
     /// DNS addresses used for bootstrapping

@@ -195,7 +195,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     );
 
     // create readonly pool pool
-    let pool = pool_wrapper.pool;
+    let pool = &pool_wrapper.pool;
     assert_eq!(0, pool.state().connections);
 
     // test pool
