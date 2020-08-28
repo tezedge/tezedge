@@ -51,10 +51,27 @@ curl --location --request POST 'http://127.0.0.1:3030/start' \
 
 ### **3. call the init_client RPC**
 
-Initializes the tezos-client with the harcoded accounts
+Initializes the tezos-client with the provided accounts. In this example, we provide 2 accounts.
 
 ```
-curl --location --request GET 'http://127.0.0.1:3030/init_client'
+curl --location --request POST 'http://116.202.128.230:3030/init_client' \
+--header 'Content-Type: application/json' \
+--data-raw '[
+    {
+        "alias": "bootstrap1",
+        "secret_key": "edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh",
+        "public_key": "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav",
+        "public_key_hash": "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
+        "initial_balance": "4000000000000"
+    },
+    {
+        "alias": "bootstrap2",
+        "secret_key": "edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo",
+        "public_key": "edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9",
+        "public_key_hash": "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN",
+        "initial_balance": "4000000000000"
+    }
+]'
 ```
 
 ### **4. call the activate_protocol RPC**
@@ -118,10 +135,14 @@ curl --location --request GET 'http://116.202.128.230:18732/chains/main/blocks/h
 
 ### **5. call the bake RPC**
 
-Bake a block using the bootstrap1 account 
+Bake a block using the provided account. (The account must me initialized in previous call of the /init_client endpoint) 
 
 ```
-curl --location --request GET 'http://127.0.0.1:3030/bake'
+curl --location --request POST 'http://116.202.128.230:3030/bake' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "alias": "bootstrap1"
+}'
 ```
 
 ### **6. call the stop RPC**

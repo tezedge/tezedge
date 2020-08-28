@@ -32,11 +32,12 @@ async fn main() {
     }
     fs::create_dir(TEZOS_CLIENT_DIR).expect("Failed to create tezos-client directory");
 
-    let client_runner = tezos_client_runner::TezosClientRunner::new(
+    // create a thread safe reference to the client runner struct
+    let client_runner = Arc::new(RwLock::new(tezos_client_runner::TezosClientRunner::new(
         "tezos-client",
         env.tezos_client_path,
         PathBuf::from(TEZOS_CLIENT_DIR),
-    );
+    )));
 
     // the port to open the rpc server on
     let rpc_port = env.sandbox_rpc_port;

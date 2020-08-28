@@ -4,7 +4,7 @@ use slog::{error, info, Logger};
 use warp::http::StatusCode;
 
 use crate::node_runner::LightNodeRunnerRef;
-use crate::tezos_client_runner::{TezosClientRunner, TezosProtcolActivationParameters};
+use crate::tezos_client_runner::{TezosClientRunnerRef, TezosProtcolActivationParameters, SandboxWallets, BakeRequest};
 
 /// Handler for start endpoint
 pub async fn start_node_with_config(
@@ -36,12 +36,14 @@ pub async fn start_node_with_config(
 pub async fn stop_node(
     log: Logger,
     runner: LightNodeRunnerRef,
-    client_runner: TezosClientRunner,
+    client_runner: TezosClientRunnerRef,
 ) -> Result<impl warp::Reply, Infallible> {
     info!(log, "Received request to stop the light node");
 
     // aquire a write lock to the runner
     let mut runner = runner.write().unwrap();
+
+    let client_runner = client_runner.read().unwrap();
 
     // cleanup tezos client data
     let _ = client_runner.cleanup();
@@ -57,12 +59,15 @@ pub async fn stop_node(
 }
 
 pub async fn init_client_data(
+    wallets: SandboxWallets,
     log: Logger,
-    client_runner: TezosClientRunner,
+    client_runner: TezosClientRunnerRef,
 ) -> Result<impl warp::Reply, Infallible> {
     info!(log, "Received request to init the tezos-client");
 
-    match client_runner.init_client_data() {
+    let mut client_runner = client_runner.write().unwrap();
+
+    match client_runner.init_client_data(wallets) {
         Ok(()) => Ok(StatusCode::OK),
         Err(e) => {
             error!(log, "Error init client, reason: {}", e);
@@ -74,11 +79,13 @@ pub async fn init_client_data(
 pub async fn activate_protocol(
     activation_parameters: TezosProtcolActivationParameters,
     log: Logger,
-    client_runner: TezosClientRunner,
+    client_runner: TezosClientRunnerRef,
 ) -> Result<impl warp::Reply, Infallible> {
     info!(log, "Received request to activate the protocol");
 
     println!("PARAMS: {:?}", activation_parameters);
+
+    let client_runner = client_runner.read().unwrap();
 
     match client_runner.activate_protocol(activation_parameters) {
         Ok(()) => Ok(StatusCode::OK),
@@ -90,12 +97,15 @@ pub async fn activate_protocol(
 }
 
 pub async fn bake_block_with_client(
+    request: BakeRequest,
     log: Logger,
-    client_runner: TezosClientRunner,
+    client_runner: TezosClientRunnerRef,
 ) -> Result<impl warp::Reply, Infallible> {
     info!(log, "Received request to bake a block");
 
-    match client_runner.bake_block() {
+    let client_runner = client_runner.read().unwrap();
+
+    match client_runner.bake_block(request) {
         Ok(()) => Ok(StatusCode::OK),
         Err(e) => {
             error!(log, "Error init client, reason: {}", e);

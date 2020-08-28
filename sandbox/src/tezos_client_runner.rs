@@ -2,19 +2,18 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::fs;
 use std::io::Write;
+use std::sync::{Arc, RwLock};
 
 use failure::Fail;
 use serde::Deserialize;
+
+use super::TEZOS_CLIENT_DIR;
 
 #[derive(Debug, Fail)]
 pub enum TezosClientRunnerError {
     /// IO Error.
     #[fail(display = "IO error during process creation")]
     IOError { reason: std::io::Error },
-
-    /// Path Error
-    #[fail(display = "Json argument parsing error")]
-    PathError,
 
     /// Protocol parameters json error
     #[fail(display = "Error while deserializing parameters json")]
@@ -37,48 +36,45 @@ impl From<serde_json::Error> for TezosClientRunnerError {
     }
 }
 
+/// Type alias for a vecotr of Wallets
+pub type SandboxWallets = Vec<Wallet>;
+
+
+/// Structure holding data used by tezos client
+#[derive(Clone, Debug, Deserialize)]
+pub struct Wallet {
+    alias: String,
+    public_key_hash: String,
+    public_key: String,
+    secret_key: String,
+    initial_balance: String,
+}
+
+/// The json body incoming with the bake request containing the alias for the wallet to bake with
+#[derive(Clone, Debug, Deserialize)]
+pub struct BakeRequest {
+    alias: String,
+}
+
+/// Thread-safe reference to the client runner
+pub type TezosClientRunnerRef = Arc<RwLock<TezosClientRunner>>;
+
+/// Structure holding data to use a tezos-client binary
 #[derive(Clone)]
 pub struct TezosClientRunner {
     pub name: String,
     pub executable_path: PathBuf,
     pub base_dir_path: PathBuf,
+    pub wallets: SandboxWallets,
 }
 
+/// A structure holding all the required parameters to activate an economic protocol
 #[derive(Clone, Debug, Deserialize)]
 pub struct TezosProtcolActivationParameters {
     timestamp: String,
     protocol_hash: String,
     protocol_parameters: serde_json::Value,
-
-    #[serde(skip)]
-    accounts: Vec<Vec<String>>
 }
-
-// hardcoded bootstrap accounts
-pub const SANDBOX_ACCOUNTS: &str = r#"
-    [
-      [
-        "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav",
-        "4000000000000"
-      ],
-      [
-        "edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9",
-        "4000000000000"
-      ],
-      [
-        "edpkuTXkJDGcFd5nh6VvMz8phXxU3Bi7h6hqgywNFi1vZTfQNnS1RV",
-        "4000000000000"
-      ],
-      [
-        "edpkuFrRoDSEbJYgxRtLx2ps82UdaYc1WwfS9sE11yhauZt5DgCHbU",
-        "4000000000000"
-      ],
-      [
-        "edpkv8EUUH68jmo3f7Um5PezmfGrRF24gnfLpH3sVNwJnV5bVCxL2n",
-        "4000000000000"
-      ]
-    ]
-  "#;
 
 impl TezosClientRunner {
     pub fn new(name: &str, executable_path: PathBuf, base_dir_path: PathBuf) -> Self {
@@ -86,40 +82,35 @@ impl TezosClientRunner {
             name: name.to_string(),
             executable_path,
             base_dir_path,
+            wallets: Vec::new(),
         }
     }
 
     /// Activate a protocol with the provided parameters
     pub fn activate_protocol(&self, mut activation_parameters: TezosProtcolActivationParameters) -> Result<(), TezosClientRunnerError> {
-        let base_dir = if let Some(path) = self.base_dir_path.to_str() {
-            path
-        } else {
-            return Err(TezosClientRunnerError::PathError);
-        };
-
         // create a temporary file, the tezos-client requires the parameters to be passed in a .json file
-        // we won't use tempfile becouse we need the path to the file
         let mut file = fs::File::create("protocol_parameters.json")?;
         
         // get as mutable object, so we can insert the hardcoded bootstrap accounts
-        // Note: we can include it in the request from the FE
         let params = if let Some(params) = activation_parameters.protocol_parameters.as_object_mut() {
             params
         } else {
             return Err(TezosClientRunnerError::ProtocolParameterError)
         };
 
+        let wallet_activation: Vec<[String; 2]> = self.wallets.clone().into_iter().map(|w| [w.public_key, w.initial_balance]).collect();
+
         // serialize the harcoded accounts as json array and include it in protocol_parameters
-        let sandbox_accounts = serde_json::from_str(SANDBOX_ACCOUNTS)?;
+        let sandbox_accounts = serde_json::json!(wallet_activation);
         params.insert("bootstrap_accounts".to_string(), sandbox_accounts);
 
         // write to a file for the tezos-client
-        writeln!(file, "{}", activation_parameters.protocol_parameters);
+        writeln!(file, "{}", activation_parameters.protocol_parameters)?;
 
         self.run_client(
             [
                 "--base-dir",
-                base_dir,
+                TEZOS_CLIENT_DIR,
                 "-A",
                 "localhost",
                 "-P",
@@ -151,24 +142,18 @@ impl TezosClientRunner {
     }
 
     /// Bake a block with the bootstrap1 account
-    pub fn bake_block(&self) -> Result<(), TezosClientRunnerError> {
-        let base_dir = if let Some(path) = self.base_dir_path.to_str() {
-            path
-        } else {
-            return Err(TezosClientRunnerError::PathError);
-        };
-
+    pub fn bake_block(&self, request: BakeRequest) -> Result<(), TezosClientRunnerError> {
         self.run_client(
             [
                 "--base-dir",
-                base_dir,
+                TEZOS_CLIENT_DIR,
                 "-A",
                 "localhost",
                 "-P",
                 "18732",
                 "bake",
                 "for",
-                "bootstrap1",
+                &request.alias,
             ]
             .to_vec(),
         )?;
@@ -177,19 +162,11 @@ impl TezosClientRunner {
     }
 
     /// Initialize the accounts in the tezos-client
-    pub fn init_client_data(&self) -> Result<(), TezosClientRunnerError> {
-        let base_dir = if let Some(path) = self.base_dir_path.to_str() {
-            println!("PATH: {}", path);
-            path
-        } else {
-            return Err(TezosClientRunnerError::PathError);
-        };
-        println!("Base dir: {}", base_dir);
-
+    pub fn init_client_data(&mut self, requested_wallets: SandboxWallets) -> Result<(), TezosClientRunnerError> {
         self.run_client(
             [
                 "--base-dir",
-                base_dir,
+                TEZOS_CLIENT_DIR,
                 "-A",
                 "localhost",
                 "-P",
@@ -202,51 +179,34 @@ impl TezosClientRunner {
             ]
             .to_vec(),
         )?;
-        self.run_client(
-            [
-                "--base-dir",
-                base_dir,
-                "-A",
-                "localhost",
-                "-P",
-                "18732",
-                "import",
-                "secret",
-                "key",
-                "bootstrap1",
-                "unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh",
-            ]
-            .to_vec(),
-        )?;
-        self.run_client(
-            [
-                "--base-dir",
-                base_dir,
-                "-A",
-                "localhost",
-                "-P",
-                "18732",
-                "import",
-                "secret",
-                "key",
-                "bootstrap2",
-                "unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo",
-            ]
-            .to_vec(),
-        )?;
+
+        for wallet in requested_wallets {
+            self.run_client(
+                [
+                    "--base-dir",
+                    TEZOS_CLIENT_DIR,
+                    "-A",
+                    "localhost",
+                    "-P",
+                    "18732",
+                    "import",
+                    "secret",
+                    "key",
+                    &wallet.alias,
+                    &format!("unencrypted:{}", &wallet.secret_key),
+                ]
+                .to_vec(),
+            )?;
+            self.wallets.push(wallet);
+        }
+        
         Ok(())
     }
 
     /// Cleanup the tezos-client directory
     pub fn cleanup(&self) -> Result<(), TezosClientRunnerError> {
-        let base_dir = if let Some(path) = self.base_dir_path.to_str() {
-            path
-        } else {
-            return Err(TezosClientRunnerError::PathError);
-        };
-
-        fs::remove_dir_all(base_dir)?;
-        fs::create_dir(base_dir)?;
+        fs::remove_dir_all(TEZOS_CLIENT_DIR)?;
+        fs::create_dir(TEZOS_CLIENT_DIR)?;
 
         Ok(())
     }
