@@ -15,7 +15,6 @@ use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "../tezos/interop/lib_tezos/libtezos-ffi-distribution-summary.json";
 const ARTIFACTS_DIR: &str = "artifacts";
-const TEZOS_CLIENT_DIR: &str = "../light_node/etc/tezedge_sandbox/tezos-client";
 
 #[derive(Debug)]
 struct RemoteLib {
@@ -156,11 +155,6 @@ fn main() {
         fs::remove_dir_all(ARTIFACTS_DIR).expect("Failed to delete artifacts directory!");
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
-
-    if Path::new(TEZOS_CLIENT_DIR).exists() {
-        fs::remove_dir_all(TEZOS_CLIENT_DIR).expect("Failed to delete tezos-client directory!");
-    }
-    fs::create_dir_all(TEZOS_CLIENT_DIR).expect("Failed to create tezos-client directory!");
 
     let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or_else(|_| "remote".to_string());
     run_builder(&build_chain);

@@ -1,4 +1,6 @@
 use std::sync::{Arc, RwLock};
+use std::fs;
+use std::path::{PathBuf, Path};
 
 use slog::{info, Drain, Level, Logger};
 
@@ -7,6 +9,8 @@ mod filters;
 mod handlers;
 mod node_runner;
 mod tezos_client_runner;
+
+const TEZOS_CLIENT_DIR: &str = "./tezos-client";
 
 #[tokio::main]
 async fn main() {
@@ -22,10 +26,16 @@ async fn main() {
         env.light_node_path,
     )));
 
+    // ensure the tezos-client directory does not exist and create a temporary dir for tezos-client data
+    if Path::new(TEZOS_CLIENT_DIR).exists() {
+        fs::remove_dir_all(TEZOS_CLIENT_DIR).expect("Failed to delete tezos-client directory!");
+    }
+    fs::create_dir(TEZOS_CLIENT_DIR).expect("Failed to create tezos-client directory");
+
     let client_runner = tezos_client_runner::TezosClientRunner::new(
         "tezos-client",
         env.tezos_client_path,
-        env.tezos_client_base_dir_path,
+        PathBuf::from(TEZOS_CLIENT_DIR),
     );
 
     // the port to open the rpc server on

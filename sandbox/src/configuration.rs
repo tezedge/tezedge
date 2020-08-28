@@ -7,7 +7,6 @@ pub struct LauncherEnvironment {
     pub log_level: slog::Level,
     pub sandbox_rpc_port: u16,
     pub tezos_client_path: PathBuf,
-    pub tezos_client_base_dir_path: PathBuf,
 }
 
 macro_rules! parse_validator_fn {
@@ -56,20 +55,6 @@ fn sandbox_app() -> App<'static, 'static> {
                 }),
         )
         .arg(
-            Arg::with_name("tezos-client-base-dir-path")
-                .long("tezos-client-base-dir-path")
-                .takes_value(true)
-                .value_name("PATH")
-                .help("Path to the tezos-client base directory")
-                .validator(|v| {
-                    if Path::new(&v).exists() {
-                        Ok(())
-                    } else {
-                        Err(format!("Tezos-client directory not found at '{}'", v))
-                    }
-                }),
-        )
-        .arg(
             Arg::with_name("log-level")
                 .long("log-level")
                 .takes_value(true)
@@ -114,11 +99,6 @@ impl LauncherEnvironment {
                 .expect("Was expecting value of sandbox-rpc-port"),
             tezos_client_path: args
                 .value_of("tezos-client-path")
-                .unwrap_or("")
-                .parse::<PathBuf>()
-                .expect("Provided value cannot be converted to path"),
-            tezos_client_base_dir_path: args
-                .value_of("tezos-client-base-dir-path")
                 .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),

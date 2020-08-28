@@ -208,8 +208,7 @@ run_sandbox() {
                                 --log-level "info" \
                                 --sandbox-rpc-port "3030" \
                                 --light-node-path "./target/$PROFILE/light-node" \
-                                --tezos-client-path "./sandbox/artifacts/tezos-client" \
-                                --tezos-client-base-dir-path "./light_node/etc/tezedge_sandbox/tezos-client" "${args[@]}"
+                                --tezos-client-path "./sandbox/artifacts/tezos-client" "${args[@]}"
 }
 
 case $1 in
