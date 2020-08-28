@@ -216,8 +216,7 @@ pub fn decode_value_bytes_benchmark(c: &mut Criterion) {
 criterion_group!{
     name = benches;
     config = Criterion::default();
-    // targets = deserialize_benchmark, decode_stream
-    targets = decode_value_hash_benchmark, decode_value_bytes_benchmark, decode_stream
+    targets = deserialize_benchmark, decode_value_hash_benchmark, decode_value_bytes_benchmark, decode_stream
 }
 
 criterion_main!(benches);
