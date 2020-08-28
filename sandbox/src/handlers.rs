@@ -4,7 +4,7 @@ use slog::{error, info, Logger};
 use warp::http::StatusCode;
 
 use crate::node_runner::LightNodeRunnerRef;
-use crate::tezos_client_runner::TezosClientRunner;
+use crate::tezos_client_runner::{TezosClientRunner, TezosProtcolActivationParameters};
 
 /// Handler for start endpoint
 pub async fn start_node_with_config(
@@ -72,12 +72,15 @@ pub async fn init_client_data(
 }
 
 pub async fn activate_protocol(
+    activation_parameters: TezosProtcolActivationParameters,
     log: Logger,
     client_runner: TezosClientRunner,
 ) -> Result<impl warp::Reply, Infallible> {
     info!(log, "Received request to activate the protocol");
 
-    match client_runner.activate_protocol() {
+    println!("PARAMS: {:?}", activation_parameters);
+
+    match client_runner.activate_protocol(activation_parameters) {
         Ok(()) => Ok(StatusCode::OK),
         Err(e) => {
             error!(log, "Error init client, reason: {}", e);
