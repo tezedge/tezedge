@@ -13,13 +13,15 @@ use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use znfe::OCamlError;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
+use tezos_messages::p2p::encoding::operations_for_blocks::path_encoding;
 
 pub type RustBytes = Vec<u8>;
 
@@ -95,28 +97,21 @@ pub struct ApplyBlockRequest {
 }
 
 impl ApplyBlockRequest {
-    pub fn convert_operations(block_operations: &Vec<Option<OperationsForBlocksMessage>>) -> Vec<Vec<Operation>> {
-        let mut operations = Vec::with_capacity(block_operations.len());
-
-        for block_ops in block_operations {
-            if let Some(bo_ops) = block_ops {
-                operations.push(bo_ops.operations().clone());
-            } else {
-                operations.push(vec![]);
-            }
-        }
-
-        operations
+    pub fn convert_operations(block_operations: Vec<OperationsForBlocksMessage>) -> Vec<Vec<Operation>> {
+        block_operations
+            .into_iter()
+            .map(|ops| ops.operations)
+            .collect()
     }
 }
 
 lazy_static! {
     pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
         Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
-        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding())),
+        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
         Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding())))))),
+        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
     ]);
 }
 
@@ -205,7 +200,7 @@ pub struct BeginConstructionRequest {
 lazy_static! {
     pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
     ]);
 }
@@ -225,7 +220,7 @@ pub struct ValidateOperationRequest {
 lazy_static! {
     pub static ref VALIDATE_OPERATION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
             Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("operation", Encoding::dynamic(Operation::encoding())),
+            Field::new("operation", Encoding::dynamic(Operation::encoding().clone())),
     ]);
 }
 
@@ -279,9 +274,9 @@ pub struct Applied {
 }
 
 #[inline]
-fn format_json_single_line(origin: &String) -> String {
+fn format_json_single_line(origin: &str) -> String {
     let json = serde_json::json!(origin);
-    serde_json::to_string(&json).unwrap_or(origin.clone())
+    serde_json::to_string(&json).unwrap_or_else(|_| origin.to_string())
 }
 
 impl fmt::Debug for Applied {
@@ -330,7 +325,7 @@ impl ValidateOperationResult {
         changed
     }
 
-    fn merge_applied(&mut self, new_items: &Vec<Applied>) -> bool {
+    fn merge_applied(&mut self, new_items: &[Applied]) -> bool {
         let mut changed = false;
         let mut added = false;
         let mut m = HashMap::new();
@@ -351,24 +346,24 @@ impl ValidateOperationResult {
         added || changed
     }
 
-    fn merge_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_refused(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.refused, new_items)
     }
 
-    fn merge_branch_refused(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_branch_refused(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.branch_refused, new_items)
     }
 
-    fn merge_branch_delayed(&mut self, new_items: &Vec<Errored>) -> bool {
+    fn merge_branch_delayed(&mut self, new_items: &[Errored]) -> bool {
         Self::merge_errored(&mut self.branch_delayed, new_items)
     }
 
-    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &Vec<Errored>) -> bool {
+    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &[Errored]) -> bool {
         let mut changed = false;
         let mut added = false;
         let mut m = HashMap::new();
 
-        for a in old_items.into_iter() {
+        for a in old_items.iter_mut() {
             m.insert(a.hash.clone(), (*a).clone());
         }
         for na in new_items {
@@ -487,11 +482,11 @@ pub enum CallError {
     },
 }
 
-impl From<ocaml::Error> for CallError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for CallError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
-                match parse_error_message(ffi_error) {
+            OCamlError::Exception(exception) => {
+                match exception.message() {
                     None => CallError::FailedToCall {
                         parsed_error_message: None
                     },
@@ -502,7 +497,6 @@ impl From<ocaml::Error> for CallError {
                     }
                 }
             }
-            _ => panic!("Unhandled ocaml error occurred for apply block! Error: {:?}", error)
         }
     }
 }
@@ -515,15 +509,14 @@ pub enum TezosRuntimeConfigurationError {
     }
 }
 
-impl From<ocaml::Error> for TezosRuntimeConfigurationError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for TezosRuntimeConfigurationError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Ocaml settings failed! Reason: {:?}", error)
         }
     }
 }
@@ -540,15 +533,14 @@ pub enum TezosGenerateIdentityError {
     },
 }
 
-impl From<ocaml::Error> for TezosGenerateIdentityError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for TezosGenerateIdentityError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 TezosGenerateIdentityError::GenerationError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Generate identity failed! Reason: {:?}", error)
         }
     }
 }
@@ -561,15 +553,14 @@ pub enum TezosStorageInitError {
     }
 }
 
-impl From<ocaml::Error> for TezosStorageInitError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for TezosStorageInitError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 TezosStorageInitError::InitializeError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Storage initialization failed! Reason: {:?}", error)
         }
     }
 }
@@ -588,15 +579,14 @@ pub enum GetDataError {
     }
 }
 
-impl From<ocaml::Error> for GetDataError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for GetDataError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 GetDataError::ReadError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Get data failed! Reason: {:?}", error)
         }
     }
 }
@@ -727,7 +717,7 @@ impl From<CallError> for ValidateOperationError {
                     },
                     Some(message) => {
                         ValidateOperationError::FailedToValidateOperation {
-                            message: message.to_string()
+                            message
                         }
                     }
                 }
@@ -752,15 +742,14 @@ pub enum BlockHeaderError {
     ExpectedButNotFound,
 }
 
-impl From<ocaml::Error> for BlockHeaderError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for BlockHeaderError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 BlockHeaderError::ReadError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Storage initialization failed! Reason: {:?}", error)
         }
     }
 }
@@ -773,29 +762,16 @@ pub enum ContextDataError {
     },
 }
 
-impl From<ocaml::Error> for ContextDataError {
-    fn from(error: ocaml::Error) -> Self {
+impl From<OCamlError> for ContextDataError {
+    fn from(error: OCamlError) -> Self {
         match error {
-            ocaml::Error::Exception(ffi_error) => {
+            OCamlError::Exception(exception) => {
                 ContextDataError::DecodeError {
-                    message: parse_error_message(ffi_error).unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
-            _ => panic!("Resolve context data failed! Reason: {:?}", error)
         }
     }
-}
-
-fn parse_error_message(ffi_error: ocaml::Value) -> Option<String> {
-    if ffi_error.is_block() {
-        // for exceptions, in the field 2, there is a message for Failure or Ffi_error
-        let error_message = ffi_error.field(1);
-        if error_message.tag() == ocaml::Tag::String {
-            let error_message: ocaml::Str = error_message.into();
-            return Some(error_message.as_str().to_string());
-        }
-    }
-    None
 }
 
 pub type Json = String;
@@ -845,20 +821,26 @@ pub enum FfiRpcService {
     HelpersRunOperation,
     HelpersPreapplyOperations,
     HelpersPreapplyBlock,
+    HelpersCurrentLevel,
+    DelegatesMinimalValidTime,
+    LiveBlocks,
 }
 
 lazy_static! {
     pub static ref PROTOCOL_JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("chain_arg", Encoding::String),
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),
             Field::new("ffi_service", Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[
+                    TagMap::new(vec![
                         Tag::new(0, "HelpersRunOperation", Encoding::Unit),
                         Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
                         Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
+                        Tag::new(3, "HelpersCurrentLevel", Encoding::Unit),
+                        Tag::new(4, "DelegatesMinimalValidTime", Encoding::Unit),
+                        Tag::new(5, "LiveBlocks", Encoding::Unit),
                     ]),
                 )
             ),
@@ -897,7 +879,7 @@ impl From<CallError> for ProtocolRpcError {
                     },
                     Some(message) => {
                         ProtocolRpcError::FailedToCallProtocolRpc {
-                            message: message.to_string()
+                            message
                         }
                     }
                 }
@@ -906,6 +888,77 @@ impl From<CallError> for ProtocolRpcError {
                 message
             },
             CallError::InvalidResponseData { message } => ProtocolRpcError::InvalidResponseData {
+                message
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ComputePathRequest {
+    pub operations: Vec<Vec<OperationHash>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ComputePathResponse {
+    pub operations_hashes_path: Vec<Path>,
+}
+
+lazy_static! {
+    pub static ref COMPUTE_PATH_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))))),
+    ]);
+}
+
+lazy_static! {
+    pub static ref COMPUTE_PATH_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("operations_hashes_path", Encoding::dynamic(Encoding::list(path_encoding()))),
+    ]);
+}
+
+impl FfiMessage for ComputePathRequest {
+    fn encoding() -> &'static Encoding {
+        &COMPUTE_PATH_REQUEST_ENCODING
+    }
+}
+
+impl FfiMessage for ComputePathResponse {
+    fn encoding() -> &'static Encoding {
+        &COMPUTE_PATH_RESPONSE_ENCODING
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum ComputePathError {
+    #[fail(display = "Path computation failed, message: {}!", message)]
+    PathError {
+        message: String
+    },
+    #[fail(display = "Path computation failed, message: {}!", message)]
+    InvalidRequestResponseData {
+        message: String
+    },
+}
+
+impl From<CallError> for ComputePathError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { parsed_error_message } => {
+                match parsed_error_message {
+                    None => ComputePathError::PathError {
+                        message: "unknown".to_string()
+                    },
+                    Some(message) => {
+                        ComputePathError::PathError {
+                            message: message.to_string()
+                        }
+                    }
+                }
+            }
+            CallError::InvalidRequestData { message } => ComputePathError::InvalidRequestResponseData {
+                message
+            },
+            CallError::InvalidResponseData { message } => ComputePathError::InvalidRequestResponseData {
                 message
             },
         }

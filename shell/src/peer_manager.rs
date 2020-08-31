@@ -25,6 +25,7 @@ use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use tezos_api::identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::PeerConnectionThreshold;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::*;
 
@@ -58,25 +59,15 @@ pub struct ConnectToPeer {
     pub address: SocketAddr
 }
 
-/// Simple threshold, for representing integral ranges.
-#[derive(Copy, Clone, Debug)]
-pub struct Threshold {
-    low: usize,
-    high: usize,
-}
-
-impl Threshold {
-    /// Create new threshold, by specifying mnimum and maximum (inclusively).
-    ///
-    /// # Arguments
-    /// * `low` - Lower threshold bound
-    /// * `higher` - Upper threshold bound
-    ///
-    /// `low` cannot be bigger than `high`, otherwise function will panic
-    pub fn new(low: usize, high: usize) -> Self {
-        assert!(low <= high, "low must be less than or equal to high");
-        Threshold { low, high }
-    }
+#[derive(Debug, Clone)]
+pub struct P2p {
+    pub listener_port: u16,
+    pub disable_bootstrap_lookup: bool,
+    pub bootstrap_lookup_addresses: Vec<String>,
+    pub initial_peers: Vec<SocketAddr>,
+    pub peer_threshold: PeerConnectionThreshold,
+    pub disable_mempool: bool,
+    pub private_node: bool,
 }
 
 /// This actor is responsible for peer management.
@@ -91,11 +82,13 @@ pub struct PeerManager {
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
     /// Peer count threshold
-    threshold: Threshold,
+    threshold: PeerConnectionThreshold,
     /// Map of all peers
     peers: HashMap<ActorUri, PeerState>,
     /// DNS addresses used for bootstrapping
     bootstrap_addresses: Vec<String>,
+    /// Disable DNS bootstrap addresses lookup, if true
+    disable_bootstrap_lookup: bool,
     /// List of initial peers to connect to
     initial_peers: HashSet<SocketAddr>,
     /// Indicates that mempool should be disabled
@@ -133,14 +126,9 @@ impl PeerManager {
                  network_channel: NetworkChannelRef,
                  shell_channel: ShellChannelRef,
                  tokio_executor: Handle,
-                 bootstrap_addresses: &[String],
-                 initial_peers: &[SocketAddr],
-                 threshold: Threshold,
-                 listener_port: u16,
                  identity: Identity,
                  network_version: NetworkVersion,
-                 disable_mempool: bool,
-                 private_node: bool,
+                 p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
             PeerManager::name(),
@@ -148,14 +136,10 @@ impl PeerManager {
                 network_channel,
                 shell_channel,
                 tokio_executor,
-                bootstrap_addresses.to_vec(),
-                HashSet::from_iter(initial_peers.to_vec()),
-                threshold,
-                listener_port,
                 identity,
                 network_version,
-                disable_mempool,
-                private_node)),
+                p2p_config,
+            )),
         )
     }
 
@@ -170,14 +154,16 @@ impl PeerManager {
         if self.peers.is_empty() || self.discovery_last.filter(|discovery_last| discovery_last.elapsed() <= DISCOVERY_INTERVAL).is_none() {
             self.discovery_last = Some(Instant::now());
 
-            info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
-            dns_lookup_peers(&self.bootstrap_addresses, &log).iter()
-                .for_each(|address| {
-                    if !self.is_blacklisted(&address.ip()) {
-                        info!(log, "Found potential peer"; "address" => address);
-                        self.potential_peers.insert(*address);
-                    }
-                });
+            if !self.disable_bootstrap_lookup {
+                info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
+                dns_lookup_peers(&self.bootstrap_addresses, &log).iter()
+                    .for_each(|address| {
+                        if !self.is_blacklisted(&address.ip()) {
+                            info!(log, "Found potential peer"; "address" => address);
+                            self.potential_peers.insert(*address);
+                        }
+                    });
+            }
 
             if self.potential_peers.is_empty() {
                 info!(log, "Using initial peers as a potential peers"; "initial_peers" => format!("{:?}", &self.initial_peers));
@@ -204,7 +190,7 @@ impl PeerManager {
             socket_address,
         ).unwrap();
 
-        self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: socket_address.clone() });
+        self.peers.insert(peer.uri().clone(), PeerState { peer_ref: peer.clone(), address: *socket_address });
 
         self.network_channel.tell(
             Publish {
@@ -255,22 +241,23 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, NetworkVersion, bool, bool)> for PeerManager {
-    fn create_args((network_channel, shell_channel, tokio_executor, bootstrap_addresses, initial_peers, threshold, listener_port, identity, network_version, disable_mempool, private_node):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Vec<String>, HashSet<SocketAddr>, Threshold, u16, Identity, NetworkVersion, bool, bool)) -> Self
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)> for PeerManager {
+    fn create_args((network_channel, shell_channel, tokio_executor, identity, network_version, p2p_config):
+                   (NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)) -> Self
     {
         PeerManager {
             network_channel,
             shell_channel,
             tokio_executor,
-            bootstrap_addresses,
-            initial_peers,
-            threshold,
-            listener_port,
+            bootstrap_addresses: p2p_config.bootstrap_lookup_addresses,
+            disable_bootstrap_lookup: p2p_config.disable_bootstrap_lookup,
+            initial_peers: HashSet::from_iter(p2p_config.initial_peers),
+            threshold: p2p_config.peer_threshold,
+            listener_port: p2p_config.listener_port,
             identity,
             network_version,
-            disable_mempool,
-            private_node,
+            disable_mempool: p2p_config.disable_mempool,
+            private_node: p2p_config.private_node,
             rx_run: Arc::new(AtomicBool::new(true)),
             potential_peers: HashSet::new(),
             peers: HashMap::new(),
@@ -355,7 +342,7 @@ impl Receive<SystemEvent> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Option<BasicActorRef>) {
         if let SystemEvent::ActorTerminated(evt) = msg {
-            if let Some(_) = self.peers.remove(evt.actor.uri()) {
+            if self.peers.remove(evt.actor.uri()).is_some() {
                 self.trigger_check_peer_count(ctx);
             }
         }
@@ -414,14 +401,13 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                     .for_each(|message| match message {
                         PeerMessage::Advertise(message) => {
                             // extract potential peers from the advertise message
-                            info!(ctx.system.log(), "Received advertise message"; "peer" => received.peer.name());
+                            info!(ctx.system.log(), "Received advertise message"; "peer" => received.peer.name(), "peers" => format!("{:?}", message.id().join(", ")));
                             self.process_potential_peers(message.id());
                         }
                         PeerMessage::Bootstrap => {
                             // to a bootstrap message we will respond with list of potential peers
                             info!(ctx.system.log(), "Received bootstrap message"; "peer" => received.peer.name());
                             let addresses = self.peers.values()
-                                .into_iter()
                                 .filter(|peer_state| peer_state.peer_ref != received.peer)
                                 .map(|peer_state| peer_state.address)
                                 .collect::<Vec<_>>();
@@ -436,7 +422,6 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 // received message that bootstrap process failed for the peer
                 match potential_peers_to_connect {
                     Some(peers) => {
-                        info!(ctx.system.log(), "Received list of potential peers in the NACK message"; "ip" => format!("{}", address.ip()), "peers" => format!("{:?}", &peers));
                         self.process_potential_peers(&peers);
                         self.trigger_check_peer_count(ctx);
                     }

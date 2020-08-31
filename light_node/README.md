@@ -7,8 +7,8 @@ This is an implementation of a lightweight Tezos node written in Rust.
 Detailed information on how to start the node can be found in the repository [README](../README.md) file 
 
 ## Arguments
-All arguments and their default values are in the [tezedge.config](./etc/tezedge/tezedge.config) file.
-They can be provided also as command line arguments in the same format, in which case they have higher priority than the ones in the config file
+All arguments and their default values can be found in the [tezedge.config](./etc/tezedge/tezedge.config) file.
+They can also be provided as command line arguments in the same format, in which case they have higher priority than the ones in config file
 
 
 ### Tezos data dir
@@ -28,15 +28,24 @@ In case it starts with "./" or "../", it is a relative path to the current dir, 
 --identity-file <PATH>
 ```
 
+## Database configuration
 ### Bootstrap database path
-Path to bootstrap database directory. 
+Path to the bootstrap database directory. 
 In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir. 
-If directory does not exists, it will be created. If directory already exists, and 
-contains valid database, node will continue in the bootstrap process on that database
+If the directory does not exist, it will be created. If directory already exists and 
+it contains a valid database, the node will continue in the bootstrapping process on that database
 
 ```
 --bootstrap-db-path <PATH>
 ```
+
+### (Optional) parameters
+```
+#Max number of threads used by database configuration. If not specified, then number of threads will be equal to number of CPU cores.
+--db-cfg-max-threads <NUM>
+```
+
+-----
 
 ### Bootstrap lookup addresses
 List of peers to bootstrap the network from. Peers are delimited by a colon. 
@@ -47,7 +56,7 @@ For further information, see `--network` parameter of the OCaml node.
 ```
 
 ### Logging file
-Path to the logger file. If provided, logs are written to the log file, otherwise they are displayed in the terminal. 
+Path to the logger file. If provided, logs are written to the log file, otherwise they will be displayed in the terminal. 
 In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir
 ```
 --log-file <PATH>
@@ -56,13 +65,13 @@ In case it starts with "./" or "../", it is a relative path to the current dir, 
 ### Logging format
 Set format of logger entries, used usually with `--logger-format` argument.
 Possible values are either `simple` or `json`.
-Simple format is human-readable format while JSON produces structured, easily machine-consumable log entries.
+Simple format is a human-readable format while JSON produces structured, easily machine-consumable log entries.
 
 ```
 --log-format <LOG-FORMAT>
 ```
 
-### Logging format
+### Logging level
 Set log level. Possible values are: `critical`, `error`, `warn`, `info`, `debug`, `trace`
 ```
 --log-level <LEVEL>
@@ -90,7 +99,7 @@ Specifies port for peer to peer communication.
 ```
 
 ### RPC port
-The node contains a subset of Tezos node REST API, described in further sections. This argument specifies the port on which
+The node contains a subset of the Tezos node's REST API as described in further sections. This argument specifies the port on which
 those APIs will be available.
 
 ```
@@ -98,15 +107,14 @@ those APIs will be available.
 ```
 
 ### WebSocket Access Address
-The node exposes various metrics and statistics in real-time through a websocket. This argument specifies the address on which this websocket 
-will be accessible.
+The node exposes various metrics and statistics in real-time through a websocket. This argument specifies the address at which this websocket will be accessible.
 
 ```
 --websocket-address <IP:PORT>
 ```
 
 ### Monitor port
-Port on which the TezEdge node monitoring information will be exposed
+The port on which the monitoring information for the TezEdge node will be exposed
 ```
 --monitor-port <PORT>
 ```
@@ -120,14 +128,14 @@ Each peer is described by its address and port in `IP:PORT` format, delimited by
 ``` 
 
 ### Lower peer threshold
-Set minimal peer number, if a running node does not has enough connected peers, peer discovery is enforced.
+Set minimal number of peers, if the running node does not have enough connected peers, peer discovery is enforced.
 
 ```
 -peer-thresh-low <NUMBER>
 ```
 
 ### Higher peer threshold
-Set maximum number of connected peers, a running node will not try to connect to any more peers if this threshold is met.
+Set maximum number of connected peers. If this threshold is met, then the running node will not try to connect to any more peers.
 
 ```
 --peer-thresh-high <NUMBER>
@@ -142,13 +150,69 @@ For example: `./target/debug/protocol-runner`.
 ```
 
 ### Number of ffi calls 
-Number of ffi calls, after which the Ocaml garbage collector will be called
+Number of ffi calls, after which the Ocaml garbage collector will be called.
 ```
 --ffi-calls-gc-treshold <NUM>
 ```
 
-### Record flag
-Flag for turning record mode on/off
+### Bootstrap DNS lookup
+Disables DNS lookup to get peers to bootstrap from the network. Default: false
 ```
---record <BOOL>
+--disable-bootstrap-lookup
 ```
+### Mempool
+Enable or disable mempool.
+```
+--disable-mempool
+```
+
+### Private node mode
+Enable or disable the private node. Use peers to set the IP addresses of the peers you want to connect to.
+```
+--private-node
+```
+
+### Test chain
+Flag for enable/disable test chain switching for block applying. Default: false
+```
+--enable-testchain <BOOL>
+```
+
+### Ffi connection pool max connections
+Max number of FFI pool connections. default: 10
+```
+--ffi-pool-max-connections <NUM>
+```
+
+### Ffi connection timeout
+Number of seconds to wait for connection. default: 60
+```
+--ffi-pool-connection-timeout-in-secs <NUM>
+```
+
+### Ffi pool lifetime
+Number of seconds to remove protocol_runner from pool, default: 21600 (6 hours).
+```
+--ffi-pool-max-lifetime-in-secs <NUM>
+```
+
+### Ffi pool unused timeout
+Number of seconds to remove unused protocol_runner from pool, default: 1800 (30 minutes).
+```
+--ffi-pool-idle-timeout-in-secs <NUM>
+```
+
+### Recording context actions
+Activate recording of context storage actions.
+```
+--store-context-actions 
+```
+
+### Sandbox context patching
+Path to the json file with key-values which will be added to the empty context on startup and commit genesis.
+```
+--sandbox-patch-context-json-file <PATH>
+```
+
+# Performance and optimization
+TODO: write hints for best performance and parameter configuration

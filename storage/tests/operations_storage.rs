@@ -16,7 +16,7 @@ fn test_get_operations() -> Result<(), Error> {
     let block_hash_2 = HashType::BlockHash.string_to_bytes("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
     let block_hash_3 = HashType::BlockHash.string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
 
-    let mut storage = OperationsStorage::new(tmp_storage.storage());
+    let storage = OperationsStorage::new(tmp_storage.storage());
     let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 3), Path::Op, vec![]);
     storage.put_operations(&message)?;
     let message = OperationsForBlocksMessage::new(OperationsForBlock::new(block_hash_1.clone(), 1), Path::Op, vec![]);

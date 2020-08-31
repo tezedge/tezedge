@@ -1,13 +1,17 @@
+use std::collections::HashMap;
+
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 use serde::{Deserialize, Serialize};
+
 use tezos_encoding::{
-    types::BigInt,
     encoding::{Encoding, Field, HasEncoding},
+    has_encoding,
+    types::BigInt,
 };
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
-use crate::protocol::{UniversalValue, ToRpcJsonMap};
-use std::collections::HashMap;
+
+use crate::non_cached_data;
+use crate::protocol::{ToRpcJsonMap, UniversalValue};
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -67,9 +71,6 @@ pub struct ParametricConstants {
     min_proposal_quorum: i32,
     initial_endorsers: u16,
     delay_per_missing_endorsement: i64,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
 impl ToRpcJsonMap for ParametricConstants {
@@ -105,8 +106,8 @@ impl ToRpcJsonMap for ParametricConstants {
     }
 }
 
-impl HasEncoding for ParametricConstants {
-    fn encoding() -> Encoding {
+non_cached_data!(ParametricConstants);
+has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
             Encoding::Obj(vec![
                 Field::new("preserved_cycles", Encoding::Uint8),
                 Field::new("blocks_per_cycle", Encoding::Int32),
@@ -135,17 +136,4 @@ impl HasEncoding for ParametricConstants {
                 Field::new("initial_endorsers", Encoding::Uint16),
                 Field::new("delay_per_missing_endorsement", Encoding::Int64),
             ])
-    }
-}
-
-impl CachedData for ParametricConstants {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});

@@ -10,8 +10,8 @@ use serde_json::Value;
 
 #[derive(Debug)]
 pub enum NodeType {
-    Tezedge,
-    Ocaml,
+    Node1,
+    Node2,
 }
 
 #[ignore]
@@ -25,7 +25,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     const MAX_CYCLE_LOOPS: i64 = 4;
 
     for level in from_block..to_block + 1 {
-        let block_json = get_rpc_as_json(NodeType::Ocaml, &format!("{}/{}", "chains/main/blocks", level)).await
+        let block_json = get_rpc_as_json(NodeType::Node1, &format!("{}/{}", "chains/main/blocks", level)).await
             .expect("Failed to get block from ocaml");
 
         if level <= 0 {
@@ -47,7 +47,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants for
-        let constants_json = get_rpc_as_json(NodeType::Tezedge, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
+        let constants_json = get_rpc_as_json(NodeType::Node2, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
             .expect("Failed to get constants from tezedge");
 
         let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
@@ -130,8 +130,8 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) -> (Value, Value) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     println!("Checking: {}", rpc_path);
-    let ocaml_json = get_rpc_as_json(NodeType::Ocaml, rpc_path).await.unwrap();
-    let tezedge_json = get_rpc_as_json(NodeType::Tezedge, rpc_path).await.unwrap();
+    let ocaml_json = get_rpc_as_json(NodeType::Node1, rpc_path).await.unwrap();
+    let tezedge_json = get_rpc_as_json(NodeType::Node2, rpc_path).await.unwrap();
     assert_json_eq!(tezedge_json.clone(), ocaml_json.clone());
     (ocaml_json, tezedge_json)
 }
@@ -151,14 +151,14 @@ async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::v
 
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
     match node {
-        NodeType::Ocaml => format!(
+        NodeType::Node1 => format!(
             "{}/{}",
-            &ocaml_node_rpc_context_root(),
+            &node_rpc_context_root_1(),
             rpc_path
         ), // reference Ocaml node
-        NodeType::Tezedge => format!(
+        NodeType::Node2 => format!(
             "{}/{}",
-            &tezedge_node_rpc_context_root(),
+            &node_rpc_context_root_2(),
             rpc_path
         ), // Tezedge node
     }
@@ -178,12 +178,12 @@ fn to_block_header() -> i64 {
         .unwrap_or_else(|_| panic!("TO_BLOCK_HEADER env variable can not be parsed as a number, check rpc/README.md"))
 }
 
-fn ocaml_node_rpc_context_root() -> String {
-    env::var("OCAML_NODE_RPC_CONTEXT_ROOT")
-        .unwrap_or("http://ocaml-node-run:8732".to_string())
+fn node_rpc_context_root_1() -> String {
+    env::var("NODE_RPC_CONTEXT_ROOT_1")
+        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set")
 }
 
-fn tezedge_node_rpc_context_root() -> String {
-    env::var("TEZEDGE_NODE_RPC_CONTEXT_ROOT")
-        .unwrap_or("http://tezedge-node-run:18732".to_string())
+fn node_rpc_context_root_2() -> String {
+    env::var("NODE_RPC_CONTEXT_ROOT_2")
+        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set")
 }

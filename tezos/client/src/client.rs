@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse, ComputePathError, ComputePathRequest, ComputePathResponse};
 use tezos_api::identity::Identity;
-use tezos_interop::{ffi, runtime};
+use tezos_interop::ffi;
 
 /// Override runtime configuration for OCaml runtime
 pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
@@ -116,6 +116,20 @@ pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpc
     }
 }
 
+/// Call compute path
+/// TODO: TE-207 Implement in Rust
+pub fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError> {
+    match ffi::compute_path(request) {
+        Ok(result) => Ok(result?),
+        Err(e) => {
+            Err(ComputePathError::PathError {
+                message: format!("Path computation failed! Reason: {:?}", e)
+            })
+        }
+    }
+}
+
+
 /// Call helpers_preapply_operations shell service
 pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
     match ffi::helpers_preapply_operations(request) {
@@ -165,5 +179,5 @@ pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: 
 }
 
 pub fn shutdown_runtime() {
-    runtime::shutdown();
+    ffi::shutdown();
 }

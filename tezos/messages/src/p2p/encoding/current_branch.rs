@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
+use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::block_header::BlockHeader;
 
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
@@ -27,31 +29,18 @@ impl CurrentBranchMessage {
         CurrentBranchMessage {
             chain_id,
             current_branch,
-            body: Default::default()
+            body: Default::default(),
         }
     }
 }
 
-impl HasEncoding for CurrentBranchMessage {
-    fn encoding() -> Encoding {
+cached_data!(CurrentBranchMessage, body);
+has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("current_branch", CurrentBranch::encoding())
+            Field::new("current_branch", CurrentBranch::encoding().clone())
         ])
-    }
-}
-
-impl CachedData for CurrentBranchMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
@@ -69,15 +58,15 @@ impl CurrentBranch {
         CurrentBranch {
             current_head,
             history,
-            body: Default::default()
+            body: Default::default(),
         }
     }
 }
 
-impl HasEncoding for CurrentBranch {
-    fn encoding() -> Encoding {
+cached_data!(CurrentBranch, body);
+has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("current_head", Encoding::dynamic(BlockHeader::encoding())),
+            Field::new("current_head", Encoding::dynamic(BlockHeader::encoding().clone())),
             Field::new("history", Encoding::Split(Arc::new(|schema_type|
                 match schema_type {
                     SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
@@ -85,20 +74,7 @@ impl HasEncoding for CurrentBranch {
                 }
             )))
         ])
-    }
-}
-
-impl CachedData for CurrentBranch {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -115,22 +91,9 @@ impl GetCurrentBranchMessage {
     }
 }
 
-impl HasEncoding for GetCurrentBranchMessage {
-    fn encoding() -> Encoding {
+cached_data!(GetCurrentBranchMessage, body);
+has_encoding!(GetCurrentBranchMessage, GET_CURRENT_BRANCH_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId))
         ])
-    }
-}
-
-impl CachedData for GetCurrentBranchMessage {
-    #[inline]
-    fn cache_reader(&self) -> & dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});

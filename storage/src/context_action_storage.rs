@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use failure::Fail;
-use rocksdb::{ColumnFamilyDescriptor, Options, SliceTransform};
+use rocksdb::{ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
@@ -16,7 +16,7 @@ use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
-use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{BincodeEncoded, Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::StorageError;
@@ -118,7 +118,7 @@ impl ContextActionStorage {
             let mut base_iterator = self.context_by_contract_index.get_by_contract_address_iterator(&hash, cursor_id)?.peekable();
             if let Some(action_type) = cursor_filters.action_type {
                 if let Some(index) = base_iterator.peek() {
-                    let type_iterator = self.context_by_type_index.get_by_action_types_iterator(&action_type, Some(index.clone()))?;
+                    let type_iterator = self.context_by_type_index.get_by_action_types_iterator(&action_type, Some(*index))?;
                     let iterators: Vec<Box<dyn Iterator<Item=SequenceNumber>>> = vec![Box::new(base_iterator), Box::new(type_iterator)];
                     self.load_indexes(sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX)).into_iter())
                 } else {
@@ -296,7 +296,7 @@ impl ContextActionByBlockHashIndex {
             |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),
         );
         Ok(self.kv.prefix_iterator(&key)?
-            .filter_map(|(key, _)| key.and_then(|k| Ok(k.id)).ok()))
+            .filter_map(|(key, _)| key.map(|k| k.id).ok()))
     }
 }
 
@@ -305,7 +305,7 @@ impl KeyValueSchema for ContextActionByBlockHashIndex {
     type Value = ();
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByBlockHashKey::LEN_BLOCK_HASH));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
@@ -421,7 +421,7 @@ impl KeyValueSchema for ContextActionByContractIndex {
     type Value = ();
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByContractIndexKey::LEN_CONTRACT_ADDRESS));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         // cf_opts.set_comparator("reverse_id", ContextActionByContractIndexKey::reverse_id_comparator);
@@ -609,7 +609,7 @@ impl KeyValueSchema for ContextActionByTypeIndex {
     type Value = ();
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(mem::size_of::<ContextActionType>()));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         // cf_opts.set_comparator("reverse_id", ContextActionByTypeIndexKey::reverse_id_comparator);
@@ -782,7 +782,7 @@ pub mod sorted_intersect {
             I::Item: Ord,
     {
         let mut ret = Default::default();
-        if iters.len() == 0 {
+        if iters.is_empty() {
             return ret;
         } else if iters.len() == 1 {
             let iter = iters.iter_mut().next().unwrap();

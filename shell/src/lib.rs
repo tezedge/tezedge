@@ -3,9 +3,6 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
-use crypto::hash::{BlockHash, HashType};
-use tezos_messages::p2p::encoding::block_header::Level;
-
 mod collections;
 mod state;
 
@@ -17,18 +14,31 @@ pub mod chain_manager;
 pub mod peer_manager;
 pub mod mempool_prevalidator;
 
-/// This struct holds info about head and his level
-#[derive(Clone, Debug)]
-pub struct Head {
-    /// BlockHash of head.
-    hash: BlockHash,
-    /// Level of the head.
-    pub level: Level,
+/// Simple threshold, for representing integral ranges.
+#[derive(Copy, Clone, Debug)]
+pub struct PeerConnectionThreshold {
+    low: usize,
+    high: usize,
 }
 
-impl Head {
-    fn to_debug_info(&self) -> (String, Level) {
-        (HashType::BlockHash.bytes_to_string(&self.hash), self.level)
+impl PeerConnectionThreshold {
+    /// Create new threshold, by specifying mnimum and maximum (inclusively).
+    ///
+    /// # Arguments
+    /// * `low` - Lower threshold bound
+    /// * `higher` - Upper threshold bound
+    ///
+    /// `low` cannot be bigger than `high`, otherwise function will panic
+    pub fn new(low: usize, high: usize) -> Self {
+        assert!(low <= high, "low must be less than or equal to high");
+        PeerConnectionThreshold { low, high }
+    }
+
+    /// Threshold for minimal count of bootstrapped peers
+    /// Ocaml counts it from connections: see [node_shared_arg.ml]
+    pub fn num_of_peers_for_bootstrap_threshold(&self) -> usize {
+        let avarage_connections = (self.low + self.high) / 2;
+        std::cmp::min(2, avarage_connections / 4)
     }
 }
 

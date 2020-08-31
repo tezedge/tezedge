@@ -16,7 +16,8 @@ use riker::actors::*;
 use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType};
-use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
+use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
@@ -71,16 +72,29 @@ impl ChainFeeder {
             let tezos_env = tezos_env.clone();
 
             thread::spawn(move || -> Result<(), Error>{
-                let mut block_storage = BlockStorage::new(&persistent_storage);
-                let mut block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+                let block_storage = BlockStorage::new(&persistent_storage);
+                let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+                let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
                 let operations_storage = OperationsStorage::new(&persistent_storage);
-                let mut operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+                let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
                 let mut ipc_server = ipc_server;
 
                 while apply_block_run.load(Ordering::Acquire) {
                     match ipc_server.accept() {
                         Ok(protocol_controller) =>
-                            match feed_chain_to_protocol(&tezos_env, &init_storage_data, &apply_block_run, &shell_channel, &mut block_storage, &mut block_meta_storage, &operations_storage, &mut operations_meta_storage, protocol_controller, &log) {
+                            match feed_chain_to_protocol(
+                                &tezos_env,
+                                &init_storage_data,
+                                &apply_block_run,
+                                &shell_channel,
+                                &block_storage,
+                                &block_meta_storage,
+                                &chain_meta_storage,
+                                &operations_storage,
+                                &operations_meta_storage,
+                                protocol_controller,
+                                &log,
+                            ) {
                                 Ok(()) => debug!(log, "Feed chain to protocol finished"),
                                 Err(err) => {
                                     if apply_block_run.load(Ordering::Acquire) {
@@ -112,6 +126,11 @@ impl ChainFeeder {
 
     fn process_shell_channel_message(&mut self, _ctx: &Context<ChainFeederMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
+            ShellChannelMsg::ApplyBlock(_) => {
+                if let Some(join_handle) = self.block_applier_thread.lock().unwrap().as_ref() {
+                    join_handle.thread().unpark();
+                }
+            }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.block_applier_run.store(false, Ordering::Release);
             }
@@ -215,10 +234,11 @@ fn feed_chain_to_protocol(
     init_storage_data: &StorageInitInfo,
     apply_block_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
-    block_storage: &mut BlockStorage,
-    block_meta_storage: &mut BlockMetaStorage,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    chain_meta_storage: &ChainMetaStorage,
     operations_storage: &OperationsStorage,
-    operations_meta_storage: &mut OperationsMetaStorage,
+    operations_meta_storage: &OperationsMetaStorage,
     protocol_controller: ProtocolController,
     log: &Logger,
 ) -> Result<(), FeedChainError> {
@@ -230,6 +250,7 @@ fn feed_chain_to_protocol(
         &shell_channel,
         block_storage,
         block_meta_storage,
+        chain_meta_storage,
         operations_meta_storage,
         &protocol_controller,
         &log,
@@ -237,9 +258,11 @@ fn feed_chain_to_protocol(
         &init_storage_data,
     )?;
 
+    let chain_id = &init_storage_data.chain_id;
+
     // now resolve where to start apply next blocks (at least genesis should be there)
-    let (mut current_head_hash, ..): (BlockHash, _) = match &block_meta_storage.load_current_head()? {
-        Some(block) => block.clone(),
+    let mut current_head_hash: BlockHash = match &chain_meta_storage.get_current_head(chain_id)? {
+        Some(block) => block.hash.clone(),
         None => {
             // this should not happen here, we applied at least genesis before
             return Err(FeedChainError::UnknownCurrentHeadError);
@@ -269,10 +292,7 @@ fn feed_chain_to_protocol(
                             // available. If yes we will apply them. If not, we will do nothing.
                             if operations_meta_storage.is_complete(&current_head.hash)? {
                                 debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
-                                let operations = operations_storage.get_operations(&current_head_hash)?
-                                    .drain(..)
-                                    .map(Some)
-                                    .collect();
+                                let operations = operations_storage.get_operations(&current_head_hash)?;
 
                                 // apply block and it's operations
                                 let (predecessor, predecessor_additional_data) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
@@ -286,10 +306,10 @@ fn feed_chain_to_protocol(
 
                                 let apply_block_result = protocol_controller.apply_block(
                                     ApplyBlockRequest {
-                                        chain_id: init_storage_data.chain_id.clone(),
+                                        chain_id: chain_id.clone(),
                                         block_header: (&*current_head.header).clone(),
                                         pred_header: (&*predecessor.header).clone(),
-                                        operations: ApplyBlockRequest::convert_operations(&operations),
+                                        operations: ApplyBlockRequest::convert_operations(operations),
                                         max_operations_ttl: predecessor_additional_data.max_operations_ttl() as i32,
                                     }
                                 )?;
@@ -356,9 +376,10 @@ fn feed_chain_to_protocol(
 pub(crate) fn initialize_protocol_context(
     apply_block_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
-    block_storage: &mut BlockStorage,
-    block_meta_storage: &mut BlockMetaStorage,
-    operations_meta_storage: &mut OperationsMetaStorage,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    chain_meta_storage: &ChainMetaStorage,
+    operations_meta_storage: &OperationsMetaStorage,
     protocol_controller: &ProtocolController,
     log: &Logger,
     tezos_env: &TezosEnvironmentConfiguration,
@@ -387,16 +408,18 @@ pub(crate) fn initialize_protocol_context(
                 &init_storage_data,
                 &tezos_env,
                 &genesis_context_hash,
-                log.clone(),
+                &log,
             )?;
 
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
             // this needs to be second step, because, this triggers context.checkout, so we need to call it after store_commit_genesis_result
             let commit_data = protocol_controller.genesis_result_data(&genesis_context_hash)?;
 
+            // this, marks genesis block as applied
             let block_json_data = store_commit_genesis_result(
                 block_storage,
                 block_meta_storage,
+                chain_meta_storage,
                 operations_meta_storage,
                 &init_storage_data,
                 commit_data,

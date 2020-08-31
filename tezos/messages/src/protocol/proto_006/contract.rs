@@ -1,23 +1,21 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use getset::Getters;
+use serde::{Deserialize, Serialize};
 
 use tezos_encoding::{
     encoding::{Encoding, Field, HasEncoding},
+    has_encoding,
     types::BigInt,
 };
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::non_cached_data;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Getters)]
 pub struct Counter {
     #[get = "pub"]
     counter: BigInt,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
 impl Counter {
@@ -26,22 +24,9 @@ impl Counter {
     }
 }
 
-impl CachedData for Counter {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
-
-impl HasEncoding for Counter {
-    fn encoding() -> Encoding {
+non_cached_data!(Counter);
+has_encoding!(Counter, COUNTER_ENCODING, {
         Encoding::Obj(vec![
             Field::new("counter", Encoding::Z)
         ])
-    }
-}
+});

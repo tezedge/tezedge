@@ -48,4 +48,7 @@ pub trait ProtocolApi {
 
     /// Command tezos ocaml code to generate a new identity.
     fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError>;
+
+    /// Command tezos ocaml code to compute the operations path
+    fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError>;
 }

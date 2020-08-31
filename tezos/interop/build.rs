@@ -10,11 +10,10 @@ use std::process::{Command, Output};
 use colored::*;
 use os_type::{current_platform, OSType};
 use serde::Deserialize;
-use serde_json;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "972404e57f176bc4226940868b35e9b59b4c2a04";
+const GIT_COMMIT_HASH: &str = "d0272e2b0e0bfbba03a48cd4b11a66d29844a23a";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 
@@ -39,6 +38,7 @@ fn get_remote_lib() -> RemoteLib {
     println!("Resolved known artifacts: {:?}", &artifacts);
 
     let artifact_for_platform = match platform.os_type {
+        OSType::OSX => Some("libtezos-ffi-macos.dylib"),
         OSType::Ubuntu => match platform.version.as_str() {
             "16.04" => Some("libtezos-ffi-ubuntu16.so"),
             "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
@@ -79,7 +79,7 @@ fn get_remote_lib() -> RemoteLib {
                     let artifact_sha256 = artifacts
                         .iter()
                         .find(|a| a.name.as_str() == artifact_for_platform_sha256.as_str())
-                        .expect(&format!("Expected artifact for name: '{}', artifacts: {:?}", &artifact_for_platform_sha256, artifacts));
+                        .unwrap_or_else(|| panic!("Expected artifact for name: '{}', artifacts: {:?}", &artifact_for_platform_sha256, artifacts));
 
                     RemoteLib {
                         lib_url: artifact.url.to_string(),
@@ -106,15 +106,15 @@ fn current_release_distributions_artifacts() -> Vec<Artifact> {
         .map(|output| {
             serde_json::from_str::<Vec<Artifact>>(output.as_str()).unwrap()
         })
-        .expect(&format!("Couldn't read current distributions artifacts from file: {:?}", &GIT_RELEASE_DISTRIBUTIONS_FILE));
+        .unwrap_or_else(|_| panic!("Couldn't read current distributions artifacts from file: {:?}", &GIT_RELEASE_DISTRIBUTIONS_FILE));
     artifacts
 }
 
 fn run_builder(build_chain: &str) {
-    match build_chain.as_ref() {
+    match build_chain {
         "local" => {
             // check we want to update git updates or just skip updates, because of development process and changes on ocaml side, which are not yet in git
-            let update_git = env::var("UPDATE_GIT").unwrap_or("true".to_string()).parse::<bool>().unwrap();
+            let update_git = env::var("UPDATE_GIT").unwrap_or_else(|_| "true".to_string()).parse::<bool>().unwrap();
             if update_git {
                 update_git_repository();
             }
@@ -129,7 +129,12 @@ fn run_builder(build_chain: &str) {
                 .expect("Couldn't run builder. Do you have opam and dune installed on your machine?");
         }
         "remote" => {
-            let libtezos_path = Path::new("lib_tezos").join("artifacts").join("libtezos.so");
+            let platform = current_platform();
+            let libtezos_filename = match platform.os_type {
+                OSType::OSX => "libtezos.dylib",
+                _ => "libtezos.so",
+            };
+            let libtezos_path = Path::new("lib_tezos").join("artifacts").join(libtezos_filename);
             let remote_lib = get_remote_lib();
             println!("Resolved platform-dependent remote_lib: {:?}", &remote_lib);
 
@@ -143,7 +148,7 @@ fn run_builder(build_chain: &str) {
             let remote_lib_sha256: Output = Command::new("curl")
                 .args(&[remote_lib.sha256_checksum_url.as_str()])
                 .output()
-                .expect(&format!("Couldn't retrieve sha256check file for tezos binary from url: {:?}!", remote_lib.sha256_checksum_url.as_str()));
+                .unwrap_or_else(|_| panic!("Couldn't retrieve sha256check file for tezos binary from url: {:?}!", remote_lib.sha256_checksum_url.as_str()));
             let remote_lib_sha256 = hex::decode(std::str::from_utf8(&remote_lib_sha256.stdout).expect("Invalid UTF-8 value!")).expect("Invalid hex value!");
 
             // check sha256 hash
@@ -167,14 +172,14 @@ fn update_git_repository() {
         Command::new("git")
             .args(&["clone", GIT_REPO_URL, GIT_REPO_DIR])
             .status()
-            .expect(&format!("Couldn't clone git repository {} into {}", GIT_REPO_URL, GIT_REPO_DIR));
+            .unwrap_or_else(|_| panic!("Couldn't clone git repository {} into {}", GIT_REPO_URL, GIT_REPO_DIR));
     }
 
     Command::new("git")
         .args(&["reset", "--hard", GIT_COMMIT_HASH])
         .current_dir(GIT_REPO_DIR)
         .status()
-        .expect(&format!("Failed to checkout commit hash {}", GIT_COMMIT_HASH));
+        .unwrap_or_else(|_| panic!("Failed to checkout commit hash {}", GIT_COMMIT_HASH));
 }
 
 fn check_prerequisites() {
@@ -216,7 +221,7 @@ fn main() {
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
 
-    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or("remote".to_string());
+    let build_chain = env::var("OCAML_BUILD_CHAIN").unwrap_or_else(|_| "remote".to_string());
     run_builder(&build_chain);
 
     // copy artifact files to OUT_DIR location
@@ -239,8 +244,8 @@ fn main() {
     rerun_if_ocaml_file_changes();
 
     println!("cargo:rustc-link-search={}", &out_dir);
-    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rustc-link-lib=dylib=tezos_interop_callback");
+    println!("cargo:rustc-link-lib=dylib=tezos");
     println!("cargo:rerun-if-env-changed=OCAML_LIB");
     println!("cargo:rerun-if-env-changed=UPDATE_GIT");
 }

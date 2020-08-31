@@ -8,10 +8,9 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
+use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{CachedData, CacheReader, CacheWriter, NeverCache};
-
-static DUMMY_BODY_CACHE: NeverCache = NeverCache;
+use crate::non_cached_data;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum AckMessage {
@@ -27,7 +26,7 @@ pub enum NackMotive {
     UnknownChainName,
     DeprecatedP2pVersion,
     DeprecatedDistributedDbVersion,
-    AlreadyConnected
+    AlreadyConnected,
 }
 
 #[derive(Serialize, Deserialize, Getters, PartialEq)]
@@ -42,7 +41,7 @@ impl NackInfo {
     pub fn new(motive: NackMotive, potential_peers_to_connect: &[String]) -> Self {
         Self {
             motive,
-            potential_peers_to_connect: potential_peers_to_connect.to_vec()
+            potential_peers_to_connect: potential_peers_to_connect.to_vec(),
         }
     }
 }
@@ -68,7 +67,7 @@ impl NackInfo {
             vec![
                 Field::new("motive", Encoding::Tags(
                     size_of::<u16>(),
-                    TagMap::new(&[
+                    TagMap::new(vec![
                         Tag::new(0, "NoMotive", Encoding::Unit),
                         Tag::new(1, "TooManyConnections", Encoding::Unit),
                         Tag::new(2, "UnknownChainName", Encoding::Unit),
@@ -83,26 +82,14 @@ impl NackInfo {
     }
 }
 
-
-impl HasEncoding for AckMessage {
-    fn encoding() -> Encoding {
+non_cached_data!(AckMessage);
+has_encoding!(AckMessage, ACK_MESSAGE_ENCODING, {
         Encoding::Tags(
             size_of::<u8>(),
-            TagMap::new(&[
+            TagMap::new(vec![
                 Tag::new(0x00, "Ack", Encoding::Unit),
                 Tag::new(0x01, "Nack", NackInfo::encoding()),
                 Tag::new(0xFF, "NackV0", Encoding::Unit),
             ]),
         )
-    }
-}
-
-impl CachedData for AckMessage {
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &DUMMY_BODY_CACHE
-    }
-
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        None
-    }
-}
+});

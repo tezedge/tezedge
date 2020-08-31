@@ -90,7 +90,7 @@ pub type Handler = Arc<dyn Fn(Request<Body>, Params, Query, RpcServiceEnvironmen
 
 /// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), hyper::Error>> {
-    let routes = Arc::new(router::create_routes());
+    let routes = Arc::new(router::create_routes(env.state().read().unwrap().is_sandbox()));
 
     hyper::Server::bind(bind_address)
         .serve(make_service_fn(move |_| {

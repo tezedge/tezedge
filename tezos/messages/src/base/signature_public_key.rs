@@ -41,10 +41,10 @@ impl SignaturePublicKey {
                 "p2pk" => {
                     Ok(SignaturePublicKey::P256(HashType::PublicKeyP256.string_to_bytes(b58_hash)?))
                 }
-                _ => return Err(ConversionError::InvalidCurveTag { curve_tag: String::from(&b58_hash[0..4]) })
+                _ => Err(ConversionError::InvalidCurveTag { curve_tag: String::from(&b58_hash[0..4]) })
             }
         } else {
-            return Err(ConversionError::InvalidHash { hash: b58_hash.to_string() });
+            Err(ConversionError::InvalidHash { hash: b58_hash.to_string() })
         }
     }
 
@@ -68,7 +68,7 @@ impl SignaturePublicKey {
             };
             Ok(public_hash_key)
         } else {
-            return Err(ConversionError::InvalidHash { hash: hash.to_string() });
+            Err(ConversionError::InvalidHash { hash: hash.to_string() })
         }
     }
     // 
@@ -96,10 +96,10 @@ impl SignaturePublicKey {
                 2 => {
                     Self::from_hex_hash_and_curve(&hex::encode(&pk[2..]), "p256")
                 }
-                _ => return Err(ConversionError::InvalidPublicKey)
+                _ => Err(ConversionError::InvalidPublicKey)
             }
         } else {
-            return Err(ConversionError::InvalidPublicKey);
+            Err(ConversionError::InvalidPublicKey)
         }
     }
 }

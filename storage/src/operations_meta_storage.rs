@@ -4,14 +4,14 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 /// Convenience type for operation meta storage database
@@ -29,7 +29,7 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
         self.put(&block_header.hash.clone(),
                  &Meta {
                      validation_passes: block_header.header.validation_pass(),
@@ -41,7 +41,7 @@ impl OperationsMetaStorage {
         )
     }
 
-    pub fn put_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    pub fn put_operations(&self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
         let block_hash = message.operations_for_block().hash().clone();
 
         match self.get(&block_hash)? {
@@ -68,7 +68,7 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
+    pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.kv.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
@@ -97,7 +97,7 @@ impl KeyValueSchema for OperationsMetaStorage {
     type Value = Meta;
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_merge_operator("operations_meta_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -241,7 +241,7 @@ mod tests {
 
     use crypto::hash::HashType;
 
-    use crate::persistent::open_kv;
+    use crate::persistent::{DbConfiguration, open_kv};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -266,7 +266,7 @@ mod tests {
 
         let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let v = Meta::genesis_meta(&vec![44; 4]);
-        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {
             Some(value) => {
@@ -300,7 +300,7 @@ mod tests {
             level: 785,
             chain_id: vec![44; 4],
         };
-        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         v.is_validation_pass_present[2] = t;
         storage.put(&k, &v)?;
@@ -337,7 +337,7 @@ mod tests {
             let t = true as u8;
             let f = false as u8;
 
-            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()])?;
+            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()], &DbConfiguration::default())?;
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,
@@ -387,7 +387,7 @@ mod tests {
         let k_missing_1 = vec![0, 1, 2];
         let k_added_later = vec![6, 7, 8, 9];
 
-        let mut storage = OperationsMetaStorage::new(tmp_storage.storage());
+        let storage = OperationsMetaStorage::new(tmp_storage.storage());
         assert!(!storage.contains(&k)?);
         assert!(!storage.contains(&k_missing_1)?);
         assert!(!storage.contains(&k_added_later)?);

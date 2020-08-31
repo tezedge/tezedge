@@ -1,9 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use rocksdb::{ColumnFamilyDescriptor, Options};
+use rocksdb::ColumnFamilyDescriptor;
 
 use crate::persistent::codec::Codec;
+use crate::persistent::default_table_options;
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement
 pub trait KeyValueSchema {
@@ -11,7 +12,7 @@ pub trait KeyValueSchema {
     type Value: Codec;
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        ColumnFamilyDescriptor::new(Self::name(), Options::default())
+        ColumnFamilyDescriptor::new(Self::name(), default_table_options())
     }
 
     fn name() -> &'static str;

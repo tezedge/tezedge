@@ -75,6 +75,10 @@ impl<S> IpcSender<S> {
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.0.set_write_timeout(timeout)
     }
+
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.0.set_nonblocking(nonblocking)
+    }
 }
 
 impl<S: Serialize> IpcSender<S> {
@@ -192,7 +196,16 @@ where
     pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = self.listener.try_accept(Self::ACCEPT_TIMEOUT)
             .map_err(|_| IpcError::AcceptTimeout)?;
-        split(stream).map_err(|err| IpcError::SplitError { reason: err })
+        split(stream)
+            .map_err(|err| IpcError::SplitError { reason: err })
+            .map(|(r, s)| {
+                // On macOS and FreeBSD new sockets inherit flags from accepting fd,
+                // but we expect this to be in blocking by default.
+                if cfg!(target_os = "macos") || cfg!(target_os = "freebsd") {
+                    s.0.set_nonblocking(false).expect("Failed set_nonblocking after accept")
+                }
+                (r, s)
+            })
     }
 
     /// Create new IpcClient for this server

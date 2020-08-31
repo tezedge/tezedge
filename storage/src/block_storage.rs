@@ -7,7 +7,7 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContextHash};
+use crypto::hash::{BlockHash, ContextHash, HashType};
 
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, PersistentStorage};
@@ -15,6 +15,8 @@ use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, Ke
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
 /// That location is then stored as a value in the key-value store.
+///
+/// The assumption is that, if primary_index contains block_hash, then also commit_log contains header data
 #[derive(Clone)]
 pub struct BlockStorage {
     primary_index: BlockPrimaryIndex,
@@ -46,6 +48,8 @@ pub struct BlockAdditionalData {
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
+    fn get_location(&self, block_hash: &BlockHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError>;
+
     fn get_with_json_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
     fn get_with_additional_data(&self, block_hash: &BlockHash) -> Result<Option<(BlockHeaderWithHash, BlockAdditionalData)>, StorageError>;
@@ -62,6 +66,8 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_by_block_level_with_json_data(&self, level: BlockLevel) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
+    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError>;
+
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
@@ -75,7 +81,15 @@ impl BlockStorage {
         }
     }
 
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    /// Stores header in key-value store and commit_log.
+    /// If called multiple times for the same header, data are stored just first time.
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+
+        if self.primary_index.contains(&block_header.hash)? {
+            // we assume that, if primary_index contains hash, then also commit_log contains header data, header data cannot be change, so there is nothing to do
+            return Ok(())
+        }
+
         self.clog.append(&BlockStorageColumn::BlockHeader(block_header.clone()))
             .map_err(StorageError::from)
             .and_then(|block_header_location| {
@@ -84,11 +98,13 @@ impl BlockStorage {
                     block_json_data: None,
                     block_additional_data: None,
                 };
-                self.primary_index.put(&block_header.hash, &location).and(self.by_level_index.put(block_header.header.level(), &location))
+                self.primary_index.put(&block_header.hash, &location)
+                    .and(self.by_level_index.put(block_header.header.level(), &location))
             })
     }
 
-    pub fn put_block_json_data(&mut self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
+    pub fn put_block_json_data(&self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
+
         let updated_column_location = {
             let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
@@ -101,7 +117,7 @@ impl BlockStorage {
             .and(self.by_level_index.put(block_header.header.level(), &updated_column_location))
     }
 
-    pub fn put_block_additional_data(&mut self, block_hash: &BlockHash, additional_data: BlockAdditionalData) -> Result<(), StorageError> {
+    pub fn put_block_additional_data(&self, block_hash: &BlockHash, additional_data: BlockAdditionalData) -> Result<(), StorageError> {
         let updated_column_location = {
             let block_additional_data_location = self.clog.append(&BlockStorageColumn::BlockAdditionalData(additional_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
@@ -114,7 +130,7 @@ impl BlockStorage {
             .and(self.by_level_index.put(block_header.header.level(), &updated_column_location))
     }
 
-    pub fn assign_to_context(&mut self, block_hash: &BlockHash, context_hash: &ContextHash) -> Result<(), StorageError> {
+    pub fn assign_to_context(&self, block_hash: &BlockHash, context_hash: &ContextHash) -> Result<(), StorageError> {
         match self.primary_index.get(block_hash)? {
             Some(location) => self.by_context_hash_index.put(context_hash, &location),
             None => Err(StorageError::MissingKey)
@@ -170,6 +186,11 @@ impl BlockStorageReader for BlockStorage {
         self.primary_index.get(block_hash)?
             .map(|location| self.get_block_header_by_location(&location))
             .transpose()
+    }
+
+    #[inline]
+    fn get_location(&self, block_hash: &BlockHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
+        self.primary_index.get(block_hash)
     }
 
     #[inline]
@@ -243,6 +264,14 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<String>>, StorageError> {
+        let live_blocks: Option<Vec<String>> = self.by_level_index.get_blocks(level, max_ttl)?.iter()
+            .map(|location| self.get_block_header_by_location(&location).map(|block_header| HashType::BlockHash.bytes_to_string(&block_header.hash)).ok())
+            .collect();
+        Ok(live_blocks)
+    }
+
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.primary_index.contains(block_hash)
     }
@@ -270,9 +299,9 @@ impl BincodeEncoded for BlockStorageColumn {}
 /// Holds reference to all stored columns.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BlockStorageColumnsLocation {
-    block_header: Location,
-    block_json_data: Option<Location>,
-    block_additional_data: Option<Location>,
+    pub block_header: Location,
+    pub block_json_data: Option<Location>,
+    pub block_additional_data: Option<Location>,
 }
 
 impl BincodeEncoded for BlockStorageColumnsLocation {}
@@ -292,7 +321,7 @@ impl BlockPrimaryIndex {
     }
 
     #[inline]
-    fn put(&mut self, block_hash: &BlockHash, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
+    fn put(&self, block_hash: &BlockHash, location: &BlockStorageColumnsLocation) -> Result<(), StorageError> {
         self.kv.put(block_hash, &location)
             .map_err(StorageError::from)
     }
@@ -417,7 +446,7 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::open_kv;
+    use crate::persistent::{DbConfiguration, open_kv};
 
     use super::*;
 
@@ -431,7 +460,7 @@ mod tests {
         }
 
         {
-            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()]).unwrap();
+            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()], &DbConfiguration::default()).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {

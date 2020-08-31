@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Options};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands};
 use slog::{Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
@@ -12,7 +12,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
@@ -33,7 +33,7 @@ impl BlockMetaStorage {
     }
 
     /// Create new metadata record in storage from given block header
-    pub fn put_block_header(&mut self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: Logger) -> Result<(), StorageError> {
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<(), StorageError> {
         // create/update record for block
         match self.get(&block_header.hash)?.as_mut() {
             Some(meta) => {
@@ -52,13 +52,12 @@ impl BlockMetaStorage {
                                 "new_predecessor" => block_hash_encoding.bytes_to_string(&block_predecessor)
                             );
                         }
-                        ()
                     }
                 };
 
                 meta.predecessor = Some(block_predecessor);
                 self.put(&block_header.hash, &meta)?;
-            },
+            }
             None => {
                 let meta = Meta {
                     is_applied: false,
@@ -90,13 +89,12 @@ impl BlockMetaStorage {
                                 "new_successor" => block_hash_encoding.bytes_to_string(&block_hash)
                             );
                         }
-                        ()
                     }
                 };
 
                 meta.successor = Some(block_hash);
                 self.put(block_header.header.predecessor(), &meta)?;
-            },
+            }
             None => {
                 let meta = Meta {
                     is_applied: false,
@@ -113,7 +111,7 @@ impl BlockMetaStorage {
     }
 
     #[inline]
-    pub fn put(&mut self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
+    pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.kv.merge(block_hash, meta)
             .map_err(StorageError::from)
     }
@@ -134,18 +132,16 @@ impl BlockMetaStorage {
 impl BlockMetaStorageReader for BlockMetaStorage {
     fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError> {
         self.iter(IteratorMode::End)
-            .and_then(|meta_iterator|
-                Ok(
-                    meta_iterator
-                        // unwrap a tuple of Result
-                        .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
-                        // we are interested in applied blocks only
-                        .filter(|(_, meta)| meta.is_applied())
-                        // get block with the highest level
-                        .max_by_key(|(_, meta)| meta.level())
-                        // get data for the block
-                        .map(|(block_hash, meta)| (block_hash, meta.level()))
-                )
+            .map(|meta_iterator|
+                meta_iterator
+                    // unwrap a tuple of Result
+                    .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
+                    // we are interested in applied blocks only
+                    .filter(|(_, meta)| meta.is_applied())
+                    // get block with the highest level
+                    .max_by_key(|(_, meta)| meta.level())
+                    // get data for the block
+                    .map(|(block_hash, meta)| (block_hash, meta.level()))
             )
     }
 }
@@ -279,7 +275,7 @@ impl KeyValueSchema for BlockMetaStorage {
     type Value = Meta;
 
     fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = Options::default();
+        let mut cf_opts = default_table_options();
         cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -313,7 +309,7 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
                     val.splice(IDX_SUCCESSOR..IDX_LEVEL, op[IDX_SUCCESSOR..IDX_LEVEL].iter().cloned());
                 }
                 assert_eq!(LEN_META, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", LEN_META, val.len());
-            },
+            }
             None => result = Some(op.to_vec())
         }
     }
@@ -329,7 +325,7 @@ mod tests {
 
     use crypto::hash::HashType;
 
-    use crate::persistent::open_kv;
+    use crate::persistent::{DbConfiguration, open_kv};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -355,7 +351,7 @@ mod tests {
         let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
         let v = Meta::genesis_meta(&k, &chain_id, true);
-        let mut storage = BlockMetaStorage::new(tmp_storage.storage());
+        let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {
             Some(value) => {
@@ -367,7 +363,7 @@ mod tests {
                     chain_id: chain_id.clone(),
                 };
                 assert_eq!(expected, value);
-            },
+            }
             _ => panic!("value not present"),
         }
 
@@ -386,7 +382,7 @@ mod tests {
             level: 1_245_762,
             chain_id: vec![44; 4],
         };
-        let mut storage = BlockMetaStorage::new(tmp_storage.storage());
+        let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         let p = storage.get(&k)?;
         assert!(p.is_some());
@@ -409,7 +405,7 @@ mod tests {
                     chain_id: vec![44; 4],
                 };
                 assert_eq!(expected, value);
-            },
+            }
             _ => panic!("value not present"),
         }
 
@@ -426,7 +422,7 @@ mod tests {
         }
 
         {
-            let db = open_kv(path, vec![BlockMetaStorage::descriptor()]).unwrap();
+            let db = open_kv(path, vec![BlockMetaStorage::descriptor()], &DbConfiguration::default()).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,
@@ -457,7 +453,7 @@ mod tests {
                         chain_id: vec![44; 4],
                     };
                     assert_eq!(expected, value);
-                },
+                }
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
             }

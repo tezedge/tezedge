@@ -90,6 +90,10 @@ pub enum ContextAction {
         parent_context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         new_context_hash: Hash,
+        author: String,
+        message: String,
+        date: i64,
+        parents: Vec<Vec<u8>>,
         start_time: f64,
         end_time: f64,
     },
@@ -145,7 +149,7 @@ fn get_time(action: &ContextAction) -> f64 {
         ContextAction::DirMem { start_time, end_time, .. } => *end_time - *start_time,
         ContextAction::Get { start_time, end_time, .. } => *end_time - *start_time,
         ContextAction::Fold { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Shutdown => 0f64,
+        ContextAction::Shutdown => 0_f64,
     }
 }
 

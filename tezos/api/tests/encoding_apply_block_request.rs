@@ -21,7 +21,7 @@ fn can_serde() -> Result<(), Error> {
         .max_operations_ttl(2)
         .operations(
             ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_3,
                     test_data::block_header_level3_operations(),
                 )
@@ -71,7 +71,7 @@ mod test_data {
         ]
     }
 
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<Option<OperationsForBlocksMessage>> {
+    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<OperationsForBlocksMessage> {
         hex_operations
             .into_iter()
             .map(|bo| {
@@ -79,7 +79,7 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
-                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
+                OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
             })
             .collect()
     }

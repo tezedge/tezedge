@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 use getset::{CopyGetters, Getters};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+use tezos_encoding::has_encoding;
 
-use crate::p2p::binary_message::cache::{BinaryDataCache, CachedData, CacheReader, CacheWriter};
+use crate::cached_data;
+use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::prelude::Path;
+
 use super::operations_for_blocks::path_encoding;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
@@ -29,25 +32,12 @@ impl GetOperationHashesForBlocksMessage {
     }
 }
 
-impl HasEncoding for GetOperationHashesForBlocksMessage {
-    fn encoding() -> Encoding {
-        Encoding::Obj(vec![
-            Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding()))),
-        ])
-    }
-}
-
-impl CachedData for GetOperationHashesForBlocksMessage {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+cached_data!(GetOperationHashesForBlocksMessage, body);
+has_encoding!(GetOperationHashesForBlocksMessage, GET_OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
+    Encoding::Obj(vec![
+        Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding().clone()))),
+    ])
+});
 
 // ------------------ Response ------------------ //
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
@@ -74,27 +64,14 @@ impl OperationHashesForBlocksMessage {
     }
 }
 
-impl HasEncoding for OperationHashesForBlocksMessage {
-    fn encoding() -> Encoding {
+cached_data!(OperationHashesForBlocksMessage, body);
+has_encoding!(OperationHashesForBlocksMessage, OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
         Encoding::Obj(vec![
-            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding()),
+            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding().clone()),
             Field::new("operation_hashes_path", path_encoding()),
             Field::new("operation_hashes", Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
         ])
-    }
-}
-
-impl CachedData for OperationHashesForBlocksMessage {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});
 
 // ------------------ Inner message for operation hashes message ------------------ //
 #[derive(Serialize, Deserialize, Debug, Getters, CopyGetters, Clone)]
@@ -118,23 +95,10 @@ impl OperationHashesForBlock {
     }
 }
 
-impl HasEncoding for OperationHashesForBlock {
-    fn encoding() -> Encoding {
+cached_data!(OperationHashesForBlock, body);
+has_encoding!(OperationHashesForBlock, OPERATION_HASHES_FOR_BLOCK_ENCODING, {
         Encoding::Obj(vec![
             Field::new("hash", Encoding::Hash(HashType::BlockHash)),
             Field::new("validation_pass", Encoding::Int8),
         ])
-    }
-}
-
-impl CachedData for OperationHashesForBlock {
-    #[inline]
-    fn cache_reader(&self) -> &dyn CacheReader {
-        &self.body
-    }
-
-    #[inline]
-    fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter> {
-        Some(&mut self.body)
-    }
-}
+});

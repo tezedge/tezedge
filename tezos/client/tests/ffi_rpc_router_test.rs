@@ -6,10 +6,13 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockRequest, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
+use tezos_api::ffi::{ApplyBlockRequest, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration, ComputePathRequest, ComputePathResponse};
 use tezos_client::client;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::encoding::operation::DecodedOperation;
+
+
 
 mod common;
 
@@ -127,6 +130,97 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
 
 #[test]
 #[serial]
+fn test_current_level_call() -> Result<(), failure::Error> {
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_current_level_call_storage");
+
+    // apply block 1
+    let last_block = apply_blocks_1(&chain_id, genesis_block_header);
+
+    let request = ProtocolJsonRpcRequest {
+        block_header: last_block,
+        chain_arg: "main".to_string(),
+        chain_id: chain_id.clone(),
+        request: JsonRpcRequest {
+            context_path: "/chains/main/blocks/head/helpers/current_level?offset=1".to_string(),
+            body: "".to_string(),
+        },
+        ffi_service: FfiRpcService::HelpersCurrentLevel,
+    };
+
+    let response = client::call_protocol_json_rpc(request)?;
+
+    assert_json_eq!(
+        serde_json::from_str(&response.body)?,
+        serde_json::from_str(&test_data::CURRENT_LEVEL_RESPONSE)?,
+    );
+
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn test_minimal_valid_time() -> Result<(), failure::Error> {
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(" test_minimal_valid_time_storage");
+
+    // apply block 1
+    let last_block = apply_blocks_1(&chain_id, genesis_block_header);
+
+    let request = ProtocolJsonRpcRequest {
+        block_header: last_block,
+        chain_arg: "main".to_string(),
+        chain_id: chain_id.clone(),
+        request: JsonRpcRequest {
+            context_path: "/chains/main/blocks/head/minimal_valid_time?priority=4&endorsing_power=0".to_string(),
+            body: "".to_string(),
+        },
+        ffi_service: FfiRpcService::DelegatesMinimalValidTime,
+    };
+
+    let response = client::call_protocol_json_rpc(request)?;
+
+    assert_json_eq!(
+        serde_json::from_str(&response.body)?,
+        serde_json::from_str(&test_data::MINIMAL_VALID_TIME_RESPONSE)?,
+    );
+
+    Ok(())
+}
+
+
+#[test]
+#[serial]
+fn test_compute_path() -> Result<(), failure::Error> {
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_compute_path_storage");
+
+    // apply block 1
+    let _ = apply_blocks_1(&chain_id, genesis_block_header);
+
+    type ValidationPasses = Vec<Vec<DecodedOperation>>;
+    let validation_passes: Vec<Vec<Operation>> = 
+        serde_json::from_str::<ValidationPasses>(test_data::VALIDATION_PASSES_WITH_OPERATIONS)?.into_iter()
+            .map(|validation_pass| validation_pass.into_iter()
+                .map(|op| op.into())
+                .collect())
+            .collect();
+
+    let request = ComputePathRequest {
+        operations: validation_passes.iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
+    };
+
+    let response = client::compute_path(request)?;
+
+    let expected_response: ComputePathResponse = serde_json::from_str(test_data::COMPUTE_PATHS_RESPONSE)?; 
+
+    
+    assert_eq!(expected_response, response);
+    Ok(())
+}
+
+#[test]
+#[serial]
 fn test_preapply_block() -> Result<(), failure::Error> {
     init_test_runtime();
 
@@ -168,7 +262,7 @@ fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bloc
             block_header: block_header.clone(),
             pred_header: genesis_block_header,
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -310,7 +404,39 @@ mod test_data {
         "operations": [] }
     "#;
 
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<Option<OperationsForBlocksMessage>> {
+    pub const CURRENT_LEVEL_RESPONSE: &str = r#"
+    {
+        "cycle": 0,
+        "cycle_position": 1,
+        "expected_commitment": false,
+        "level": 2,
+        "level_position": 1,
+        "voting_period": 0,
+        "voting_period_position": 1
+      }
+    "#;
+
+    pub const MINIMAL_VALID_TIME_RESPONSE: &str = "\"2020-06-24T08:02:50Z\"";
+
+    pub const VALIDATION_PASSES_WITH_OPERATIONS: &str = r#"
+    [
+        [],
+        [],
+        [],
+        [
+            {
+            "branch": "BM5BJTmQL2DMsmcEixt9BNDFKEFreLCkQB76oM1mXvXyjuTtdo3",
+            "data": "6c0002298c03ed7d454a101eb7022bc95f7e5f41ac78810a01c35000c0843d0000e7670f32038107a59a2b9cfefae36ea21f5aa63c003f2e723dce8971ebdcabe27df4e4bfb1e62954b90abd2b87ef9018f1459f15e6770168f38f2d8273a464d7050c1f4f331710bfe441fff11d423e810422592e0d"
+            }
+        ]
+    ]
+    "#;
+
+    pub const COMPUTE_PATHS_RESPONSE: &str = r#"
+    {"operations_hashes_path":[{"Left":{"path":{"Left":{"path":"Op","right":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195]}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Left":{"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Left":{"path":"Op","right":[80,146,47,58,138,154,211,234,76,207,216,93,186,145,204,85,44,17,216,195,123,110,192,172,166,40,175,8,61,159,187,26]}}}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}}}}]}
+    "#;
+
+    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<OperationsForBlocksMessage> {
         hex_operations
             .into_iter()
             .map(|bo| {
@@ -318,7 +444,7 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
-                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
+                OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
             })
             .collect()
     }
@@ -330,3 +456,5 @@ mod test_data {
         }
     }
 }
+
+//{"operations_hashes_path":[{"Left":{"path":{"Left":{"path":"Op","right":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195]}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Left":{"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Left":{"path":"Op","right":[80,146,47,58,138,154,211,234,76,207,216,93,186,145,204,85,44,17,216,195,123,110,192,172,166,40,175,8,61,159,187,26]}}}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}}}}]}

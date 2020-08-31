@@ -13,6 +13,7 @@ members = [
     "networking",
     "shell",
     "storage",
+    "sandbox",
     "light_node",
     "monitoring",
     "protocol_runner",

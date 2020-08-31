@@ -9,13 +9,13 @@ pub struct BigInt(pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for BigInt {
     fn from(from: num_bigint::BigInt) -> Self {
-        BigInt(from.clone())
+        BigInt(from)
     }
 }
 
 impl From<BigInt> for num_bigint::BigInt {
     fn from(from: BigInt) -> Self {
-        from.0.clone()
+        from.0
     }
 }
 
@@ -113,9 +113,9 @@ pub enum Value {
     /// - encoded as the concatenation of all the element in binary
     /// in binary prefixed by its length in bytes
     List(Vec<Value>),
-    // Enum value with name and/or ordinal number
+    /// Enum value with name and/or ordinal number
     Enum(Option<String>, Option<u32>),
-    // Tag value with variant id and tag inner value
+    /// Tag value with variant id and tag inner value
     Tag(String, Box<Value>),
     /// A Record is represented by a vector of (`<record name>`, `value`).
     /// This allows schema-less encoding.

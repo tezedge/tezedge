@@ -67,7 +67,6 @@ impl ChainMonitor {
             // append created chain stats
             self.chain.append(&mut chain_append);
         };
-        // println!("[block] header level: {:.9} cycle_id: {:.4} chain_len: {:.3}",  block_level, cycle_id, chain_len);
     }
 
     // process block header

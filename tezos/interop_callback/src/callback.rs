@@ -3,12 +3,10 @@
 
 //! This module provides all the FFI callback functions.
 
-use ocaml::{caml, List, Str, Tuple, Value};
-use ocaml::value::TRUE;
+use znfe::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
 
 use tezos_context::channel::*;
 
-type OcamlBytes = Str;
 type Hash = Vec<u8>;
 type ContextHash = Hash;
 type BlockHash = Hash;
@@ -16,210 +14,214 @@ type OperationHash = Hash;
 type ContextKey = Vec<String>;
 type ContextValue = Vec<u8>;
 
-pub trait Interchange<T> {
-    fn convert_to(&self) -> T;
+extern "C" {
+    fn initialize_ml_context_functions(
+        ml_context_set: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_delete: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_remove_rec: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_copy: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_checkout: unsafe extern "C" fn(RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_commit: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_mem: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_dir_mem: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_raw_get: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_fold: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+    );
 }
 
-impl Interchange<Vec<u8>> for OcamlBytes {
-    fn convert_to(&self) -> ContextHash {
-        self.data().to_vec()
+pub fn initialize_callbacks() {
+    unsafe {
+        initialize_ml_context_functions(
+            real_ml_context_set,
+            real_ml_context_delete,
+            real_ml_context_remove_rec,
+            real_ml_context_copy,
+            real_ml_context_checkout,
+            real_ml_context_commit,
+            real_ml_context_mem,
+            real_ml_context_dir_mem,
+            real_ml_context_raw_get,
+            real_ml_context_fold)
     }
 }
 
-impl Interchange<ContextKey> for List {
-    fn convert_to(&self) -> ContextKey {
-        self.to_vec()
-            .into_iter()
-            .map(|k| Str::from(k).as_str().to_string())
-            .collect()
+ocaml_export! {
+
+    // External callback function for set value to context
+    fn real_ml_context_set(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        keyval_and_json: OCaml<(OCamlList<String>, String, Option<String>, bool)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (key, value, json_val, ignored) = keyval_and_json.into_rust();
+
+        context_set(context_hash, block_hash, operation_hash, key, value, json_val, ignored, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for delete key from context
+    fn real_ml_context_delete(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        keyval: OCaml<(OCamlList<String>, bool)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (key, ignored) = keyval.into_rust();
+
+        context_delete(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for remove_rec key from context
+    fn real_ml_context_remove_rec(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        keyval: OCaml<(OCamlList<String>, bool)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (key, ignored) = keyval.into_rust();
+
+        context_remove_rec(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for copy keys from context
+    fn real_ml_context_copy(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        from_to_key: OCaml<(OCamlList<String>, OCamlList<String>, bool)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (from_key, to_key, ignored) = from_to_key.into_rust();
+
+        context_copy(context_hash, block_hash, operation_hash, from_key, to_key, ignored, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for checkout context
+    fn real_ml_context_checkout(gc,
+        context_hash: OCaml<String>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+
+        context_checkout(context_hash, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for checkout context
+    fn real_ml_context_commit(gc,
+        parent_context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        new_context_hash: OCaml<String>,
+        info: OCaml<(OCamlInt64, String, String, OCamlList<String>)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let parent_context_hash = parent_context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let new_context_hash = new_context_hash.into_rust();
+
+        let (date, author, message, parents) = info.into_rust();
+
+        context_commit(parent_context_hash, block_hash, new_context_hash, date, author, message, parents, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for mem key from context
+    fn real_ml_context_mem(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        keyval: OCaml<(OCamlList<String>, bool)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (key, value) = keyval.into_rust();
+
+        context_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for dir_mem key from context
+    fn real_ml_context_dir_mem(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        keyval: OCaml<(OCamlList<String>, bool)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (key, value) = keyval.into_rust();
+
+        context_dir_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for raw_get key from context
+    fn real_ml_context_raw_get(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        keyval_and_json: OCaml<(OCamlList<String>, String, Option<String>)>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let (key, value, json_val) =  keyval_and_json.into_rust();
+
+        context_raw_get(context_hash, block_hash, operation_hash, key, value, json_val, start_time, end_time);
+        OCaml::unit()
+    }
+
+    // External callback function for fold key from context
+    fn real_ml_context_fold(gc,
+        context_hash: OCaml<Option<String>>,
+        block_hash: OCaml<Option<String>>,
+        operation_hash: OCaml<Option<String>>,
+        key: OCaml<OCamlList<String>>,
+        start_time: f64,
+        end_time: f64,
+    ) {
+        let context_hash = context_hash.into_rust();
+        let block_hash = block_hash.into_rust();
+        let operation_hash = operation_hash.into_rust();
+        let key = key.into_rust();
+
+        context_fold(context_hash, block_hash, operation_hash, key, start_time, end_time);
+        OCaml::unit()
     }
 }
-
-fn to_hash(hash: Str) -> Option<Hash> {
-    if hash.len() <= 0 {
-        None
-    } else {
-        Some(hash.data().to_vec())
-    }
-}
-
-fn to_string(value: Str) -> Option<String> {
-
-    if value.len() <= 0 {
-        None
-    } else {
-        Some(value.as_str().to_string())
-    }
-}
-
-// External callback function for set value to context
-caml!(ml_context_set(context_hash, block_hash, operation_hash, keyval_and_json, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-
-    let keyval_and_json: Tuple = keyval_and_json.into();
-    let key: ContextKey = List::from(keyval_and_json.get(0).unwrap()).convert_to();
-    let value: ContextValue = OcamlBytes::from(keyval_and_json.get(1).unwrap()).convert_to();
-    let json_val: Option<String> = to_string(keyval_and_json.get(2).unwrap().into());
-    let ignored: bool = keyval_and_json.get(3).unwrap().i32_val() == TRUE.i32_val();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_set(context_hash, block_hash, operation_hash, key, value, json_val, ignored, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for delete key from context
-caml!(ml_context_delete(context_hash, block_hash, operation_hash, keyval, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-
-    let keyval: Tuple = keyval.into();
-    let key: ContextKey = List::from(keyval.get(0).unwrap()).convert_to();
-    let ignored: bool = keyval.get(1).unwrap().i32_val() == TRUE.i32_val();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_delete(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for remove_rec key from context
-caml!(ml_context_remove_rec(context_hash, block_hash, operation_hash, keyval, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-
-    let keyval: Tuple = keyval.into();
-    let key: ContextKey = List::from(keyval.get(0).unwrap()).convert_to();
-    let ignored: bool = keyval.get(1).unwrap().i32_val() == TRUE.i32_val();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_remove_rec(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for copy keys from context
-caml!(ml_context_copy(context_hash, block_hash, operation_hash, from_to_key, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-
-    let from_to_key: Tuple = from_to_key.into();
-    let from_key: ContextKey = List::from(from_to_key.get(0).unwrap()).convert_to();
-    let to_key: ContextKey = List::from(from_to_key.get(1).unwrap()).convert_to();
-    let ignored: bool = from_to_key.get(2).unwrap().i32_val() == TRUE.i32_val();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_copy(context_hash, block_hash, operation_hash, from_key, to_key, ignored, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for checkout context
-caml!(ml_context_checkout(context_hash, time_period) {
-    let context_hash: ContextHash = to_hash(context_hash.into()).unwrap();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_checkout(context_hash, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for checkout context
-caml!(ml_context_commit(parent_context_hash, block_hash, new_context_hash, time_period) {
-    let parent_context_hash: Option<ContextHash> = to_hash(parent_context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let new_context_hash: ContextHash = to_hash(new_context_hash.into()).unwrap();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_commit(parent_context_hash, block_hash, new_context_hash, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for mem key from context
-caml!(ml_context_mem(context_hash, block_hash, operation_hash, keyval, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-    let keyval: Tuple = keyval.into();
-    let key: ContextKey = List::from(keyval.get(0).unwrap()).convert_to();
-    let value: bool = keyval.get(1).unwrap().i32_val() > 0;
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for dir_mem key from context
-caml!(ml_context_dir_mem(context_hash, block_hash, operation_hash, keyval, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-    let keyval: Tuple = keyval.into();
-    let key: ContextKey = List::from(keyval.get(0).unwrap()).convert_to();
-    let value: bool = keyval.get(1).unwrap().i32_val() > 0;
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_dir_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for raw_get key from context
-caml!(ml_context_raw_get(context_hash, block_hash, operation_hash, keyval_and_json, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-
-    let keyval_and_json: Tuple = keyval_and_json.into();
-    let key: ContextKey = List::from(keyval_and_json.get(0).unwrap()).convert_to();
-    let value: ContextValue = OcamlBytes::from(keyval_and_json.get(1).unwrap()).convert_to();
-    let json_val: Option<String> = to_string(keyval_and_json.get(2).unwrap().into());
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_raw_get(context_hash, block_hash, operation_hash, key, value, json_val, start_time, end_time);
-    return Value::unit();
-});
-
-// External callback function for fold key from context
-caml!(ml_context_fold(context_hash, block_hash, operation_hash, key, time_period) {
-    let context_hash: Option<ContextHash> = to_hash(context_hash.into());
-    let block_hash: Option<BlockHash> = to_hash(block_hash.into());
-    let operation_hash: Option<OperationHash> = to_hash(operation_hash.into());
-    let key: ContextKey = List::from(key).convert_to();
-
-    let time_period: Tuple = time_period.into();
-    let start_time: f64 = time_period.get(0).unwrap().f64_val();
-    let end_time: f64 = time_period.get(1).unwrap().f64_val();
-
-    context_fold(context_hash, block_hash, operation_hash, key, start_time, end_time);
-    return Value::unit();
-});
 
 fn context_set(
     context_hash: Option<ContextHash>,
@@ -230,8 +232,8 @@ fn context_set(
     value_as_json: Option<String>,
     ignored: bool,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Set {
         context_hash,
         block_hash,
@@ -242,7 +244,8 @@ fn context_set(
         ignored,
         start_time,
         end_time,
-    }).expect("context_set error");
+    })
+    .expect("context_set error");
 }
 
 fn context_delete(
@@ -252,8 +255,8 @@ fn context_delete(
     key: ContextKey,
     ignored: bool,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Delete {
         context_hash,
         block_hash,
@@ -262,7 +265,8 @@ fn context_delete(
         ignored,
         start_time,
         end_time,
-    }).expect("context_delete error");
+    })
+    .expect("context_delete error");
 }
 
 fn context_remove_rec(
@@ -272,8 +276,8 @@ fn context_remove_rec(
     key: ContextKey,
     ignored: bool,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::RemoveRecursively {
         context_hash,
         block_hash,
@@ -282,7 +286,8 @@ fn context_remove_rec(
         ignored,
         start_time,
         end_time,
-    }).expect("context_remove_rec error");
+    })
+    .expect("context_remove_rec error");
 }
 
 fn context_copy(
@@ -293,8 +298,8 @@ fn context_copy(
     to_key: ContextKey,
     ignored: bool,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Copy {
         context_hash,
         block_hash,
@@ -304,25 +309,27 @@ fn context_copy(
         ignored,
         start_time,
         end_time,
-    }).expect("context_copy error");
+    })
+    .expect("context_copy error");
 }
 
-fn context_checkout(
-    context_hash: ContextHash,
-    start_time: f64,
-    end_time: f64)
-{
+fn context_checkout(context_hash: ContextHash, start_time: f64, end_time: f64) {
     context_send(ContextAction::Checkout {
         context_hash,
         start_time,
         end_time,
-    }).expect("context_checkout error");
+    })
+    .expect("context_checkout error");
 }
 
 fn context_commit(
     parent_context_hash: Option<ContextHash>,
     block_hash: Option<BlockHash>,
     new_context_hash: ContextHash,
+    date: i64,
+    author: String,
+    message: String,
+    parents: Vec<Vec<u8>>,
     start_time: f64,
     end_time: f64)
 {
@@ -330,6 +337,10 @@ fn context_commit(
         parent_context_hash,
         block_hash,
         new_context_hash,
+        author,
+        message,
+        date,
+        parents,
         start_time,
         end_time,
     }).expect("context_commit error");
@@ -342,8 +353,8 @@ fn context_mem(
     key: ContextKey,
     value: bool,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Mem {
         context_hash,
         block_hash,
@@ -352,7 +363,8 @@ fn context_mem(
         value,
         start_time,
         end_time,
-    }).expect("context_mem error");
+    })
+    .expect("context_mem error");
 }
 
 fn context_dir_mem(
@@ -362,8 +374,8 @@ fn context_dir_mem(
     key: ContextKey,
     value: bool,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::DirMem {
         context_hash,
         block_hash,
@@ -372,7 +384,8 @@ fn context_dir_mem(
         value,
         start_time,
         end_time,
-    }).expect("context_dir_mem error");
+    })
+    .expect("context_dir_mem error");
 }
 
 fn context_raw_get(
@@ -383,8 +396,8 @@ fn context_raw_get(
     value: ContextValue,
     value_as_json: Option<String>,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Get {
         context_hash,
         block_hash,
@@ -394,7 +407,8 @@ fn context_raw_get(
         value_as_json,
         start_time,
         end_time,
-    }).expect("context_get error");
+    })
+    .expect("context_get error");
 }
 
 fn context_fold(
@@ -403,8 +417,8 @@ fn context_fold(
     operation_hash: Option<OperationHash>,
     key: ContextKey,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Fold {
         context_hash,
         block_hash,
@@ -412,5 +426,6 @@ fn context_fold(
         key,
         start_time,
         end_time,
-    }).expect("context_fold error");
+    })
+    .expect("context_fold error");
 }

@@ -67,7 +67,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             pred_header: genesis_block_header,
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -85,7 +85,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_2,
                     test_data::block_header_level2_operations(),
                 )
@@ -103,7 +103,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_3,
                     test_data::block_header_level3_operations(),
                 )
@@ -130,7 +130,7 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             pred_header: genesis_block_header.clone(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -148,7 +148,7 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             pred_header: genesis_block_header,
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -194,7 +194,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             pred_header: genesis_block_header,
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -230,7 +230,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_2,
                     test_data::block_header_level2_operations(),
                 )
@@ -271,7 +271,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_2,
                     test_data::block_header_level2_operations(),
                 )
@@ -312,7 +312,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_3,
                     test_data::block_header_level3_operations(),
                 )
@@ -370,7 +370,7 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_2,
                     test_data::block_header_level2_operations(),
                 )
@@ -405,7 +405,7 @@ fn test_bootstrap_empty_storage_with_third_block_with_first_predecessor_should_f
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_3,
                     test_data::block_header_level3_operations(),
                 )
@@ -439,7 +439,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
             chain_id: chain_id.clone(),
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap()).unwrap(),
             pred_header: genesis_block_header,
-            operations: ApplyBlockRequest::convert_operations(&vec![None]),
+            operations: vec![vec![]],
             max_operations_ttl: 0,
         }
     );
@@ -462,7 +462,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             pred_header: genesis_block_header,
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_1,
                     test_data::block_header_level1_operations(),
                 )
@@ -479,7 +479,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
             block_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap()).unwrap(),
             pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap(),
             operations: ApplyBlockRequest::convert_operations(
-                &test_data::block_operations_from_hex(
+                test_data::block_operations_from_hex(
                     test_data::BLOCK_HEADER_HASH_LEVEL_3,
                     test_data::block_header_level3_operations(),
                 )
@@ -551,7 +551,7 @@ mod test_data {
         ]
     }
 
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<Option<OperationsForBlocksMessage>> {
+    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<OperationsForBlocksMessage> {
         hex_operations
             .into_iter()
             .map(|bo| {
@@ -559,7 +559,7 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
-                Some(OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops))
+                OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
             })
             .collect()
     }
