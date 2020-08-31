@@ -1,6 +1,6 @@
-use std::sync::{Arc, RwLock};
 use std::fs;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 
 use slog::{info, Drain, Level, Logger};
 

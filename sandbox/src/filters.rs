@@ -2,10 +2,13 @@ use slog::Logger;
 use warp::Filter;
 
 use crate::handlers::{
-    activate_protocol, bake_block_with_client, init_client_data, start_node_with_config, stop_node,
+    activate_protocol, bake_block_with_client, handle_rejection, init_client_data,
+    start_node_with_config, stop_node,
 };
 use crate::node_runner::LightNodeRunnerRef;
-use crate::tezos_client_runner::{TezosClientRunnerRef, TezosProtcolActivationParameters, SandboxWallets, BakeRequest};
+use crate::tezos_client_runner::{
+    BakeRequest, SandboxWallets, TezosClientRunnerRef, TezosProtcolActivationParameters,
+};
 
 pub fn sandbox(
     log: Logger,
@@ -23,6 +26,7 @@ pub fn sandbox(
         .or(init_client(log.clone(), client_runner.clone()))
         .or(activate(log.clone(), client_runner.clone()))
         .or(bake(log, client_runner))
+        .recover(handle_rejection)
         .with(cors)
 }
 
@@ -93,13 +97,15 @@ fn json_body() -> impl Filter<Extract = (serde_json::Value,), Error = warp::Reje
     warp::body::content_length_limit(1024 * 16).and(warp::body::json())
 }
 
-fn init_client_json_body() -> impl Filter<Extract = (SandboxWallets,), Error = warp::Rejection> + Clone {
+fn init_client_json_body(
+) -> impl Filter<Extract = (SandboxWallets,), Error = warp::Rejection> + Clone {
     // When accepting a body, we want a JSON body
     // (and to reject huge payloads)...
     warp::body::content_length_limit(1024 * 16).and(warp::body::json())
 }
 
-fn activation_json_body() -> impl Filter<Extract = (TezosProtcolActivationParameters,), Error = warp::Rejection> + Clone {
+fn activation_json_body(
+) -> impl Filter<Extract = (TezosProtcolActivationParameters,), Error = warp::Rejection> + Clone {
     // When accepting a body, we want a JSON body and serialize it to TezosProtcolActivationParameters
     // (and to reject huge payloads)...
     warp::body::content_length_limit(1024 * 16).and(warp::body::json())

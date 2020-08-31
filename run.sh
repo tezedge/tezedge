@@ -192,12 +192,6 @@ run_sandbox() {
   esac
 
   shift # shift past <MODE>
-  
-  # cleanup data directory
-  if [ -z "$KEEP_DATA" ]; then
-    rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
-    rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
-  fi
 
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
