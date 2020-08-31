@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_REPO_URL: &str = "https://gitlab.com/simplestaking/tezos.git";
-const GIT_COMMIT_HASH: &str = "e09d30269320249780315ad41afc24b07fc5076c";
+const GIT_COMMIT_HASH: &str = "d0272e2b0e0bfbba03a48cd4b11a66d29844a23a";
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const GIT_REPO_DIR: &str = "lib_tezos/src";
 

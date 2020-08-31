@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
+use std::fs;
 
 use riker::actors::*;
 use slog::{crit, debug, Drain, error, info, Logger};
@@ -233,7 +234,7 @@ fn block_on_actors(
         tokio_runtime.handle().clone(),
         identity,
         network_version.clone(),
-        env.p2p,
+        env.p2p.clone(),
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
@@ -282,6 +283,12 @@ fn block_on_actors(
         info!(log, "Shutting down protocol runner pools");
         drop(tezos_readonly_api);
         debug!(log, "Shutdown tezos_readonly_api complete");
+
+        if is_sandbox {
+            debug!(log, "Shutting down from sandbox mode, deleting DB");
+            fs::remove_dir_all(env.storage.db_path).expect("Cannot delete db_path directory");
+            fs::remove_dir_all(env.storage.tezos_data_dir).expect("Cannot delete tezos_data_dir directory");
+        }
 
         info!(log, "Shutdown complete");
     });

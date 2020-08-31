@@ -99,7 +99,12 @@ sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev
 
 In OSX, using [Homebrew](https://brew.sh/):
 ```
-brew install pkg-config gmp libev libsodium
+brew install pkg-config gmp libev libsodium hidapi
+```
+
+Install libs required to build sandbox:
+```
+sudo apt install libhidapi-dev
 ```
 
 **4. Supported Linux distributions**

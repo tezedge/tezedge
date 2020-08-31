@@ -70,6 +70,7 @@ steps:
     - mkdir /artifacts/tezedge
     - mkdir -p /artifacts/identities
     - cp ./target/release/light-node /artifacts
+    - cp ./target/release/sandbox /artifacts
     - cp ./target/release/protocol-runner /artifacts
     - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
@@ -80,6 +81,7 @@ steps:
     - cp ./light_node/etc/drone/assert_equals.sh /artifacts/ && chmod 755 /artifacts/assert_equals.sh
     - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
+    - cp ./light_node/etc/drone/sandbox_light_node_args.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
 
 volumes:
@@ -95,6 +97,88 @@ trigger:
     - master
     - develop
 
+##############################################################################################################
+# This pipeline test the sandbox and its rpc sercver
+##############################################################################################################
+---
+kind: pipeline
+name: sandbox
+
+clone:
+  disable: true
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:18732
+  TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:3030
+
+steps:
+- name: tezedge-sandbox-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: sandbox-data
+      path: /tmp/sandbox
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cp /artifacts/protocol-runner /tmp/sandbox/
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - /artifacts/sandbox --sandbox-rpc-port 3030 --light-node-path /artifacts/light-node --log-level info
+
+- name: start-tezedge-node-via-rpc
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - sleep 5
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_light_node_args.json
+    - sleep 5
+
+- name: test-node-start
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+  
+- name: stop-tezedge-node-via-rpc
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - sleep 5
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
+    # On a successfull stop, HTTP code 200 is returned
+    - /tmp/sandbox/assert_equals.sh 200 $resp
+
+volumes:
+  - name: build
+    host:
+      path: /etc/tezedge-ci-build/
+  - name: sandbox-data
+    host:
+      path: /etc/tezedge-ci-data/sandbox
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-and-tests
 ##############################################################################################################
 # This pipeline runs tezedge node with sandbox configuration and does transfer with tezos_client
 ##############################################################################################################
@@ -119,6 +203,17 @@ environment:
   BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
 
 steps:
+- name: cleanup-node-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - rm -rf /tmp/sandbox/light-node
+    - rm -rf /tmp/sandbox/tezos-node
+    - rm -rf /tmp/sandbox/tezos-client
+
 # run empty rust node and wait for it
 - name: tezedge-node-sandbox-run
   image: simplestakingcom/tezedge-ci-builder:latest

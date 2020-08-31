@@ -163,6 +163,48 @@ run_docker() {
   docker run -i -t tezedge-run "$@"
 }
 
+run_sandbox() {
+  # Default light-node commandline arguments:
+  #
+  # -d | --tezos-data-dir
+  TEZOS_DIR=/tmp/tezedge/tezos-node
+  # -B | --bootstrap-db-path
+  BOOTSTRAP_DIR=/tmp/tezedge/light-node
+  # -n | --network
+  NETWORK=sandbox
+
+  # set compilation profile and cargo commandline argument
+  PROFILE=""
+  case $1 in
+    debug)
+      PROFILE="debug"
+      shift
+      ;;
+    release)
+      CARGO_PROFILE_ARG="--release"
+      PROFILE="release"
+      shift
+      ;;
+    *)
+      echo "Invalid function argument"
+      exit 1
+      ;;
+  esac
+
+  shift # shift past <MODE>
+
+  # protocol_runner needs 'libtezos.so' to run
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
+
+  rm -rf ./light_node/etc/tezedge_sandbox/tezos-client/*
+
+  cargo run $CARGO_PROFILE_ARG --bin sandbox -- \
+                                --log-level "info" \
+                                --sandbox-rpc-port "3030" \
+                                --light-node-path "./target/$PROFILE/light-node" \
+                                --tezos-client-path "./sandbox/artifacts/tezos-client" "${args[@]}"
+}
+
 case $1 in
 
   node)
@@ -177,6 +219,13 @@ case $1 in
     printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
     build_all "release"
     run_node "release" "$@"
+    ;;
+
+  sandbox)
+    warn_if_not_using_recommended_rust
+    printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
+    build_all "release"
+    run_sandbox "release" "$@"
     ;;
 
   docker)
