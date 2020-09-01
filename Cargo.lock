@@ -3165,6 +3165,7 @@ dependencies = [
  "serde 1.0.114",
  "serde_json",
  "tezos_encoding",
+ "znfe",
 ]
 
 [[package]]
@@ -3683,5 +3684,5 @@ dependencies = [
 
 [[package]]
 name = "znfe"
-version = "0.1.0"
-source = "git+https://github.com/simplestaking/znfe.git?tag=v0.1.3#8b751dccdb6c8cee4ed17f34c04c106e83e2e8fa"
+version = "0.1.7"
+source = "git+https://github.com/simplestaking/znfe.git?tag=v0.1.7#5cea6a1cb4330d4501e199b0906b11577970aafa"

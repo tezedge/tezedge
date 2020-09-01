@@ -13,6 +13,8 @@ use crate::p2p::encoding::block_header::Level;
 pub mod base;
 pub mod p2p;
 pub mod protocol;
+pub mod to_ocaml;
+pub mod from_ocaml;
 
 /// Helper function to format UNIX (integral) timestamp to RFC3339 string timestamp
 pub fn ts_to_rfc3339(ts: i64) -> String {
