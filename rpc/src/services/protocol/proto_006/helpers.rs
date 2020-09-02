@@ -12,7 +12,7 @@ use crypto::blake2b;
 use storage::num_from_slice;
 use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
-use storage::context::{TezedgeContext, ContextIndex, ContextApi};
+use storage::context::{TezedgeContext, ContextApi};
 use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -133,13 +133,13 @@ impl RightsContextData {
             cycle_from_level(requested_level, blocks_per_cycle)?
         };
 
-        // get context list of block_id level as ContextMap
-        let context_index = ContextIndex::new(Some(block_level.try_into()?), None);
+        // get context_hash from level
+        let ctx_hash = context.level_to_hash(block_level.try_into()?)?;
 
         // get index of roll snapshot
         let roll_snapshot: i16 = {
             let snapshot_key = format!("data/cycle/{}/roll_snapshot", requested_cycle);
-            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![snapshot_key])? {
+            if let Some(data) = context.get_key_from_history(&ctx_hash, &vec![snapshot_key])? {
                 num_from_slice!(data, 0, i16)
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("roll_snapshot"));
@@ -148,7 +148,7 @@ impl RightsContextData {
 
         let random_seed_key = format!("data/cycle/{}/random_seed", requested_cycle);
         let random_seed = {
-            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![random_seed_key])? {
+            if let Some(data) = context.get_key_from_history(&ctx_hash, &vec![random_seed_key])? {
                 data
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("random_seed"));
@@ -158,7 +158,7 @@ impl RightsContextData {
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
         let last_roll = {
-            if let Some(Bucket::Exists(data)) = context.get_key(&context_index, &vec![last_roll_key])? {
+            if let Some(data) = context.get_key_from_history(&ctx_hash, &vec![last_roll_key])? {
                 num_from_slice!(data, 0, i32)
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("last_roll"));
@@ -166,7 +166,7 @@ impl RightsContextData {
         };
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, block_level.try_into()?, requested_cycle, roll_snapshot)? {
+        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, block_level, requested_cycle, roll_snapshot)? {
             rolls
         } else {
             return Err(format_err!("rolls"));
@@ -186,14 +186,16 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(context: &TezedgeContext, requested_level: usize, cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+    fn get_context_rolls(context: &TezedgeContext, requested_level: i64, cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         // let data: ContextMap = context.into_iter()
         //     // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
         //     .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
         //     .collect();
-        let context_index = ContextIndex::new(Some(requested_level), None);
+        //
+        // get context_hash from level
+        let ctx_hash = context.level_to_hash(requested_level.try_into()?)?;
 
-        let rolls = if let Some(val) = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/snapshot".to_string(), cycle.to_string(), snapshot.to_string()])? {
+        let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/snapshot".to_string(), cycle.to_string(), snapshot.to_string()])? {
             val
         } else {
             bail!("No rolls found in context")
@@ -203,16 +205,14 @@ impl RightsContextData {
 
         // iterate through all the owners,the roll_num is the last component of the key, decode the value (it is a public key) to get the public key hash address (tz1...)
         for (key, value) in rolls.into_iter() {
-            let roll_num = key.split('/').last().unwrap();
+            if key.last().is_none() {
+                continue;
+            }
+            let roll_num = key.last().unwrap();
 
             // the values are public keys
-            if let Bucket::Exists(pk) = value {
-                let delegate = SignaturePublicKeyHash::from_tagged_bytes(pk.clone())?.to_string();
-
-                roll_owners.insert(roll_num.parse().unwrap(), delegate);
-            } else {
-                continue;  // If the value is Deleted then is skipped and it go to the next iteration
-            }
+            let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?.to_string();
+            roll_owners.insert(roll_num.parse()?, delegate);
         }
         if roll_owners.len() == 0 {
             bail!("No rolls assigned, all rolls happened to be DELETED")
