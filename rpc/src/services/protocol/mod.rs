@@ -84,8 +84,7 @@ pub(crate) fn check_and_get_baking_rights(
         state,
     )?;
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone(),
-        persistent_storage.merkle());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
@@ -208,8 +207,7 @@ pub(crate) fn check_and_get_endorsing_rights(
         state,
     )?;
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone(),
-        persistent_storage.merkle());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
@@ -365,8 +363,7 @@ pub(crate) fn proto_get_contract_counter(
         state,
     )?;
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone(),
-        persistent_storage.merkle());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
@@ -409,8 +406,7 @@ pub(crate) fn proto_get_contract_manager_key(
         state,
     )?;
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), context_list.clone(),
-        persistent_storage.merkle());
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
     // split impl by protocol
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
