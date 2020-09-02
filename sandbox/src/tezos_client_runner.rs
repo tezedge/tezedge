@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
+use std::io::{Write, BufReader, Read};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
+
 use failure::Fail;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use warp::reject;
 
 use super::TEZOS_CLIENT_DIR;
@@ -73,6 +74,11 @@ pub struct BakeRequest {
     alias: String,
 }
 
+#[derive(Serialize)]
+pub struct TezosClientRepply {
+    pub message: String,
+}
+
 /// Thread-safe reference to the client runner
 pub type TezosClientRunnerRef = Arc<RwLock<TezosClientRunner>>;
 
@@ -107,7 +113,9 @@ impl TezosClientRunner {
     pub fn activate_protocol(
         &self,
         mut activation_parameters: TezosProtcolActivationParameters,
-    ) -> Result<(), reject::Rejection> {
+    ) -> Result<String, reject::Rejection> {
+        let mut output_string = String::new();
+
         // create a temporary file, the tezos-client requires the parameters to be passed in a .json file
         let mut file = fs::File::create("protocol_parameters.json")
             .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
@@ -161,17 +169,20 @@ impl TezosClientRunner {
                 &activation_parameters.timestamp,
             ]
             .to_vec(),
+            &mut output_string,
         )?;
 
         // remove the file after activation
         fs::remove_file("./protocol_parameters.json")
             .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
 
-        Ok(())
+        Ok(output_string)
     }
 
     /// Bake a block with the bootstrap1 account
-    pub fn bake_block(&self, request: BakeRequest) -> Result<(), reject::Rejection> {
+    pub fn bake_block(&self, request: BakeRequest) -> Result<String, reject::Rejection> {
+        let mut output_string = String::new();
+
         let alias = if let Some(wallet) = self.wallets.get(&request.alias) {
             &wallet.alias
         } else {
@@ -191,16 +202,19 @@ impl TezosClientRunner {
                 &alias,
             ]
             .to_vec(),
+            &mut output_string,
         )?;
 
-        Ok(())
+        Ok(output_string)
     }
 
     /// Initialize the accounts in the tezos-client
     pub fn init_client_data(
         &mut self,
         requested_wallets: SandboxWallets,
-    ) -> Result<(), reject::Rejection> {
+    ) -> Result<String, reject::Rejection> {
+        let mut output_string = String::new();
+
         self.run_client(
             [
                 "--base-dir",
@@ -216,6 +230,7 @@ impl TezosClientRunner {
                 "unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6",
             ]
             .to_vec(),
+            &mut output_string,
         )?;
 
         for wallet in requested_wallets {
@@ -234,11 +249,12 @@ impl TezosClientRunner {
                     &format!("unencrypted:{}", &wallet.secret_key),
                 ]
                 .to_vec(),
+                &mut output_string,
             )?;
             self.wallets.insert(wallet.alias.clone(), wallet);
         }
 
-        Ok(())
+        Ok(output_string)
     }
 
     /// Cleanup the tezos-client directory
@@ -252,12 +268,13 @@ impl TezosClientRunner {
     }
 
     /// Private method to run the tezos-client as a subprocess and wait for its completion
-    fn run_client(&self, args: Vec<&str>) -> Result<(), reject::Rejection> {
-        let _ = Command::new(&self.executable_path)
+    fn run_client(&self, args: Vec<&str>, output_string: &mut String) -> Result<(), reject::Rejection> {
+        let output = Command::new(&self.executable_path)
             .args(args)
-            .spawn()
-            .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?
-            .wait();
+            .output()
+            .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
+        let _ = BufReader::new(output.stdout.as_slice()).read_to_string(output_string);
+        let _ = BufReader::new(output.stderr.as_slice()).read_to_string(output_string);
         Ok(())
     }
 }

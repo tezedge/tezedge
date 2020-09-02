@@ -9,7 +9,7 @@ use warp::{reject, Rejection, Reply};
 use crate::node_runner::{LightNodeRunnerError, LightNodeRunnerRef};
 use crate::tezos_client_runner::{
     BakeRequest, SandboxWallets, TezosClientRunnerError, TezosClientRunnerRef,
-    TezosProtcolActivationParameters,
+    TezosProtcolActivationParameters, TezosClientRepply,
 };
 
 /// Handler for start endpoint
@@ -64,9 +64,9 @@ pub async fn init_client_data(
 
     let mut client_runner = client_runner.write().unwrap();
 
-    client_runner.init_client_data(wallets)?;
+    let client_output = client_runner.init_client_data(wallets)?;
 
-    Ok(StatusCode::OK)
+    reply_with_clinet_output(client_output)
 }
 
 pub async fn activate_protocol(
@@ -78,9 +78,9 @@ pub async fn activate_protocol(
 
     let client_runner = client_runner.read().unwrap();
 
-    client_runner.activate_protocol(activation_parameters)?;
+    let client_output = client_runner.activate_protocol(activation_parameters)?;
 
-    Ok(StatusCode::OK)
+    reply_with_clinet_output(client_output)
 }
 
 pub async fn bake_block_with_client(
@@ -92,9 +92,9 @@ pub async fn bake_block_with_client(
 
     let client_runner = client_runner.read().unwrap();
 
-    client_runner.bake_block(request)?;
+    let client_output = client_runner.bake_block(request)?;
 
-    Ok(StatusCode::OK)
+    reply_with_clinet_output(client_output)
 }
 
 #[derive(Serialize)]
@@ -145,4 +145,12 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     });
 
     Ok(warp::reply::with_status(json, code))
+}
+
+fn reply_with_clinet_output(output: String) -> Result<impl warp::Reply, reject::Rejection> {
+    let json = warp::reply::json(&TezosClientRepply {
+        message: output,
+    });
+
+    Ok(warp::reply::with_status(json, StatusCode::OK))
 }
