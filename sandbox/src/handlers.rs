@@ -122,9 +122,9 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     } else if let Some(LightNodeRunnerError::NodeNotRunnig) = err.find() {
         code = StatusCode::BAD_REQUEST;
         message = "Node not running";
-    } else if let Some(LightNodeRunnerError::NodeStartupError) = err.find() {
+    } else if let Some(LightNodeRunnerError::NodeStartupError {reason}) = err.find() {
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = "Error after startup, please make sure all light-node arguments are valid";
+        message = reason;
     } else if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
         // This error happens if the body could not be deserialized correctly
         match e.source() {
