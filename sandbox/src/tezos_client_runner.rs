@@ -75,8 +75,14 @@ pub struct BakeRequest {
 }
 
 #[derive(Serialize)]
-pub struct TezosClientRepply {
+pub struct TezosClientReply {
     pub message: String,
+}
+
+#[derive(Serialize)]
+pub struct TezosClientErrorReply {
+    pub message: String,
+    pub field_name: String,
 }
 
 /// Thread-safe reference to the client runner

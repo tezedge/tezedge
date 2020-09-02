@@ -6,10 +6,12 @@ use slog::{info, Logger};
 use warp::http::StatusCode;
 use warp::{reject, Rejection, Reply};
 
+use itertools::Itertools;
+
 use crate::node_runner::{LightNodeRunnerError, LightNodeRunnerRef};
 use crate::tezos_client_runner::{
     BakeRequest, SandboxWallets, TezosClientRunnerError, TezosClientRunnerRef,
-    TezosProtcolActivationParameters, TezosClientRepply,
+    TezosProtcolActivationParameters, TezosClientReply, TezosClientErrorReply,
 };
 
 /// Handler for start endpoint
@@ -101,11 +103,15 @@ pub async fn bake_block_with_client(
 struct ErrorMessage {
     code: u16,
     message: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    field_name: Option<String>,
 }
 
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
+    let mut field_name: Option<String> = None;
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
@@ -124,6 +130,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         message = "Node not running";
     } else if let Some(LightNodeRunnerError::NodeStartupError {reason}) = err.find() {
         code = StatusCode::INTERNAL_SERVER_ERROR;
+        field_name = extract_field_name(reason);
         message = reason;
     } else if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
         // This error happens if the body could not be deserialized correctly
@@ -142,15 +149,58 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     let json = warp::reply::json(&ErrorMessage {
         code: code.as_u16(),
         message: message.into(),
+        field_name,
     });
 
     Ok(warp::reply::with_status(json, code))
 }
 
 fn reply_with_clinet_output(output: String) -> Result<impl warp::Reply, reject::Rejection> {
-    let json = warp::reply::json(&TezosClientRepply {
-        message: output,
-    });
+    
+    if let Some((field_name, message)) = extract_field_name_and_message_ocaml(&output) {
+        let json = warp::reply::json(&TezosClientErrorReply{
+            message: message.to_string(),
+            field_name,
+        });
+        Ok(warp::reply::with_status(json, StatusCode::INTERNAL_SERVER_ERROR))
+    } else {
+        let json = warp::reply::json(&TezosClientReply {
+            message: output,
+        });
+        Ok(warp::reply::with_status(json, StatusCode::OK))
+    }
+}
 
-    Ok(warp::reply::with_status(json, StatusCode::OK))
+fn extract_field_name(message: &str) -> Option<String> {
+
+    let field_name = message.split_whitespace().filter(|s| s.starts_with("\'--")).map(|s| s.to_string()).collect::<Vec<String>>();
+
+    if field_name.len() < 1 {
+        None
+    } else {
+        Some(field_name[0].replace("\'--", ""))
+    }
+}
+
+fn extract_field_name_and_message_ocaml(message: &str) -> Option<(String, String)>{
+
+    let parsed_message = message.split(",").filter(|s| s.contains("Invalid protocol_parameters: At /")).map(|s| s.to_string()).join("");
+    let field_name: Vec<&str> = parsed_message.split_whitespace().collect();
+
+    println!("FN: {:?}", field_name);
+
+    let field_name = parsed_message.split_whitespace().last();
+
+    println!("FN: {:?}", field_name);
+    println!("MESSAGE: {:?}", message);
+
+    if let Some(field_name) = field_name {
+        let parsed_message = message.split(",").collect::<Vec<&str>>().join("");
+        let message = parsed_message.split("\\n").collect::<Vec<&str>>();
+
+
+        Some((field_name.to_string().replace("/", ""), message[0].to_string()))
+    } else {
+        None
+    }
 }

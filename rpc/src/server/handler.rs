@@ -5,11 +5,14 @@ use bytes::buf::BufExt;
 use chrono::prelude::*;
 use hyper::{Body, Request};
 use slog::warn;
+use serde::Serialize;
 
 use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
-use tezos_api::ffi::JsonRpcRequest;
+use tezos_api::ffi::{JsonRpcRequest};
 use tezos_messages::ts_to_rfc3339;
+use tezos_wrapper::service::{ProtocolServiceError, ProtocolError};
+use tezos_api::ffi::ProtocolRpcError;
 
 use crate::{
     empty,
@@ -26,6 +29,12 @@ use crate::{
 };
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
+
+#[derive(Serialize)]
+pub struct ErrorMessage {
+    error_type: String,
+    message: String,
+}
 
 /// Helper function for generating current TimeStamp
 #[allow(dead_code)]
@@ -365,10 +374,26 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
 
     let json_request = create_ffi_json_request(req).await?;
 
-    result_to_json_response(
-        services::protocol::preapply_block(chain_param, block_param, json_request, &env),
-        env.log(),
-    )
+    // launcher - we need the error from preapply
+    match services::protocol::preapply_block(chain_param, block_param, json_request, &env) {
+        Ok(resp) => result_to_json_response(Ok(resp), env.log()),
+        Err(e) => {
+            if let Some(err) = e.as_fail().downcast_ref::<ProtocolServiceError>() {
+                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc { message } }  } = err {
+                    return make_json_response(&ErrorMessage{
+                        error_type: "ocaml".to_string(),
+                        message: message.to_string(),
+                    })
+                }
+            }
+            empty()
+        }
+    }
+
+    // result_to_json_response(
+    //     resp,
+    //     env.log(),
+    // )
 }
 
 pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
