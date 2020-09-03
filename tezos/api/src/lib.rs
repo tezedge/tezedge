@@ -3,5 +3,4 @@
 
 pub mod ffi;
 pub mod environment;
-pub mod to_ocaml;
-pub mod from_ocaml;
+pub mod ocaml_conv;

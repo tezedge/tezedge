@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use super::{
+    FfiPath, OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlProtocolHash,
+};
 use crate::ffi::{
     Applied, ApplyBlockResponse, Errored, ForkingTestchainData, JsonRpcResponse,
     OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ValidateOperationResponse,
@@ -9,15 +12,6 @@ use crate::ffi::{
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 use znfe::{FromOCaml, Intnat, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
-
-#[repr(transparent)]
-pub struct FfiPath(pub Path);
-
-struct OCamlHash {}
-struct OCamlOperationHash {}
-struct OCamlBlockHash {}
-struct OCamlContextHash {}
-struct OCamlProtocolHash {}
 
 unsafe impl FromOCaml<OCamlHash> for Hash {
     fn from_ocaml(v: OCaml<OCamlHash>) -> Self {

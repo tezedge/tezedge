@@ -9,13 +9,13 @@ use znfe::{
 };
 
 use tezos_api::ffi::*;
-use tezos_api::{from_ocaml::FfiPath};
+use tezos_api::{ocaml_conv::FfiPath};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
 
 mod tezos_ffi {
-    use tezos_api::{to_ocaml::OCamlOperationHash, ffi::{
+    use tezos_api::{ocaml_conv::OCamlOperationHash, ffi::{
         ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, JsonRpcResponse,
         PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
         ValidateOperationResponse,

@@ -1,6 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use super::{
+    OCamlBlockHash, OCamlContextHash, OCamlOperationHash, OCamlOperationListListHash,
+    OCamlProtocolHash,
+};
 use crate::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, FfiRpcService, JsonRpcRequest,
     PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
@@ -12,18 +16,15 @@ use znfe::{
     OCamlBytes, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
 };
 
+// FFI Wrappers
 #[repr(transparent)]
 struct FfiBlockHeader(pub *const BlockHeader);
 #[repr(transparent)]
 struct FfiOperation(pub *const Operation);
 
+// Headers
 struct BlockHeaderShellHeader {}
 struct OperationShellHeader {}
-struct OCamlOperationListListHash {}
-pub struct OCamlOperationHash {}
-struct OCamlBlockHash {}
-struct OCamlContextHash {}
-struct OCamlProtocolHash {}
 
 ocaml! {
     // Requests
