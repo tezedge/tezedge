@@ -2,17 +2,47 @@
 // SPDX-License-Identifier: MIT
 
 use crate::ffi::{
-    Applied, ApplyBlockResponse, Errored, ForkingTestchainData,
+    Applied, ApplyBlockResponse, Errored, ForkingTestchainData, JsonRpcResponse,
     OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ValidateOperationResponse,
-    ValidateOperationResult, JsonRpcResponse,
+    ValidateOperationResult,
 };
+use crypto::hash::{BlockHash, OperationHash, ContextHash, ProtocolHash};
 use znfe::{FromOCaml, Intnat, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
+
+struct OCamlOperationHash {}
+struct OCamlBlockHash {}
+struct OCamlContextHash {}
+struct OCamlProtocolHash {}
+
+unsafe impl FromOCaml<OCamlOperationHash> for OperationHash {
+    fn from_ocaml(v: OCaml<OCamlOperationHash>) -> Self {
+        unsafe { v.field::<OCamlBytes>(0).into_rust() }
+    }
+}
+
+unsafe impl FromOCaml<OCamlBlockHash> for BlockHash {
+    fn from_ocaml(v: OCaml<OCamlBlockHash>) -> Self {
+        unsafe { v.field::<OCamlBytes>(0).into_rust() }
+    }
+}
+
+unsafe impl FromOCaml<OCamlContextHash> for ContextHash {
+    fn from_ocaml(v: OCaml<OCamlContextHash>) -> Self {
+        unsafe { v.field::<OCamlBytes>(0).into_rust() }
+    }
+}
+
+unsafe impl FromOCaml<OCamlProtocolHash> for ProtocolHash {
+    fn from_ocaml(v: OCaml<OCamlProtocolHash>) -> Self {
+        unsafe { v.field::<OCamlBytes>(0).into_rust() }
+    }
+}
 
 unsafe impl FromOCaml<ForkingTestchainData> for ForkingTestchainData {
     fn from_ocaml(v: OCaml<ForkingTestchainData>) -> Self {
         unsafe {
             ForkingTestchainData {
-                forking_block_hash: v.field::<OCamlBytes>(0).into_rust(),
+                forking_block_hash: v.field::<OCamlBlockHash>(0).into_rust(),
                 test_chain_id: v.field::<OCamlBytes>(1).into_rust(),
             }
         }
@@ -24,7 +54,7 @@ unsafe impl FromOCaml<ApplyBlockResponse> for ApplyBlockResponse {
         unsafe {
             ApplyBlockResponse {
                 validation_result_message: v.field::<String>(0).into_rust(),
-                context_hash: v.field::<OCamlBytes>(1).into_rust(),
+                context_hash: v.field::<OCamlContextHash>(1).into_rust(),
                 block_header_proto_json: v.field::<String>(2).into_rust(),
                 block_header_proto_metadata_json: v.field::<String>(3).into_rust(),
                 operations_proto_metadata_json: v.field::<String>(4).into_rust(),
@@ -42,7 +72,7 @@ unsafe impl FromOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
         unsafe {
             PrevalidatorWrapper {
                 chain_id: v.field::<OCamlBytes>(0).into_rust(),
-                protocol: v.field::<OCamlBytes>(1).into_rust(),
+                protocol: v.field::<OCamlProtocolHash>(1).into_rust(),
             }
         }
     }
@@ -52,7 +82,7 @@ unsafe impl FromOCaml<Applied> for Applied {
     fn from_ocaml(v: OCaml<Applied>) -> Self {
         unsafe {
             Applied {
-                hash: v.field::<OCamlBytes>(0).into_rust(),
+                hash: v.field::<OCamlOperationHash>(0).into_rust(),
                 protocol_data_json: v.field::<OCamlBytes>(1).into_rust(),
             }
         }
@@ -76,7 +106,7 @@ unsafe impl FromOCaml<Errored> for Errored {
     fn from_ocaml(v: OCaml<Errored>) -> Self {
         unsafe {
             Errored {
-                hash: v.field::<OCamlBytes>(0).into_rust(),
+                hash: v.field::<OCamlOperationHash>(0).into_rust(),
                 is_endorsement: v.field::<Option<bool>>(1).into_rust(),
                 protocol_data_json_with_error_json: v
                     .field::<OperationProtocolDataJsonWithErrorListJson>(2)

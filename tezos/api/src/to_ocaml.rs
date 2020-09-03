@@ -10,6 +10,9 @@ use znfe::{
     ocaml, ocaml_frame, to_ocaml, Intnat, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes,
     OCamlList, ToOCaml,
 };
+use crypto::hash::ProtocolHash;
+
+struct OCamlProtocolHash {}
 
 ocaml! {
     alloc fn alloc_apply_block_request(
@@ -28,7 +31,7 @@ ocaml! {
 
     alloc fn alloc_prevalidator_wrapper(
         chain_id: OCamlBytes,
-        protocol: OCamlBytes,
+        protocol: OCamlProtocolHash,
     ) -> PrevalidatorWrapper;
 
     alloc fn alloc_validate_operation_request(
@@ -48,6 +51,10 @@ ocaml! {
         request: JsonRpcRequest,
         ffi_service: FfiRpcService,
     ) -> ProtocolJsonRpcRequest;
+
+    alloc fn alloc_protocol_hash(
+        hash: OCamlBytes,
+    ) -> OCamlProtocolHash;
 }
 
 unsafe impl ToOCaml<ApplyBlockRequest> for ApplyBlockRequest {
@@ -90,6 +97,14 @@ unsafe impl ToOCaml<BeginConstructionRequest> for BeginConstructionRequest {
     }
 }
 
+unsafe impl ToOCaml<OCamlProtocolHash> for ProtocolHash {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlProtocolHash> {
+        ocaml_frame!(gc, {
+            let hash = to_ocaml!(gc, self);
+            unsafe { alloc_protocol_hash(token, hash) }
+        })
+    }
+}
 unsafe impl ToOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<PrevalidatorWrapper> {
         ocaml_frame!(gc, {

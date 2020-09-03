@@ -3,6 +3,7 @@
 
 use crate::p2p::encoding::prelude::BlockHeader;
 use crate::p2p::encoding::prelude::Operation;
+use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
 use znfe::{
     ocaml, ocaml_alloc, ocaml_frame, to_ocaml, Intnat, OCaml, OCamlAllocResult, OCamlAllocToken,
     OCamlBytes, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
@@ -10,17 +11,20 @@ use znfe::{
 
 struct BlockHeaderShellHeader {}
 struct OperationShellHeader {}
+struct OCamlOperationListListHash {}
+struct OCamlBlockHash {}
+struct OCamlContextHash {}
 
 ocaml! {
     alloc fn alloc_block_header_shell_header(
         level: OCamlInt32,
         proto_level: Intnat,
-        predecessor: OCamlBytes,
+        predecessor: OCamlBlockHash,
         timestamp: OCamlInt64,
         validation_passes: Intnat,
-        operations_hash: OCamlBytes,
+        operations_hash: OCamlOperationListListHash,
         fitness: OCamlList<OCamlBytes>,
-        context: OCamlBytes,
+        context: OCamlContextHash,
     ) -> BlockHeaderShellHeader;
 
     alloc fn alloc_block_header(
@@ -29,13 +33,52 @@ ocaml! {
     ) -> BlockHeader;
 
     alloc fn alloc_operation_shell_header(
-        branch: OCamlBytes,
+        branch: OCamlBlockHash,
     ) -> OperationShellHeader;
 
     alloc fn alloc_operation(
         shell: OperationShellHeader,
         proto: OCamlBytes,
     ) -> Operation;
+
+    alloc fn alloc_operation_list_list_hash(
+        hash: OCamlBytes,
+    ) -> OCamlOperationListListHash;
+
+    alloc fn alloc_block_hash(
+        hash: OCamlBytes,
+    ) -> OCamlBlockHash;
+
+    alloc fn alloc_context_hash(
+        hash: OCamlBytes,
+    ) -> OCamlContextHash;
+}
+
+unsafe impl ToOCaml<OCamlOperationListListHash> for OperationListListHash {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlOperationListListHash> {
+        ocaml_frame!(gc, {
+            let hash = to_ocaml!(gc, self);
+            unsafe { alloc_operation_list_list_hash(token, hash) }
+        })
+    }
+}
+
+unsafe impl ToOCaml<OCamlBlockHash> for BlockHash {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlBlockHash> {
+        ocaml_frame!(gc, {
+            let hash = to_ocaml!(gc, self);
+            unsafe { alloc_block_hash(token, hash) }
+        })
+    }
+}
+
+unsafe impl ToOCaml<OCamlContextHash> for ContextHash {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlContextHash> {
+        ocaml_frame!(gc, {
+            let hash = to_ocaml!(gc, self);
+            unsafe { alloc_context_hash(token, hash) }
+        })
+    }
 }
 
 unsafe impl ToOCaml<BlockHeader> for BlockHeader {

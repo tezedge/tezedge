@@ -5,13 +5,25 @@ use std::sync::Once;
 
 use znfe::{
     ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, IntoRust, OCaml, OCamlBytes,
-    OCamlInt32, OCamlList, ToOCaml,
+    OCamlInt32, OCamlList, ToOCaml, OCamlAllocToken, OCamlAllocResult,
 };
 
 use tezos_api::ffi::*;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
+
+// TODO: move all conversions to a single place
+pub struct OCamlOperationHash {}
+
+unsafe impl ToOCaml<OCamlOperationHash> for Vec<u8> {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlOperationHash> {
+        ocaml_frame!(gc, {
+            let hash = to_ocaml!(gc, self);
+            unsafe { tezos_ffi::alloc_operation_hash(token, hash) }
+        })
+    }
+}
 
 mod tezos_ffi {
     use tezos_api::ffi::{
@@ -53,7 +65,11 @@ mod tezos_ffi {
             key: OCamlList<OCamlBytes>,
             data: OCamlBytes
         ) -> Option<OCamlBytes>;
-        pub fn compute_path(request: OCamlList<OCamlList<OCamlBytes>>) -> OCamlList<Path>;
+        pub fn compute_path(request: OCamlList<OCamlList<super::OCamlOperationHash>>) -> OCamlList<Path>;
+
+        pub alloc fn alloc_operation_hash(
+            hash: OCamlBytes,
+        ) -> super::OCamlOperationHash;
     }
 }
 
