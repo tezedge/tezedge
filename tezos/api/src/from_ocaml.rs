@@ -6,13 +6,24 @@ use crate::ffi::{
     OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ValidateOperationResponse,
     ValidateOperationResult,
 };
-use crypto::hash::{BlockHash, OperationHash, ContextHash, ProtocolHash};
+use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
+use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 use znfe::{FromOCaml, Intnat, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
 
+#[repr(transparent)]
+pub struct FfiPath(pub Path);
+
+struct OCamlHash {}
 struct OCamlOperationHash {}
 struct OCamlBlockHash {}
 struct OCamlContextHash {}
 struct OCamlProtocolHash {}
+
+unsafe impl FromOCaml<OCamlHash> for Hash {
+    fn from_ocaml(v: OCaml<OCamlHash>) -> Self {
+        unsafe { v.field::<OCamlBytes>(0).into_rust() }
+    }
+}
 
 unsafe impl FromOCaml<OCamlOperationHash> for OperationHash {
     fn from_ocaml(v: OCaml<OCamlOperationHash>) -> Self {
@@ -145,6 +156,38 @@ unsafe impl FromOCaml<JsonRpcResponse> for JsonRpcResponse {
         unsafe {
             JsonRpcResponse {
                 body: v.field::<OCamlBytes>(0).into_rust(),
+            }
+        }
+    }
+}
+
+unsafe impl FromOCaml<Path> for FfiPath {
+    fn from_ocaml(v: OCaml<Path>) -> Self {
+        if v.is_long() {
+            FfiPath(Path::Op)
+        } else {
+            match v.tag_value() {
+                0 => {
+                    let path: FfiPath = unsafe { v.field::<Path>(0).into_rust() };
+                    let right = unsafe { v.field::<OCamlHash>(1).into_rust() };
+
+                    FfiPath(Path::Left(Box::new(PathLeft::new(
+                        path.0,
+                        right,
+                        Default::default(), // TODO: what is body?
+                    ))))
+                }
+                1 => {
+                    let left = unsafe { v.field::<OCamlHash>(0).into_rust() };
+                    let path: FfiPath = unsafe { v.field::<Path>(1).into_rust() };
+
+                    FfiPath(Path::Right(Box::new(PathRight::new(
+                        left,
+                        path.0,
+                        Default::default(), // TODO: what is body?
+                    ))))
+                }
+                tag => panic!("Invalid tag value for OCaml<Path>: {}", tag),
             }
         }
     }

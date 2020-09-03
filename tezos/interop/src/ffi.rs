@@ -5,32 +5,21 @@ use std::sync::Once;
 
 use znfe::{
     ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, IntoRust, OCaml, OCamlBytes,
-    OCamlInt32, OCamlList, ToOCaml, OCamlAllocToken, OCamlAllocResult,
+    OCamlInt32, OCamlList, ToOCaml,
 };
 
 use tezos_api::ffi::*;
+use tezos_api::{from_ocaml::FfiPath};
 
 use crate::runtime;
 use crate::runtime::OcamlError;
 
-// TODO: move all conversions to a single place
-pub struct OCamlOperationHash {}
-
-unsafe impl ToOCaml<OCamlOperationHash> for Vec<u8> {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlOperationHash> {
-        ocaml_frame!(gc, {
-            let hash = to_ocaml!(gc, self);
-            unsafe { tezos_ffi::alloc_operation_hash(token, hash) }
-        })
-    }
-}
-
 mod tezos_ffi {
-    use tezos_api::ffi::{
+    use tezos_api::{to_ocaml::OCamlOperationHash, ffi::{
         ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, JsonRpcResponse,
         PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
         ValidateOperationResponse,
-    };
+    }};
     use znfe::{ocaml, Intnat, OCamlBytes, OCamlInt32, OCamlList};
     use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
@@ -65,11 +54,7 @@ mod tezos_ffi {
             key: OCamlList<OCamlBytes>,
             data: OCamlBytes
         ) -> Option<OCamlBytes>;
-        pub fn compute_path(request: OCamlList<OCamlList<super::OCamlOperationHash>>) -> OCamlList<Path>;
-
-        pub alloc fn alloc_operation_hash(
-            hash: OCamlBytes,
-        ) -> super::OCamlOperationHash;
+        pub fn compute_path(request: OCamlList<OCamlList<OCamlOperationHash>>) -> OCamlList<Path>;
     }
 }
 
@@ -320,9 +305,16 @@ pub fn compute_path(
             let ocaml_request = to_ocaml!(gc, request.operations);
             let result = ocaml_call!(tezos_ffi::compute_path(gc, ocaml_request));
             match result {
-                Ok(response) => Ok(ComputePathResponse {
-                    operations_hashes_path: response.into_rust()
-                }),
+                Ok(response) => {
+                    let operations_hashes_path: Vec<FfiPath> = response.into_rust();
+                    let operations_hashes_path = operations_hashes_path
+                        .into_iter()
+                        .map(|path| path.0)
+                        .collect();
+                    Ok(ComputePathResponse {
+                        operations_hashes_path
+                    })
+                },
                 Err(e) => Err(CallError::from(e)),
             }
         })
