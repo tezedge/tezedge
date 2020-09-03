@@ -5,12 +5,15 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
-
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 use warp::reject;
+use warp::http::StatusCode;
+use slog::{info, warn, Logger};
+use itertools::Itertools;
 
 use super::TEZOS_CLIENT_DIR;
+use crate::handlers::ErrorMessage;
 
 #[derive(Debug, Fail)]
 pub enum TezosClientRunnerError {
@@ -33,6 +36,10 @@ pub enum TezosClientRunnerError {
     /// Serde Error.
     #[fail(display = "Error in serde")]
     SerdeError { reason: serde_json::Error },
+
+    /// Call Error.
+    #[fail(display = "Tezos-client call error")]
+    CallError { message: ErrorMessage },
 }
 
 impl From<std::io::Error> for TezosClientRunnerError {
@@ -75,11 +82,6 @@ pub struct BakeRequest {
 }
 
 #[derive(Serialize)]
-pub struct TezosClientReply {
-    pub message: String,
-}
-
-#[derive(Serialize)]
 pub struct TezosClientErrorReply {
     pub message: String,
     pub field_name: String,
@@ -105,6 +107,27 @@ pub struct TezosProtcolActivationParameters {
     protocol_parameters: serde_json::Value,
 }
 
+#[derive(Serialize, Clone)]
+pub struct TezosClientReply {
+    pub output: String,
+    pub error: String,
+}
+
+impl TezosClientReply {
+    pub fn new(output: String, error: String) -> Self {
+        Self {
+            output,
+            error,
+        }
+    }
+}
+
+impl Default for TezosClientReply {
+    fn default() -> TezosClientReply {
+        TezosClientReply::new(String::new(), String::new())
+    }
+}
+
 impl TezosClientRunner {
     pub fn new(name: &str, executable_path: PathBuf, base_dir_path: PathBuf) -> Self {
         Self {
@@ -119,8 +142,8 @@ impl TezosClientRunner {
     pub fn activate_protocol(
         &self,
         mut activation_parameters: TezosProtcolActivationParameters,
-    ) -> Result<String, reject::Rejection> {
-        let mut output_string = String::new();
+    ) -> Result<TezosClientReply, reject::Rejection> {
+        let mut client_output: TezosClientReply = Default::default();
 
         // create a temporary file, the tezos-client requires the parameters to be passed in a .json file
         let mut file = fs::File::create("protocol_parameters.json")
@@ -175,19 +198,19 @@ impl TezosClientRunner {
                 &activation_parameters.timestamp,
             ]
             .to_vec(),
-            &mut output_string,
+            &mut client_output,
         )?;
 
         // remove the file after activation
         fs::remove_file("./protocol_parameters.json")
             .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
 
-        Ok(output_string)
+        Ok(client_output)
     }
 
     /// Bake a block with the bootstrap1 account
-    pub fn bake_block(&self, request: BakeRequest) -> Result<String, reject::Rejection> {
-        let mut output_string = String::new();
+    pub fn bake_block(&self, request: BakeRequest) -> Result<TezosClientReply, reject::Rejection> {
+        let mut client_output: TezosClientReply = Default::default();
 
         let alias = if let Some(wallet) = self.wallets.get(&request.alias) {
             &wallet.alias
@@ -208,18 +231,18 @@ impl TezosClientRunner {
                 &alias,
             ]
             .to_vec(),
-            &mut output_string,
+            &mut client_output,
         )?;
 
-        Ok(output_string)
+        Ok(client_output)
     }
 
     /// Initialize the accounts in the tezos-client
     pub fn init_client_data(
         &mut self,
         requested_wallets: SandboxWallets,
-    ) -> Result<String, reject::Rejection> {
-        let mut output_string = String::new();
+    ) -> Result<TezosClientReply, reject::Rejection> {
+        let mut client_output: TezosClientReply = Default::default();
 
         self.run_client(
             [
@@ -236,7 +259,7 @@ impl TezosClientRunner {
                 "unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6",
             ]
             .to_vec(),
-            &mut output_string,
+            &mut client_output,
         )?;
 
         for wallet in requested_wallets {
@@ -255,12 +278,12 @@ impl TezosClientRunner {
                     &format!("unencrypted:{}", &wallet.secret_key),
                 ]
                 .to_vec(),
-                &mut output_string,
+                &mut client_output,
             )?;
             self.wallets.insert(wallet.alias.clone(), wallet);
         }
 
-        Ok(output_string)
+        Ok(client_output)
     }
 
     /// Cleanup the tezos-client directory
@@ -274,13 +297,58 @@ impl TezosClientRunner {
     }
 
     /// Private method to run the tezos-client as a subprocess and wait for its completion
-    fn run_client(&self, args: Vec<&str>, output_string: &mut String) -> Result<(), reject::Rejection> {
+    fn run_client(&self, args: Vec<&str>, client_output: &mut TezosClientReply) -> Result<(), reject::Rejection> {
         let output = Command::new(&self.executable_path)
             .args(args)
             .output()
             .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
-        let _ = BufReader::new(output.stdout.as_slice()).read_to_string(output_string);
-        let _ = BufReader::new(output.stderr.as_slice()).read_to_string(output_string);
+        let _ = BufReader::new(output.stdout.as_slice()).read_to_string(&mut client_output.output);
+        let _ = BufReader::new(output.stderr.as_slice()).read_to_string(&mut client_output.error);
+
         Ok(())
+    }
+}
+
+/// Construct a reply using the output from the tezos-client
+pub fn reply_with_clinet_output(reply: TezosClientReply, log: &Logger) -> Result<impl warp::Reply, reject::Rejection> {
+    if reply.error.is_empty() {
+        info!(log, "Successfull tezos-client call: {}", reply.output);
+        Ok(StatusCode::OK)
+    } else {
+        if reply.output.is_empty() {
+            // error
+            if let Some((field_name, message)) = extract_field_name_and_message_ocaml(&reply) {
+                Err(TezosClientRunnerError::CallError { message: ErrorMessage::validation(500, message, field_name)}.into())
+            } else {
+                // generic
+                Err(TezosClientRunnerError::CallError { message: ErrorMessage::generic(500, "Unexpexted error in tezos-client call".to_string())}.into())
+            }
+        } else {
+            // this is just a warning
+            warn!(log, "Succesfull call with a warning: {} -> WARNING: {}", reply.output, reply.error);
+            Ok(StatusCode::OK)
+        }
+    }
+}
+
+/// Parse the returned error string from the tezos client
+fn extract_field_name_and_message_ocaml(reply: &TezosClientReply) -> Option<(String, String)>{
+    let parsed_message = reply.error.replace("\\", "").split("\"").filter(|s| s.contains("Invalid protocol_parameters")).join("").replace(" n{ ", "").replace("{", "");
+
+    // extract the field name depending on the parsed error
+    let field_name = if parsed_message.contains("Missing object field") {
+        Some(parsed_message.split_whitespace().last().unwrap_or("").to_string())
+    } else if parsed_message.contains("/") {
+        Some(parsed_message.split_whitespace().filter(|s| s.contains("/")).join("").replace("/", ""))
+    } else {
+        None
+    };
+
+    if let Some(field_name) = field_name {
+        // simply remove the field name from the error message
+        let message = parsed_message.replace(&field_name, "").replace("At / ", "").trim().to_string();
+        Some((field_name, message))
+    } else {
+        None
     }
 }

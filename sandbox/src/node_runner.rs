@@ -9,6 +9,7 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use wait_timeout::ChildExt;
 use warp::reject;
+use itertools::Itertools;
 
 #[derive(Debug, Fail)]
 pub enum LightNodeRunnerError {
@@ -90,7 +91,7 @@ impl LightNodeRunner {
                 // process exited, we need to handle and show the exact error
                 Ok(Some(_)) => {
                     let error_msg = handle_stderr(&mut process);
-                    return Err(LightNodeRunnerError::NodeStartupError{ reason: error_msg}.into());
+                    return Err(LightNodeRunnerError::NodeStartupError{ reason: error_msg.split("USAGE:").take(1).join("").replace("error:", "").trim().into()}.into());
                 }
                 // the process started up OK, but we restart it to enable normal logging (stderr won't be piped)
                 _ => {
