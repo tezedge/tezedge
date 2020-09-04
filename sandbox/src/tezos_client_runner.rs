@@ -321,6 +321,7 @@ pub fn reply_with_clinet_output(reply: TezosClientReply, log: &Logger) -> Result
                 Err(TezosClientRunnerError::CallError { message: ErrorMessage::validation(500, message, field_name)}.into())
             } else {
                 // generic
+                warn!(log, "GENERIC ERROR in tezos-client, log: {}", reply.error);
                 Err(TezosClientRunnerError::CallError { message: ErrorMessage::generic(500, "Unexpexted error in tezos-client call".to_string())}.into())
             }
         } else {
@@ -339,14 +340,14 @@ fn extract_field_name_and_message_ocaml(reply: &TezosClientReply) -> Option<(Str
     let field_name = if parsed_message.contains("Missing object field") {
         Some(parsed_message.split_whitespace().last().unwrap_or("").to_string())
     } else if parsed_message.contains("/") {
-        Some(parsed_message.split_whitespace().filter(|s| s.contains("/")).join("").replace("/", ""))
+        Some(parsed_message.split_whitespace().filter(|s| s.contains("/")).join("").replace("/", "").replace(",", ""))
     } else {
         None
     };
 
     if let Some(field_name) = field_name {
         // simply remove the field name from the error message
-        let message = parsed_message.replace(&field_name, "").replace("At / ", "").trim().to_string();
+        let message = parsed_message.replace(&field_name, "").replace("At /, ", "").trim().to_string();
         Some((field_name, message))
     } else {
         None
