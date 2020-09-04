@@ -569,6 +569,13 @@ impl MerkleStorage {
     fn string_to_key(&self, string: &String) -> ContextKey {
         string.split('/').map(str::to_string).collect()
     }
+
+    pub fn get_last_commit_hash(&self) -> Option<EntryHash> {
+        match &self.last_commit {
+            Some(c) => Some(self.hash_commit(&c)),
+            None    => None
+        }
+    }
 }
 
 #[cfg(test)]
