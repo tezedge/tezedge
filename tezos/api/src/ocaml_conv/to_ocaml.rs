@@ -9,7 +9,7 @@ use crate::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, FfiRpcService, JsonRpcRequest,
     PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
 };
-use crypto::hash::{BlockHash, ContextHash, OperationListListHash, ProtocolHash};
+use crypto::hash::{BlockHash, ContextHash, OperationListListHash, ProtocolHash, Hash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
     ocaml, ocaml_alloc, ocaml_frame, to_ocaml, Intnat, OCaml, OCamlAllocResult, OCamlAllocToken,
@@ -151,50 +151,25 @@ unsafe impl ToOCaml<BeginConstructionRequest> for BeginConstructionRequest {
     }
 }
 
-unsafe impl ToOCaml<OCamlOperationListListHash> for OperationListListHash {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlOperationListListHash> {
-        ocaml_frame!(gc, {
-            let hash = to_ocaml!(gc, self);
-            unsafe { alloc_operation_list_list_hash(token, hash) }
-        })
-    }
+macro_rules! to_ocaml_hash {
+    ($ocaml_name:ident, $rust_name:ident, $allocate:ident) => {
+        unsafe impl ToOCaml<$ocaml_name> for $rust_name {
+            fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<$ocaml_name> {
+                ocaml_frame!(gc, {
+                    let hash = to_ocaml!(gc, self);
+                    unsafe { $allocate(token, hash) }
+                })
+            }
+        }
+    };
 }
 
-unsafe impl ToOCaml<OCamlOperationHash> for Vec<u8> {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlOperationHash> {
-        ocaml_frame!(gc, {
-            let hash = to_ocaml!(gc, self);
-            unsafe { alloc_operation_hash(token, hash) }
-        })
-    }
-}
+to_ocaml_hash!(OCamlOperationListListHash, OperationListListHash, alloc_operation_list_list_hash);
+to_ocaml_hash!(OCamlOperationHash, Hash, alloc_operation_hash);
+to_ocaml_hash!(OCamlBlockHash, BlockHash, alloc_block_hash);
+to_ocaml_hash!(OCamlContextHash, ContextHash, alloc_context_hash);
+to_ocaml_hash!(OCamlProtocolHash, ProtocolHash, alloc_protocol_hash);
 
-unsafe impl ToOCaml<OCamlBlockHash> for BlockHash {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlBlockHash> {
-        ocaml_frame!(gc, {
-            let hash = to_ocaml!(gc, self);
-            unsafe { alloc_block_hash(token, hash) }
-        })
-    }
-}
-
-unsafe impl ToOCaml<OCamlContextHash> for ContextHash {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlContextHash> {
-        ocaml_frame!(gc, {
-            let hash = to_ocaml!(gc, self);
-            unsafe { alloc_context_hash(token, hash) }
-        })
-    }
-}
-
-unsafe impl ToOCaml<OCamlProtocolHash> for ProtocolHash {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlProtocolHash> {
-        ocaml_frame!(gc, {
-            let hash = to_ocaml!(gc, self);
-            unsafe { alloc_protocol_hash(token, hash) }
-        })
-    }
-}
 unsafe impl ToOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<PrevalidatorWrapper> {
         ocaml_frame!(gc, {
