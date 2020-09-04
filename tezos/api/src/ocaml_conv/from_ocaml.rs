@@ -13,35 +13,21 @@ use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 use znfe::{FromOCaml, Intnat, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
 
-unsafe impl FromOCaml<OCamlHash> for Hash {
-    fn from_ocaml(v: OCaml<OCamlHash>) -> Self {
-        unsafe { v.field::<OCamlBytes>(0).into_rust() }
+macro_rules! from_ocaml_hash {
+    ($ocaml_name:ident, $rust_name:ident) => {
+        unsafe impl FromOCaml<$ocaml_name> for $rust_name {
+            fn from_ocaml(v: OCaml<$ocaml_name>) -> Self {
+                unsafe { v.field::<OCamlBytes>(0).into_rust() }
+            }
+        }
     }
 }
 
-unsafe impl FromOCaml<OCamlOperationHash> for OperationHash {
-    fn from_ocaml(v: OCaml<OCamlOperationHash>) -> Self {
-        unsafe { v.field::<OCamlBytes>(0).into_rust() }
-    }
-}
-
-unsafe impl FromOCaml<OCamlBlockHash> for BlockHash {
-    fn from_ocaml(v: OCaml<OCamlBlockHash>) -> Self {
-        unsafe { v.field::<OCamlBytes>(0).into_rust() }
-    }
-}
-
-unsafe impl FromOCaml<OCamlContextHash> for ContextHash {
-    fn from_ocaml(v: OCaml<OCamlContextHash>) -> Self {
-        unsafe { v.field::<OCamlBytes>(0).into_rust() }
-    }
-}
-
-unsafe impl FromOCaml<OCamlProtocolHash> for ProtocolHash {
-    fn from_ocaml(v: OCaml<OCamlProtocolHash>) -> Self {
-        unsafe { v.field::<OCamlBytes>(0).into_rust() }
-    }
-}
+from_ocaml_hash!(OCamlHash, Hash);
+from_ocaml_hash!(OCamlOperationHash, OperationHash);
+from_ocaml_hash!(OCamlBlockHash, BlockHash);
+from_ocaml_hash!(OCamlContextHash, ContextHash);
+from_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
 
 unsafe impl FromOCaml<ForkingTestchainData> for ForkingTestchainData {
     fn from_ocaml(v: OCaml<ForkingTestchainData>) -> Self {
