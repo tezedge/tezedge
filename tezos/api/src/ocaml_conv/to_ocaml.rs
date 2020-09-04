@@ -18,9 +18,9 @@ use znfe::{
 
 // FFI Wrappers
 #[repr(transparent)]
-struct FfiBlockHeader(pub *const BlockHeader);
+pub struct FfiBlockHeader(pub *const BlockHeader);
 #[repr(transparent)]
-struct FfiOperation(pub *const Operation);
+pub struct FfiOperation(pub *const Operation);
 
 // Headers
 struct BlockHeaderShellHeader {}
