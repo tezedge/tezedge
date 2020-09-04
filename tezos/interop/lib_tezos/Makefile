@@ -18,7 +18,7 @@ build: build-deps
 		mv ${TEZOS_BASE_DIR}/libtezos-ffi.so $(OBJDIR)/libtezos${LIB_EXTENSION}
 
 build-deps:
-		cd ${TEZOS_BASE_DIR} && OPAMYES=1 make build-deps
+		cd ${TEZOS_BASE_DIR} && OPAMYES=1 make build-dev-deps
 
 clean:
 		rm -rf artifacts
