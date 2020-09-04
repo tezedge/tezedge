@@ -29,3 +29,8 @@ sha2 = "0.9"
 crypto = { path = "../../crypto" }
 tezos_context = { path = "../context" }
 serial_test = "0.4"
+criterion = "0.3"
+
+[[bench]]
+name = "interop_benchmark"
+harness = false

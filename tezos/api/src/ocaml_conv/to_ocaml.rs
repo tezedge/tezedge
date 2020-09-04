@@ -2,25 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    OCamlBlockHash, OCamlContextHash, OCamlOperationHash, OCamlOperationListListHash,
-    OCamlProtocolHash,
+    FfiBlockHeader, FfiOperation, OCamlBlockHash, OCamlContextHash, OCamlOperationHash,
+    OCamlOperationListListHash, OCamlProtocolHash,
 };
 use crate::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, FfiRpcService, JsonRpcRequest,
     PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
 };
-use crypto::hash::{BlockHash, ContextHash, OperationListListHash, ProtocolHash, Hash};
+use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
     ocaml, ocaml_alloc, ocaml_frame, to_ocaml, Intnat, OCaml, OCamlAllocResult, OCamlAllocToken,
     OCamlBytes, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
 };
-
-// FFI Wrappers
-#[repr(transparent)]
-struct FfiBlockHeader(pub *const BlockHeader);
-#[repr(transparent)]
-struct FfiOperation(pub *const Operation);
 
 // Headers
 struct BlockHeaderShellHeader {}
@@ -110,13 +104,13 @@ unsafe impl ToOCaml<ApplyBlockRequest> for ApplyBlockRequest {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ApplyBlockRequest> {
         ocaml_frame!(gc, {
             let ref chain_id = to_ocaml!(gc, self.chain_id).keep(gc);
-            let ref block_header = to_ocaml!(gc, FfiBlockHeader(&self.block_header)).keep(gc);
-            let ref pred_header = to_ocaml!(gc, FfiBlockHeader(&self.pred_header)).keep(gc);
+            let ref block_header = to_ocaml!(gc, FfiBlockHeader(self.block_header.clone())).keep(gc);
+            let ref pred_header = to_ocaml!(gc, FfiBlockHeader(self.pred_header.clone())).keep(gc);
             let max_operations_ttl = OCaml::of_int(self.max_operations_ttl as i64);
             let operations: Vec<Vec<FfiOperation>> = self
                 .operations
                 .iter()
-                .map(|ops| ops.iter().map(|op| FfiOperation(op)).collect())
+                .map(|ops| ops.iter().map(|op| FfiOperation(op.clone())).collect())
                 .collect();
             let operations = to_ocaml!(gc, operations);
             unsafe {
@@ -137,7 +131,7 @@ unsafe impl ToOCaml<BeginConstructionRequest> for BeginConstructionRequest {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<BeginConstructionRequest> {
         ocaml_frame!(gc, {
             let ref chain_id = to_ocaml!(gc, self.chain_id).keep(gc);
-            let ref predecessor = to_ocaml!(gc, FfiBlockHeader(&self.predecessor)).keep(gc);
+            let ref predecessor = to_ocaml!(gc, FfiBlockHeader(self.predecessor.clone())).keep(gc);
             let protocol_data = to_ocaml!(gc, self.protocol_data);
             unsafe {
                 alloc_begin_construction_request(
@@ -164,7 +158,11 @@ macro_rules! to_ocaml_hash {
     };
 }
 
-to_ocaml_hash!(OCamlOperationListListHash, OperationListListHash, alloc_operation_list_list_hash);
+to_ocaml_hash!(
+    OCamlOperationListListHash,
+    OperationListListHash,
+    alloc_operation_list_list_hash
+);
 to_ocaml_hash!(OCamlOperationHash, Hash, alloc_operation_hash);
 to_ocaml_hash!(OCamlBlockHash, BlockHash, alloc_block_hash);
 to_ocaml_hash!(OCamlContextHash, ContextHash, alloc_context_hash);
@@ -184,7 +182,7 @@ unsafe impl ToOCaml<ValidateOperationRequest> for ValidateOperationRequest {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ValidateOperationRequest> {
         ocaml_frame!(gc, {
             let ref prevalidator = to_ocaml!(gc, self.prevalidator).keep(gc);
-            let operation = to_ocaml!(gc, FfiOperation(&self.operation));
+            let operation = to_ocaml!(gc, FfiOperation(self.operation.clone()));
             unsafe { alloc_validate_operation_request(token, gc.get(prevalidator), operation) }
         })
     }
@@ -216,7 +214,7 @@ unsafe impl ToOCaml<FfiRpcService> for FfiRpcService {
 unsafe impl ToOCaml<ProtocolJsonRpcRequest> for ProtocolJsonRpcRequest {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ProtocolJsonRpcRequest> {
         ocaml_frame!(gc, {
-            let ref block_header = to_ocaml!(gc, FfiBlockHeader(&self.block_header)).keep(gc);
+            let ref block_header = to_ocaml!(gc, FfiBlockHeader(self.block_header.clone())).keep(gc);
             let ref chain_id = to_ocaml!(gc, self.chain_id).keep(gc);
             let ref chain_arg = to_ocaml!(gc, self.chain_arg).keep(gc);
             let ref request = to_ocaml!(gc, self.request).keep(gc);
@@ -238,7 +236,7 @@ unsafe impl ToOCaml<ProtocolJsonRpcRequest> for ProtocolJsonRpcRequest {
 unsafe impl ToOCaml<BlockHeader> for FfiBlockHeader {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<BlockHeader> {
         ocaml_frame!(gc, {
-            let block_header = unsafe { self.0.as_ref() }.unwrap();
+            let ref block_header = self.0;
             let ref level = to_ocaml!(gc, block_header.level()).keep(gc);
             let proto_level = OCaml::of_int(block_header.proto() as i64);
             let ref predecessor = to_ocaml!(gc, block_header.predecessor()).keep(gc);
@@ -269,7 +267,7 @@ unsafe impl ToOCaml<BlockHeader> for FfiBlockHeader {
 unsafe impl ToOCaml<Operation> for FfiOperation {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<Operation> {
         ocaml_frame!(gc, {
-            let operation = unsafe { self.0.as_ref() }.unwrap();
+            let ref operation = self.0;
             let ref branch = to_ocaml!(gc, operation.branch()).keep(gc);
             let ref proto = to_ocaml!(gc, operation.data()).keep(gc);
             let shell = unsafe { ocaml_alloc!(alloc_operation_shell_header(gc, gc.get(branch))) };
