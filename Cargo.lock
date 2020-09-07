@@ -1435,7 +1435,6 @@ dependencies = [
  "slog-term",
  "storage",
  "tezos_api",
- "tezos_client",
  "tezos_messages",
  "tezos_wrapper",
  "tokio",

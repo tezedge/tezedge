@@ -18,6 +18,4 @@ slog = "2.5"
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
-
-[dev-dependencies]
 hex = "0.4"

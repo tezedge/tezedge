@@ -9,18 +9,12 @@ use failure::Fail;
 use slog::{info, Logger};
 
 use tezos_api::identity::Identity;
-use tezos_client::client;
 
 #[derive(Fail, Debug)]
 pub enum IdentityError {
     #[fail(display = "I/O error: {}", reason)]
     IoError {
         reason: io::Error
-    },
-    #[fail(display = "Service error: {}, e: {}", message, error)]
-    ServiceError {
-        error: failure::Error,
-        message: &'static str,
     },
     #[fail(display = "Identity serialization error: {}", reason)]
     SerializationError {
@@ -67,26 +61,14 @@ pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: &Logg
     } else {
         info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
 
-        // TODO: TE-74 will be replace with rust version without protocol_runner
-        match client::generate_identity(identity_cfg.expected_pow) {
-            Ok(identity) => {
-                client::shutdown_runtime();
-                info!(log, "Identity successfully generated");
-                match store_identity(&identity_cfg.identity_json_file_path, &identity) {
-                    Ok(()) => {
-                        info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
-                        Ok(identity)
-                    }
-                    Err(e) => Err(e)
-                }
+        let identity = Identity::generate(identity_cfg.expected_pow);
+        info!(log, "Identity successfully generated");
+        match store_identity(&identity_cfg.identity_json_file_path, &identity) {
+            Ok(()) => {
+                info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
+                Ok(identity)
             }
-            Err(e) => {
-                client::shutdown_runtime();
-                return Err(IdentityError::ServiceError {
-                    error: e.into(),
-                    message: "Failed to generate identity",
-                });
-            }
+            Err(e) => Err(e)
         }
     }
 }
