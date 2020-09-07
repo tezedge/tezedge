@@ -3,9 +3,9 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use tezos_api::{
-    ffi::{RustBytes, TezosRuntimeConfiguration},
-    ocaml_conv::to_ocaml::{FfiBlockHeader, FfiOperation},
+use tezos_api::ffi::{
+    ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, RustBytes,
+    TezosRuntimeConfiguration, ForkingTestchainData,
 };
 
 use tezos_interop::ffi;
@@ -13,24 +13,27 @@ use tezos_interop::runtime;
 use tezos_interop::runtime::OcamlError;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
-use znfe::{ocaml_call, ocaml_frame, to_ocaml, IntoRust, OCaml, OCamlBytes, OCamlList, ToOCaml};
+use znfe::{ocaml_call, ocaml_frame, to_ocaml, IntoRust, ToOCaml};
+use crypto::hash::HashType;
 
 const CHAIN_ID: &str = "8eceda2f";
 const HEADER: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
+const HEADER_HASH: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f0179caf4b9f673";
 const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000000236663bacdca76094fdb73150092659d463fec94eda44ba4db10973a1ad057ef53a5b3239a1b9c383af803fc275465bd28057d68f3cab46adfd5b2452e863ff0a";
+const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
     use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
-    use tezos_messages::p2p::encoding::{block_header::BlockHeader, operation::Operation};
-    use znfe::{ocaml, OCamlBytes, OCamlList};
+    use znfe::{ocaml, OCamlBytes};
 
     ocaml! {
-        pub fn apply_block_params_roundtrip(chain_id: OCamlBytes, block_header: OCamlBytes, operations: OCamlList<OCamlList<OCamlBytes>>) -> (OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>);
-        pub fn apply_block_params_decoded_roundtrip(chain_id: OCamlBytes, block_header: BlockHeader, operations: OCamlList<OCamlList<Operation>>) -> (OCamlBytes, BlockHeader, OCamlList<OCamlList<Operation>>);
-        pub fn apply_block_request_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn apply_block_request_decoded_roundtrip(request: ApplyBlockRequest) -> ApplyBlockRequest;
-        pub fn apply_block_response_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn apply_block_response_decoded_roundtrip(response: ApplyBlockResponse) -> ApplyBlockResponse;
+        pub fn setup_benchmark_apply_block_response(data: OCamlBytes);
+        pub fn apply_block_request_encoded_roundtrip(
+            data: OCamlBytes,
+        ) -> OCamlBytes;
+        pub fn apply_block_request_decoded_roundtrip(
+            request: ApplyBlockRequest,
+        ) -> ApplyBlockResponse;
     }
 }
 
@@ -45,101 +48,62 @@ fn init_bench_runtime() {
     .unwrap();
 }
 
-fn sample_operations_decoded() -> Vec<Option<Vec<Operation>>> {
+fn block_operations_from_hex(
+    block_hash: &str,
+    hex_operations: Vec<Vec<RustBytes>>,
+) -> Vec<OperationsForBlocksMessage> {
+    hex_operations
+        .into_iter()
+        .map(|bo| {
+            let ops = bo
+                .into_iter()
+                .map(|op| Operation::from_bytes(op).unwrap())
+                .collect();
+            OperationsForBlocksMessage::new(
+                OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                Path::Op,
+                ops,
+            )
+        })
+        .collect()
+}
+
+fn sample_operations_for_request_decoded() -> Vec<Vec<RustBytes>> {
     vec![
-        Some(vec![
-            Operation::from_bytes(hex::decode(OPERATION).unwrap()).unwrap()
-        ]),
-        Some(vec![]),
-        Some(vec![]),
-        Some(vec![]),
+        vec![hex::decode(OPERATION).unwrap()],
+        vec![],
+        vec![],
+        vec![hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08").unwrap()],
+        vec![]
     ]
 }
 
-fn apply_block_params_roundtrip(
-    chain_id: RustBytes,
-    block_header: BlockHeader,
-    operations: Vec<Option<Vec<Operation>>>,
-) -> Result<(), OcamlError> {
+fn apply_block_request_decoded_roundtrip(request: ApplyBlockRequest) -> Result<(), OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
-            let ref chain_id = to_ocaml!(gc, chain_id).keep(gc);
-            let block_header = block_header.as_bytes().unwrap();
-            let ref block_header = to_ocaml!(gc, block_header).keep(gc);
-            let empty_vec = vec![];
-            let operations: Vec<Vec<RustBytes>> = operations
-                .iter()
-                .map(|op| {
-                    op.as_ref()
-                        .unwrap_or(&empty_vec)
-                        .iter()
-                        .map(|op| op.as_bytes().unwrap())
-                        .collect()
-                })
-                .collect();
-            let operations: OCaml<OCamlList<OCamlList<OCamlBytes>>> = to_ocaml!(gc, operations);
-
-            let result = ocaml_call!(tezos_ffi::apply_block_params_roundtrip(
-                gc,
-                gc.get(chain_id),
-                gc.get(block_header),
-                operations
+            let request = to_ocaml!(gc, request);
+            let result = ocaml_call!(tezos_ffi::apply_block_request_decoded_roundtrip(
+                gc, request
             ))
             .unwrap();
-
-            // Convert from OCaml
-            let (_chain_id, block_header, operations): (RustBytes, RustBytes, Vec<Vec<RustBytes>>) =
-                result.into_rust();
-
-            // Decode result
-            let _block_header: BlockHeader = BlockHeader::from_bytes(block_header).unwrap();
-            let _operations: Vec<Vec<Operation>> = operations
-                .iter()
-                .map(|ops| {
-                    ops.iter()
-                        .map(|op| Operation::from_bytes(op).unwrap())
-                        .collect()
-                })
-                .collect();
+            let _response: ApplyBlockResponse = result.into_rust();
 
             ()
         })
     })
 }
 
-fn apply_block_params_decoded_roundtrip(
-    chain_id: RustBytes,
-    block_header: BlockHeader,
-    operations: Vec<Option<Vec<Operation>>>,
-) -> Result<(), OcamlError> {
+fn apply_block_request_encoded_roundtrip(request: ApplyBlockRequest) -> Result<(), OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
-            let ref chain_id = to_ocaml!(gc, chain_id).keep(gc);
-            let ref block_header = to_ocaml!(gc, FfiBlockHeader(&block_header)).keep(gc);
-            let empty_vec = vec![];
-            let operations: Vec<Vec<_>> = operations
-                .iter()
-                .map(|op| {
-                    op.as_ref()
-                        .unwrap_or(&empty_vec)
-                        .iter()
-                        .map(|op| FfiOperation(op))
-                        .collect()
-                })
-                .collect();
-            let operations = to_ocaml!(gc, operations);
-
-            let _result = ocaml_call!(tezos_ffi::apply_block_params_decoded_roundtrip(
-                gc,
-                gc.get(chain_id),
-                gc.get(block_header),
-                operations
+            let request = request.as_rust_bytes().unwrap();
+            let request = to_ocaml!(gc, request);
+            let result = ocaml_call!(tezos_ffi::apply_block_request_encoded_roundtrip(
+                gc, request
             ))
             .unwrap();
-
-            // Convert from OCaml
-            //let (_chain_id, block_header, operations): (RustBytes, FfiBlockHeader, Vec<Vec<Operation>>) =
-            //    result.into_rust();
+            let result = result.into_rust();
+            let _response = ApplyBlockResponse::from_rust_bytes(result);
 
             ()
         })
@@ -149,34 +113,58 @@ fn apply_block_params_decoded_roundtrip(
 fn criterion_benchmark(c: &mut Criterion) {
     init_bench_runtime();
 
-    c.bench_function("apply_block_params_roundtrip", |b| {
-        let chain_id = hex::decode(CHAIN_ID).unwrap();
-        let block_header = hex::decode(HEADER).unwrap();
-        let block_header_decoded = BlockHeader::from_bytes(block_header).unwrap();
-        let operations_decoded = sample_operations_decoded();
+    let response_with_some_forking_data: ApplyBlockResponse = ApplyBlockResponse {
+        validation_result_message: "validation_result_message".to_string(),
+        context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
+        block_header_proto_json: "block_header_proto_json".to_string(),
+        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
+        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        max_operations_ttl: 6,
+        last_allowed_fork_level: 8,
+        forking_testchain: true,
+        forking_testchain_data: Some(ForkingTestchainData {
+            test_chain_id: HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye").unwrap(),
+            forking_block_hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET").unwrap(),
+        }),
+    };
 
-        b.iter(|| {
-            apply_block_params_roundtrip(
-                black_box(chain_id.clone()),
-                black_box(block_header_decoded.clone()),
-                black_box(operations_decoded.clone()),
-            )
+    let encoded_response = response_with_some_forking_data.as_rust_bytes().unwrap();
+
+    let _ignored = runtime::execute(move || {
+        ocaml_frame!(gc, {
+            let encoded_response = to_ocaml!(gc, encoded_response);
+            ocaml_call!(tezos_ffi::setup_benchmark_apply_block_response(gc, encoded_response)).unwrap();
         })
     });
 
-    c.bench_function("apply_block_params_decoded_roundtrip", |b| {
-        let chain_id = hex::decode(CHAIN_ID).unwrap();
-        let block_header = hex::decode(HEADER).unwrap();
-        let block_header_decoded = BlockHeader::from_bytes(block_header).unwrap();
-        let operations_decoded = sample_operations_decoded();
+    c.bench_function("apply_block_request_decoded_roundtrip", |b| {
+        let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
+            .chain_id(hex::decode(CHAIN_ID).unwrap())
+            .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
+            .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
+            .max_operations_ttl(MAX_OPERATIONS_TTL)
+            .operations(ApplyBlockRequest::convert_operations(
+                block_operations_from_hex(HEADER_HASH, sample_operations_for_request_decoded()),
+            ))
+            .build()
+            .unwrap();
 
-        b.iter(|| {
-            apply_block_params_decoded_roundtrip(
-                black_box(chain_id.clone()),
-                black_box(block_header_decoded.clone()),
-                black_box(operations_decoded.clone()),
-            )
-        })
+        b.iter(|| apply_block_request_decoded_roundtrip(black_box(request.clone())))
+    });
+
+    c.bench_function("apply_block_request_encoded_roundtrip", |b| {
+        let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
+            .chain_id(hex::decode(CHAIN_ID).unwrap())
+            .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
+            .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
+            .max_operations_ttl(MAX_OPERATIONS_TTL)
+            .operations(ApplyBlockRequest::convert_operations(
+                block_operations_from_hex(HEADER_HASH, sample_operations_for_request_decoded()),
+            ))
+            .build()
+            .unwrap();
+
+        b.iter(|| apply_block_request_encoded_roundtrip(black_box(request.clone())))
     });
 }
 
