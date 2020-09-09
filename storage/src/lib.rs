@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use failure::Fail;
+use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
@@ -23,14 +24,13 @@ pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, 
 pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage};
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
+use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
-use crate::merkle_storage::MerkleStorage;
-use rocksdb::Cache;
 
 pub mod persistent;
 pub mod merkle_storage;
@@ -254,7 +254,7 @@ pub fn store_commit_genesis_result(
         Some(genesis) => {
             chain_meta_storage.set_current_head(
                 &chain_id,
-                Head::new(genesis.hash.clone(), genesis.header.level()),
+                Head::new(genesis.hash.clone(), genesis.header.level(), genesis.header.fitness().clone()),
             )?;
 
             Ok(block_json_data)

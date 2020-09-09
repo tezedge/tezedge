@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, Cache};
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
@@ -199,12 +199,14 @@ mod tests {
         let block_1 = Head::new(
             HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
+            vec![],
         );
 
         let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
             HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
+            vec![],
         );
 
         // no current heads

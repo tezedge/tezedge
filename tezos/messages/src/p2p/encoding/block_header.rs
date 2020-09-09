@@ -28,6 +28,14 @@ pub fn fitness_encoding() -> Encoding {
     ))
 }
 
+pub fn display_fitness(fitness: &Fitness) -> String {
+    fitness
+        .iter()
+        .map(|f| hex::encode(f))
+        .collect::<Vec<String>>()
+        .join("::")
+}
+
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct BlockHeaderMessage {
     #[get = "pub"]

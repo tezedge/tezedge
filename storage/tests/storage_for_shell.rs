@@ -143,6 +143,7 @@ fn test_storage() -> Result<(), Error> {
         Head::new(
             block.hash.clone(),
             block.header.level(),
+            block.header.fitness().to_vec(),
         ),
     )?;
 

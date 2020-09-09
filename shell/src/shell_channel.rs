@@ -15,6 +15,7 @@ use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
 use tezos_api::ffi::{ApplyBlockRequest, ValidateOperationResult};
 use tezos_messages::Head;
+use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, Path};
 
 /// Message informing actors about successful block application by protocol
@@ -61,6 +62,7 @@ pub struct MempoolOperationReceived {
 pub struct CurrentMempoolState {
     pub head: Option<BlockHash>,
     pub protocol: Option<ProtocolHash>,
+    pub fitness: Option<Fitness>,
     pub result: ValidateOperationResult,
     pub operations: HashMap<OperationHash, Operation>,
     pub pending: HashSet<OperationHash>,

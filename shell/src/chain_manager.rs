@@ -36,7 +36,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::PeerConnectionThreshold;
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, CurrentMempoolState, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::state::block_state::{BlockchainState, MissingBlock};
+use crate::state::block_state::{BlockchainState, HeadResult, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
 use crate::subscription::*;
 
@@ -109,16 +109,16 @@ impl CurrentHead {
         }
     }
 
-    fn local_debug_info(&self) -> (String, i32) {
+    fn local_debug_info(&self) -> (String, i32, String) {
         match &self.local {
-            None => ("-none-".to_string(), 0 as i32),
+            None => ("-none-".to_string(), 0 as i32, "-none-".to_string()),
             Some(head) => head.to_debug_info()
         }
     }
 
-    fn remote_debug_info(&self) -> (String, i32) {
+    fn remote_debug_info(&self) -> (String, i32, String) {
         match &self.remote {
-            None => ("-none-".to_string(), 0 as i32),
+            None => ("-none-".to_string(), 0 as i32, "-none-".to_string()),
             Some(head) => head.to_debug_info()
         }
     }
@@ -373,6 +373,7 @@ impl ChainManager {
                                             current_head.remote = Some(Head::new(
                                                 message_current_head_block_hash.clone(),
                                                 message_current_head_level,
+                                                message_current_head.fitness().to_vec(),
                                             ));
                                         }
 
@@ -630,19 +631,12 @@ impl ChainManager {
                 // - reset mempool_prevalidator
 
                 // we try to set it as "new current head", if some means set, if none means just ignore block
-                if let Some(new_head) = self.chain_state.try_set_new_current_head(&message)? {
-                    debug!(ctx.system.log(), "New current head"; "block_header_hash" => HashType::BlockHash.bytes_to_string(new_head.hash()), "level" => new_head.level());
-
-                    // we need to check, if previous head is predecessor of new_head (for later use)
-                    let new_branch_detected = match &self.current_head.local {
-                        Some(previos_head) => if previos_head.hash() == message.header().header.predecessor() {
-                            false
-                        } else {
-                            // if previous head is not predecesor of new head, means it could be new branch
-                            true
-                        }
-                        None => false,
-                    };
+                if let Some((new_head, new_head_result)) = self.chain_state.try_set_new_current_head(&message, &self.current_head.local, &self.current_mempool_state)? {
+                    debug!(ctx.system.log(), "New current head";
+                                             "block_header_hash" => HashType::BlockHash.bytes_to_string(new_head.hash()),
+                                             "level" => new_head.level(),
+                                             "result" => format!("{}", new_head_result)
+                    );
 
                     // update internal state with new head
                     self.update_local_current_head(new_head.clone(), &ctx.system.log());
@@ -659,22 +653,25 @@ impl ChainManager {
                     // we can do this, only if we are bootstrapped,
                     // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
                     if self.is_bootstrapped {
-                        if new_branch_detected {} else {
-                            // send new current_head to peers
-                            let header: &BlockHeader = &message.header().header;
-                            let chain_id = self.chain_state.get_chain_id();
+                        match new_head_result {
+                            HeadResult::BranchSwitch => (/*"TODO: TE-174 sent current_branch message"*/),
+                            HeadResult::HeadIncrement => {
+                                // send new current_head to peers
+                                let header: &BlockHeader = &message.header().header;
+                                let chain_id = self.chain_state.get_chain_id();
 
-                            self.peers.iter()
-                                .for_each(|(_, peer)| {
-                                    tell_peer(
-                                        CurrentHeadMessage::new(
-                                            chain_id.clone(),
-                                            header.clone(),
-                                            Mempool::default(),
-                                        ).into(),
-                                        peer,
-                                    )
-                                });
+                                self.peers.iter()
+                                    .for_each(|(_, peer)| {
+                                        tell_peer(
+                                            CurrentHeadMessage::new(
+                                                chain_id.clone(),
+                                                header.clone(),
+                                                Mempool::default(),
+                                            ).into(),
+                                            peer,
+                                        )
+                                    });
+                            }
                         }
                     }
                 }
@@ -821,12 +818,13 @@ impl ChainManager {
         info!(ctx.system.log(), "Hydrating operations state");
         self.operations_state.hydrate().expect("Failed to hydrate operations state");
 
-        let (local_head, local_head_level) = self.current_head.local_debug_info();
+        let (local_head, local_head_level, local_fitness) = self.current_head.local_debug_info();
         info!(
             ctx.system.log(),
             "Hydrating completed successfully";
             "local_head" => local_head,
             "local_head_level" => local_head_level,
+            "local_fitness" => local_fitness,
             "missing_blocks" => self.chain_state.missing_blocks_count(),
             "missing_block_operations" => self.operations_state.missing_block_operations_count(),
         );
@@ -1080,13 +1078,15 @@ impl Receive<LogStats> for ChainManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: LogStats, _sender: Sender) {
         let log = ctx.system.log();
-        let (local, local_level) = &self.current_head.local_debug_info();
-        let (remote, remote_level) = &self.current_head.remote_debug_info();
+        let (local, local_level, local_fitness) = &self.current_head.local_debug_info();
+        let (remote, remote_level, remote_fitness) = &self.current_head.remote_debug_info();
         info!(log, "Head info";
             "local" => local,
             "local_level" => local_level,
+            "local_fitness" => local_fitness,
             "remote" => remote,
-            "remote_level" => remote_level);
+            "remote_level" => remote_level,
+            "remote_fitness" => remote_fitness);
         info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,
             "missing_blocks" => self.chain_state.missing_blocks_count(),
@@ -1446,6 +1446,7 @@ pub mod tests {
         let new_head = Head::new(
             HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
             4,
+            vec![],
         );
         chain_manager.update_local_current_head(new_head, &log);
 
@@ -1457,6 +1458,7 @@ pub mod tests {
         let new_head = Head::new(
             HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
             5,
+            vec![],
         );
         chain_manager.update_local_current_head(new_head, &log);
 
