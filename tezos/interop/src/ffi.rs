@@ -20,7 +20,7 @@ mod tezos_ffi {
         PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
         ValidateOperationResponse,
     }};
-    use znfe::{ocaml, Intnat, OCamlBytes, OCamlInt32, OCamlList};
+    use znfe::{ocaml, OCamlInt, OCamlBytes, OCamlInt32, OCamlList};
     use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
     ocaml! {
@@ -32,7 +32,7 @@ mod tezos_ffi {
         pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> JsonRpcResponse;
         pub fn change_runtime_configuration(
             log_enabled: bool,
-            no_of_ffi_calls_treshold_for_gc: Intnat,
+            no_of_ffi_calls_treshold_for_gc: OCamlInt,
             debug_mode: bool
         );
         pub fn init_protocol_context(
@@ -47,7 +47,7 @@ mod tezos_ffi {
             context_hash: OCamlBytes,
             chain_id: OCamlBytes,
             protocol_hash: OCamlBytes,
-            genesis_max_operations_ttl: Intnat
+            genesis_max_operations_ttl: OCamlInt
         ) -> (OCamlBytes, OCamlBytes, OCamlBytes);
         pub fn decode_context_data(
             protocol_hash: OCamlBytes,

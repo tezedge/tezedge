@@ -13,7 +13,7 @@ use crate::ffi::{
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
-    ocaml, Intnat, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt32, OCamlInt64,
+    ocaml, OCamlInt, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt32, OCamlInt64,
     OCamlList, ToOCaml,
 };
 
@@ -28,7 +28,7 @@ ocaml! {
         chain_id: OCamlBytes,
         block_header: BlockHeader,
         pred_header: BlockHeader,
-        max_operations_ttl: Intnat,
+        max_operations_ttl: OCamlInt,
         operations: OCamlList<OCamlList<Operation>>,
     ) -> ApplyBlockRequest;
 
@@ -60,10 +60,10 @@ ocaml! {
 
     alloc fn alloc_block_header_shell_header(
         level: OCamlInt32,
-        proto_level: Intnat,
+        proto_level: OCamlInt,
         predecessor: OCamlBlockHash,
         timestamp: OCamlInt64,
-        validation_passes: Intnat,
+        validation_passes: OCamlInt,
         operations_hash: OCamlOperationListListHash,
         fitness: OCamlList<OCamlBytes>,
         context: OCamlContextHash,
