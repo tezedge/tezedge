@@ -31,14 +31,14 @@ const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e2
 const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
-    use znfe::{ocaml, OCamlBytes, OCamlList, Intnat};
+    use znfe::{ocaml, OCamlBytes, OCamlList, OCamlInt};
     ocaml!{
         pub fn apply_block_params_roundtrip(chain_id: OCamlBytes, block_header: OCamlBytes, operations: OCamlList<OCamlList<OCamlBytes>>) -> (OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>);
         pub fn apply_block_request_roundtrip(data: OCamlBytes) -> OCamlBytes;
         pub fn apply_block_response_roundtrip(data: OCamlBytes) -> OCamlBytes;
         pub fn validate_operation_response_roundtrip(data: OCamlBytes) -> OCamlBytes;
         pub fn begin_construction_request_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn context_callback_roundtrip(count: Intnat, context_hash: OCamlBytes, header_hash: OCamlBytes, operation_hash: OCamlBytes, key: OCamlList<OCamlBytes>, data: OCamlBytes) -> ();
+        pub fn context_callback_roundtrip(count: OCamlInt, context_hash: OCamlBytes, header_hash: OCamlBytes, operation_hash: OCamlBytes, key: OCamlList<OCamlBytes>, data: OCamlBytes) -> ();
         pub fn operation_roundtrip(operation: OCamlBytes) -> OCamlBytes;
         pub fn operations_list_list_roundtrip(operations_list_list: OCamlList<OCamlList<OCamlBytes>>) -> OCamlList<OCamlList<OCamlBytes>>;
         pub fn chain_id_roundtrip(chain_id: OCamlBytes) -> OCamlBytes;

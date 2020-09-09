@@ -11,7 +11,7 @@ use crate::ffi::{
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
-use znfe::{FromOCaml, Intnat, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
+use znfe::{FromOCaml, OCamlInt, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -49,7 +49,7 @@ unsafe impl FromOCaml<ApplyBlockResponse> for ApplyBlockResponse {
                 block_header_proto_json: v.field::<String>(2).into_rust(),
                 block_header_proto_metadata_json: v.field::<String>(3).into_rust(),
                 operations_proto_metadata_json: v.field::<String>(4).into_rust(),
-                max_operations_ttl: (v.field::<Intnat>(5).as_int() as i32),
+                max_operations_ttl: (v.field::<OCamlInt>(5).as_int() as i32),
                 last_allowed_fork_level: v.field::<OCamlInt32>(6).into_rust(),
                 forking_testchain: v.field::<bool>(7).into_rust(),
                 forking_testchain_data: v.field::<Option<ForkingTestchainData>>(8).into_rust(),
