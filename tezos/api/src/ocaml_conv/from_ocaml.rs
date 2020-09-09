@@ -65,11 +65,11 @@ unsafe impl FromOCaml<ApplyBlockResponse> for ApplyBlockResponse {
     fn from_ocaml(v: OCaml<ApplyBlockResponse>) -> Self {
         unpack_ocaml_block! { v =>
             ApplyBlockResponse {
-                validation_result_message: String,
+                validation_result_message: OCamlBytes,
                 context_hash: OCamlContextHash,
-                block_header_proto_json: String,
-                block_header_proto_metadata_json: String,
-                operations_proto_metadata_json: String,
+                block_header_proto_json: OCamlBytes,
+                block_header_proto_metadata_json: OCamlBytes,
+                operations_proto_metadata_json: OCamlBytes,
                 max_operations_ttl: OCamlInt,
                 last_allowed_fork_level: OCamlInt32,
                 forking_testchain: bool,
