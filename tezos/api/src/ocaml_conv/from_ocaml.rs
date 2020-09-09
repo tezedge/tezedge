@@ -141,6 +141,7 @@ unsafe impl FromOCaml<JsonRpcResponse> for JsonRpcResponse {
     }
 }
 
+// TODO: remove this after TE-207 has been solved
 unsafe impl FromOCaml<Path> for FfiPath {
     fn from_ocaml(v: OCaml<Path>) -> Self {
         if v.is_long() {
