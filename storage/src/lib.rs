@@ -256,6 +256,7 @@ pub fn store_commit_genesis_result(
                 &Head {
                     hash: genesis.hash.clone(),
                     level: genesis.header.level(),
+                    fitness: genesis.header.fitness().clone(),
                 },
             )?;
 

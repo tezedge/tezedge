@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use core::fmt;
 use std::cmp;
 use std::cmp::Ordering;
 
+use failure::_core::fmt::Formatter;
 use rand::prelude::ThreadRng;
 use rand::Rng;
 use slog::Logger;
@@ -14,7 +16,8 @@ use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
 
 use crate::collections::{BlockData, UniqueBlockData};
-use crate::shell_channel::BlockApplied;
+use crate::shell_channel::{BlockApplied, CurrentMempoolState};
+use crate::state::validator;
 
 /// Holds state of all known blocks
 pub struct BlockchainState {
@@ -48,19 +51,48 @@ impl BlockchainState {
     /// Resolve if new applied block can be set as new current head.
     /// Original algorithm is in [chain_validator][on_request], where just fitness is checked.
     /// Returns:
-    /// - None, if head was not updated
-    /// - Some(head), if head was updated
-    pub fn try_set_new_current_head(&self, block: &BlockApplied) -> Result<Option<Head>, StorageError> {
+    /// - None, if head was not updated, means was ignored
+    /// - Some(new_head, head_result)
+    pub fn try_set_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, mempool_state: &Option<CurrentMempoolState>) -> Result<Option<(Head, HeadResult)>, StorageError> {
+        if let Some(current_head) = current_head {
+            // get fitness from mempool, if not, than use current_head.fitness
+            let current_context_fitness = match mempool_state {
+                Some(state) => match &state.fitness {
+                    Some(fitness) => fitness,
+                    None => &current_head.fitness
+                },
+                None => &current_head.fitness
+            };
 
-        let head = Head {
-            hash: block.header().hash.clone(),
-            level: block.header().header.level(),
+            // need to check against current_head, if not accepted, just ignore potential head
+            if !validator::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
+                // just ignore
+                return Ok(None);
+            }
+        }
+
+        // we need to check, if previous head is predecessor of new_head (for later use)
+        let head_result = match &current_head {
+            Some(previos_head) => if previos_head.hash == *potential_new_head.header().header.predecessor() {
+                HeadResult::HeadIncrement
+            } else {
+                // if previous head is not predecesor of new head, means it could be new branch
+                HeadResult::BranchSwitch
+            }
+            None => HeadResult::HeadIncrement,
         };
 
-        // set head to db
+        // this will be new head
+        let head = Head {
+            hash: potential_new_head.header().hash.clone(),
+            level: potential_new_head.header().header.level(),
+            fitness: potential_new_head.header().header.fitness().clone(),
+        };
+
+        // set new head to db
         self.chain_meta_storage.set_current_head(&self.chain_id, &head)?;
 
-        Ok(Some(head))
+        Ok(Some((head, head_result)))
     }
 
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
@@ -167,7 +199,7 @@ impl BlockchainState {
         Ok(history)
     }
 
-    pub(crate) fn guess_level(rng: &mut ThreadRng, level: i32, parts: i32, index: i32) -> i32 {
+    fn guess_level(rng: &mut ThreadRng, level: i32, parts: i32, index: i32) -> i32 {
         // e.g. we have: level 100 a 5 record in history, so split is 20
         let split = level / parts;
 
@@ -268,6 +300,20 @@ impl Ord for MissingBlock {
 
         // reverse, because we want lower level at begining
         self_potential_level.cmp(&other_potential_level).reverse()
+    }
+}
+
+pub enum HeadResult {
+    BranchSwitch,
+    HeadIncrement,
+}
+
+impl fmt::Display for HeadResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match *self {
+            HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
+            HeadResult::HeadIncrement => write!(f, "HeadIncrement"),
+        }
     }
 }
 

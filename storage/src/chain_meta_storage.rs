@@ -201,12 +201,14 @@ mod tests {
         let block_1 = Head {
             hash: HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             level: 1,
+            fitness: vec![],
         };
 
         let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
         let block_2 = Head {
             hash: HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             level: 2,
+            fitness: vec![],
         };
 
         // no current heads

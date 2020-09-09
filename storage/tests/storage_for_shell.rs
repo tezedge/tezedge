@@ -143,6 +143,7 @@ fn test_storage() -> Result<(), Error> {
         &Head {
             hash: block.hash.clone(),
             level: block.header.level(),
+            fitness: block.header.fitness().to_vec(),
         },
     )?;
 

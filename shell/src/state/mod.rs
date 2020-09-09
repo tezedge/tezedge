@@ -3,3 +3,4 @@
 
 pub mod block_state;
 pub mod operations_state;
+mod validator;
