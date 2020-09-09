@@ -29,12 +29,33 @@ from_ocaml_hash!(OCamlBlockHash, BlockHash);
 from_ocaml_hash!(OCamlContextHash, ContextHash);
 from_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
 
+// Helper for easier mapping from OCaml to Rust records
+macro_rules! unpack_ocaml_block {
+    ($var:ident => $cons:ident {
+        $($field:ident : $ocaml_typ:ty),+ $(,)?
+    }) => {
+        let record = $var;
+        unsafe {
+            let mut current = 0;
+
+            $(
+                current += 1;
+                let $field = record.field::<$ocaml_typ>(current - 1).into_rust();
+            )+
+
+            $cons {
+                $($field),+
+            }
+        }
+    };
+}
+
 unsafe impl FromOCaml<ForkingTestchainData> for ForkingTestchainData {
     fn from_ocaml(v: OCaml<ForkingTestchainData>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             ForkingTestchainData {
-                forking_block_hash: v.field::<OCamlBlockHash>(0).into_rust(),
-                test_chain_id: v.field::<OCamlBytes>(1).into_rust(),
+                forking_block_hash: OCamlBlockHash,
+                test_chain_id: OCamlBytes,
             }
         }
     }
@@ -42,17 +63,17 @@ unsafe impl FromOCaml<ForkingTestchainData> for ForkingTestchainData {
 
 unsafe impl FromOCaml<ApplyBlockResponse> for ApplyBlockResponse {
     fn from_ocaml(v: OCaml<ApplyBlockResponse>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             ApplyBlockResponse {
-                validation_result_message: v.field::<String>(0).into_rust(),
-                context_hash: v.field::<OCamlContextHash>(1).into_rust(),
-                block_header_proto_json: v.field::<String>(2).into_rust(),
-                block_header_proto_metadata_json: v.field::<String>(3).into_rust(),
-                operations_proto_metadata_json: v.field::<String>(4).into_rust(),
-                max_operations_ttl: (v.field::<OCamlInt>(5).as_int() as i32),
-                last_allowed_fork_level: v.field::<OCamlInt32>(6).into_rust(),
-                forking_testchain: v.field::<bool>(7).into_rust(),
-                forking_testchain_data: v.field::<Option<ForkingTestchainData>>(8).into_rust(),
+                validation_result_message: String,
+                context_hash: OCamlContextHash,
+                block_header_proto_json: String,
+                block_header_proto_metadata_json: String,
+                operations_proto_metadata_json: String,
+                max_operations_ttl: OCamlInt,
+                last_allowed_fork_level: OCamlInt32,
+                forking_testchain: bool,
+                forking_testchain_data: Option<ForkingTestchainData>,
             }
         }
     }
@@ -60,10 +81,10 @@ unsafe impl FromOCaml<ApplyBlockResponse> for ApplyBlockResponse {
 
 unsafe impl FromOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
     fn from_ocaml(v: OCaml<PrevalidatorWrapper>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             PrevalidatorWrapper {
-                chain_id: v.field::<OCamlBytes>(0).into_rust(),
-                protocol: v.field::<OCamlProtocolHash>(1).into_rust(),
+                chain_id: OCamlBytes,
+                protocol: OCamlProtocolHash,
             }
         }
     }
@@ -71,10 +92,10 @@ unsafe impl FromOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
 
 unsafe impl FromOCaml<Applied> for Applied {
     fn from_ocaml(v: OCaml<Applied>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             Applied {
-                hash: v.field::<OCamlOperationHash>(0).into_rust(),
-                protocol_data_json: v.field::<OCamlBytes>(1).into_rust(),
+                hash: OCamlOperationHash,
+                protocol_data_json: OCamlBytes,
             }
         }
     }
@@ -84,10 +105,10 @@ unsafe impl FromOCaml<OperationProtocolDataJsonWithErrorListJson>
     for OperationProtocolDataJsonWithErrorListJson
 {
     fn from_ocaml(v: OCaml<OperationProtocolDataJsonWithErrorListJson>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             OperationProtocolDataJsonWithErrorListJson {
-                protocol_data_json: v.field::<OCamlBytes>(0).into_rust(),
-                error_json: v.field::<OCamlBytes>(1).into_rust(),
+                protocol_data_json: OCamlBytes,
+                error_json: OCamlBytes,
             }
         }
     }
@@ -95,13 +116,11 @@ unsafe impl FromOCaml<OperationProtocolDataJsonWithErrorListJson>
 
 unsafe impl FromOCaml<Errored> for Errored {
     fn from_ocaml(v: OCaml<Errored>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             Errored {
-                hash: v.field::<OCamlOperationHash>(0).into_rust(),
-                is_endorsement: v.field::<Option<bool>>(1).into_rust(),
-                protocol_data_json_with_error_json: v
-                    .field::<OperationProtocolDataJsonWithErrorListJson>(2)
-                    .into_rust(),
+                hash: OCamlOperationHash,
+                is_endorsement: Option<bool>,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
             }
         }
     }
@@ -109,12 +128,12 @@ unsafe impl FromOCaml<Errored> for Errored {
 
 unsafe impl FromOCaml<ValidateOperationResult> for ValidateOperationResult {
     fn from_ocaml(v: OCaml<ValidateOperationResult>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             ValidateOperationResult {
-                applied: v.field::<OCamlList<Applied>>(0).into_rust(),
-                refused: v.field::<OCamlList<Errored>>(1).into_rust(),
-                branch_refused: v.field::<OCamlList<Errored>>(2).into_rust(),
-                branch_delayed: v.field::<OCamlList<Errored>>(3).into_rust(),
+                applied: OCamlList<Applied>,
+                refused: OCamlList<Errored>,
+                branch_refused: OCamlList<Errored>,
+                branch_delayed: OCamlList<Errored>,
             }
         }
     }
@@ -122,10 +141,10 @@ unsafe impl FromOCaml<ValidateOperationResult> for ValidateOperationResult {
 
 unsafe impl FromOCaml<ValidateOperationResponse> for ValidateOperationResponse {
     fn from_ocaml(v: OCaml<ValidateOperationResponse>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             ValidateOperationResponse {
-                prevalidator: v.field::<PrevalidatorWrapper>(0).into_rust(),
-                result: v.field::<ValidateOperationResult>(1).into_rust(),
+                prevalidator: PrevalidatorWrapper,
+                result: ValidateOperationResult,
             }
         }
     }
@@ -133,9 +152,9 @@ unsafe impl FromOCaml<ValidateOperationResponse> for ValidateOperationResponse {
 
 unsafe impl FromOCaml<JsonRpcResponse> for JsonRpcResponse {
     fn from_ocaml(v: OCaml<JsonRpcResponse>) -> Self {
-        unsafe {
+        unpack_ocaml_block! { v =>
             JsonRpcResponse {
-                body: v.field::<OCamlBytes>(0).into_rust(),
+                body: OCamlBytes,
             }
         }
     }

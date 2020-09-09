@@ -3916,5 +3916,5 @@ dependencies = [
 
 [[package]]
 name = "znfe"
-version = "0.1.10"
-source = "git+https://github.com/simplestaking/znfe.git?tag=v0.1.10#524878e3a6ca8e20cedd1637f803f81130aa1ec6"
+version = "0.1.11"
+source = "git+https://github.com/simplestaking/znfe.git?tag=v0.1.11#1b48388f487677a374465832c78c8b3c5ebe3b5f"
