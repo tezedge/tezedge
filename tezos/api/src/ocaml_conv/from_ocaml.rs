@@ -101,6 +101,7 @@ impl_from_ocaml_block_mapping! {
     PrevalidatorWrapper {
         chain_id: OCamlBytes,
         protocol: OCamlProtocolHash,
+        context_fitness: Option<OCamlList<OCamlBytes>>
     }
 }
 

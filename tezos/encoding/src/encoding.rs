@@ -179,9 +179,13 @@ pub enum Encoding {
     /// Combinator to make an optional value
     /// (represented as a 1-byte tag followed by the data (or nothing) in binary
     ///  and either the raw value or an empty object in JSON).
+    ///
+    /// Compatible with ocaml usage: (req "arg" (Data_encoding.option string))
     Option(Box<Encoding>),
     /// TE-172 - combinator to make an optional field, this is not the same as Encoding::Option
     /// (req "arg" (Data_encoding.option string)) is not the same as (opt "arg" string))
+    ///
+    /// Compatible with ocaml usage: (opt "arg" string)
     OptionalField(Box<Encoding>),
     /// Is the collection of fields.
     /// not prefixed by anything in binary, encoded as the concatenation of all the element in binary

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use znfe::OCamlError;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
+use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
 
 pub type RustBytes = Vec<u8>;
@@ -97,15 +98,20 @@ pub struct ApplyBlockResponse {
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
+    pub context_fitness: Option<Fitness>,
 }
 
 impl fmt::Debug for PrevalidatorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let chain_hash_encoding = HashType::ChainId;
         let protocol_hash_encoding = HashType::ProtocolHash;
-        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}]",
+        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}, context_fitness: {}]",
                chain_hash_encoding.bytes_to_string(&self.chain_id),
-               protocol_hash_encoding.bytes_to_string(&self.protocol)
+               protocol_hash_encoding.bytes_to_string(&self.protocol),
+               match &self.context_fitness {
+                   Some(fitness) => display_fitness(fitness),
+                   None => "-none-".to_string(),
+               },
         )
     }
 }

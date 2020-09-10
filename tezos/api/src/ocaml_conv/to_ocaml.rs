@@ -1,25 +1,29 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use super::{
-    FfiBlockHeader, FfiBlockHeaderShellHeader, FfiOperation, FfiOperationShellHeader,
-    OCamlBlockHash, OCamlContextHash, OCamlOperationHash, OCamlOperationListListHash,
-    OCamlProtocolHash,
-};
-use crate::ffi::{
-    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, FfiRpcService,
-    ForkingTestchainData, JsonRpcRequest, PrevalidatorWrapper, ProtocolJsonRpcRequest,
-    ValidateOperationRequest,
-};
-use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
     ocaml, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64,
     OCamlList, ToOCaml,
 };
 
+use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+
+use crate::ffi::{
+    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, FfiRpcService,
+    ForkingTestchainData, JsonRpcRequest, PrevalidatorWrapper, ProtocolJsonRpcRequest,
+    ValidateOperationRequest,
+};
+
+use super::{
+    FfiBlockHeader, FfiBlockHeaderShellHeader, FfiOperation, FfiOperationShellHeader,
+    OCamlBlockHash, OCamlContextHash, OCamlOperationHash, OCamlOperationListListHash,
+    OCamlProtocolHash,
+};
+
 // Headers
 struct BlockHeaderShellHeader {}
+
 struct OperationShellHeader {}
 
 ocaml! {
@@ -108,6 +112,7 @@ ocaml! {
     alloc fn alloc_prevalidator_wrapper(
         chain_id: OCamlBytes,
         protocol: OCamlProtocolHash,
+        context_fitness: Option<OCamlList<OCamlBytes>>,
     ) -> PrevalidatorWrapper;
 
     // Hashes
@@ -201,7 +206,7 @@ to_ocaml_hash!(OCamlProtocolHash, ProtocolHash, alloc_protocol_hash);
 
 unsafe impl ToOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
     fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<PrevalidatorWrapper> {
-        unsafe { alloc_prevalidator_wrapper(token, &self.chain_id, &self.protocol) }
+        unsafe { alloc_prevalidator_wrapper(token, &self.chain_id, &self.protocol, &self.context_fitness) }
     }
 }
 

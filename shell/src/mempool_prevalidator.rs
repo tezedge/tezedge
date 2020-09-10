@@ -27,7 +27,7 @@ use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, BeginConstructionRequest, Errored, PrevalidatorWrapper, ValidateOperationRequest, ValidateOperationResult};
-use tezos_messages::p2p::encoding::block_header::{BlockHeader, Fitness};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::prelude::Operation;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
@@ -205,12 +205,10 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
 ///     - kind of cache, contains operation data
 #[derive(Clone, Debug)]
 pub struct MempoolState {
+    /// Original tezos prevalidator has prevalidator.fitness which is used for set_head comparision
+    /// So, we keep it in-memory here
     prevalidator: Option<PrevalidatorWrapper>,
     predecessor: Option<BlockHash>,
-
-    /// Original tezos prevalidator has prevalidator.fitness which is used for set_head comparision
-    /// So, we keep it in memory
-    fitness: Option<Fitness>,
 
     /// Actual cumulated operation results
     validation_result: ValidateOperationResult,
@@ -222,14 +220,13 @@ pub struct MempoolState {
 }
 
 impl MempoolState {
-    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<BlockHash>, pending_operations: HashMap<OperationHash, Operation>, fitness: Option<Fitness>) -> MempoolState {
+    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<BlockHash>, pending_operations: HashMap<OperationHash, Operation>) -> MempoolState {
         MempoolState {
             prevalidator,
             predecessor,
             pending: pending_operations.keys().cloned().collect(),
             validation_result: ValidateOperationResult::default(),
             operations: pending_operations,
-            fitness,
         }
     }
 
@@ -337,11 +334,11 @@ fn process_prevalidation(
                                 "received_block_hash" => HashType::BlockHash.bytes_to_string(&header_hash));
 
                     // try to begin construction new context
-                    let (prevalidator, head, fitness) = begin_construction(&protocol_controller, &chain_id, &header_hash, header, &log)?;
+                    let (prevalidator, head) = begin_construction(&protocol_controller, &chain_id, &header_hash, header, &log)?;
 
                     // recreate state, reuse just pendings
                     let (pending_operations, mut operations_to_delete) = state.split_operations_to_pending_and_others();
-                    state = MempoolState::new(prevalidator, head, pending_operations, fitness);
+                    state = MempoolState::new(prevalidator, head, pending_operations);
 
                     // notify other actors
                     notify_mempool_changed(&shell_channel, &state);
@@ -401,9 +398,9 @@ fn hydrate_state(
     };
 
     // begin construction for a current head
-    let (prevalidator, head, fitness) = match current_head {
+    let (prevalidator, head) = match current_head {
         Some((head, header)) => begin_construction(protocol_controller, &chain_id, &head.hash, header, &log)?,
-        None => (None, None, None)
+        None => (None, None)
     };
 
     // read from Mempool_storage (just pending) -> add to queue for validation -> pending
@@ -413,7 +410,7 @@ fn hydrate_state(
         .collect();
 
     // internal mempool state
-    let mut state = MempoolState::new(prevalidator, head, pending, fitness);
+    let mut state = MempoolState::new(prevalidator, head, pending);
 
     // TODO: do we need this?
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
@@ -428,7 +425,7 @@ fn begin_construction(protocol_controller: &ProtocolController,
                       chain_id: &ChainId,
                       block_hash: &BlockHash,
                       block_header: Arc<BlockHeader>,
-                      log: &Logger) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>, Option<Fitness>), PrevalidationError> {
+                      log: &Logger) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
 
     // try to begin construction
     let result = match protocol_controller.begin_construction(
@@ -441,12 +438,10 @@ fn begin_construction(protocol_controller: &ProtocolController,
         Ok(prevalidator) => (
             Some(prevalidator),
             Some(block_hash.clone()),
-            // TODO: real impl. from ffi
-            None
         ),
         Err(err) => {
             warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.bytes_to_string(&block_hash), "error" => format!("{:?}", err));
-            (None, None, None)
+            (None, None)
         }
     };
     Ok(result)
@@ -516,10 +511,10 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
 
 /// Notify other actors that mempool state changed
 fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &MempoolState) {
-    let protocol = if let Some(prevalidator) = &mempool_state.prevalidator {
-        Some(prevalidator.protocol.clone())
+    let (protocol, fitness) = if let Some(prevalidator) = &mempool_state.prevalidator {
+        (Some(prevalidator.protocol.clone()), prevalidator.context_fitness.clone())
     } else {
-        None
+        (None, None)
     };
 
     shell_channel.tell(
@@ -529,7 +524,7 @@ fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &Mempo
                 result: mempool_state.validation_result.clone(),
                 operations: mempool_state.operations.clone(),
                 protocol,
-                fitness: mempool_state.fitness.clone(),
+                fitness,
                 pending: mempool_state.pending.clone(),
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
