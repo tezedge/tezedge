@@ -4,8 +4,8 @@
 use std::sync::Once;
 
 use znfe::{
-    ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, IntoRust, OCaml, OCamlBytes,
-    OCamlInt32, OCamlList, ToOCaml,
+    ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, FromOCaml, IntoRust, OCaml, OCamlBytes,
+    OCamlFn1, OCamlInt32, OCamlList, ToOCaml,
 };
 
 use tezos_api::ffi::*;
@@ -15,13 +15,16 @@ use crate::runtime;
 use crate::runtime::OcamlError;
 
 mod tezos_ffi {
-    use tezos_api::{ocaml_conv::OCamlOperationHash, ffi::{
-        ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, JsonRpcResponse,
-        PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
-        ValidateOperationResponse,
-    }};
-    use znfe::{ocaml, OCamlInt, OCamlBytes, OCamlInt32, OCamlList};
+    use tezos_api::{
+        ffi::{
+            ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, JsonRpcResponse,
+            PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
+            ValidateOperationResponse,
+        },
+        ocaml_conv::OCamlOperationHash,
+    };
     use tezos_messages::p2p::encoding::operations_for_blocks::Path;
+    use znfe::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
 
     ocaml! {
         pub fn apply_block(apply_block_request: ApplyBlockRequest) -> ApplyBlockResponse;
@@ -200,100 +203,69 @@ pub fn genesis_result_data(
     })
 }
 
-/// Applies block to context
-pub fn apply_block(
-    request: ApplyBlockRequest,
-) -> Result<Result<ApplyBlockResponse, CallError>, OcamlError> {
+type CallRequestFn<REQUEST, RESPONSE> = OCamlFn1<REQUEST, RESPONSE>;
+
+/// Calls ffi function like request/response
+pub fn call<REQUEST, RESPONSE>(
+    ocaml_function: CallRequestFn<REQUEST, RESPONSE>,
+    request: REQUEST,
+) -> Result<Result<RESPONSE, CallError>, OcamlError>
+where
+    REQUEST: ToOCaml<REQUEST> + FfiMessage + 'static,
+    RESPONSE: FromOCaml<RESPONSE> + FfiMessage + 'static,
+{
     runtime::execute(move || {
         ocaml_frame!(gc, {
             let ocaml_request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::apply_block(gc, ocaml_request));
+            let result = ocaml_call!(ocaml_function(gc, ocaml_request));
             match result {
                 Ok(response) => Ok(response.into_rust()),
                 Err(e) => Err(CallError::from(e)),
             }
         })
     })
+}
+
+/// Applies block to context
+pub fn apply_block(
+    request: ApplyBlockRequest,
+) -> Result<Result<ApplyBlockResponse, CallError>, OcamlError> {
+    call(tezos_ffi::apply_block, request)
 }
 
 /// Begin construction initializes prevalidator and context for new operations based on current head
 pub fn begin_construction(
     request: BeginConstructionRequest,
 ) -> Result<Result<PrevalidatorWrapper, CallError>, OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::begin_construction(gc, ocaml_request));
-            match result {
-                Ok(response) => Ok(response.into_rust()),
-                Err(e) => Err(CallError::from(e)),
-            }
-        })
-    })
+    call(tezos_ffi::begin_construction, request)
 }
 
 /// Validate operation - used with prevalidator for validation of operation
 pub fn validate_operation(
     request: ValidateOperationRequest,
 ) -> Result<Result<ValidateOperationResponse, CallError>, OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::validate_operation(gc, ocaml_request));
-            match result {
-                Ok(response) => Ok(response.into_rust()),
-                Err(e) => Err(CallError::from(e)),
-            }
-        })
-    })
+    call(tezos_ffi::validate_operation, request)
 }
 
 /// Call protocol json rpc - general service
 pub fn call_protocol_json_rpc(
     request: ProtocolJsonRpcRequest,
 ) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::call_protocol_json_rpc(gc, ocaml_request));
-            match result {
-                Ok(response) => Ok(response.into_rust()),
-                Err(e) => Err(CallError::from(e)),
-            }
-        })
-    })
+    call(tezos_ffi::call_protocol_json_rpc, request)
 }
 
 /// Call helpers_preapply_operations shell service
 pub fn helpers_preapply_operations(
     request: ProtocolJsonRpcRequest,
 ) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::helpers_preapply_operations(gc, ocaml_request));
-            match result {
-                Ok(response) => Ok(response.into_rust()),
-                Err(e) => Err(CallError::from(e)),
-            }
-        })
-    })
+    call(tezos_ffi::helpers_preapply_operations, request)
 }
 
 /// Call helpers_preapply_block shell service
 pub fn helpers_preapply_block(
     request: ProtocolJsonRpcRequest,
 ) -> Result<Result<JsonRpcResponse, CallError>, OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::helpers_preapply_block(gc, ocaml_request));
-            match result {
-                Ok(response) => Ok(response.into_rust()),
-                Err(e) => Err(CallError::from(e)),
-            }
-        })
-    })
+    call(tezos_ffi::helpers_preapply_block, request)
 }
 
 /// Call compute path
@@ -312,9 +284,9 @@ pub fn compute_path(
                         .map(|path| path.0)
                         .collect();
                     Ok(ComputePathResponse {
-                        operations_hashes_path
+                        operations_hashes_path,
                     })
-                },
+                }
                 Err(e) => Err(CallError::from(e)),
             }
         })
