@@ -413,11 +413,6 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
             empty()
         }
     }
-
-    // result_to_json_response(
-    //     resp,
-    //     env.log(),
-    // )
 }
 
 pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {

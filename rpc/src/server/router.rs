@@ -46,6 +46,7 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", handler::context_cycle);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", handler::rolls_owner_current);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle/:cycle_id", handler::cycle);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh", handler::context_contract);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/counter", handler::get_contract_counter);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/manager_key", handler::get_contract_manager_key);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", handler::baking_rights);
@@ -55,7 +56,6 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     // Protocol rpcs - routed through ffi calls
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/scripts/run_operation", handler::run_operation);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/forge/operations", handler::forge_operations);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts", handler::context_contract);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/current_level", handler::current_level);
     routes.handle("/chains/:chain_id/blocks/:block_id/minimal_valid_time", handler::minimal_valid_time);
 
