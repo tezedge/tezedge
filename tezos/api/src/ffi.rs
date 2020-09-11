@@ -823,7 +823,8 @@ pub enum FfiRpcService {
     HelpersPreapplyBlock,
     HelpersCurrentLevel,
     DelegatesMinimalValidTime,
-    LiveBlocks,
+    HelpersForgeOperations,
+    ContextContract,
 }
 
 lazy_static! {
@@ -840,7 +841,8 @@ lazy_static! {
                         Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
                         Tag::new(3, "HelpersCurrentLevel", Encoding::Unit),
                         Tag::new(4, "DelegatesMinimalValidTime", Encoding::Unit),
-                        Tag::new(5, "LiveBlocks", Encoding::Unit),
+                        Tag::new(5, "HelpersForgeOperations", Encoding::Unit),
+                        Tag::new(6, "ContextContract", Encoding::Unit),
                     ]),
                 )
             ),

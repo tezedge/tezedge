@@ -54,6 +54,8 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
 
     // Protocol rpcs - routed through ffi calls
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/scripts/run_operation", handler::run_operation);
+    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/forge/operations", handler::forge_operations);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts", handler::context_contract);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/current_level", handler::current_level);
     routes.handle("/chains/:chain_id/blocks/:block_id/minimal_valid_time", handler::minimal_valid_time);
 
