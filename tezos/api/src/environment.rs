@@ -85,7 +85,6 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "35.246.251.120".to_string(),
             "34.89.154.253".to_string(),
             "babylonnet.kaml.fr".to_string(),
-            "tezaria.com".to_string()
         ],
         version: "TEZOS_ALPHANET_BABYLON_2019-09-27T07:43:32Z".to_string(),
         protocol_overrides: ProtocolOverrides {
@@ -102,7 +101,6 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
         },
         bootstrap_lookup_addresses: vec![
-            "tezaria.com".to_string(),
             "34.76.169.218".to_string(),
             "34.90.24.160".to_string(),
             "carthagenet.kaml.fr".to_string(),
