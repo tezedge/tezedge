@@ -209,13 +209,22 @@ impl TezosClientRunner {
     }
 
     /// Bake a block with the bootstrap1 account
-    pub fn bake_block(&self, request: BakeRequest) -> Result<TezosClientReply, reject::Rejection> {
+    pub fn bake_block(&self, request: Option<BakeRequest>) -> Result<TezosClientReply, reject::Rejection> {
         let mut client_output: TezosClientReply = Default::default();
 
-        let alias = if let Some(wallet) = self.wallets.get(&request.alias) {
-            &wallet.alias
+        let alias = if let Some(request) = request {
+            if let Some(wallet) = self.wallets.get(&request.alias) {
+                &wallet.alias
+            } else {
+                return Err(TezosClientRunnerError::NonexistantWallet.into());
+            }
         } else {
-            return Err(TezosClientRunnerError::NonexistantWallet.into());
+            // if there is no wallet provided in the request (GET) set the alias to be an arbitrary wallet
+            if let Some(wallet) = self.wallets.values().next() {
+                &wallet.alias
+            } else {
+                return Err(TezosClientRunnerError::NonexistantWallet.into());
+            }
         };
 
         self.run_client(
@@ -310,7 +319,7 @@ impl TezosClientRunner {
 }
 
 /// Construct a reply using the output from the tezos-client
-pub fn reply_with_clinet_output(reply: TezosClientReply, log: &Logger) -> Result<impl warp::Reply, reject::Rejection> {
+pub fn reply_with_client_output(reply: TezosClientReply, log: &Logger) -> Result<impl warp::Reply, reject::Rejection> {
     if reply.error.is_empty() {
         info!(log, "Successfull tezos-client call: {}", reply.output);
         Ok(StatusCode::OK)
