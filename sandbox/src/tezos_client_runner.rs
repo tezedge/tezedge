@@ -66,7 +66,7 @@ impl reject::Reject for TezosClientRunnerError {}
 pub type SandboxWallets = Vec<Wallet>;
 
 /// Structure holding data used by tezos client
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Wallet {
     alias: String,
     public_key_hash: String,
@@ -296,11 +296,13 @@ impl TezosClientRunner {
     }
 
     /// Cleanup the tezos-client directory
-    pub fn cleanup(&self) -> Result<(), reject::Rejection> {
+    pub fn cleanup(&mut self) -> Result<(), reject::Rejection> {
         fs::remove_dir_all(TEZOS_CLIENT_DIR)
             .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
         fs::create_dir(TEZOS_CLIENT_DIR)
             .map_err(|err| reject::custom(TezosClientRunnerError::IOError { reason: err }))?;
+
+        self.wallets.clear();
 
         Ok(())
     }

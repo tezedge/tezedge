@@ -72,7 +72,7 @@ pub async fn stop_node(
     // aquire a write lock to the runner
     let mut runner = runner.write().unwrap();
 
-    let client_runner = client_runner.read().unwrap();
+    let mut client_runner = client_runner.write().unwrap();
 
     // cleanup tezos client data
     let _ = client_runner.cleanup();
@@ -95,6 +95,23 @@ pub async fn init_client_data(
     let client_output = client_runner.init_client_data(wallets)?;
 
     reply_with_client_output(client_output, &log)
+}
+
+pub async fn get_wallets(
+    log: Logger,
+    client_runner: TezosClientRunnerRef,
+) -> Result<impl warp::Reply, reject::Rejection> {
+    info!(log, "Received request to list the activated wallets");
+
+    let client_runner = client_runner.read().unwrap();
+
+    // let client_output = client_runner.init_client_data(wallets)?;
+
+    // let wallets = client_runner.wallets.clone();
+
+    let reply = warp::reply::json(&client_runner.wallets.values().cloned().collect::<SandboxWallets>());
+
+    Ok(warp::reply::with_status(reply, StatusCode::OK))
 }
 
 pub async fn activate_protocol(

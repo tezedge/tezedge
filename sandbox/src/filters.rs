@@ -2,8 +2,8 @@ use slog::Logger;
 use warp::Filter;
 
 use crate::handlers::{
-    activate_protocol, bake_block_with_client, bake_block_with_client_arbitrary, handle_rejection,
-    init_client_data, start_node_with_config, stop_node,
+    activate_protocol, bake_block_with_client, bake_block_with_client_arbitrary, get_wallets,
+    handle_rejection, init_client_data, start_node_with_config, stop_node,
 };
 use crate::node_runner::LightNodeRunnerRef;
 use crate::tezos_client_runner::{
@@ -24,6 +24,7 @@ pub fn sandbox(
     start(log.clone(), runner.clone())
         .or(stop(log.clone(), runner, client_runner.clone()))
         .or(init_client(log.clone(), client_runner.clone()))
+        .or(wallets(log.clone(), client_runner.clone()))
         .or(activate(log.clone(), client_runner.clone()))
         .or(bake(log.clone(), client_runner.clone()))
         .or(bake_random(log, client_runner))
@@ -66,6 +67,17 @@ pub fn init_client(
         .and(with_log(log))
         .and(with_client_runner(client_runner))
         .and_then(init_client_data)
+}
+
+pub fn wallets(
+    log: Logger,
+    client_runner: TezosClientRunnerRef,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("wallets")
+        .and(warp::get())
+        .and(with_log(log))
+        .and(with_client_runner(client_runner))
+        .and_then(get_wallets)
 }
 
 pub fn activate(
