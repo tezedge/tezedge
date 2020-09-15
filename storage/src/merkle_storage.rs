@@ -97,7 +97,7 @@ pub struct MerkleStorage {
 const HASH_LEN: usize = 32;
 
 #[derive(Debug, Fail)]
-pub enum StorageError {
+pub enum MerkleError {
     /// External libs errors
     #[fail(display = "RocksDB error: {:?}", error)]
     DBError { error: rocksdb::Error },
@@ -123,12 +123,12 @@ pub enum StorageError {
     KeyEmpty,
 }
 
-impl From<rocksdb::Error> for StorageError {
-    fn from(error: rocksdb::Error) -> Self { StorageError::DBError { error } }
+impl From<rocksdb::Error> for MerkleError {
+    fn from(error: rocksdb::Error) -> Self { MerkleError::DBError { error } }
 }
 
-impl From<bincode::Error> for StorageError {
-    fn from(error: bincode::Error) -> Self { StorageError::SerializationError { error } }
+impl From<bincode::Error> for MerkleError {
+    fn from(error: bincode::Error) -> Self { MerkleError::SerializationError { error } }
 }
 
 impl MerkleStorage {
@@ -142,7 +142,7 @@ impl MerkleStorage {
     }
 
     /// Get value. Staging area is checked first, then last (checked out) commit.
-    pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, StorageError> {
+    pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
         let root = &self.get_staged_root()?;
         let root_hash = self.hash_tree(&root);
 
@@ -150,31 +150,91 @@ impl MerkleStorage {
     }
 
     /// Get value from historical context identified by commit hash.
-    pub fn get_history(&self, commit_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, StorageError> {
+    pub fn get_history(&self, commit_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
         let commit = self.get_commit(commit_hash)?;
 
         self.get_from_tree(&commit.root_hash, key)
     }
 
-    fn get_from_tree(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, StorageError> {
+    fn get_from_tree(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
         let mut full_path = key.clone();
-        let file = full_path.pop().ok_or(StorageError::KeyEmpty)?;
+        let file = full_path.pop().ok_or(MerkleError::KeyEmpty)?;
         let path = full_path;
         let root = self.get_tree(root_hash)?;
         let node = self.find_tree(&root, &path)?;
 
         let node = match node.get(&file) {
-            None => return Err(StorageError::ValueNotFound { key: self.key_to_string(key) }),
+            None => return Err(MerkleError::ValueNotFound { key: self.key_to_string(key) }),
             Some(entry) => entry,
         };
         match self.get_entry(&node.entry_hash)? {
             Entry::Blob(blob) => Ok(blob),
-            _ => Err(StorageError::ValueIsNotABlob { key: self.key_to_string(key) })
+            _ => Err(MerkleError::ValueIsNotABlob { key: self.key_to_string(key) })
+        }
+    }
+
+    // recursion is risky (stack overflow) and inefficient, try to do it iteratively..
+    fn get_key_values_from_tree_recursively(&self, path: &String, entry: &Entry, entries: &mut Vec<(ContextKey, ContextValue)> ) -> Result<(), MerkleError> {
+        match entry {
+            Entry::Blob(blob) => {
+                // push key-value pair
+                entries.push((self.string_to_key(path), blob.to_vec()));
+                Ok(())
+            }
+            Entry::Tree(tree) => {
+                // Go through all descendants and gather errors. Remap error if there is a failure
+                // anywhere in the recursion paths. TODO: is revert possible?
+                tree.iter().map(|(key, child_node)| {
+                    let fullpath = path.clone() + "/" + key;
+                    match self.get_entry(&child_node.entry_hash) {
+                        Err(_) => Ok(()),
+                        Ok(entry) => self.get_key_values_from_tree_recursively(&fullpath, &entry, entries),
+                    }
+                }).find_map(|res| {
+                    match res {
+                        Ok(_) => None,
+                        Err(err) => Some(Err(err)),
+                    }
+                }).unwrap_or(Ok(()))
+            }
+            Entry::Commit(commit) => {
+                match self.get_entry(&commit.root_hash) {
+                    Err(err) => Err(err),
+                    Ok(entry) => self.get_key_values_from_tree_recursively(path, &entry, entries),
+                }
+            }
+        }
+    }
+    // first thought about making it an iterator (like a generator) but it'd be too complex with
+    // the recursion..maybe there's no harm in just building a collection of matching key-values
+    // and returning it
+    pub fn get_key_values_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+        let commit = self.get_commit(&context_hash)?;
+        let root_tree = self.get_tree(&commit.root_hash)?;
+        let prefixed_tree = self.find_tree(&root_tree, prefix)?;
+        let mut keyvalues: Vec<(ContextKey, ContextValue)> = Vec::new();
+
+        for (key, child_node) in prefixed_tree.iter() {
+            let entry = self.get_entry(&child_node.entry_hash)?;
+            let delimiter: &str;
+            if prefix.len() == 0 {
+                delimiter = "";
+            } else {
+                delimiter = "/";
+            }
+            let fullpath = self.key_to_string(prefix) + delimiter + key;
+            self.get_key_values_from_tree_recursively(&fullpath, &entry, &mut keyvalues)?;
+        }
+
+        if keyvalues.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(keyvalues))
         }
     }
 
     /// Flush the staging area and and move to work on a certain commit from history.
-    pub fn checkout(&mut self, context_hash: EntryHash) -> Result<(), StorageError> {
+    pub fn checkout(&mut self, context_hash: EntryHash) -> Result<(), MerkleError> {
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
         self.last_commit = Some(commit);
@@ -189,7 +249,7 @@ impl MerkleStorage {
                   time: u64,
                   author: String,
                   message: String
-    ) -> Result<EntryHash, StorageError> {
+    ) -> Result<EntryHash, MerkleError> {
         let staged_root = self.get_staged_root()?;
         let staged_root_hash = self.hash_tree(&staged_root);
         let parent_commit_hash= self.last_commit.as_ref()
@@ -207,14 +267,14 @@ impl MerkleStorage {
     }
 
     /// Set key/val to the staging area.
-    pub fn set(&mut self, key: ContextKey, value: ContextValue) -> Result<(), StorageError> {
+    pub fn set(&mut self, key: ContextKey, value: ContextValue) -> Result<(), MerkleError> {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._set(&root, key, value)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
         Ok(())
     }
 
-    fn _set(&mut self, root: &Tree, key: ContextKey, value: ContextValue) -> Result<EntryHash, StorageError> {
+    fn _set(&mut self, root: &Tree, key: ContextKey, value: ContextValue) -> Result<EntryHash, MerkleError> {
         let blob_hash = self.hash_blob(&value);
         self.put_to_staging_area(&blob_hash, Entry::Blob(value));
         let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
@@ -222,14 +282,14 @@ impl MerkleStorage {
     }
 
     /// Delete an item from the staging area.
-    pub fn delete(&mut self, key: ContextKey) -> Result<(), StorageError> {
+    pub fn delete(&mut self, key: ContextKey) -> Result<(), MerkleError> {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._delete(&root, key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
         Ok(())
     }
 
-    fn _delete(&mut self, root: &Tree, key: ContextKey) -> Result<EntryHash, StorageError> {
+    fn _delete(&mut self, root: &Tree, key: ContextKey) -> Result<EntryHash, MerkleError> {
         if key.is_empty() { return Ok(self.hash_tree(root)); }
 
         self.compute_new_root_with_change(root, &key, None)
@@ -237,14 +297,14 @@ impl MerkleStorage {
 
     /// Copy subtree under a new path.
     /// TODO Consider copying values!
-    pub fn copy(&mut self, from_key: ContextKey, to_key: ContextKey) -> Result<(), StorageError> {
+    pub fn copy(&mut self, from_key: ContextKey, to_key: ContextKey) -> Result<(), MerkleError> {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._copy(&root, from_key, to_key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
         Ok(())
     }
 
-    fn _copy(&mut self, root: &Tree, from_key: ContextKey, to_key: ContextKey) -> Result<EntryHash, StorageError> {
+    fn _copy(&mut self, root: &Tree, from_key: ContextKey, to_key: ContextKey) -> Result<EntryHash, MerkleError> {
         let source_tree = self.find_tree(root, &from_key)?;
         let source_tree_hash = self.hash_tree(&source_tree);
         Ok(self.compute_new_root_with_change(
@@ -262,7 +322,7 @@ impl MerkleStorage {
                                     root: &Tree,
                                     key: &ContextKey,
                                     new_node: Option<Node>,
-    ) -> Result<EntryHash, StorageError> {
+    ) -> Result<EntryHash, MerkleError> {
         if key.is_empty() {
             return Ok(new_node.unwrap_or_else(
                 || self.get_non_leaf(self.hash_tree(root))).entry_hash);
@@ -296,7 +356,7 @@ impl MerkleStorage {
     ///
     /// * `root` - reference to a tree in which we search
     /// * `key` - sought path
-    fn find_tree(&self, root: &Tree, key: &ContextKey) -> Result<Tree, StorageError> {
+    fn find_tree(&self, root: &Tree, key: &ContextKey) -> Result<Tree, MerkleError> {
         if key.is_empty() { return Ok(root.clone()); }
 
         let child_node = match root.get(key.first().unwrap()) {
@@ -309,7 +369,7 @@ impl MerkleStorage {
                 self.find_tree(&tree, &key.clone().drain(1..).collect())
             }
             Entry::Blob(_) => return Ok(Tree::new()),
-            Entry::Commit { .. } => Err(StorageError::FoundUnexpectedStructure {
+            Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "tree".to_string(),
                 found: "commit".to_string(),
             })
@@ -317,7 +377,7 @@ impl MerkleStorage {
     }
 
     /// Get latest staged tree. If it's empty, init genesis  and return genesis root.
-    fn get_staged_root(&mut self) -> Result<Tree, StorageError> {
+    fn get_staged_root(&mut self) -> Result<Tree, MerkleError> {
         match &self.current_stage_tree {
             None => {
                 let tree = Tree::new();
@@ -333,7 +393,7 @@ impl MerkleStorage {
     }
 
     /// Persists an entry and its descendants from staged area to disk.
-    fn persist_staged_entry_recursively(&self, entry: &Entry) -> Result<(), StorageError> {
+    fn persist_staged_entry_recursively(&self, entry: &Entry) -> Result<(), MerkleError> {
         self.db.put(
             self.hash_entry(entry),
             bincode::serialize(entry)?)?;
@@ -449,40 +509,40 @@ impl MerkleStorage {
         });
     }
 
-    fn get_tree(&self, hash: &EntryHash) -> Result<Tree, StorageError> {
+    fn get_tree(&self, hash: &EntryHash) -> Result<Tree, MerkleError> {
         match self.get_entry(hash)? {
             Entry::Tree(tree) => Ok(tree),
-            Entry::Blob(_) => Err(StorageError::FoundUnexpectedStructure {
+            Entry::Blob(_) => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "tree".to_string(),
                 found: "blob".to_string(),
             }),
-            Entry::Commit { .. } => Err(StorageError::FoundUnexpectedStructure {
+            Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "tree".to_string(),
                 found: "commit".to_string(),
             }),
         }
     }
 
-    fn get_commit(&self, hash: &EntryHash) -> Result<Commit, StorageError> {
+    fn get_commit(&self, hash: &EntryHash) -> Result<Commit, MerkleError> {
         match self.get_entry(hash)? {
             Entry::Commit(commit) => Ok(commit),
-            Entry::Tree(_) => Err(StorageError::FoundUnexpectedStructure {
+            Entry::Tree(_) => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "commit".to_string(),
                 found: "tree".to_string(),
             }),
-            Entry::Blob(_) => Err(StorageError::FoundUnexpectedStructure {
+            Entry::Blob(_) => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "commit".to_string(),
                 found: "blob".to_string(),
             }),
         }
     }
 
-    fn get_entry(&self, hash: &EntryHash) -> Result<Entry, StorageError> {
+    fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged.get(hash) {
             None => {
                 let entry_bytes = self.db.get(hash)?;
                 match entry_bytes {
-                    None => Err(StorageError::EntryNotFound),
+                    None => Err(MerkleError::EntryNotFound),
                     Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
                 }
             }
@@ -504,6 +564,10 @@ impl MerkleStorage {
 
     fn key_to_string(&self, key: &ContextKey) -> String {
         key.clone().join("/")
+    }
+
+    fn string_to_key(&self, string: &String) -> ContextKey {
+        string.split('/').map(str::to_string).collect()
     }
 }
 
@@ -744,11 +808,11 @@ mod tests {
         let mut storage = get_storage();
 
         let res = storage.get(&vec![]);
-        assert!(if let StorageError::KeyEmpty = res.err().unwrap() { true } else { false });
+        assert!(if let MerkleError::KeyEmpty = res.err().unwrap() { true } else { false });
 
         let res = storage.get(&vec!["a".to_string()]);
         println!("wtf {:?}", res);
-        assert!(if let StorageError::ValueNotFound { .. } = res.err().unwrap() { true } else { false });
+        assert!(if let MerkleError::ValueNotFound { .. } = res.err().unwrap() { true } else { false });
     }
 
 
@@ -767,6 +831,6 @@ mod tests {
         let res = storage.commit(
             0, "".to_string(), "".to_string());
 
-        assert!(if let StorageError::DBError { .. } = res.err().unwrap() { true } else { false });
+        assert!(if let MerkleError::DBError { .. } = res.err().unwrap() { true } else { false });
     }
 }
