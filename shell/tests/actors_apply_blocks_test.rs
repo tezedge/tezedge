@@ -96,6 +96,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     let context = TezedgeContext::new(
         BlockStorage::new(&persistent_storage),
         persistent_storage.context_storage(),
+        persistent_storage.merkle(),
     );
 
     // check level 0
@@ -146,6 +147,18 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     let ctxt = list.get(1322)?;
     assert!(ctxt.is_some());
     assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_1322.json").expect("context_1322.json not found"));
+
+    //check level 1324 with merkle
+    let m = persistent_storage.merkle();
+    let merkle = m.write().unwrap();
+    // get final hash from last commit in merkle storage
+    let merkle_last_hash = merkle.get_last_commit_hash();
+
+    let bhwithhash = BlockStorage::new(&persistent_storage).get_by_block_level(1324);
+    let hash = bhwithhash.unwrap().unwrap();
+    let ctx_hash = hash.header.context();
+
+    assert_eq!(*ctx_hash, merkle_last_hash.unwrap());
 
     Ok(())
 }
