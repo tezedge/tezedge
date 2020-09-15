@@ -7,13 +7,14 @@ extern crate test;
 /// 1. test_scenario_for_apply_blocks_with_chain_feeder_and_check_context - see fn description
 /// 2. test_scenario_for_add_operations_to_mempool_and_check_state - see fn description
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver as QueueReceiver};
 use std::time::{Duration, Instant, SystemTime};
 
-use jsonpath::Selector;
 use riker::actors::*;
+use riker::system::SystemBuilder;
 use serde_json::Value;
 use slog::{info, Logger};
 
@@ -21,11 +22,13 @@ use crypto::hash::{BlockHash, HashType, OperationHash};
 use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::context::{ContextApi, ContextIndex, TezedgeContext};
+use storage::context::{ContextApi, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
-use storage::persistent::{ContextList, PersistentStorage};
+use storage::persistent::PersistentStorage;
 use storage::skip_list::Bucket;
+use storage::tests_common::TmpStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 use tezos_messages::p2p::encoding::prelude::Operation;
@@ -95,65 +98,40 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::Error> {
     let context = TezedgeContext::new(
         BlockStorage::new(&persistent_storage),
-        persistent_storage.context_storage(),
         persistent_storage.merkle(),
     );
 
     // check level 0
-    if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(0), None), &vec!["protocol".to_string()])? {
+    let ctx_hash = context.level_to_hash(0)?;
+    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
         assert_eq!("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 0));
     }
 
     // check level 1
-    if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(1), None), &vec!["protocol".to_string()])? {
+    let ctx_hash = context.level_to_hash(1)?;
+    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
         assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 1));
     }
 
     // check level 2
-    if let Some(Bucket::Exists(data)) = context.get_key(&ContextIndex::new(Some(2), None), &vec!["protocol".to_string()])? {
+    let ctx_hash = context.level_to_hash(2)?;
+    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
         assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
     }
 
-    let context_list: ContextList = persistent_storage.context_storage();
-    let list = context_list.read().expect("lock poisoning");
-
-    // check level 131 - total compare
-    let ctxt = list.get(131)?;
-    assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_131.json").expect("context_131.json not found"));
-
-    // check level 181 - total compare
-    let ctxt = list.get(181)?;
-    assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_181.json").expect("context_181.json not found"));
-
-    // check level 553 - total compare
-    let ctxt = list.get(553)?;
-    assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_553.json").expect("context_553.json not found"));
-
-    // check level 834 - total compare
-    let ctxt = list.get(834)?;
-    assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_834.json").expect("context_834.json not found"));
-
-    // check level 1322 - total compare
-    let ctxt = list.get(1322)?;
-    assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_1322.json").expect("context_1322.json not found"));
-
-    //check level 1324 with merkle
+    // check level 1324 with merkle storage
     let m = persistent_storage.merkle();
     let merkle = m.write().unwrap();
     // get final hash from last commit in merkle storage
     let merkle_last_hash = merkle.get_last_commit_hash();
 
+    // compare with context hash of last applied (1324th) block
     let bhwithhash = BlockStorage::new(&persistent_storage).get_by_block_level(1324);
     let hash = bhwithhash.unwrap().unwrap();
     let ctx_hash = hash.header.context();
@@ -161,33 +139,6 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     assert_eq!(*ctx_hash, merkle_last_hash.unwrap());
 
     Ok(())
-}
-
-fn assert_ctxt(ctxt: BTreeMap<String, Bucket<Vec<u8>>>, ocaml_ctxt_as_json: String) {
-    let json: Value = serde_json::from_str(&ocaml_ctxt_as_json).unwrap();
-    for (key, value) in ctxt.iter() {
-        // comparing just data
-        if !key.starts_with("data") {
-            continue;
-        }
-
-        let key_selector = key.replacen("data/", "", 1).replace("/", ".");
-        let selector = Selector::new(&format!("$.{}", key_selector)).unwrap();
-        let ocaml_data: Vec<&str> = selector
-            .find(&json)
-            .map(|t| t.as_str().unwrap())
-            .collect();
-
-        match value {
-            Bucket::Deleted => {
-                assert!(ocaml_data.is_empty())
-            }
-            Bucket::Exists(rust_data) => {
-                let rust_data = &hex::encode(rust_data);
-                assert_eq!(rust_data, ocaml_data[0])
-            }
-        };
-    }
 }
 
 /// Test scenario applies all requests to the apply_to_level,
