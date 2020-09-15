@@ -48,7 +48,7 @@ services:
       - "3030:3030"
       # Debugger Ports must be specified on node service, because of debugger network_mode attaches
       # debugger's container to the node container, allowing it to analyze node's traffic
-      - "8753:13031"      # debugger RPC port
+      - "17732:13031"      # debugger RPC port
       - "10001:13131/udp"  # debugger syslog port
     entrypoint: sleep inf
 
