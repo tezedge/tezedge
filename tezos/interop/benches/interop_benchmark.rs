@@ -4,17 +4,17 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use tezos_api::ffi::{
-    ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage, RustBytes,
-    TezosRuntimeConfiguration, ForkingTestchainData,
+    ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData,
+    RustBytes, TezosRuntimeConfiguration,
 };
 
+use crypto::hash::HashType;
 use tezos_interop::ffi;
 use tezos_interop::runtime;
 use tezos_interop::runtime::OcamlError;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 use znfe::{ocaml_call, ocaml_frame, to_ocaml, IntoRust, ToOCaml};
-use crypto::hash::HashType;
 
 const CHAIN_ID: &str = "8eceda2f";
 const HEADER: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
@@ -24,13 +24,10 @@ const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
     use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
-    use znfe::{ocaml, OCamlBytes};
+    use znfe::ocaml;
 
     ocaml! {
-        pub fn setup_benchmark_apply_block_response(data: OCamlBytes);
-        pub fn apply_block_request_encoded_roundtrip(
-            data: OCamlBytes,
-        ) -> OCamlBytes;
+        pub fn setup_benchmark_apply_block_response(response: ApplyBlockResponse);
         pub fn apply_block_request_decoded_roundtrip(
             request: ApplyBlockRequest,
         ) -> ApplyBlockResponse;
@@ -93,29 +90,14 @@ fn apply_block_request_decoded_roundtrip(request: ApplyBlockRequest) -> Result<(
     })
 }
 
-fn apply_block_request_encoded_roundtrip(request: ApplyBlockRequest) -> Result<(), OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let request = request.as_rust_bytes().unwrap();
-            let request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::apply_block_request_encoded_roundtrip(
-                gc, request
-            ))
-            .unwrap();
-            let result = result.into_rust();
-            let _response = ApplyBlockResponse::from_rust_bytes(result);
-
-            ()
-        })
-    })
-}
-
 fn criterion_benchmark(c: &mut Criterion) {
     init_bench_runtime();
 
     let response_with_some_forking_data: ApplyBlockResponse = ApplyBlockResponse {
         validation_result_message: "validation_result_message".to_string(),
-        context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
+        context_hash: HashType::ContextHash
+            .string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")
+            .expect("failed to convert"),
         block_header_proto_json: "block_header_proto_json".to_string(),
         block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
         operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
@@ -123,17 +105,23 @@ fn criterion_benchmark(c: &mut Criterion) {
         last_allowed_fork_level: 8,
         forking_testchain: true,
         forking_testchain_data: Some(ForkingTestchainData {
-            test_chain_id: HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye").unwrap(),
-            forking_block_hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET").unwrap(),
+            test_chain_id: HashType::ChainId
+                .string_to_bytes("NetXgtSLGNJvNye")
+                .unwrap(),
+            forking_block_hash: HashType::BlockHash
+                .string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
+                .unwrap(),
         }),
     };
 
-    let encoded_response = response_with_some_forking_data.as_rust_bytes().unwrap();
-
     let _ignored = runtime::execute(move || {
         ocaml_frame!(gc, {
-            let encoded_response = to_ocaml!(gc, encoded_response);
-            ocaml_call!(tezos_ffi::setup_benchmark_apply_block_response(gc, encoded_response)).unwrap();
+            let ocaml_response = to_ocaml!(gc, response_with_some_forking_data);
+            ocaml_call!(tezos_ffi::setup_benchmark_apply_block_response(
+                gc,
+                ocaml_response
+            ))
+            .unwrap();
         })
     });
 
@@ -150,21 +138,6 @@ fn criterion_benchmark(c: &mut Criterion) {
             .unwrap();
 
         b.iter(|| apply_block_request_decoded_roundtrip(black_box(request.clone())))
-    });
-
-    c.bench_function("apply_block_request_encoded_roundtrip", |b| {
-        let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
-            .chain_id(hex::decode(CHAIN_ID).unwrap())
-            .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
-            .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
-            .max_operations_ttl(MAX_OPERATIONS_TTL)
-            .operations(ApplyBlockRequest::convert_operations(
-                block_operations_from_hex(HEADER_HASH, sample_operations_for_request_decoded()),
-            ))
-            .build()
-            .unwrap();
-
-        b.iter(|| apply_block_request_encoded_roundtrip(black_box(request.clone())))
     });
 }
 
