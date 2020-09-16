@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse, ComputePathError, ComputePathRequest, ComputePathResponse};
-use tezos_api::identity::Identity;
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest, ComputePathResponse, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
 use tezos_interop::ffi;
 
 /// Override runtime configuration for OCaml runtime
@@ -149,18 +148,6 @@ pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpc
         Err(e) => {
             Err(ProtocolRpcError::FailedToCallProtocolRpc {
                 message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
-    }
-}
-
-/// Generate tezos identity
-pub fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {
-    match ffi::generate_identity(expected_pow) {
-        Ok(result) => Ok(result?),
-        Err(e) => {
-            Err(TezosGenerateIdentityError::GenerationError {
-                message: format!("FFI 'generate_identity' failed! Reason: {:?}", e)
             })
         }
     }

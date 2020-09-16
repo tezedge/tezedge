@@ -118,9 +118,8 @@ fn main() {
 
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-    use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosGenerateIdentityError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse, ComputePathError, ComputePathRequest, ComputePathResponse};
-    use tezos_api::identity::Identity;
-    use tezos_client::client::{apply_block, begin_construction, call_protocol_json_rpc, change_runtime_configuration, generate_identity, genesis_result_data, helpers_preapply_block, helpers_preapply_operations, init_protocol_context, validate_operation, compute_path};
+    use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest, ComputePathResponse, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
+    use tezos_client::client::{apply_block, begin_construction, call_protocol_json_rpc, change_runtime_configuration, compute_path, genesis_result_data, helpers_preapply_block, helpers_preapply_operations, init_protocol_context, validate_operation};
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
@@ -175,10 +174,6 @@ mod tezos {
             genesis_protocol_hash: &ProtocolHash,
             genesis_max_operations_ttl: u16) -> Result<CommitGenesisResult, GetDataError> {
             genesis_result_data(genesis_context_hash, chain_id, genesis_protocol_hash, genesis_max_operations_ttl)
-        }
-
-        fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError> {
-            generate_identity(expected_pow)
         }
     }
 }

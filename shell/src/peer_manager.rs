@@ -22,7 +22,7 @@ use tokio::time::timeout;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
-use tezos_api::identity::Identity;
+use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::PeerConnectionThreshold;

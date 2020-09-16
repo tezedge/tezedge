@@ -20,8 +20,8 @@ use tezos_encoding::{binary_writer, ser};
 use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
 use tezos_messages::p2p::encoding::operations_for_blocks::path_encoding;
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
 
 pub type RustBytes = Vec<u8>;
 
@@ -514,30 +514,6 @@ impl From<OCamlError> for TezosRuntimeConfigurationError {
         match error {
             OCamlError::Exception(exception) => {
                 TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
-                }
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum TezosGenerateIdentityError {
-    #[fail(display = "Generate identity failed, message: {}!", message)]
-    GenerationError {
-        message: String
-    },
-    #[fail(display = "Generated identity is invalid json! message: {}!", message)]
-    InvalidJsonError {
-        message: String
-    },
-}
-
-impl From<OCamlError> for TezosGenerateIdentityError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => {
-                TezosGenerateIdentityError::GenerationError {
                     message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }

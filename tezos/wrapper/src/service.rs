@@ -22,7 +22,6 @@ use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
-use tezos_api::identity::Identity;
 use tezos_context::channel::{context_receive, context_send, ContextAction};
 
 use crate::protocol::*;
@@ -54,7 +53,6 @@ enum ProtocolMessage {
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
     GenesisResultDataCall(GenesisResultDataParams),
-    GenerateIdentity(GenerateIdentityParams),
     ShutdownCall,
 }
 
@@ -78,11 +76,6 @@ struct GenesisResultDataParams {
     genesis_max_operations_ttl: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct GenerateIdentityParams {
-    expected_pow: f64,
-}
-
 /// This event message is generated as a response to the `ProtocolMessage` command.
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
@@ -93,7 +86,6 @@ enum NodeMessage {
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
-    GenerateIdentityResult(Result<Identity, TezosGenerateIdentityError>),
     ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
     ShutdownResult,
 }
@@ -175,10 +167,6 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                 );
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
-            ProtocolMessage::GenerateIdentity(params) => {
-                let res = Proto::generate_identity(params.expected_pow);
-                tx.send(&NodeMessage::GenerateIdentityResult(res))?;
-            }
             ProtocolMessage::ShutdownCall => {
                 context_send(ContextAction::Shutdown).expect("Failed to send shutdown command to context channel");
                 tx.send(&NodeMessage::ShutdownResult)?;
@@ -223,11 +211,6 @@ pub enum ProtocolError {
     #[fail(display = "OCaml storage init error: {}", reason)]
     OcamlStorageInitError {
         reason: TezosStorageInitError
-    },
-    /// OCaml part failed to generate identity.
-    #[fail(display = "Failed to generate tezos identity: {}", reason)]
-    TezosGenerateIdentityError {
-        reason: TezosGenerateIdentityError
     },
     /// OCaml part failed to get genesis data.
     #[fail(display = "Failed to get genesis data: {}", reason)]
@@ -388,7 +371,6 @@ pub struct ProtocolController {
 /// Instead of manually sending and receiving messages over IPC channel use provided methods.
 /// Methods also handle things such as timeouts and also checks is correct response type is received.
 impl ProtocolController {
-    const GENERATE_IDENTITY_TIMEOUT: Duration = Duration::from_secs(600);
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(600);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
@@ -562,23 +544,6 @@ impl ProtocolController {
                 }
                 result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into())
             }
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
-        }
-    }
-
-    /// Command tezos ocaml code to generate a new identity.
-    pub fn generate_identity(&self, expected_pow: f64) -> Result<Identity, ProtocolServiceError> {
-        let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::GenerateIdentity(GenerateIdentityParams {
-            expected_pow,
-        }))?;
-        // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::GENERATE_IDENTITY_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
-            NodeMessage::GenerateIdentityResult(result) => result.map_err(|err| ProtocolError::TezosGenerateIdentityError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use failure::Fail;
 use slog::{info, Logger};
 
-use tezos_api::identity::Identity;
+use tezos_identity::{Identity, IdentitySerdeError};
 
 #[derive(Fail, Debug)]
 pub enum IdentityError {
@@ -18,11 +18,11 @@ pub enum IdentityError {
     },
     #[fail(display = "Identity serialization error: {}", reason)]
     SerializationError {
-        reason: serde_json::Error
+        reason: IdentitySerdeError
     },
     #[fail(display = "Identity de-serialization error: {}", reason)]
     DeserializationError {
-        reason: serde_json::Error
+        reason: IdentitySerdeError
     },
 
 }
@@ -42,13 +42,13 @@ impl slog::Value for IdentityError {
 /// Load identity from tezos configuration file.
 pub fn load_identity<P: AsRef<Path>>(identity_json_file_path: P) -> Result<Identity, IdentityError> {
     let identity = fs::read_to_string(identity_json_file_path)
-        .map(|contents| serde_json::from_str::<Identity>(&contents).map_err(|err| IdentityError::DeserializationError { reason: err }))??;
+        .map(|contents| Identity::from_json(&contents).map_err(|err| IdentityError::DeserializationError { reason: err }))??;
     Ok(identity)
 }
 
 /// Stores provided identity into the file specified by path
 pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
-    let identity_json = serde_json::to_string(identity).map_err(|err| IdentityError::SerializationError { reason: err })?;
+    let identity_json = identity.as_json().map_err(|err| IdentityError::SerializationError { reason: err })?;
     fs::write(&path, &identity_json)?;
 
     Ok(())
@@ -60,9 +60,9 @@ pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: &Logg
         load_identity(&identity_cfg.identity_json_file_path)
     } else {
         info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
-
         let identity = Identity::generate(identity_cfg.expected_pow);
         info!(log, "Identity successfully generated");
+
         match store_identity(&identity_cfg.identity_json_file_path, &identity) {
             Ok(()) => {
                 info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
