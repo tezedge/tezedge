@@ -186,6 +186,8 @@ unsafe impl ToOCaml<FfiRpcService> for FfiRpcService {
             FfiRpcService::HelpersPreapplyBlock => OCaml::of_int(2),
             FfiRpcService::HelpersCurrentLevel => OCaml::of_int(3),
             FfiRpcService::DelegatesMinimalValidTime => OCaml::of_int(4),
+            FfiRpcService::HelpersForgeOperations => OCaml::of_int(5),
+            FfiRpcService::ContextContract => OCaml::of_int(6),
         };
         unsafe { OCamlAllocResult::of(ocaml_int.raw()) }
     }
