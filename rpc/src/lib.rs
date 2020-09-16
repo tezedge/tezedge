@@ -19,6 +19,16 @@ mod services;
 /// Crate level custom result
 pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
+/// Generate options response with supported methods, headers
+pub(crate) fn options() -> ServiceResult {
+    Ok(Response::builder()
+        .status(StatusCode::from_u16(200)?)
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
+        .body(Body::empty())?)
+}
 
 /// Function to generate JSON response from serializable object
 pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
@@ -26,6 +36,9 @@ pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceRes
         .header(hyper::header::CONTENT_TYPE, "application/json")
         // TODO: add to config
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
         .body(Body::from(serde_json::to_string(content)?))?)
 }
 
@@ -34,6 +47,9 @@ pub(crate) fn make_json_stream_response<T: futures::Stream<Item=Result<String, s
     Ok(Response::builder()
         .header(hyper::header::CONTENT_TYPE, "application/json")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
         .header(hyper::header::TRANSFER_ENCODING, "chunked")
         .body(Body::wrap_stream(content))?)
 }
@@ -43,8 +59,8 @@ pub(crate) fn result_to_json_response<T: serde::Serialize>(res: Result<T, failur
     match res {
         Ok(t) => make_json_response(&t),
         Err(err) => {
-            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", err));
-            empty()
+            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
+            error(err)
         }
     }
 }
@@ -57,8 +73,8 @@ pub(crate) fn result_option_to_json_response<T: serde::Serialize>(res: Result<Op
             None => not_found()
         }
         Err(err) => {
-            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", err));
-            empty()
+            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
+            error(err)
         }
     }
 }
@@ -86,4 +102,16 @@ pub(crate) fn not_found() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(404)?)
         .body(Body::from("not found"))?)
+}
+
+/// Generate 500 error
+pub(crate) fn error(error: failure::Error) -> ServiceResult {
+    Ok(Response::builder()
+        .status(StatusCode::from_u16(500)?)
+        .header(hyper::header::CONTENT_TYPE, "text/plain")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(hyper::header::TRANSFER_ENCODING, "chunked")
+        .body(Body::from(format!("{:?}", error)))?)
 }

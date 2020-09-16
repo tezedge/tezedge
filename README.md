@@ -62,7 +62,7 @@ You can view the status of the node in your browser by entering this address int
 
 http://localhost:8080
 
-![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/explorer_bootstrap.gif)
+![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/tezedge_explorer.gif)
 
 Building from Source
 ------------

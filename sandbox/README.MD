@@ -17,7 +17,7 @@ Runs the launcher
 Start a tezedge light-node with the provided arguments in request body.
 
 ```
-curl --location --request POST 'http://127.0.0.1:3030/start' \
+curl --location --request POST 'http://116.202.128.230:3030/start' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "identity_expected_pow": 0,
@@ -25,11 +25,11 @@ curl --location --request POST 'http://127.0.0.1:3030/start' \
     "network": "sandbox",
     "peer_thresh_low": 1,
     "peer_thresh_high": 1,
-    "sandbox_patch_context_json_file": "/tmp/sandbox/sandbox-patch-context.json",
-    "protocol_runner": "/tmp/sandbox/protocol-runner",
-    "tezos_data_dir": "/tmp/tezedge_developer/tezos-node",
-    "identity_file": "/tmp/sandbox/light-node/identity.json",
-    "bootstrap_db_path": "bootstrap_db",
+    "sandbox_patch_context_json_file": "./light_node/etc/tezedge_sandbox/sandbox-patch-context.json",
+    "protocol_runner": "./target/release/protocol-runner",
+    "tezos_data_dir": "/tmp/tezedge/tezos-node",
+    "identity_file": "./light_node/identity.json",
+    "bootstrap_db_path": "/tmp/tezedge/light-node",
     "db_cfg_max_threads": "4",
     "log_format": "simple",
     "log_level": "info",
@@ -46,7 +46,7 @@ curl --location --request POST 'http://127.0.0.1:3030/start' \
     "store_context_actions": false,
     "tokio_threads": 0,
     "enable_testchain": false
-}'
+  }'
 ```
 
 ### **3. call the init_client RPC**

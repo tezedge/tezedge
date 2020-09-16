@@ -6,13 +6,11 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockRequest, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration, ComputePathRequest, ComputePathResponse};
+use tezos_api::ffi::{ApplyBlockRequest, ComputePathRequest, ComputePathResponse, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
-use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
-
-
+use tezos_messages::p2p::encoding::prelude::*;
 
 mod common;
 
@@ -87,6 +85,114 @@ fn test_run_operations() -> Result<(), failure::Error> {
     assert_json_eq!(
         serde_json::from_str(&response.body)?,
         serde_json::from_str(&test_data::RUN_OPERTION_RESPONSE)?,
+    );
+
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn test_forge_operations() -> Result<(), failure::Error> {
+    init_test_runtime();
+
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_forge_operations_01");
+
+    // apply block 1
+    let last_block = apply_blocks_1(&chain_id, genesis_block_header);
+
+    // prepare encoded operation to send
+    let request = r#"
+        {
+           "branch":"BLsDMhmqcwaFXEzYP166TUu1tW3TsEyhUwFAp9rSk2nDYGcuizG",
+           "contents":[
+              {
+                 "kind":"reveal",
+                 "public_key":"edpkuMeh89QFCo6kpwJyPTUivE3aUFQnkRmM6n9hU9cnacXvnAeRba",
+                 "source":"tz1gqEnWBhebsCFYANSneFbogBTF6GsGhXyA",
+                 "fee":"10000",
+                 "gas_limit":"50000",
+                 "storage_limit":"257",
+                 "counter":"1"
+              },
+              {
+                 "kind":"transaction",
+                 "source":"tz1gqEnWBhebsCFYANSneFbogBTF6GsGhXyA",
+                 "destination":"tz1MJcPrvB7Yrhdqjw2SS8amfthgUUqBqFef",
+                 "amount":"1234000000",
+                 "fee":"10000",
+                 "gas_limit":"50000",
+                 "storage_limit":"257",
+                 "counter":"2"
+              }
+           ]
+        }
+    "#;
+
+    let expected_response = r#"
+        "97f9d91bdcf9ba544fcd84fb525409cab4c16be8eea29788a499e060d4a84a366b00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e01d086038102005e108e1c9b4fb5c95d47ad49d55fe988c8d77d617c27cbbcd99f97cca0cd3ab96c00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e02d08603810280b1b5cc040000124410d330e6c21d604aae39e3c156eb6b241c2500"
+    "#;
+
+    // FFI call for run_operation
+    let request = ProtocolJsonRpcRequest {
+        block_header: last_block,
+        chain_arg: "main".to_string(),
+        chain_id: chain_id.clone(),
+        request: JsonRpcRequest {
+            context_path: "/chains/main/blocks/head/helpers/forge/operations".to_string(),
+            body: request.to_string(),
+        },
+        ffi_service: FfiRpcService::HelpersForgeOperations,
+    };
+    let response = client::call_protocol_json_rpc(request)?;
+
+    // assert result json
+    assert_json_eq!(
+        serde_json::from_str(&response.body)?,
+        serde_json::from_str(expected_response)?,
+    );
+
+    Ok(())
+}
+
+#[test]
+#[serial]
+fn test_context_contract() -> Result<(), failure::Error> {
+    init_test_runtime();
+
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_context_contract_01");
+
+    // apply block 1
+    let last_block = apply_blocks_1(&chain_id, genesis_block_header);
+
+    // prepare encoded operation to send
+    let request = "";
+
+    let expected_response = r#"
+        {
+            "balance": "0",
+            "counter": "0"
+        }
+    "#;
+
+    // FFI call for run_operation
+    let request = ProtocolJsonRpcRequest {
+        block_header: last_block,
+        chain_arg: "main".to_string(),
+        chain_id: chain_id.clone(),
+        request: JsonRpcRequest {
+            context_path: "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17".to_string(),
+            body: request.to_string(),
+        },
+        ffi_service: FfiRpcService::ContextContract,
+    };
+    let response = client::call_protocol_json_rpc(request)?;
+
+    // assert result json
+    assert_json_eq!(
+        serde_json::from_str(&response.body)?,
+        serde_json::from_str(expected_response)?,
     );
 
     Ok(())
@@ -199,7 +305,7 @@ fn test_compute_path() -> Result<(), failure::Error> {
     let _ = apply_blocks_1(&chain_id, genesis_block_header);
 
     type ValidationPasses = Vec<Vec<DecodedOperation>>;
-    let validation_passes: Vec<Vec<Operation>> = 
+    let validation_passes: Vec<Vec<Operation>> =
         serde_json::from_str::<ValidationPasses>(test_data::VALIDATION_PASSES_WITH_OPERATIONS)?.into_iter()
             .map(|validation_pass| validation_pass.into_iter()
                 .map(|op| op.into())
@@ -212,9 +318,9 @@ fn test_compute_path() -> Result<(), failure::Error> {
 
     let response = client::compute_path(request)?;
 
-    let expected_response: ComputePathResponse = serde_json::from_str(test_data::COMPUTE_PATHS_RESPONSE)?; 
+    let expected_response: ComputePathResponse = serde_json::from_str(test_data::COMPUTE_PATHS_RESPONSE)?;
 
-    
+
     assert_eq!(expected_response, response);
     Ok(())
 }

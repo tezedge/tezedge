@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use getset::Getters;
-use hyper::{Body, Request, Response};
+use hyper::{Body, Method, Request, Response};
 use hyper::service::{make_service_fn, service_fn};
 use riker::actors::ActorSystem;
 use slog::Logger;
@@ -20,7 +20,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::empty;
+use crate::{not_found, options};
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
 
 mod handler;
@@ -105,14 +105,22 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                     let routes = routes.clone();
                     async move {
                         if let Some((handler, params)) = routes.find(&req.uri().path().to_string()) {
-                            let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
-                            let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
+                            match *req.method() {
+                                Method::OPTIONS => {
+                                    // lets globaly handle options
+                                    options()
+                                }
+                                _ => {
+                                    let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
+                                    let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
 
-                            let handler = handler.clone();
-                            let fut = handler(req, params, query, env);
-                            Pin::from(fut).await
+                                    let handler = handler.clone();
+                                    let fut = handler(req, params, query, env);
+                                    Pin::from(fut).await
+                                }
+                            }
                         } else {
-                            empty()
+                            not_found()
                         }
                     }
                 }))
