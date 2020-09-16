@@ -1426,8 +1426,6 @@ dependencies = [
  "riker",
  "rlimit",
  "rpc",
- "serde 1.0.114",
- "serde_json",
  "shell",
  "slog",
  "slog-async",
@@ -1435,7 +1433,7 @@ dependencies = [
  "slog-term",
  "storage",
  "tezos_api",
- "tezos_client",
+ "tezos_identity",
  "tezos_messages",
  "tezos_wrapper",
  "tokio",
@@ -2721,6 +2719,7 @@ dependencies = [
  "tezos_api",
  "tezos_client",
  "tezos_context",
+ "tezos_identity",
  "tezos_messages",
  "tezos_wrapper",
  "tokio",
@@ -3104,6 +3103,17 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.12",
  "serde 1.0.114",
+]
+
+[[package]]
+name = "tezos_identity"
+version = "0.5.0"
+dependencies = [
+ "crypto",
+ "failure",
+ "hex",
+ "serde 1.0.114",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
-use std::fs;
 
 use riker::actors::*;
 use slog::{crit, debug, Drain, error, info, Logger};
@@ -28,7 +28,7 @@ use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
-use tezos_api::identity::Identity;
+use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
@@ -286,7 +286,7 @@ fn block_on_actors(
 
         if is_sandbox {
             debug!(log, "Shutting down from sandbox mode, deleting DB");
-            
+
             if env.storage.db_path.exists() {
                 fs::remove_dir_all(env.storage.db_path).expect("Cannot delete db_path directory");
             } else {

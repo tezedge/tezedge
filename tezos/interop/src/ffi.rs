@@ -4,18 +4,17 @@
 use std::sync::Once;
 
 use znfe::{
-    ocaml_alloc, ocaml_call, ocaml_frame, IntoRust, OCaml, OCamlBytes, OCamlFn1, OCamlInt32,
+    IntoRust, OCaml, ocaml_alloc, ocaml_call, ocaml_frame, OCamlBytes, OCamlFn1, OCamlInt32,
     OCamlList, ToOCaml,
 };
 
 use tezos_api::ffi::*;
-use tezos_api::identity::Identity;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
 
 mod tezos_ffi {
-    use znfe::{ocaml, Intnat, OCamlBytes, OCamlInt32, OCamlList};
+    use znfe::{Intnat, ocaml, OCamlBytes, OCamlInt32, OCamlList};
 
     ocaml! {
         pub fn apply_block(apply_block_request: OCamlBytes) -> OCamlBytes;
@@ -29,7 +28,6 @@ mod tezos_ffi {
             no_of_ffi_calls_treshold_for_gc: Intnat,
             debug_mode: bool
         ) -> ();
-        pub fn generate_identity(expected_pow: f64) -> OCamlBytes;
         pub fn init_protocol_context(
             data_dir: String,
             genesis: (OCamlBytes, OCamlBytes, OCamlBytes),
@@ -77,9 +75,9 @@ pub fn call<REQUEST, RESPONSE>(
     ocaml_function: CallRequestFn,
     request: REQUEST,
 ) -> Result<Result<RESPONSE, CallError>, OcamlError>
-where
-    REQUEST: FfiMessage + 'static,
-    RESPONSE: FfiMessage + 'static,
+    where
+        REQUEST: FfiMessage + 'static,
+        RESPONSE: FfiMessage + 'static,
 {
     runtime::execute(move || {
         // write to bytes
@@ -88,7 +86,7 @@ where
             Err(e) => {
                 return Err(CallError::InvalidRequestData {
                     message: format!("{:?}", e),
-                })
+                });
             }
         };
 
@@ -285,29 +283,6 @@ pub fn compute_path(
     request: ComputePathRequest,
 ) -> Result<Result<ComputePathResponse, CallError>, OcamlError> {
     call(tezos_ffi::compute_path, request)
-}
-
-pub fn generate_identity(
-    expected_pow: f64,
-) -> Result<Result<Identity, TezosGenerateIdentityError>, OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let expected_pow = ocaml_alloc!(expected_pow.to_ocaml(gc));
-            let result = ocaml_call!(tezos_ffi::generate_identity(gc, expected_pow));
-            match result {
-                Ok(identity) => {
-                    let identity: String = identity.into_rust();
-
-                    Ok(serde_json::from_str::<Identity>(&identity).map_err(|err| {
-                        TezosGenerateIdentityError::InvalidJsonError {
-                            message: err.to_string(),
-                        }
-                    })?)
-                }
-                Err(e) => Err(TezosGenerateIdentityError::from(e)),
-            }
-        })
-    })
 }
 
 pub fn decode_context_data(
