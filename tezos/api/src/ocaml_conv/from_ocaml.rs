@@ -11,7 +11,7 @@ use crate::ffi::{
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
-use znfe::{FromOCaml, OCamlInt, IntoRust, OCaml, OCamlBytes, OCamlInt32, OCamlList};
+use znfe::{FromOCaml, IntoRust, OCaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -20,7 +20,7 @@ macro_rules! from_ocaml_hash {
                 unsafe { v.field::<OCamlBytes>(0).into_rust() }
             }
         }
-    }
+    };
 }
 
 from_ocaml_hash!(OCamlHash, Hash);
@@ -174,7 +174,7 @@ unsafe impl FromOCaml<Path> for FfiPath {
                     FfiPath(Path::Left(Box::new(PathLeft::new(
                         path.0,
                         right,
-                        Default::default(), // TODO: what is body?
+                        Default::default(),
                     ))))
                 }
                 1 => {
@@ -184,10 +184,12 @@ unsafe impl FromOCaml<Path> for FfiPath {
                     FfiPath(Path::Right(Box::new(PathRight::new(
                         left,
                         path.0,
-                        Default::default(), // TODO: what is body?
+                        Default::default(),
                     ))))
                 }
-                tag => panic!("Invalid tag value for OCaml<Path>: {}", tag),
+                // NOTE: this will not happen *unless* the memory representation of
+                // the `Path` type on the tezos side changes.
+                tag => panic!("Invalid tag value for OCaml<Path>, the memory representation of the `Path` may have changed: {}", tag),
             }
         }
     }
