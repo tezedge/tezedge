@@ -43,13 +43,15 @@
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::path::Path;
-use rocksdb::{DB, Options, IteratorMode};
+use rocksdb::{DB, ColumnFamilyDescriptor, Options, IteratorMode};
+use crate::persistent::{default_table_options, KeyValueSchema};
 use std::hash::Hash;
 use im::OrdMap as OrdMap;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use failure::Fail;
+use std::sync::Arc;
 
 use sodiumoxide::crypto::generichash::State;
 
@@ -89,7 +91,7 @@ enum Entry {
 
 pub struct MerkleStorage {
     current_stage_tree: Option<Tree>,
-    db: DB,
+    db: Arc<DB>,
     staged: HashMap<EntryHash, Entry>,
     last_commit: Option<Commit>,
 }
@@ -131,8 +133,25 @@ impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self { MerkleError::SerializationError { error } }
 }
 
+impl KeyValueSchema for MerkleStorage {
+    type Key = Vec<u8>;
+    type Value = Vec<u8>;
+
+    fn descriptor() -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options();
+        // 1 MB
+        cf_opts.set_write_buffer_size(1024 * 1024);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    #[inline]
+    fn name() -> &'static str {
+        "merkle_storage"
+    }
+}
+
 impl MerkleStorage {
-    pub fn new(db: DB) -> Self {
+    pub fn new(db: Arc<DB>) -> Self {
         MerkleStorage {
             db,
             staged: HashMap::new(),

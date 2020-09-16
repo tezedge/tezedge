@@ -29,6 +29,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
+use crate::merkle_storage::MerkleStorage;
 
 pub mod persistent;
 pub mod merkle_storage;
@@ -404,6 +405,7 @@ pub mod tests_common {
                 context_action_storage::ContextActionByBlockHashIndex::descriptor(),
                 context_action_storage::ContextActionByContractIndex::descriptor(),
                 context_action_storage::ContextActionByTypeIndex::descriptor(),
+                MerkleStorage::descriptor(),
                 SystemStorage::descriptor(),
                 Sequences::descriptor(),
                 DatabaseBackedSkipList::descriptor(),

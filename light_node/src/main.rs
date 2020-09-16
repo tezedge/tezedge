@@ -33,6 +33,7 @@ use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration}
 use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 use crate::configuration::LogFormat;
+use storage::merkle_storage::MerkleStorage;
 
 mod configuration;
 mod identity;
@@ -329,6 +330,7 @@ fn main() {
         context_action_storage::ContextActionByContractIndex::descriptor(),
         context_action_storage::ContextActionByTypeIndex::descriptor(),
         ContextActionStorage::descriptor(),
+        MerkleStorage::descriptor(),
         SystemStorage::descriptor(),
         Sequences::descriptor(),
         MempoolStorage::descriptor(),
