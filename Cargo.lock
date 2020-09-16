@@ -494,7 +494,7 @@ dependencies = [
 
 [[package]]
 name = "crypto"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base58",
  "failure",
@@ -903,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_ack_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_advertise_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -921,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_block_header_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -930,7 +930,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_connection_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_branch_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_head_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_metadata_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operation_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operations_for_blocks_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_peer_response_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_protocol_message"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "honggfuzz",
  "log 0.4.8",
@@ -1258,7 +1258,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bincode",
  "failure",
@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "light-node"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "crypto",
@@ -1495,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "logging"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "libflate",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "monitoring"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "crypto",
@@ -1714,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "networking"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytes 0.5.5",
  "crypto",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-runner"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "crypto",
@@ -2422,7 +2422,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "assert-json-diff",
  "bytes 0.5.5",
@@ -2504,7 +2504,7 @@ checksum = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
 
 [[package]]
 name = "sandbox"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2693,7 +2693,7 @@ dependencies = [
 
 [[package]]
 name = "shell"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "crypto",
  "dns-lookup",
@@ -2872,7 +2872,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bincode",
  "bytes 0.5.5",
@@ -3048,7 +3048,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_api"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "crypto",
@@ -3067,7 +3067,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_client"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "assert-json-diff",
  "crypto",
@@ -3083,7 +3083,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "crossbeam",
  "lazy_static",
@@ -3092,7 +3092,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -3108,7 +3108,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "colored",
  "crypto",
@@ -3131,7 +3131,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop_callback"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "tezos_context",
  "znfe",
@@ -3139,7 +3139,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "assert-json-diff",
  "bytes 0.5.5",
@@ -3159,7 +3159,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_wrapper"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "crypto",
  "failure",
