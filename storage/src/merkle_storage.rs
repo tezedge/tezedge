@@ -193,7 +193,7 @@ impl MerkleStorage {
     }
 
     // recursion is risky (stack overflow) and inefficient, try to do it iteratively..
-    fn get_key_values_from_tree_recursively(&self, path: &String, entry: &Entry, entries: &mut Vec<(ContextKey, ContextValue)> ) -> Result<(), MerkleError> {
+    fn get_key_values_from_tree_recursively(&self, path: &str, entry: &Entry, entries: &mut Vec<(ContextKey, ContextValue)> ) -> Result<(), MerkleError> {
         match entry {
             Entry::Blob(blob) => {
                 // push key-value pair
@@ -204,7 +204,7 @@ impl MerkleStorage {
                 // Go through all descendants and gather errors. Remap error if there is a failure
                 // anywhere in the recursion paths. TODO: is revert possible?
                 tree.iter().map(|(key, child_node)| {
-                    let fullpath = path.clone() + "/" + key;
+                    let fullpath = path.to_owned() + "/" + key;
                     match self.get_entry(&child_node.entry_hash) {
                         Err(_) => Ok(()),
                         Ok(entry) => self.get_key_values_from_tree_recursively(&fullpath, &entry, entries),
@@ -236,7 +236,7 @@ impl MerkleStorage {
         for (key, child_node) in prefixed_tree.iter() {
             let entry = self.get_entry(&child_node.entry_hash)?;
             let delimiter: &str;
-            if prefix.len() == 0 {
+            if prefix.is_empty() {
                 delimiter = "";
             } else {
                 delimiter = "/";
@@ -387,7 +387,7 @@ impl MerkleStorage {
             Entry::Tree(tree) => {
                 self.find_tree(&tree, &key.clone().drain(1..).collect())
             }
-            Entry::Blob(_) => return Ok(Tree::new()),
+            Entry::Blob(_) => Ok(Tree::new()),
             Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "tree".to_string(),
                 found: "commit".to_string(),
@@ -407,8 +407,8 @@ impl MerkleStorage {
         }
     }
 
-    fn put_to_staging_area(&mut self, key: &Vec<u8>, value: Entry) {
-        self.staged.insert(key.clone(), value);
+    fn put_to_staging_area(&mut self, key: &[u8], value: Entry) {
+        self.staged.insert(key.to_vec(), value);
     }
 
     /// Persists an entry and its descendants from staged area to disk.
@@ -457,7 +457,7 @@ impl MerkleStorage {
         hasher.update(&(HASH_LEN as u64).to_be_bytes()).expect("hasher");
         hasher.update(&commit.root_hash).expect("hasher");
 
-        if commit.parent_commit_hash.len() == 0 {
+        if commit.parent_commit_hash.is_empty() {
             hasher.update(&(0 as u64).to_be_bytes()).expect("hasher");
         } else {
             hasher.update(&(1 as u64).to_be_bytes()).expect("hasher"); // # of parents; we support only 1
@@ -585,7 +585,7 @@ impl MerkleStorage {
         key.clone().join("/")
     }
 
-    fn string_to_key(&self, string: &String) -> ContextKey {
+    fn string_to_key(&self, string: &str) -> ContextKey {
         string.split('/').map(str::to_string).collect()
     }
 

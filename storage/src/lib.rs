@@ -261,7 +261,7 @@ pub fn store_commit_genesis_result(
 
             Ok(block_json_data)
         }
-        None => return Err(StorageError::MissingKey)
+        None => Err(StorageError::MissingKey)
     }
 }
 
@@ -384,8 +384,7 @@ pub mod tests_common {
         pub fn create_to_out_dir(dir_name: &str) -> Result<Self, Error> {
             let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined - check build.rs");
             let path = Path::new(out_dir.as_str())
-                .join(Path::new(dir_name))
-                .to_path_buf();
+                .join(Path::new(dir_name));
             Self::create(path)
         }
 
