@@ -44,8 +44,8 @@ services:
       # Node specific ports
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
-      - "18732:18732"      # node RPC port
-      - "3030:3030"
+      - "18732:18732"     # node RPC port
+      - "3030:3030"       # sandbox launcher port
       # Debugger Ports must be specified on node service, because of debugger network_mode attaches
       # debugger's container to the node container, allowing it to analyze node's traffic
       - "17732:13031"      # debugger RPC port
