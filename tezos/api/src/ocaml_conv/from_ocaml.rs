@@ -50,113 +50,101 @@ macro_rules! unpack_ocaml_block {
     };
 }
 
-unsafe impl FromOCaml<ForkingTestchainData> for ForkingTestchainData {
-    fn from_ocaml(v: OCaml<ForkingTestchainData>) -> Self {
-        unpack_ocaml_block! { v =>
-            ForkingTestchainData {
-                forking_block_hash: OCamlBlockHash,
-                test_chain_id: OCamlBytes,
+macro_rules! impl_from_ocaml_block_mapping {
+    ($ocaml_typ:ident => $rust_typ:ident {
+        $($field:ident : $ocaml_field_typ:ty),+ $(,)?
+    }) => {
+        unsafe impl FromOCaml<$ocaml_typ> for $rust_typ {
+            fn from_ocaml(v: OCaml<$ocaml_typ>) -> Self {
+                unpack_ocaml_block! { v =>
+                    $rust_typ {
+                        $($field : $ocaml_field_typ),+
+                    }
+                }
             }
         }
+    };
+
+    ($both_typ:ident {
+        $($field:ident : $ocaml_field_typ:ty),+ $(,)?
+    }) => {
+        impl_from_ocaml_block_mapping! {
+            $both_typ => $both_typ {
+                $($field : $ocaml_field_typ),+
+            }
+        }
+    };
+}
+
+impl_from_ocaml_block_mapping! {
+    ForkingTestchainData {
+        forking_block_hash: OCamlBlockHash,
+        test_chain_id: OCamlBytes,
     }
 }
 
-unsafe impl FromOCaml<ApplyBlockResponse> for ApplyBlockResponse {
-    fn from_ocaml(v: OCaml<ApplyBlockResponse>) -> Self {
-        unpack_ocaml_block! { v =>
-            ApplyBlockResponse {
-                validation_result_message: OCamlBytes,
-                context_hash: OCamlContextHash,
-                block_header_proto_json: OCamlBytes,
-                block_header_proto_metadata_json: OCamlBytes,
-                operations_proto_metadata_json: OCamlBytes,
-                max_operations_ttl: OCamlInt,
-                last_allowed_fork_level: OCamlInt32,
-                forking_testchain: bool,
-                forking_testchain_data: Option<ForkingTestchainData>,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    ApplyBlockResponse {
+        validation_result_message: OCamlBytes,
+        context_hash: OCamlContextHash,
+        block_header_proto_json: OCamlBytes,
+        block_header_proto_metadata_json: OCamlBytes,
+        operations_proto_metadata_json: OCamlBytes,
+        max_operations_ttl: OCamlInt,
+        last_allowed_fork_level: OCamlInt32,
+        forking_testchain: bool,
+        forking_testchain_data: Option<ForkingTestchainData>,
     }
 }
 
-unsafe impl FromOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
-    fn from_ocaml(v: OCaml<PrevalidatorWrapper>) -> Self {
-        unpack_ocaml_block! { v =>
-            PrevalidatorWrapper {
-                chain_id: OCamlBytes,
-                protocol: OCamlProtocolHash,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    PrevalidatorWrapper {
+        chain_id: OCamlBytes,
+        protocol: OCamlProtocolHash,
     }
 }
 
-unsafe impl FromOCaml<Applied> for Applied {
-    fn from_ocaml(v: OCaml<Applied>) -> Self {
-        unpack_ocaml_block! { v =>
-            Applied {
-                hash: OCamlOperationHash,
-                protocol_data_json: OCamlBytes,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    Applied {
+        hash: OCamlOperationHash,
+        protocol_data_json: OCamlBytes,
     }
 }
 
-unsafe impl FromOCaml<OperationProtocolDataJsonWithErrorListJson>
-    for OperationProtocolDataJsonWithErrorListJson
-{
-    fn from_ocaml(v: OCaml<OperationProtocolDataJsonWithErrorListJson>) -> Self {
-        unpack_ocaml_block! { v =>
-            OperationProtocolDataJsonWithErrorListJson {
-                protocol_data_json: OCamlBytes,
-                error_json: OCamlBytes,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    OperationProtocolDataJsonWithErrorListJson {
+        protocol_data_json: OCamlBytes,
+        error_json: OCamlBytes,
     }
 }
 
-unsafe impl FromOCaml<Errored> for Errored {
-    fn from_ocaml(v: OCaml<Errored>) -> Self {
-        unpack_ocaml_block! { v =>
-            Errored {
-                hash: OCamlOperationHash,
-                is_endorsement: Option<bool>,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    Errored {
+        hash: OCamlOperationHash,
+        is_endorsement: Option<bool>,
+        protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
     }
 }
 
-unsafe impl FromOCaml<ValidateOperationResult> for ValidateOperationResult {
-    fn from_ocaml(v: OCaml<ValidateOperationResult>) -> Self {
-        unpack_ocaml_block! { v =>
-            ValidateOperationResult {
-                applied: OCamlList<Applied>,
-                refused: OCamlList<Errored>,
-                branch_refused: OCamlList<Errored>,
-                branch_delayed: OCamlList<Errored>,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    ValidateOperationResult {
+        applied: OCamlList<Applied>,
+        refused: OCamlList<Errored>,
+        branch_refused: OCamlList<Errored>,
+        branch_delayed: OCamlList<Errored>,
     }
 }
 
-unsafe impl FromOCaml<ValidateOperationResponse> for ValidateOperationResponse {
-    fn from_ocaml(v: OCaml<ValidateOperationResponse>) -> Self {
-        unpack_ocaml_block! { v =>
-            ValidateOperationResponse {
-                prevalidator: PrevalidatorWrapper,
-                result: ValidateOperationResult,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    ValidateOperationResponse {
+        prevalidator: PrevalidatorWrapper,
+        result: ValidateOperationResult,
     }
 }
 
-unsafe impl FromOCaml<JsonRpcResponse> for JsonRpcResponse {
-    fn from_ocaml(v: OCaml<JsonRpcResponse>) -> Self {
-        unpack_ocaml_block! { v =>
-            JsonRpcResponse {
-                body: OCamlBytes,
-            }
-        }
+impl_from_ocaml_block_mapping! {
+    JsonRpcResponse {
+        body: OCamlBytes,
     }
 }
 
