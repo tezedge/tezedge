@@ -286,8 +286,18 @@ fn block_on_actors(
 
         if is_sandbox {
             debug!(log, "Shutting down from sandbox mode, deleting DB");
-            fs::remove_dir_all(env.storage.db_path).expect("Cannot delete db_path directory");
-            fs::remove_dir_all(env.storage.tezos_data_dir).expect("Cannot delete tezos_data_dir directory");
+            
+            if env.storage.db_path.exists() {
+                fs::remove_dir_all(env.storage.db_path).expect("Cannot delete db_path directory");
+            } else {
+                debug!(log, "db_path directory does not exist, perhaps was already deleted")
+            }
+
+            if env.storage.tezos_data_dir.exists() {
+                fs::remove_dir_all(env.storage.tezos_data_dir).expect("Cannot delete tezos_data_dir directory");
+            } else {
+                debug!(log, "tezos_data_dir directory does not exist, perhaps was already deleted")
+            }
         }
 
         info!(log, "Shutdown complete");

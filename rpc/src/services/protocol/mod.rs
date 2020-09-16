@@ -441,6 +441,24 @@ pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: 
     Ok(serde_json::from_str(&response.body)?)
 }
 
+pub(crate) fn forge_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersForgeOperations, &env)?;
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
+pub(crate) fn context_contract(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::ContextContract, &env)?;
+
+    // TODO: retry?
+    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+
+    Ok(serde_json::from_str(&response.body)?)
+}
+
 pub(crate) fn current_level(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
     let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, FfiRpcService::HelpersCurrentLevel, &env)?;
 

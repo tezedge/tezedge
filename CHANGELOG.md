@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- More verbose error handling in the sandbox launcher.
+- New rpc `forge/operations`.
+- New docker-compose file to start a setup with the sandbox launcher, tezedge-explorer front-end and tezedge-debugger.
 
 ### Changed
 
@@ -24,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Nothing.
+- Various bugs in the sandbox launcher.
 
 ### Security
 
