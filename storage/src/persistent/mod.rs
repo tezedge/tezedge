@@ -134,7 +134,7 @@ impl PersistentStorage {
             clog,
             kv: kv.clone(),
             seq,
-            merkle: Arc::new(RwLock::new(MerkleStorage::new(kv.clone()))),
+            merkle: Arc::new(RwLock::new(MerkleStorage::new(kv))),
         }
     }
 

@@ -14,7 +14,7 @@ use crate::{BlockStorage, BlockStorageReader, StorageError};
 /// Abstraction on context manipulation
 pub trait ContextApi {
     // set key-value
-    fn set(&mut self, context_hash: &Option<ContextHash>, key: &Vec<String>, value: &Vec<u8>) -> Result<(), ContextError>;
+    fn set(&mut self, context_hash: &Option<ContextHash>, key: &[String], value: &[u8]) -> Result<(), ContextError>;
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError>;
     // commit current context diff to storage
@@ -22,14 +22,14 @@ pub trait ContextApi {
     fn commit(&mut self, block_hash: &BlockHash, parent_context_hash: &Option<ContextHash>,
               new_context_hash: &ContextHash, author: String, message: String,
               date: i64) -> Result<(), ContextError>;
-    fn delete_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_delete: &Vec<String>) -> Result<(), ContextError>;
-    fn remove_recursively_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_remove: &Vec<String>) -> Result<(), ContextError>;
+    fn delete_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_delete: &[String]) -> Result<(), ContextError>;
+    fn remove_recursively_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_remove: &[String]) -> Result<(), ContextError>;
     // copies subtree under 'from_key' to new subtree under 'to_key'
-    fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &Vec<String>, to_key: &Vec<String>) -> Result<(), ContextError>;
+    fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &[String], to_key: &[String]) -> Result<(), ContextError>;
     // get value for key
     fn get_key(&self, key: &Vec<String>) -> Result<Vec<u8>, ContextError>;
     // get value for key from a point in history indicated by context hash
-    fn get_key_from_history(&self, context_hash: &ContextHash, key: &Vec<String>) -> Result<Option<Vec<u8>>, ContextError>;
+    fn get_key_from_history(&self, context_hash: &ContextHash, key: &[String]) -> Result<Option<Vec<u8>>, ContextError>;
     // get a list of all key-values under a certain key prefix
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError>;
     // convert level number to hash (uses block_storage get_by_block_Level)
@@ -39,7 +39,7 @@ pub trait ContextApi {
 }
 
 impl ContextApi for TezedgeContext {
-    fn set(&mut self, _context_hash: &Option<ContextHash>, key: &Vec<String>, value: &Vec<u8>) -> Result<(), ContextError> {
+    fn set(&mut self, _context_hash: &Option<ContextHash>, key: &[String], value: &[u8]) -> Result<(), ContextError> {
         //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.set(key.to_vec(), value.to_vec())?;
@@ -92,21 +92,21 @@ impl ContextApi for TezedgeContext {
         Ok(())
     }
     
-    fn delete_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_delete: &Vec<String>) -> Result<(), ContextError> {
+    fn delete_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_delete: &[String]) -> Result<(), ContextError> {
         //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.delete(key_prefix_to_delete.to_vec())?;
         Ok(())
     }
 
-    fn remove_recursively_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_remove: &Vec<String>) -> Result<(), ContextError> {
+    fn remove_recursively_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_remove: &[String]) -> Result<(), ContextError> {
         //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.delete(key_prefix_to_remove.to_vec())?;
         Ok(())
     }
 
-    fn copy_to_diff(&self, _context_hash: &Option<ContextHash>, from_key: &Vec<String>, to_key: &Vec<String>) -> Result<(), ContextError> {
+    fn copy_to_diff(&self, _context_hash: &Option<ContextHash>, from_key: &[String], to_key: &[String]) -> Result<(), ContextError> {
         //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.copy(from_key.to_vec(), to_key.to_vec())?;
@@ -121,7 +121,7 @@ impl ContextApi for TezedgeContext {
         Ok(val)
     }
 
-    fn get_key_from_history(&self, context_hash: &ContextHash, key: &Vec<String>) -> Result<Option<Vec<u8>>, ContextError> {
+    fn get_key_from_history(&self, context_hash: &ContextHash, key: &[String]) -> Result<Option<Vec<u8>>, ContextError> {
         let merkle = self.merkle.read().expect("lock poisoning");
         // clients may pass in a prefix with elements containing slashes (expecting us to split)
         // we need to join with '/' and split again
@@ -131,7 +131,7 @@ impl ContextApi for TezedgeContext {
         match merkle.get_history(context_hash, &key) {
             Err(MerkleError::ValueNotFound{key: _}) => Ok(None),
             Err(MerkleError::EntryNotFound) =>  {
-                Err(ContextError::UnknownContextHashError { context_hash: hex::encode(context_hash).to_string() })
+                Err(ContextError::UnknownContextHashError { context_hash: hex::encode(context_hash) })
             },
             Err(err) => {
                 Err(ContextError::MerkleStorageError { error: err })
@@ -163,7 +163,7 @@ impl ContextApi for TezedgeContext {
     }
 }
 
-fn to_key(key: &Vec<String>) -> String {
+fn to_key(key: &[String]) -> String {
     key.join("/")
 }
 
