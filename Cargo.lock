@@ -2865,6 +2865,7 @@ dependencies = [
  "tezos_api",
  "tezos_client",
  "tezos_context",
+ "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
  "tezos_wrapper",
@@ -3205,7 +3206,6 @@ dependencies = [
  "serde 1.0.114",
  "serde_json",
  "slog",
- "tezos_encoding",
  "tezos_messages",
  "znfe",
 ]

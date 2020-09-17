@@ -211,8 +211,8 @@ pub fn call<REQUEST, RESPONSE>(
     request: REQUEST,
 ) -> Result<Result<RESPONSE, CallError>, OcamlError>
 where
-    REQUEST: ToOCaml<REQUEST> + FfiMessage + 'static,
-    RESPONSE: FromOCaml<RESPONSE> + FfiMessage + 'static,
+    REQUEST: ToOCaml<REQUEST> + Send + 'static,
+    RESPONSE: FromOCaml<RESPONSE> + Send + 'static,
 {
     runtime::execute(move || {
         ocaml_frame!(gc, {
