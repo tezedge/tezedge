@@ -38,4 +38,5 @@ serial_test = "0.4"
 slog-async = "2.5"
 slog-term = "2.6"
 tezos_client = { path = "../tezos/client" }
+tezos_encoding = { path = "../tezos/encoding" }
 zip = "0.5.5"

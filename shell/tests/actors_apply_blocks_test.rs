@@ -37,7 +37,7 @@ use storage::persistent::{ContextList, PersistentStorage};
 use storage::skip_list::Bucket;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockRequest, FfiMessage, RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
@@ -310,8 +310,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     for request in requests {
 
         // parse request
-        let request: RustBytes = hex::decode(request)?;
-        let request = ApplyBlockRequest::from_rust_bytes(request)?;
+        let request = test_data::from_captured_bytes(hex::decode(request)?)?;
         let header = request.block_header.clone();
 
         // store header to db
@@ -376,7 +375,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     last_applied_request_1324: &String,
     request_1325: &String,
     request_1326: &String) -> Result<(), failure::Error> {
-    let last_applied_block: BlockHash = ApplyBlockRequest::from_rust_bytes(hex::decode(last_applied_request_1324)?)?.block_header.message_hash()?;
+    let last_applied_block: BlockHash = test_data::from_captured_bytes(hex::decode(last_applied_request_1324)?)?.block_header.message_hash()?;
     let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
     // wait mempool for last_applied_block
@@ -457,8 +456,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
 }
 
 fn add_operations_to_mempool(request: &String, shell_channel: ShellChannelRef, mempool_storage: &mut MempoolStorage) -> Result<HashSet<OperationHash>, failure::Error> {
-    let request: RustBytes = hex::decode(request)?;
-    let request = ApplyBlockRequest::from_rust_bytes(request)?;
+    let request = test_data::from_captured_bytes(hex::decode(request)?)?;
     let mut operation_hashes = HashSet::new();
     for operations in request.operations {
         for operation in operations {
@@ -507,9 +505,27 @@ mod test_data {
     use std::fs::File;
     use std::path::Path;
 
+    use lazy_static::lazy_static;
+
+    use crypto::hash::HashType;
     use tezos_api::environment::TezosEnvironment;
+    use tezos_api::ffi::ApplyBlockRequest;
+    use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
+    use tezos_encoding::de::from_value as deserialize_from_value;
+    use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
+    use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
+
+    lazy_static! {
+        pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+            Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+            Field::new("max_operations_ttl", Encoding::Int31),
+            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
+        ]);
+    }
 
     pub fn read_apply_block_requests_until_1326() -> Vec<String> {
         let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
@@ -529,6 +545,14 @@ mod test_data {
         }
 
         requests
+    }
+
+    /// Create new struct from bytes.
+    #[inline]
+    pub fn from_captured_bytes(buf: Vec<u8>) -> Result<ApplyBlockRequest, BinaryReaderError> {
+        let value = BinaryReader::new().read(buf, &APPLY_BLOCK_REQUEST_ENCODING)?;
+        let value: ApplyBlockRequest = deserialize_from_value(&value)?;
+        Ok(value)
     }
 
     pub fn read_context_json(file_name: &str) -> Option<String> {

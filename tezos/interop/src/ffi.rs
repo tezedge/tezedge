@@ -170,17 +170,15 @@ pub fn genesis_result_data(
 ) -> Result<Result<CommitGenesisResult, GetDataError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
-            let context_hash = ocaml_alloc!(context_hash.to_ocaml(gc));
-            let ref context_hash_ref = gc.keep(context_hash);
-            let chain_id = ocaml_alloc!(chain_id.to_ocaml(gc));
-            let ref chain_id_ref = gc.keep(chain_id);
+            let ref context_hash = to_ocaml!(gc, context_hash).keep(gc);
+            let ref chain_id = to_ocaml!(gc, chain_id).keep(gc);
             let protocol_hash = ocaml_alloc!(protocol_hash.to_ocaml(gc));
             let genesis_max_operations_ttl = OCaml::of_int(genesis_max_operations_ttl as i64);
 
             let result = ocaml_call!(tezos_ffi::genesis_result_data(
                 gc,
-                gc.get(context_hash_ref),
-                gc.get(chain_id_ref),
+                gc.get(context_hash),
+                gc.get(chain_id),
                 protocol_hash,
                 genesis_max_operations_ttl
             ));
@@ -211,8 +209,8 @@ pub fn call<REQUEST, RESPONSE>(
     request: REQUEST,
 ) -> Result<Result<RESPONSE, CallError>, OcamlError>
 where
-    REQUEST: ToOCaml<REQUEST> + FfiMessage + 'static,
-    RESPONSE: FromOCaml<RESPONSE> + FfiMessage + 'static,
+    REQUEST: ToOCaml<REQUEST> + Send + 'static,
+    RESPONSE: FromOCaml<RESPONSE> + Send + 'static,
 {
     runtime::execute(move || {
         ocaml_frame!(gc, {

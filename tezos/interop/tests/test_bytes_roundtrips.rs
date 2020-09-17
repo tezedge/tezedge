@@ -5,13 +5,17 @@ extern crate test;
 
 use std::{env, thread};
 
-use znfe::{ocaml_frame, OCaml, OCamlBytes, OCamlList, FromOCaml, ToOCaml, ocaml_alloc, ocaml_call};
 use serial_test::serial;
+use znfe::{FromOCaml, OCaml, ocaml_alloc, ocaml_call, ocaml_frame, OCamlBytes, OCamlList, to_ocaml, ToOCaml};
 
+use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId};
 use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ocaml_conv::FfiBlockHeader;
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
 use tezos_interop::ffi;
 use tezos_interop::runtime;
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 const CHAIN_ID: &str = "8eceda2f";
 const CONTEXT_HASH: &str = "2f358bab4d28c4ee733ad7f2b01dcf116b33474b8c3a6cb40cccda2bdddd6d72";
@@ -21,14 +25,18 @@ const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b685
 const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e20737071ed73af4";
 
 mod tezos_ffi {
-    use znfe::{ocaml, OCamlBytes, OCamlList, OCamlInt};
-    ocaml!{
+    use znfe::{ocaml, OCamlBytes, OCamlInt, OCamlList};
+
+    use tezos_messages::p2p::encoding::block_header::BlockHeader;
+
+    ocaml! {
         pub fn apply_block_params_roundtrip(chain_id: OCamlBytes, block_header: OCamlBytes, operations: OCamlList<OCamlList<OCamlBytes>>) -> (OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>);
         pub fn context_callback_roundtrip(count: OCamlInt, context_hash: OCamlBytes, header_hash: OCamlBytes, operation_hash: OCamlBytes, key: OCamlList<OCamlBytes>, data: OCamlBytes) -> ();
         pub fn operation_roundtrip(operation: OCamlBytes) -> OCamlBytes;
         pub fn operations_list_list_roundtrip(operations_list_list: OCamlList<OCamlList<OCamlBytes>>) -> OCamlList<OCamlList<OCamlBytes>>;
         pub fn chain_id_roundtrip(chain_id: OCamlBytes) -> OCamlBytes;
         pub fn block_header_roundtrip(header: OCamlBytes) -> (OCamlBytes, OCamlBytes);
+        pub fn block_header_struct_roundtrip(header: BlockHeader) -> (OCamlBytes, OCamlBytes);
         pub fn block_header_with_hash_roundtrip(header_hash: OCamlBytes, hash: OCamlBytes) -> (OCamlBytes, OCamlBytes);
     }
 }
@@ -108,6 +116,37 @@ fn test_block_header_roundtrip(iteration: i32) -> Result<(), failure::Error> {
         assert!(
             result.is_ok(),
             format!("test_block_header_roundtrip roundtrip iteration: {} failed!", iteration)
+        )
+    )
+}
+
+roundtrip_test!(test_block_header_struct_roundtrip_calls, test_block_header_struct_roundtrip, 1);
+
+fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(HEADER).unwrap())?;
+    let expected_block_hash: BlockHash = header.message_hash()?;
+    let expected_chain_id = chain_id_from_block_hash(&expected_block_hash);
+
+    let result = runtime::execute(move || {
+        ocaml_frame!(gc, {
+            // sent header to ocaml
+            let header = to_ocaml!(gc, FfiBlockHeader(header));
+            let result = ocaml_call!(tezos_ffi::block_header_struct_roundtrip(gc, header));
+            let (block_hash, chain_id) = <(String, String)>::from_ocaml(result.unwrap());
+
+            let block_hash: BlockHash = block_hash.as_bytes().to_vec();
+            let chain_id: ChainId = chain_id.as_bytes().to_vec();
+
+            assert_eq!(expected_block_hash, block_hash);
+            assert_eq!(expected_chain_id, chain_id);
+            ()
+        })
+    });
+
+    Ok(
+        assert!(
+            result.is_ok(),
+            format!("test_block_header_struct_roundtrip roundtrip iteration: {} failed!", iteration)
         )
     )
 }
@@ -419,5 +458,6 @@ mod benches {
     bench_test!(bench_test_chain_id_roundtrip, test_chain_id_roundtrip);
     bench_test!(bench_test_block_header_roundtrip, test_block_header_roundtrip);
     bench_test!(bench_test_block_header_with_hash_roundtrip, test_block_header_with_hash_roundtrip);
+    bench_test!(bench_test_block_header_struct_roundtrip, test_block_header_struct_roundtrip);
     bench_test!(bench_test_operations_list_list_roundtrip_one, test_operations_list_list_roundtrip_for_bench);
 }
