@@ -54,7 +54,7 @@ use im::OrdMap;
 use failure::Fail;
 use std::sync::Arc;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use crypto::hash::HashType;
 use std::convert::TryInto;
 use crate::persistent::BincodeEncoded;
@@ -202,6 +202,12 @@ impl MerkleStorage {
         self.get_from_tree(&root_hash, key)
     }
 
+    /// Get value. Staging area is checked first, then last (checked out) commit.
+    pub fn get_by_prefix(&mut self, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+        let root = self.get_staged_root()?;
+        self._get_key_values_by_prefix(root, prefix)
+    }
+
     /// Get value from historical context identified by commit hash.
     pub fn get_history(&self, commit_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
         let commit = self.get_commit(commit_hash)?;
@@ -262,6 +268,10 @@ impl MerkleStorage {
     pub fn get_key_values_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
+        self._get_key_values_by_prefix(root_tree, prefix)
+    }
+
+    fn _get_key_values_by_prefix(&self, root_tree: Tree, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
         let prefixed_tree = self.find_tree(&root_tree, prefix)?;
         let mut keyvalues: Vec<(ContextKey, ContextValue)> = Vec::new();
 

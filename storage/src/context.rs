@@ -28,6 +28,8 @@ pub trait ContextApi {
     fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &[String], to_key: &[String]) -> Result<(), ContextError>;
     // get value for key
     fn get_key(&self, key: &Vec<String>) -> Result<Vec<u8>, ContextError>;
+    // get values by key prefix
+    fn get_by_key_prefix(&self, prefix: &Vec<String>) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError>;
     // get value for key from a point in history indicated by context hash
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &[String]) -> Result<Option<Vec<u8>>, ContextError>;
     // get a list of all key-values under a certain key prefix
@@ -96,7 +98,7 @@ impl ContextApi for TezedgeContext {
 
         Ok(())
     }
-    
+
     fn delete_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_delete: &[String]) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.delete(key_prefix_to_delete.to_vec())?;
@@ -118,6 +120,12 @@ impl ContextApi for TezedgeContext {
     fn get_key(&self, key: &Vec<String>) -> Result<Vec<u8>, ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         let val = merkle.get(key)?;
+        Ok(val)
+    }
+
+    fn get_by_key_prefix(&self, prefix: &Vec<String>) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let val = merkle.get_by_prefix(prefix)?;
         Ok(val)
     }
 

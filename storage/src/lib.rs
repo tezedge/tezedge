@@ -431,6 +431,10 @@ pub mod tests_common {
         pub fn storage(&self) -> &PersistentStorage {
             &self.persistent_storage
         }
+
+        pub fn path(&self) -> &PathBuf {
+            &self.path
+        }
     }
 
     impl Drop for TmpStorage {

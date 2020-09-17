@@ -38,8 +38,10 @@ pub enum IpcError {
     SendError {
         reason: io::Error
     },
-    #[fail(display = "Accept connection timed out")]
-    AcceptTimeout,
+    #[fail(display = "Accept connection timed out, reason: {}", reason)]
+    AcceptTimeout {
+        reason: timeout_io::TimeoutIoError
+    },
     #[fail(display = "Connection error: {}", reason)]
     ConnectionError {
         reason: io::Error,
@@ -196,7 +198,9 @@ where
     /// Accept new connection a return sender/receiver for it
     pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = self.listener.try_accept(Self::ACCEPT_TIMEOUT)
-            .map_err(|_| IpcError::AcceptTimeout)?;
+            .map_err(|e| IpcError::AcceptTimeout {
+                reason: e
+            })?;
         split(stream)
             .map_err(|err| IpcError::SplitError { reason: err })
             .map(|(r, s)| {

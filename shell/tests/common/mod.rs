@@ -112,7 +112,8 @@ pub mod infra {
 
     impl NodeInfrastructure {
         pub fn start(
-            test_storage_path: &str,
+            tmp_storage: TmpStorage,
+            context_db_path: &str,
             name: &str,
             tezos_env: &TezosEnvironment,
             patch_context: Option<PatchContext>,
@@ -126,14 +127,15 @@ pub mod infra {
             let p2p_threshold = PeerConnectionThreshold::new(1, 1);
 
             // storage
-            let storage_db_path = test_storage_path;
-            let context_db_path = common::prepare_empty_dir(&format!("{}_context", storage_db_path));
-            let tmp_storage = TmpStorage::create(common::prepare_empty_dir(storage_db_path))?;
             let persistent_storage = tmp_storage.storage();
+            let context_db_path = if !PathBuf::from(context_db_path).exists() {
+                common::prepare_empty_dir(context_db_path)
+            } else {
+                context_db_path.to_string()
+            };
 
-            let storage_db_path = PathBuf::from(storage_db_path);
             let context_db_path = PathBuf::from(context_db_path);
-            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &patch_context, &log)
+            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &tmp_storage.path(), &context_db_path, &patch_context, &log)
                 .expect("Failed to resolve init storage chain data");
 
             // apply block protocol runner endpoint

@@ -22,6 +22,7 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
+use storage::tests_common::TmpStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
@@ -44,7 +45,9 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        "__test_actors_apply_blocks_and_check_context_and_mempool", "test_actors_apply_blocks_and_check_context_and_mempool",
+        TmpStorage::create(common::prepare_empty_dir("__test_actors_apply_blocks_and_check_context_and_mempool"))?,
+        &common::prepare_empty_dir("__test_actors_apply_blocks_and_check_context_and_mempool_context"),
+        "test_actors_apply_blocks_and_check_context_and_mempool",
         &tezos_env,
         None,
         None,

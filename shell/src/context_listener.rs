@@ -184,7 +184,7 @@ fn listen_protocol_events(
                         }
                     ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash),
                                             author, message, date, .. } =>
-                        context.commit(block_hash, parent_context_hash, new_context_hash, author.to_string(), 
+                        context.commit(block_hash, parent_context_hash, new_context_hash, author.to_string(),
                                        message.to_string(), *date)?,
                     ContextAction::Checkout { context_hash, .. } => {
                         event_count = 0;

@@ -9,6 +9,7 @@ use lazy_static::lazy_static;
 
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
+use storage::tests_common::TmpStorage;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
@@ -44,7 +45,9 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        "__test_01", "test_process_current_branch_on_level3_with_empty_storage",
+        TmpStorage::create(common::prepare_empty_dir("__test_01"))?,
+        &common::prepare_empty_dir("__test_01_context"),
+        "test_process_current_branch_on_level3_with_empty_storage",
         &db.tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
@@ -92,7 +95,9 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        "__test_02", "test_process_reorg_with_different_current_branches_with_empty_storage",
+        TmpStorage::create(common::prepare_empty_dir("__test_02"))?,
+        &common::prepare_empty_dir("__test_02_context"),
+        "test_process_reorg_with_different_current_branches_with_empty_storage",
         &tezos_env,
         patch_context,
         Some(NODE_P2P_CFG.clone()),
