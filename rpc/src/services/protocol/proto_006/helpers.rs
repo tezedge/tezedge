@@ -11,7 +11,6 @@ use getset::Getters;
 use crypto::blake2b;
 use storage::num_from_slice;
 use storage::persistent::PersistentStorage;
-use storage::skip_list::Bucket;
 use storage::context::{TezedgeContext, ContextApi};
 use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;

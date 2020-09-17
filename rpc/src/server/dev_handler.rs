@@ -12,7 +12,7 @@ pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServi
     warn!(env.log(), "Getting dev_blocks");
     let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), env.genesis_hash());
     let limit = query.get_usize("limit").unwrap_or(50);
-    let cycle_length = base_services::get_cycle_length_for_block(&from_block_id, env.persistent_storage().context_storage(), env.persistent_storage(), env.state(), env.log())?;
+    let cycle_length = base_services::get_cycle_length_for_block(&from_block_id, env.persistent_storage(), env.state(), env.log())?;
     let every_nth_level = match query.get_str("every_nth") {
         Some("cycle") => Some(cycle_length),
         Some("voting-period") => Some(cycle_length * 8),
