@@ -4,8 +4,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use tezos_api::ffi::{
-    ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, FfiMessage,
-    ForkingTestchainData, RustBytes, TezosRuntimeConfiguration,
+    ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData,
+    RustBytes, TezosRuntimeConfiguration,
 };
 
 use crypto::hash::HashType;
@@ -24,10 +24,10 @@ const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
     use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
-    use znfe::{ocaml, OCamlBytes};
+    use znfe::ocaml;
 
     ocaml! {
-        pub fn setup_benchmark_apply_block_response(data: OCamlBytes);
+        pub fn setup_benchmark_apply_block_response(response: ApplyBlockResponse);
         pub fn apply_block_request_decoded_roundtrip(
             request: ApplyBlockRequest,
         ) -> ApplyBlockResponse;
@@ -114,14 +114,12 @@ fn criterion_benchmark(c: &mut Criterion) {
         }),
     };
 
-    let encoded_response = response_with_some_forking_data.as_rust_bytes().unwrap();
-
     let _ignored = runtime::execute(move || {
         ocaml_frame!(gc, {
-            let encoded_response = to_ocaml!(gc, encoded_response);
+            let ocaml_response = to_ocaml!(gc, response_with_some_forking_data);
             ocaml_call!(tezos_ffi::setup_benchmark_apply_block_response(
                 gc,
-                encoded_response
+                ocaml_response
             ))
             .unwrap();
         })

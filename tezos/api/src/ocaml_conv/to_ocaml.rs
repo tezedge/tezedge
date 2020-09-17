@@ -7,13 +7,14 @@ use super::{
     OCamlProtocolHash,
 };
 use crate::ffi::{
-    ApplyBlockRequest, BeginConstructionRequest, FfiRpcService, JsonRpcRequest,
-    PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
+    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, FfiRpcService,
+    ForkingTestchainData, JsonRpcRequest, PrevalidatorWrapper, ProtocolJsonRpcRequest,
+    ValidateOperationRequest,
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
-    ocaml, OCamlInt, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt32, OCamlInt64,
+    ocaml, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64,
     OCamlList, ToOCaml,
 };
 
@@ -31,6 +32,23 @@ ocaml! {
         max_operations_ttl: OCamlInt,
         operations: OCamlList<OCamlList<Operation>>,
     ) -> ApplyBlockRequest;
+
+    alloc fn alloc_apply_block_response(
+        validation_result_message: OCamlBytes,
+        context_hash: OCamlContextHash,
+        block_header_proto_json: OCamlBytes,
+        block_header_proto_metadata_json: OCamlBytes,
+        operations_proto_metadata_json: OCamlBytes,
+        max_operations_ttl: OCamlInt,
+        last_allowed_fork_level: OCamlInt32,
+        forking_testchain: bool,
+        forking_testchain_data: Option<ForkingTestchainData>,
+    ) -> ApplyBlockResponse;
+
+    alloc fn alloc_forking_testchain_data(
+        forking_block_hash: OCamlBlockHash,
+        test_chain_id: OCamlBytes,
+    ) -> ForkingTestchainData;
 
     alloc fn alloc_begin_construction_request(
         chain_id: OCamlBytes,
@@ -117,6 +135,33 @@ unsafe impl ToOCaml<ApplyBlockRequest> for ApplyBlockRequest {
                 &self.max_operations_ttl,
                 &operations,
             )
+        }
+    }
+}
+
+unsafe impl ToOCaml<ApplyBlockResponse> for ApplyBlockResponse {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ApplyBlockResponse> {
+        unsafe {
+            alloc_apply_block_response(
+                token,
+                &self.validation_result_message,
+                &self.context_hash,
+                &self.block_header_proto_json,
+                &self.block_header_proto_metadata_json,
+                &self.operations_proto_metadata_json,
+                &self.max_operations_ttl,
+                &self.last_allowed_fork_level,
+                &self.forking_testchain,
+                &self.forking_testchain_data,
+            )
+        }
+    }
+}
+
+unsafe impl ToOCaml<ForkingTestchainData> for ForkingTestchainData {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ForkingTestchainData> {
+        unsafe {
+            alloc_forking_testchain_data(token, &self.forking_block_hash, &self.test_chain_id)
         }
     }
 }
