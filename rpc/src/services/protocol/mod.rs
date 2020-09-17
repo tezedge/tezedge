@@ -19,9 +19,8 @@ use serde::Serialize;
 
 use crypto::hash::HashType;
 use storage::{BlockStorage, BlockStorageReader, num_from_slice};
-use storage::context::TezedgeContext;
-use storage::persistent::{ContextList, ContextMap, PersistentStorage};
-use storage::skip_list::Bucket;
+use storage::context::{ContextApi, TezedgeContext};
+use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{FfiRpcService, JsonRpcRequest, ProtocolJsonRpcRequest};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
@@ -35,7 +34,7 @@ use tezos_messages::protocol::{
     RpcJsonMap,
 };
 
-use crate::helpers::{get_block_hash_by_block_id, get_context, get_context_protocol_params, get_level_by_block_id};
+use crate::helpers::{get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id};
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::server::RpcServiceEnvironment;
 use crate::services::base_services::get_block_level_by_block_id;
@@ -71,7 +70,6 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
@@ -79,7 +77,6 @@ pub(crate) fn check_and_get_baking_rights(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        context_list.clone(),
         persistent_storage,
         state,
     )?;
@@ -194,7 +191,6 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
 
@@ -202,7 +198,6 @@ pub(crate) fn check_and_get_endorsing_rights(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        context_list.clone(),
         persistent_storage,
         state,
     )?;
@@ -289,8 +284,10 @@ pub(crate) fn check_and_get_endorsing_rights(
     }
 }
 
-pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, context_list: ContextList, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {
+pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<Vec<VoteListings>>, failure::Error> {
     let mut listings = Vec::<VoteListings>::new();
+
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
     // get block level first
     let block_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
@@ -298,24 +295,26 @@ pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_sto
         None => bail!("Block level not found")
     };
 
-    // get the whole context
-    let ctxt = get_context(&block_level.to_string(), context_list)?;
+    let ctx_hash = context.level_to_hash(block_level.try_into()?)?;
+
+    //TODO: check if it works the same as before
 
     // filter out the listings data
-    let listings_data: ContextMap = ctxt.unwrap().into_iter()
-        .filter(|(k, _)| k.starts_with(&"data/votes/listings/"))
-        .collect();
+    let listings_data = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/votes/listings/".to_string()])? {
+        val
+    } else {
+        bail!("No listings found in context")
+    };
 
     // convert the raw context data to VoteListings
     for (key, value) in listings_data.into_iter() {
-        if let Bucket::Exists(data) = value {
-            // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
-            let address = key.split("/").skip(4).take(6).join("");
-            let curve = key.split("/").skip(3).take(1).join("");
+        // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
+        let keystr = key.join("/");
+        let address = keystr.split("/").skip(4).take(6).join("");
+        let curve = keystr.split("/").skip(3).take(1).join("");
 
-            let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
-            listings.push(VoteListings::new(address_decoded, num_from_slice!(data, 0, i32)));
-        }
+        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
+        listings.push(VoteListings::new(address_decoded, num_from_slice!(value, 0, i32)));
     }
 
     // sort the vector in reverse ordering (as in ocaml node)
@@ -350,7 +349,6 @@ pub(crate) fn proto_get_contract_counter(
     _chain_id: &str,
     block_id: &str,
     pkh: &str,
-    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<String>, failure::Error> {
 
@@ -358,7 +356,6 @@ pub(crate) fn proto_get_contract_counter(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        context_list.clone(),
         persistent_storage,
         state,
     )?;
@@ -393,7 +390,6 @@ pub(crate) fn proto_get_contract_manager_key(
     _chain_id: &str,
     block_id: &str,
     pkh: &str,
-    context_list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<String>, failure::Error> {
 
@@ -401,7 +397,6 @@ pub(crate) fn proto_get_contract_manager_key(
     let context_proto_params = get_context_protocol_params(
         block_id,
         None,
-        context_list.clone(),
         persistent_storage,
         state,
     )?;
