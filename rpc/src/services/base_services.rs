@@ -16,7 +16,6 @@ use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
 use storage::persistent::{ContextMap, PersistentStorage};
-use storage::skip_list::Bucket;
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
@@ -189,13 +188,11 @@ pub(crate) fn get_block_shell_header(block_id: &str, persistent_storage: &Persis
 pub(crate) fn get_context_constants_just_for_rpc(
     block_id: &str,
     opt_level: Option<i64>,
-    list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<RpcJsonMap>, failure::Error> {
     let context_proto_params = get_context_protocol_params(
         block_id,
         opt_level,
-        list,
         persistent_storage,
         state,
     )?;
@@ -203,8 +200,8 @@ pub(crate) fn get_context_constants_just_for_rpc(
     Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?)
 }
 
-pub(crate) fn get_cycle_length_for_block(block_id: &str, list: ContextList, storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> Result<i32, failure::Error> {
-    if let Ok(context_proto_params) = get_context_protocol_params(block_id, None, list, storage, state) {
+pub(crate) fn get_cycle_length_for_block(block_id: &str, storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> Result<i32, failure::Error> {
+    if let Ok(context_proto_params) = get_context_protocol_params(block_id, None, storage, state) {
         Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
@@ -221,7 +218,7 @@ pub(crate) fn get_cycle_length_for_block(block_id: &str, list: ContextList, stor
     }
 }
 
-pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
+pub(crate) fn get_cycle_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
@@ -309,7 +306,7 @@ pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persiste
     Ok(Some(cycles))
 }
 
-pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
+pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
@@ -336,7 +333,7 @@ pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, lis
     }
 }
 
-pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
+pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
