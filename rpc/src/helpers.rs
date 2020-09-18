@@ -17,11 +17,10 @@ use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
 use storage::context_action_storage::ContextActionType;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::persistent::{ContextMap, PersistentStorage};
+use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
-use crate::ContextList;
 use crate::encoding::base_types::{TimeStamp, UniString};
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -560,14 +559,6 @@ pub(crate) fn get_context_protocol_params(
         constants_data: constants,
         level: level.try_into()?,
     })
-}
-
-pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
-    let level = level.parse()?;
-    {
-        let storage = list.read().expect("poisoned storage lock");
-        storage.get(level).map_err(|e| e.into())
-    }
 }
 
 pub(crate) fn current_time_timestamp() -> TimeStamp {

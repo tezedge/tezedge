@@ -6,7 +6,6 @@ use slog::{Logger, warn};
 
 use crypto::hash::HashType;
 pub use services::mempool_services::MempoolOperations;
-pub use storage::persistent::{ContextList, ContextMap};
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
