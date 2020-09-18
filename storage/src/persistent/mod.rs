@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -14,7 +13,6 @@ pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::persistent::sequence::Sequences;
-use crate::skip_list::{Bucket, DatabaseBackedSkipList, TypedSkipList};
 use crate::merkle_storage::MerkleStorage;
 
 pub mod sequence;
@@ -116,9 +114,6 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 }
 
 
-pub type ContextMap = BTreeMap<String, Bucket<Vec<u8>>>;
-pub type ContextList = Arc<RwLock<dyn TypedSkipList<String, Bucket<Vec<u8>>> + Sync + Send>>;
-
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
 pub struct PersistentStorage {
@@ -128,8 +123,6 @@ pub struct PersistentStorage {
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
     seq: Arc<Sequences>,
-    /// skip list backed context storage
-    cs: ContextList,
     /// merkle-tree based context storage
     merkle: Arc<RwLock<MerkleStorage>>,
 }
@@ -141,7 +134,6 @@ impl PersistentStorage {
         Self {
             clog,
             kv: kv.clone(),
-            cs: Arc::new(RwLock::new(DatabaseBackedSkipList::new(0, kv, seq.generator("skip_list")).expect("failed to initialize context storage"))),
             seq,
             merkle: Arc::new(RwLock::new(MerkleStorage::new(db))),
         }
@@ -166,9 +158,6 @@ impl PersistentStorage {
     pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
         self.merkle.clone()
     }
-
-    #[inline]
-    pub fn context_storage(&self) -> ContextList { self.cs.clone() }
 }
 
 impl Drop for PersistentStorage {
