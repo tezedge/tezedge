@@ -6,42 +6,16 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
-use std::mem::size_of;
 
 use derive_builder::Builder;
 use failure::Fail;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
 use znfe::OCamlError;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
-use tezos_encoding::{binary_writer, ser};
-use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
-use tezos_encoding::de::from_value as deserialize_from_value;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_messages::p2p::encoding::operations_for_blocks::path_encoding;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
 
 pub type RustBytes = Vec<u8>;
-
-/// Trait for binary encoding messages for ffi.
-pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
-    #[inline]
-    fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
-        binary_writer::write(&self, Self::encoding())
-    }
-
-    /// Create new struct from bytes.
-    #[inline]
-    fn from_rust_bytes(buf: RustBytes) -> Result<Self, BinaryReaderError> {
-        let value = BinaryReader::new().read(buf, Self::encoding())?;
-        let value: Self = deserialize_from_value(&value)?;
-        Ok(value)
-    }
-
-    fn encoding() -> &'static Encoding;
-}
 
 /// Genesis block information structure
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -105,22 +79,6 @@ impl ApplyBlockRequest {
     }
 }
 
-lazy_static! {
-    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-        Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
-    ]);
-}
-
-impl FfiMessage for ApplyBlockRequest {
-    fn encoding() -> &'static Encoding {
-        &APPLY_BLOCK_REQUEST_ENCODING
-    }
-}
-
 /// Application block result
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ApplyBlockResponse {
@@ -133,31 +91,6 @@ pub struct ApplyBlockResponse {
     pub last_allowed_fork_level: i32,
     pub forking_testchain: bool,
     pub forking_testchain_data: Option<ForkingTestchainData>,
-}
-
-lazy_static! {
-    pub static ref FORKING_TESTCHAIN_DATA_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("forking_block_hash", Encoding::Hash(HashType::BlockHash)),
-        Field::new("test_chain_id", Encoding::Hash(HashType::ChainId)),
-    ]);
-
-    pub static ref APPLY_BLOCK_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("validation_result_message", Encoding::String),
-        Field::new("context_hash", Encoding::Hash(HashType::ContextHash)),
-        Field::new("block_header_proto_json", Encoding::String),
-        Field::new("block_header_proto_metadata_json", Encoding::String),
-        Field::new("operations_proto_metadata_json", Encoding::String),
-        Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("last_allowed_fork_level", Encoding::Int32),
-        Field::new("forking_testchain", Encoding::Bool),
-        Field::new("forking_testchain_data", Encoding::option(FORKING_TESTCHAIN_DATA_ENCODING.clone())),
-    ]);
-}
-
-impl FfiMessage for ApplyBlockResponse {
-    fn encoding() -> &'static Encoding {
-        &APPLY_BLOCK_RESPONSE_ENCODING
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -177,38 +110,11 @@ impl fmt::Debug for PrevalidatorWrapper {
     }
 }
 
-lazy_static! {
-    pub static ref PREVALIDATOR_WRAPPER_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("protocol", Encoding::Hash(HashType::ProtocolHash)),
-    ]);
-}
-
-impl FfiMessage for PrevalidatorWrapper {
-    fn encoding() -> &'static Encoding {
-        &PREVALIDATOR_WRAPPER_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
     pub protocol_data: Option<Vec<u8>>,
-}
-
-lazy_static! {
-    pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
-    ]);
-}
-
-impl FfiMessage for BeginConstructionRequest {
-    fn encoding() -> &'static Encoding {
-        &BEGIN_CONSTRUCTION_REQUEST_ENCODING
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
@@ -217,36 +123,10 @@ pub struct ValidateOperationRequest {
     pub operation: Operation,
 }
 
-lazy_static! {
-    pub static ref VALIDATE_OPERATION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("operation", Encoding::dynamic(Operation::encoding().clone())),
-    ]);
-}
-
-impl FfiMessage for ValidateOperationRequest {
-    fn encoding() -> &'static Encoding {
-        &VALIDATE_OPERATION_REQUEST_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub result: ValidateOperationResult,
-}
-
-lazy_static! {
-    pub static ref VALIDATE_OPERATION_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("result", VALIDATE_OPERATION_RESULT_ENCODING.clone()),
-    ]);
-}
-
-impl FfiMessage for ValidateOperationResponse {
-    fn encoding() -> &'static Encoding {
-        &VALIDATE_OPERATION_RESPONSE_ENCODING
-    }
 }
 
 pub type OperationProtocolDataJson = String;
@@ -378,55 +258,6 @@ impl ValidateOperationResult {
         }
         added || changed
     }
-}
-
-lazy_static! {
-    static ref OPERATION_DATA_ERROR_JSON_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("protocol_data_json", Encoding::String),
-            Field::new("error_json", Encoding::String),
-    ]);
-
-    pub static ref VALIDATE_OPERATION_RESULT_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("applied", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("protocol_data_json", Encoding::String),
-                        ]
-                    )
-                ))
-            ),
-            Field::new("refused", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
-                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
-                        ]
-                    )
-                ))
-            ),
-            Field::new("branch_refused", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
-                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
-                        ]
-                    )
-                ))
-            ),
-            Field::new("branch_delayed", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
-                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
-                        ]
-                    )
-                ))
-            ),
-    ]);
 }
 
 /// Init protocol context result
@@ -763,23 +594,6 @@ pub struct JsonRpcResponse {
     pub body: Json
 }
 
-lazy_static! {
-    pub static ref JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("body", Encoding::String),
-            Field::new("context_path", Encoding::String),
-    ]);
-
-    pub static ref JSON_RPC_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("body", Encoding::String),
-    ]);
-}
-
-impl FfiMessage for JsonRpcResponse {
-    fn encoding() -> &'static Encoding {
-        &JSON_RPC_RESPONSE_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct ProtocolJsonRpcRequest {
     pub block_header: BlockHeader,
@@ -801,34 +615,6 @@ pub enum FfiRpcService {
     DelegatesMinimalValidTime,
     HelpersForgeOperations,
     ContextContract,
-}
-
-lazy_static! {
-    pub static ref PROTOCOL_JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("chain_arg", Encoding::String),
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),
-            Field::new("ffi_service", Encoding::Tags(
-                    size_of::<u16>(),
-                    TagMap::new(vec![
-                        Tag::new(0, "HelpersRunOperation", Encoding::Unit),
-                        Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
-                        Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
-                        Tag::new(3, "HelpersCurrentLevel", Encoding::Unit),
-                        Tag::new(4, "DelegatesMinimalValidTime", Encoding::Unit),
-                        Tag::new(5, "HelpersForgeOperations", Encoding::Unit),
-                        Tag::new(6, "ContextContract", Encoding::Unit),
-                    ]),
-                )
-            ),
-    ]);
-}
-
-impl FfiMessage for ProtocolJsonRpcRequest {
-    fn encoding() -> &'static Encoding {
-        &PROTOCOL_JSON_RPC_REQUEST_ENCODING
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
@@ -880,30 +666,6 @@ pub struct ComputePathRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ComputePathResponse {
     pub operations_hashes_path: Vec<Path>,
-}
-
-lazy_static! {
-    pub static ref COMPUTE_PATH_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))))),
-    ]);
-}
-
-lazy_static! {
-    pub static ref COMPUTE_PATH_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("operations_hashes_path", Encoding::dynamic(Encoding::list(path_encoding()))),
-    ]);
-}
-
-impl FfiMessage for ComputePathRequest {
-    fn encoding() -> &'static Encoding {
-        &COMPUTE_PATH_REQUEST_ENCODING
-    }
-}
-
-impl FfiMessage for ComputePathResponse {
-    fn encoding() -> &'static Encoding {
-        &COMPUTE_PATH_RESPONSE_ENCODING
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
