@@ -20,11 +20,11 @@ pub struct FfiOperationShellHeader<'a> {
 
 // Hashes
 struct OCamlHash {}
-struct OCamlOperationListListHash {}
-pub struct OCamlOperationHash {} // Referenced in interop/ffi.rs
-struct OCamlBlockHash {}
-struct OCamlContextHash {}
-struct OCamlProtocolHash {}
+pub struct OCamlOperationListListHash {}
+pub struct OCamlOperationHash {}
+pub struct OCamlBlockHash {}
+pub struct OCamlContextHash {}
+pub struct OCamlProtocolHash {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;
