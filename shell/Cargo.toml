@@ -37,6 +37,7 @@ r2d2 = "0.8.9"
 serial_test = "0.4"
 slog-async = "2.5"
 slog-term = "2.6"
-tezos_client = { path = "../tezos/client" }
 tezos_encoding = { path = "../tezos/encoding" }
 zip = "0.5.5"
+# TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
+tezos_interop = { path = "../tezos/interop" }
