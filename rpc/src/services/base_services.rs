@@ -15,12 +15,11 @@ use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActi
 use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
-use storage::persistent::{ContextMap, PersistentStorage};
+use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
-use crate::ContextList;
 use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -398,10 +397,6 @@ pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, persistent_st
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
     let memory = Memory::new();
     memory.get_memory_stats()
-}
-
-pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
-    crate::helpers::get_context(level, list)
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
