@@ -24,7 +24,6 @@ use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, ChainMetaStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
-use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -331,9 +330,6 @@ fn main() {
         context_action_storage::ContextActionByTypeIndex::descriptor(),
         ContextActionStorage::descriptor(),
         SystemStorage::descriptor(),
-        DatabaseBackedSkipList::descriptor(),
-        Lane::descriptor(),
-        ListValue::descriptor(),
         Sequences::descriptor(),
         MempoolStorage::descriptor(),
         ChainMetaStorage::descriptor(),
