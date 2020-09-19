@@ -602,26 +602,23 @@ impl MerkleStorage {
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::Mutex;
+    use serial_test::serial;
 
     /*
     * Tests need to run sequentially, otherwise they will try to open RocksDB at the same time.
     */
-    lazy_static! {
-        static ref SYNC: Mutex<()> = Mutex::new(());
-    }
 
     fn get_db_name() -> &'static str { "_merkle_db_test" }
     fn get_db() -> DB { MerkleStorage::get_db(get_db_name()) }
-    fn get_storage() -> MerkleStorage { MerkleStorage::new(get_db()) }
+    fn get_storage() -> MerkleStorage { MerkleStorage::new(Arc::new(get_db())) }
     fn clean_db() {
         let _ = DB::destroy(&Options::default(), get_db_name());
         let _ = fs::remove_dir_all(get_db_name());
     }
 
     #[test]
+    #[serial]
     fn test_tree_hash() {
-        let _db_sync = SYNC.lock().unwrap();
         let mut storage = get_storage();
         storage.set(vec!["a".to_string(), "foo".to_string()], vec![97, 98, 99]); // abc
         storage.set(vec!["b".to_string(), "boo".to_string()], vec![97, 98]);
@@ -636,8 +633,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_commit_hash() {
-        let _db_sync = SYNC.lock().unwrap();
         let mut storage = get_storage();
         storage.set(vec!["a".to_string()], vec![97, 98, 99]);
 
@@ -655,8 +652,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_multiple_commit_hash() {
-        let _db_sync = SYNC.lock().unwrap();
         let mut storage = get_storage();
         let _commit = storage.commit(
             0, "Tezos".to_string(), "Genesis".to_string());
@@ -671,8 +668,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn get_test() {
-        let _db_sync = SYNC.lock().unwrap();
         clean_db();
 
         let commit1;
@@ -709,8 +706,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_copy() {
-        let _db_sync = SYNC.lock().unwrap();
         clean_db();
 
         let mut storage = get_storage();
@@ -725,8 +722,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_delete() {
-        let _db_sync = SYNC.lock().unwrap();
         clean_db();
 
         let mut storage = get_storage();
@@ -741,8 +738,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_deleted_entry_available() {
-        let _db_sync = SYNC.lock().unwrap();
         clean_db();
 
         let mut storage = get_storage();
@@ -756,8 +753,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_delete_in_separate_commit() {
-        let _db_sync = SYNC.lock().unwrap();
         clean_db();
 
         let mut storage = get_storage();
@@ -775,8 +772,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_checkout() {
-        let _db_sync = SYNC.lock().unwrap();
         clean_db();
 
         let commit1;
@@ -808,8 +805,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_persistence_over_reopens() {
-        let _db_sync = SYNC.lock().unwrap();
         { clean_db(); }
 
         let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -827,8 +824,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_errors() {
-        let _db_sync = SYNC.lock().unwrap();
         { clean_db(); }
 
         let mut storage = get_storage();
@@ -843,8 +840,8 @@ mod tests {
 
 
     #[test]
+    #[serial]
     fn test_db_error() { // Test a DB error by writing into a read-only database.
-        let _db_sync = SYNC.lock().unwrap();
         {
             clean_db();
             get_storage();
@@ -852,7 +849,7 @@ mod tests {
 
         let db = DB::open_for_read_only(
             &Options::default(), get_db_name(), true).unwrap();
-        let mut storage = MerkleStorage::new(db);
+        let mut storage = MerkleStorage::new(Arc::new(db));
         storage.set(vec!["a".to_string()], vec![1u8]);
         let res = storage.commit(
             0, "".to_string(), "".to_string());
