@@ -2,7 +2,7 @@ version: "3"
 services:
 
   node:
-    image: simplestakingcom/tezedge:v0.2.0
+    image: simplestakingcom/tezedge:v0.4.0
     build: ./docker/compose
     hostname: node
     ports:
