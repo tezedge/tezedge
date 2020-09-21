@@ -157,10 +157,8 @@ impl PersistentStorage {
     pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
         self.merkle.clone()
     }
-}
 
-impl Drop for PersistentStorage {
-    fn drop(&mut self) {
+    pub fn flush_dbs(&mut self) {
         self.clog.flush().expect("Failed to flush commit logs");
         self.kv.flush().expect("Failed to flush database");
     }
