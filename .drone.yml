@@ -102,7 +102,7 @@ trigger:
 ##############################################################################################################
 ---
 kind: pipeline
-name: sandbox
+name: sandbox-launcher-test
 
 clone:
   disable: true
@@ -184,7 +184,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: sandbox-inject-operation
+name: sandbox-carthage-node-tests
 
 clone:
   disable: true
@@ -402,6 +402,135 @@ trigger:
 
 depends_on:
   - build-and-tests
+
+##############################################################################################################
+# This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
+#
+##############################################################################################################
+---
+kind: pipeline
+name: connect-from-different-network-test
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: carthagenet
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 0
+  SODIUM_USE_PKG_CONFIG: 1
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
+  TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT: http://tezedge-node-run-mainnet:18732
+
+steps:
+  - name: cleanup-node-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: tezedge-node-data
+        path: /tmp/tezedge_developer
+    commands:
+      - rm -rf /tmp/tezedge_developer/light-node
+      - rm -rf /tmp/tezedge_developer/tezos-node
+
+  - name: tezedge-node-run-mainnet
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezedge-node-data
+        path: /tmp/tezedge_developer
+      - name: cache
+        path: /tmp/tezedge-cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/tezedge_ip.txt
+      - cp /artifacts/protocol-runner /tmp/tezedge-cache/
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network mainnet --identity-file "/artifacts/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
+
+  - name: bootstrapping-tezedge
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT}
+
+    # just run ocaml snapshosted node
+  - name: ocaml-node-carthage-run
+    user: root
+    image: tezos/tezos:v7.3
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /tmp/tezedge-cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/ocaml_ip.txt
+      - mkdir /home/tezos/data/
+      - cp /artifacts/identities/identity_7.json /home/tezos/data/identity.json
+      - rm -f /home/tezos/data/config.json
+      - tezos-node config init --data-dir /home/tezos/data --network carthagenet
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network carthagenet --no-bootstrap-peers
+
+  - name: wait-ocaml-node-carthage-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+  - name: ocaml-node-carthage-connect-to-tezedge
+    user: root
+    image: tezos/tezos:v7.3
+    volumes:
+      - name: cache
+        path: /tmp/tezedge-cache
+    commands:
+      # catch error from tezos-admin-client
+      - tezos-admin-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 connect address `cat /tmp/tezedge-cache/tezedge_ip.txt`:9732 &> /tmp/tezedge-cache/tezos-admin-client-error.log &
+      - sleep 1
+      - cat /tmp/tezedge-cache/tezos-admin-client-error.log
+
+  - name: check-ocaml-error
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /tmp/tezedge-cache
+    commands:
+      - error=$(cat /tmp/tezedge-cache/tezos-admin-client-error.log)
+      - /artifacts/assert_contains.sh "$error" "Rejected peer connection"
+      - /artifacts/assert_contains.sh "$error" "no common network protocol"
+
+  - name: check-ocaml-still-running
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+volumes:
+  - name: tezedge-node-data
+    host:
+      path: /etc/tezedge-node
+  - name: cache
+    host:
+      path: /etc/tezedge-ci-cache
+  - name: build
+    host:
+      path: /etc/tezedge-ci-build
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - sandbox-carthage-node-tests
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node with carthagenet configuration,
@@ -709,134 +838,6 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
+  - connect-from-different-network-test
 
-##############################################################################################################
-# This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
-#
-##############################################################################################################
----
-kind: pipeline
-name: connect-from-different-network-test
 
-clone:
-  disable: true
-
-environment:
-  NETWORK: carthagenet
-  FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 0
-  SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
-  TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT: http://tezedge-node-run-mainnet:18732
-
-steps:
-  - name: cleanup-node-data
-    image: alpine/git
-    user: root
-    volumes:
-      - name: tezedge-node-data
-        path: /tmp/tezedge_developer
-    commands:
-      - rm -rf /tmp/tezedge_developer/light-node
-      - rm -rf /tmp/tezedge_developer/tezos-node
-
-  - name: tezedge-node-run-mainnet
-    image: simplestakingcom/tezedge-ci-builder:latest
-    pull: if-not-exists
-    user: root
-    detach: true
-    volumes:
-      - name: build
-        path: /artifacts
-      - name: tezedge-node-data
-        path: /tmp/tezedge_developer
-      - name: cache
-        path: /tmp/tezedge-cache
-    environment:
-      SODIUM_USE_PKG_CONFIG: 1
-    commands:
-      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/tezedge_ip.txt
-      - cp /artifacts/protocol-runner /tmp/tezedge-cache/
-      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-      - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
-      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network mainnet --identity-file "/artifacts/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
-
-  - name: bootstrapping-tezedge
-    image: simplestakingcom/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT}
-
-    # just run ocaml snapshosted node
-  - name: ocaml-node-carthage-run
-    user: root
-    image: tezos/tezos:v7.3
-    detach: true
-    volumes:
-      - name: build
-        path: /artifacts
-      - name: cache
-        path: /tmp/tezedge-cache
-    commands:
-      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/ocaml_ip.txt
-      - mkdir /home/tezos/data/
-      - cp /artifacts/identities/identity_7.json /home/tezos/data/identity.json
-      - rm -f /home/tezos/data/config.json
-      - tezos-node config init --data-dir /home/tezos/data --network carthagenet
-      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network carthagenet --no-bootstrap-peers
-
-  - name: wait-ocaml-node-carthage-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
-
-  - name: ocaml-node-carthage-connect-to-tezedge
-    user: root
-    image: tezos/tezos:v7.3
-    volumes:
-      - name: cache
-        path: /tmp/tezedge-cache
-    commands:
-      # catch error from tezos-admin-client
-      - tezos-admin-client -A `cat /tmp/tezedge-cache/ocaml_ip.txt` -P 8732 connect address `cat /tmp/tezedge-cache/tezedge_ip.txt`:9732 &> /tmp/tezedge-cache/tezos-admin-client-error.log &
-      - sleep 1
-      - cat /tmp/tezedge-cache/tezos-admin-client-error.log
-
-  - name: check-ocaml-error
-    user: root
-    image: cfmanteiga/alpine-bash-curl-jq
-    volumes:
-      - name: build
-        path: /artifacts
-      - name: cache
-        path: /tmp/tezedge-cache
-    commands:
-      - error=$(cat /tmp/tezedge-cache/tezos-admin-client-error.log)
-      - /artifacts/assert_contains.sh "$error" "Rejected peer connection"
-      - /artifacts/assert_contains.sh "$error" "no common network protocol"
-
-  - name: check-ocaml-still-running
-    image: simplestakingcom/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
-
-volumes:
-  - name: tezedge-node-data
-    host:
-      path: /etc/tezedge-node
-  - name: cache
-    host:
-      path: /etc/tezedge-ci-cache
-  - name: build
-    host:
-      path: /etc/tezedge-ci-build
-
-trigger:
-  branch:
-    - master
-    - develop
-
-depends_on:
-  - sandbox-inject-operation
-  - integration-offline-tests
