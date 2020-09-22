@@ -1,0 +1,4 @@
+#!/bin/bash
+
+docker build -t builder --build-arg SOURCE_BRANCH=$SOURCE_BRANCH -f ../builder/Dockerfile .
+docker build -t $IMAGE_NAME .
