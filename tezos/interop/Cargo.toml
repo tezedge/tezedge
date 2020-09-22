@@ -28,7 +28,7 @@ sha2 = "0.9"
 [dev-dependencies]
 crypto = { path = "../../crypto" }
 tezos_context = { path = "../context" }
-serial_test = "0.4"
+serial_test = "0.5"
 criterion = "0.3"
 
 [[bench]]

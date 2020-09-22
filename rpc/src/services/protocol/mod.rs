@@ -297,10 +297,8 @@ pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_sto
 
     let ctx_hash = context.level_to_hash(block_level.try_into()?)?;
 
-    //TODO: check if it works the same as before
-
     // filter out the listings data
-    let listings_data = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/votes/listings/".to_string()])? {
+    let listings_data = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/votes/listings".to_string()])? {
         val
     } else {
         bail!("No listings found in context")
