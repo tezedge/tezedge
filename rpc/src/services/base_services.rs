@@ -237,7 +237,7 @@ pub(crate) fn get_cycle_from_context(block_id: &str, persistent_storage: &Persis
 
     let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
     let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/cycle/".to_string()])?;
+    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/cycle".to_string()])?;
 
     let cycle_lists = if let Some(ctx) = context_data {
         ctx
@@ -343,7 +343,7 @@ pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, persistent_st
 
     let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
     let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/current/".to_string()])?;
+    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/current".to_string()])?;
 
     // create rolls list
     let mut rolls: HashMap<String, HashMap<String, HashMap<String, String>>> = HashMap::new();
