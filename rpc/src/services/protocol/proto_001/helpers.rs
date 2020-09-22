@@ -188,13 +188,7 @@ impl RightsContextData {
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
     fn get_context_rolls(context: &TezedgeContext, requested_level: i64, cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        // let data: ContextMap = context.into_iter()
-        //     // .filter(|(k, _)| k.contains(&format!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)))
-        //     .filter(|(k, _)| k.contains(&"data/rolls/owner/current"))  // TODO use line above after context db will contain all copied snapshots in block_id level of context list
-        //     .collect();
-        
-        //     TODO - above??
-        
+
         let ctx_hash = context.level_to_hash(requested_level.try_into()?)?;
 
         let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/snapshot".to_string(), cycle.to_string(), snapshot.to_string()])? {

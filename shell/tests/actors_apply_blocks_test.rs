@@ -8,14 +8,11 @@ extern crate test;
 /// 2. test_scenario_for_add_operations_to_mempool_and_check_state - see fn description
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver as QueueReceiver};
 use std::time::{Duration, Instant, SystemTime};
 
 use riker::actors::*;
-use riker::system::SystemBuilder;
-use serde_json::Value;
 use slog::{info, Logger};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
@@ -25,10 +22,7 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use storage::skip_list::Bucket;
-use storage::tests_common::TmpStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 use tezos_messages::p2p::encoding::prelude::Operation;
