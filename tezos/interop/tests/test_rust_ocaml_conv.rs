@@ -181,7 +181,7 @@ fn test_block_header_conv() {
             let ref fitness = to_ocaml!(gc, block_header.fitness()).keep(gc);
             let ref context = to_ocaml!(gc, block_header.context()).keep(gc);
             let ref protocol_data = to_ocaml!(gc, block_header.protocol_data()).keep(gc);
-            let block_header = to_ocaml!(gc, FfiBlockHeader(block_header.clone()));
+            let block_header = to_ocaml!(gc, FfiBlockHeader::from(&block_header));
 
             ocaml_call!(tezos_ffi::construct_and_compare_block_header(
                 gc,
@@ -215,20 +215,21 @@ fn test_apply_block_request_conv() {
         ))
         .build()
         .unwrap();
-    let ffi_operations: Vec<Vec<FfiOperation>> = request
-        .operations
-        .iter()
-        .map(|ops| ops.iter().map(|op| FfiOperation(op.clone())).collect())
-        .collect();
 
     let result: bool = runtime::execute(move || {
+        let ffi_operations: Vec<Vec<FfiOperation>> = request
+            .operations
+            .iter()
+            .map(|ops| ops.iter().map(|op| FfiOperation::from(op)).collect())
+            .collect();
+
         ocaml_frame!(gc, {
             let ref apply_block_request = to_ocaml!(gc, request).keep(gc);
             let ref chain_id: OCamlRef<OCamlBytes> = to_ocaml!(gc, request.chain_id).keep(gc);
             let ref block_header: OCamlRef<BlockHeader> =
-                to_ocaml!(gc, FfiBlockHeader(request.block_header.clone())).keep(gc);
+                to_ocaml!(gc, FfiBlockHeader::from(&request.block_header)).keep(gc);
             let ref pred_header: OCamlRef<BlockHeader> =
-                to_ocaml!(gc, FfiBlockHeader(request.pred_header.clone())).keep(gc);
+                to_ocaml!(gc, FfiBlockHeader::from(&request.pred_header)).keep(gc);
             let max_operations_ttl: OCaml<OCamlInt> =
                 OCaml::of_int(request.max_operations_ttl as i64);
             let operations: OCaml<OCamlList<OCamlList<Operation>>> = to_ocaml!(gc, ffi_operations);
@@ -265,7 +266,7 @@ fn test_begin_construction_request_conv() {
             let ref chain_id = to_ocaml!(gc, begin_construction_request.chain_id).keep(gc);
             let ref predecesor = to_ocaml!(
                 gc,
-                FfiBlockHeader(begin_construction_request.predecessor.clone())
+                FfiBlockHeader::from(&begin_construction_request.predecessor)
             )
             .keep(gc);
             let ref protocol_data =
@@ -309,7 +310,7 @@ fn test_validate_operation_request_conv() {
             let ref prevalidator = to_ocaml!(gc, validate_operation_request.prevalidator).keep(gc);
             let ref operation = to_ocaml!(
                 gc,
-                FfiOperation(validate_operation_request.operation.clone())
+                FfiOperation::from(&validate_operation_request.operation)
             )
             .keep(gc);
             let validate_operation_request = to_ocaml!(gc, validate_operation_request);
@@ -373,7 +374,7 @@ fn test_validate_protocol_json_rpc_request_conv() {
         ocaml_frame!(gc, {
             let ref block_header = to_ocaml!(
                 gc,
-                FfiBlockHeader(protocol_json_rpc_request.block_header.clone())
+                FfiBlockHeader::from(&protocol_json_rpc_request.block_header)
             )
             .keep(gc);
             let ref chain_arg = to_ocaml!(gc, protocol_json_rpc_request.chain_arg).keep(gc);
@@ -412,7 +413,7 @@ fn test_validate_operation_conv() {
         ocaml_frame!(gc, {
             let ref branch = to_ocaml!(gc, operation.branch()).keep(gc);
             let ref proto = to_ocaml!(gc, operation.data()).keep(gc);
-            let operation = to_ocaml!(gc, FfiOperation(operation));
+            let operation = to_ocaml!(gc, FfiOperation::from(&operation));
             ocaml_call!(tezos_ffi::construct_and_compare_operation(
                 gc,
                 operation,

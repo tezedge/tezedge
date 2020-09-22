@@ -11,7 +11,9 @@ use crate::ffi::{
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
-use znfe::{FromOCaml, IntoRust, OCaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
+use znfe::{
+    impl_from_ocaml_record, FromOCaml, IntoRust, OCaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList,
+};
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -29,61 +31,14 @@ from_ocaml_hash!(OCamlBlockHash, BlockHash);
 from_ocaml_hash!(OCamlContextHash, ContextHash);
 from_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
 
-// Helper for easier mapping from OCaml to Rust records
-macro_rules! unpack_ocaml_block {
-    ($var:ident => $cons:ident {
-        $($field:ident : $ocaml_typ:ty),+ $(,)?
-    }) => {
-        let record = $var;
-        unsafe {
-            let mut current = 0;
-
-            $(
-                current += 1;
-                let $field = record.field::<$ocaml_typ>(current - 1).into_rust();
-            )+
-
-            $cons {
-                $($field),+
-            }
-        }
-    };
-}
-
-macro_rules! impl_from_ocaml_block_mapping {
-    ($ocaml_typ:ident => $rust_typ:ident {
-        $($field:ident : $ocaml_field_typ:ty),+ $(,)?
-    }) => {
-        unsafe impl FromOCaml<$ocaml_typ> for $rust_typ {
-            fn from_ocaml(v: OCaml<$ocaml_typ>) -> Self {
-                unpack_ocaml_block! { v =>
-                    $rust_typ {
-                        $($field : $ocaml_field_typ),+
-                    }
-                }
-            }
-        }
-    };
-
-    ($both_typ:ident {
-        $($field:ident : $ocaml_field_typ:ty),+ $(,)?
-    }) => {
-        impl_from_ocaml_block_mapping! {
-            $both_typ => $both_typ {
-                $($field : $ocaml_field_typ),+
-            }
-        }
-    };
-}
-
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
         test_chain_id: OCamlBytes,
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     ApplyBlockResponse {
         validation_result_message: OCamlBytes,
         context_hash: OCamlContextHash,
@@ -97,28 +52,28 @@ impl_from_ocaml_block_mapping! {
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     PrevalidatorWrapper {
         chain_id: OCamlBytes,
         protocol: OCamlProtocolHash,
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     Applied {
         hash: OCamlOperationHash,
         protocol_data_json: OCamlBytes,
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     OperationProtocolDataJsonWithErrorListJson {
         protocol_data_json: OCamlBytes,
         error_json: OCamlBytes,
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     Errored {
         hash: OCamlOperationHash,
         is_endorsement: Option<bool>,
@@ -126,7 +81,7 @@ impl_from_ocaml_block_mapping! {
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     ValidateOperationResult {
         applied: OCamlList<Applied>,
         refused: OCamlList<Errored>,
@@ -135,14 +90,14 @@ impl_from_ocaml_block_mapping! {
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     ValidateOperationResponse {
         prevalidator: PrevalidatorWrapper,
         result: ValidateOperationResult,
     }
 }
 
-impl_from_ocaml_block_mapping! {
+impl_from_ocaml_record! {
     JsonRpcResponse {
         body: OCamlBytes,
     }

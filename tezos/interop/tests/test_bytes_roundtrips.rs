@@ -130,7 +130,7 @@ fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Err
     let result = runtime::execute(move || {
         ocaml_frame!(gc, {
             // sent header to ocaml
-            let header = to_ocaml!(gc, FfiBlockHeader(header));
+            let header = to_ocaml!(gc, FfiBlockHeader::from(&header));
             let result = ocaml_call!(tezos_ffi::block_header_struct_roundtrip(gc, header));
             let (block_hash, chain_id) = <(String, String)>::from_ocaml(result.unwrap());
 

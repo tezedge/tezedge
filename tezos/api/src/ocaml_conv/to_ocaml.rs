@@ -3,8 +3,8 @@
 
 use super::{
     FfiBlockHeader, FfiBlockHeaderShellHeader, FfiOperation, FfiOperationShellHeader,
-    OCamlBlockHash, OCamlContextHash, OCamlOperationHash, OCamlOperationListListHash,
-    OCamlProtocolHash,
+    OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationListListHash,
+    OCamlProtocolHash, TaggedHash,
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, FfiRpcService,
@@ -14,104 +14,17 @@ use crate::ffi::{
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
-    ocaml, OCaml, OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64,
-    OCamlList, ToOCaml,
+    impl_to_ocaml_record, ocaml, ocaml_alloc_record, OCaml, OCamlAllocResult, OCamlAllocToken,
+    OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
 };
 
-// Headers
+// OCaml type tags
+
 struct BlockHeaderShellHeader {}
 struct OperationShellHeader {}
 
 ocaml! {
-    // Requests
-
-    alloc fn alloc_apply_block_request(
-        chain_id: OCamlBytes,
-        block_header: BlockHeader,
-        pred_header: BlockHeader,
-        max_operations_ttl: OCamlInt,
-        operations: OCamlList<OCamlList<Operation>>,
-    ) -> ApplyBlockRequest;
-
-    alloc fn alloc_apply_block_response(
-        validation_result_message: OCamlBytes,
-        context_hash: OCamlContextHash,
-        block_header_proto_json: OCamlBytes,
-        block_header_proto_metadata_json: OCamlBytes,
-        operations_proto_metadata_json: OCamlBytes,
-        max_operations_ttl: OCamlInt,
-        last_allowed_fork_level: OCamlInt32,
-        forking_testchain: bool,
-        forking_testchain_data: Option<ForkingTestchainData>,
-    ) -> ApplyBlockResponse;
-
-    alloc fn alloc_forking_testchain_data(
-        forking_block_hash: OCamlBlockHash,
-        test_chain_id: OCamlBytes,
-    ) -> ForkingTestchainData;
-
-    alloc fn alloc_begin_construction_request(
-        chain_id: OCamlBytes,
-        predecessor: BlockHeader,
-        protocol_data: Option<OCamlBytes>,
-    ) -> BeginConstructionRequest;
-
-    alloc fn alloc_validate_operation_request(
-        prevalidator: PrevalidatorWrapper,
-        operation: Operation,
-    ) -> ValidateOperationRequest;
-
-    alloc fn alloc_json_rpc_request(
-        body: OCamlBytes,
-        context_path: OCamlBytes,
-    ) -> JsonRpcRequest;
-
-    alloc fn alloc_protocol_json_rpc_request(
-        block_header: BlockHeader,
-        chain_id: OCamlBytes,
-        chain_arg: OCamlBytes,
-        request: JsonRpcRequest,
-        ffi_service: FfiRpcService,
-    ) -> ProtocolJsonRpcRequest;
-
-    // Headers
-
-    alloc fn alloc_block_header_shell_header(
-        level: OCamlInt32,
-        proto_level: OCamlInt,
-        predecessor: OCamlBlockHash,
-        timestamp: OCamlInt64,
-        validation_passes: OCamlInt,
-        operations_hash: OCamlOperationListListHash,
-        fitness: OCamlList<OCamlBytes>,
-        context: OCamlContextHash,
-    ) -> BlockHeaderShellHeader;
-
-    alloc fn alloc_block_header(
-        shell: BlockHeaderShellHeader,
-        protocol_data: OCamlBytes,
-    ) -> BlockHeader;
-
-    alloc fn alloc_operation_shell_header(
-        branch: OCamlBlockHash,
-    ) -> OperationShellHeader;
-
-    // Operation
-
-    alloc fn alloc_operation(
-        shell: OperationShellHeader,
-        proto: OCamlBytes,
-    ) -> Operation;
-
-    // Wrappers
-
-    alloc fn alloc_prevalidator_wrapper(
-        chain_id: OCamlBytes,
-        protocol: OCamlProtocolHash,
-    ) -> PrevalidatorWrapper;
-
-    // Hashes
-
+    alloc fn alloc_ocaml_hash(hash: OCamlBytes) -> OCamlHash;
     alloc fn alloc_operation_list_list_hash(hash: OCamlBytes) -> OCamlOperationListListHash;
     alloc fn alloc_operation_hash(hash: OCamlBytes) -> OCamlOperationHash;
     alloc fn alloc_block_hash(hash: OCamlBytes) -> OCamlBlockHash;
@@ -119,68 +32,22 @@ ocaml! {
     alloc fn alloc_protocol_hash(hash: OCamlBytes) -> OCamlProtocolHash;
 }
 
-unsafe impl ToOCaml<ApplyBlockRequest> for ApplyBlockRequest {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ApplyBlockRequest> {
-        let operations: Vec<Vec<FfiOperation>> = self
-            .operations
-            .iter()
-            .map(|ops| ops.iter().map(|op| FfiOperation(op.clone())).collect())
-            .collect();
-        unsafe {
-            alloc_apply_block_request(
-                token,
-                &self.chain_id,
-                &FfiBlockHeader(self.block_header.clone()),
-                &FfiBlockHeader(self.pred_header.clone()),
-                &self.max_operations_ttl,
-                &operations,
-            )
-        }
+// Hashes
+
+impl<'a> From<&'a Hash> for TaggedHash<'a> {
+    fn from(bytes: &'a Hash) -> Self {
+        Self(bytes)
     }
 }
 
-unsafe impl ToOCaml<ApplyBlockResponse> for ApplyBlockResponse {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ApplyBlockResponse> {
-        unsafe {
-            alloc_apply_block_response(
-                token,
-                &self.validation_result_message,
-                &self.context_hash,
-                &self.block_header_proto_json,
-                &self.block_header_proto_metadata_json,
-                &self.operations_proto_metadata_json,
-                &self.max_operations_ttl,
-                &self.last_allowed_fork_level,
-                &self.forking_testchain,
-                &self.forking_testchain_data,
-            )
-        }
-    }
-}
-
-unsafe impl ToOCaml<ForkingTestchainData> for ForkingTestchainData {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ForkingTestchainData> {
-        unsafe {
-            alloc_forking_testchain_data(token, &self.forking_block_hash, &self.test_chain_id)
-        }
-    }
-}
-
-unsafe impl ToOCaml<BeginConstructionRequest> for BeginConstructionRequest {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<BeginConstructionRequest> {
-        unsafe {
-            alloc_begin_construction_request(
-                token,
-                &self.chain_id,
-                &FfiBlockHeader(self.predecessor.clone()),
-                &self.protocol_data,
-            )
-        }
+unsafe impl<'a> ToOCaml<OCamlHash> for TaggedHash<'a> {
+    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlHash> {
+        unsafe { alloc_ocaml_hash(token, self.0) }
     }
 }
 
 macro_rules! to_ocaml_hash {
-    ($ocaml_name:ident, $rust_name:ident, $allocate:ident) => {
+    ($ocaml_name:ty, $rust_name:ty, $allocate:ident) => {
         unsafe impl ToOCaml<$ocaml_name> for $rust_name {
             fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<$ocaml_name> {
                 unsafe { $allocate(token, self) }
@@ -199,27 +66,112 @@ to_ocaml_hash!(OCamlBlockHash, BlockHash, alloc_block_hash);
 to_ocaml_hash!(OCamlContextHash, ContextHash, alloc_context_hash);
 to_ocaml_hash!(OCamlProtocolHash, ProtocolHash, alloc_protocol_hash);
 
-unsafe impl ToOCaml<PrevalidatorWrapper> for PrevalidatorWrapper {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<PrevalidatorWrapper> {
-        unsafe { alloc_prevalidator_wrapper(token, &self.chain_id, &self.protocol) }
-    }
-}
+// Other
 
-unsafe impl ToOCaml<ValidateOperationRequest> for ValidateOperationRequest {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ValidateOperationRequest> {
-        unsafe {
-            alloc_validate_operation_request(
-                token,
-                &self.prevalidator,
-                &FfiOperation(self.operation.clone()),
-            )
+impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
+    fn from(block_header: &'a BlockHeader) -> Self {
+        Self {
+            level: block_header.level(),
+            proto_level: block_header.proto() as i32,
+            predecessor: block_header.predecessor().into(),
+            timestamp: block_header.timestamp(),
+            validation_passes: block_header.validation_pass() as i32,
+            operations_hash: block_header.operations_hash().into(),
+            fitness: block_header.fitness(),
+            context: block_header.context().into(),
         }
     }
 }
 
-unsafe impl ToOCaml<JsonRpcRequest> for JsonRpcRequest {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<JsonRpcRequest> {
-        unsafe { alloc_json_rpc_request(token, &self.body, &self.context_path) }
+impl<'a> From<&'a BlockHeader> for FfiBlockHeader<'a> {
+    fn from(block_header: &'a BlockHeader) -> Self {
+        let shell = FfiBlockHeaderShellHeader::from(block_header);
+        Self {
+            shell,
+            protocol_data: block_header.protocol_data(),
+        }
+    }
+}
+
+impl<'a> From<&'a Operation> for FfiOperationShellHeader<'a> {
+    fn from(operation: &'a Operation) -> Self {
+        Self {
+            branch: TaggedHash(operation.branch()),
+        }
+    }
+}
+
+impl<'a> From<&'a Operation> for FfiOperation<'a> {
+    fn from(operation: &'a Operation) -> Self {
+        let shell = FfiOperationShellHeader::from(operation);
+        Self {
+            shell,
+            data: operation.data(),
+        }
+    }
+}
+
+impl_to_ocaml_record! {
+    ApplyBlockRequest {
+        chain_id: OCamlBytes,
+        block_header: BlockHeader => FfiBlockHeader::from(block_header),
+        pred_header: BlockHeader => FfiBlockHeader::from(pred_header),
+        max_operations_ttl: OCamlInt,
+        operations: OCamlList<OCamlList<Operation>> => {
+            operations.iter()
+                      .map(|ops| ops.iter().map(|op| FfiOperation::from(op)).collect())
+                      .collect::<Vec<Vec<FfiOperation>>>()
+        },
+    }
+}
+
+impl_to_ocaml_record! {
+    ApplyBlockResponse {
+        validation_result_message: OCamlBytes,
+        context_hash: OCamlContextHash,
+        block_header_proto_json: OCamlBytes,
+        block_header_proto_metadata_json: OCamlBytes,
+        operations_proto_metadata_json: OCamlBytes,
+        max_operations_ttl: OCamlInt,
+        last_allowed_fork_level: OCamlInt32,
+        forking_testchain: bool,
+        forking_testchain_data: Option<ForkingTestchainData>,
+    }
+}
+
+impl_to_ocaml_record! {
+    ForkingTestchainData {
+        forking_block_hash: OCamlBlockHash,
+        test_chain_id: OCamlBytes,
+    }
+}
+
+impl_to_ocaml_record! {
+    BeginConstructionRequest {
+        chain_id: OCamlBytes,
+        predecessor: BlockHeader => FfiBlockHeader::from(predecessor),
+        protocol_data: Option<OCamlBytes>,
+    }
+}
+
+impl_to_ocaml_record! {
+    PrevalidatorWrapper {
+        chain_id: OCamlBytes,
+        protocol: OCamlProtocolHash,
+    }
+}
+
+impl_to_ocaml_record! {
+    ValidateOperationRequest {
+        prevalidator: PrevalidatorWrapper,
+        operation: Operation => FfiOperation::from(operation),
+    }
+}
+
+impl_to_ocaml_record! {
+    JsonRpcRequest {
+        body: OCamlBytes,
+        context_path: OCamlBytes,
     }
 }
 
@@ -238,60 +190,61 @@ unsafe impl ToOCaml<FfiRpcService> for FfiRpcService {
     }
 }
 
-unsafe impl ToOCaml<ProtocolJsonRpcRequest> for ProtocolJsonRpcRequest {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<ProtocolJsonRpcRequest> {
-        unsafe {
-            alloc_protocol_json_rpc_request(
-                token,
-                &FfiBlockHeader(self.block_header.clone()),
-                &self.chain_id,
-                &self.chain_arg,
-                &self.request,
-                &self.ffi_service,
-            )
-        }
+impl_to_ocaml_record! {
+    ProtocolJsonRpcRequest {
+        block_header: BlockHeader => FfiBlockHeader::from(block_header),
+        chain_id: OCamlBytes,
+        chain_arg: OCamlBytes,
+        request: JsonRpcRequest,
+        ffi_service: FfiRpcService,
     }
 }
 
 unsafe impl<'a> ToOCaml<BlockHeaderShellHeader> for FfiBlockHeaderShellHeader<'a> {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<BlockHeaderShellHeader> {
-        let ref block_header = (self.0).0;
-        unsafe {
-            alloc_block_header_shell_header(
-                token,
-                &block_header.level(),
-                &(block_header.proto() as i32),
-                block_header.predecessor(),
-                &block_header.timestamp(),
-                &(block_header.validation_pass() as i32),
-                block_header.operations_hash(),
-                block_header.fitness(),
-                block_header.context(),
-            )
+    fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<BlockHeaderShellHeader> {
+        ocaml_alloc_record! {
+            self => BlockHeaderShellHeader {
+                level: OCamlInt32,
+                proto_level: OCamlInt,
+                predecessor: OCamlHash,
+                timestamp: OCamlInt64,
+                validation_passes: OCamlInt,
+                operations_hash: OCamlHash,
+                fitness: OCamlList<OCamlBytes>,
+                context: OCamlHash,
+            }
         }
     }
 }
 
-unsafe impl ToOCaml<BlockHeader> for FfiBlockHeader {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<BlockHeader> {
-        let ref block_header = self.0;
-        let shell_header = FfiBlockHeaderShellHeader(self);
-        unsafe { alloc_block_header(token, &shell_header, block_header.protocol_data()) }
+unsafe impl<'a> ToOCaml<BlockHeader> for FfiBlockHeader<'a> {
+    fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<BlockHeader> {
+        ocaml_alloc_record! {
+            self => BlockHeader {
+                shell: BlockHeaderShellHeader,
+                protocol_data: OCamlBytes,
+            }
+        }
     }
 }
 
 unsafe impl<'a> ToOCaml<OperationShellHeader> for FfiOperationShellHeader<'a> {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OperationShellHeader> {
-        unsafe { alloc_operation_shell_header(token, self.branch) }
+    fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<OperationShellHeader> {
+        ocaml_alloc_record! {
+            self => OperationShellHeader {
+                branch: OCamlHash,
+            }
+        }
     }
 }
 
-unsafe impl ToOCaml<Operation> for FfiOperation {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<Operation> {
-        let ref operation = self.0;
-        let shell = FfiOperationShellHeader {
-            branch: operation.branch(),
-        };
-        unsafe { alloc_operation(token, &shell, operation.data()) }
+unsafe impl<'a> ToOCaml<Operation> for FfiOperation<'a> {
+    fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<Operation> {
+        ocaml_alloc_record! {
+            self => Operation {
+                shell: OperationShellHeader,
+                data: OCamlBytes,
+            }
+        }
     }
 }
