@@ -510,7 +510,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::CurrentHead(message) => {
-                                    debug!(log, "Current head received");
+                                    info!(log, "Current head received");
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         let peer_current_mempool = message.current_mempool();
 
