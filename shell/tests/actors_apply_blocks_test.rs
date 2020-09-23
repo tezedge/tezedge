@@ -8,43 +8,29 @@ extern crate test;
 /// 2. test_scenario_for_add_operations_to_mempool_and_check_state - see fn description
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver as QueueReceiver};
-use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use jsonpath::Selector;
 use riker::actors::*;
-use riker::system::SystemBuilder;
 use serde_json::Value;
 use slog::{info, Logger};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
-use networking::p2p::network_channel::NetworkChannel;
-use shell::chain_feeder::ChainFeeder;
-use shell::chain_manager::ChainManager;
-use shell::context_listener::ContextListener;
-use shell::mempool_prevalidator::MempoolPrevalidator;
-use shell::PeerConnectionThreshold;
-use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data};
+use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, ContextIndex, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::{ContextList, PersistentStorage};
 use storage::skip_list::Bucket;
-use storage::tests_common::TmpStorage;
-use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
 use tezos_messages::p2p::encoding::operations_for_blocks;
 use tezos_messages::p2p::encoding::prelude::Operation;
-use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
-use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
 mod common;
 
@@ -52,117 +38,24 @@ mod common;
 #[test]
 fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failure::Error> {
 
-    // logger
-    let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
-
-    // environement
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
-    let is_sandbox = false;
-    let p2p_threshold = PeerConnectionThreshold::new(1, 1);
-
-    // storage
-    let storage_db_path = "__shell_context_listener_test_apply_blocks";
-    let context_db_path = common::prepare_empty_dir("__shell_context_listener_test_apply_blocks_context");
-    let tmp_storage = TmpStorage::create(common::prepare_empty_dir(storage_db_path))?;
-    let persistent_storage = tmp_storage.storage();
-
-    let storage_db_path = PathBuf::from(storage_db_path);
-    let context_db_path = PathBuf::from(context_db_path);
-    let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, &log)
-        .expect("Failed to resolve init storage chain data");
-
-    // apply block protocol runner endpoint
-    let apply_protocol_runner = common::protocol_runner_executable_path();
-    let mut apply_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
-        "test_protocol_runner_endpoint",
-        ProtocolEndpointConfiguration::new(
-            TezosRuntimeConfiguration {
-                log_enabled: common::is_ocaml_log_enabled(),
-                no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-                debug_mode: false,
-            },
-            tezos_env.clone(),
-            false,
-            &context_db_path,
-            &apply_protocol_runner,
-            log_level.clone(),
-            true,
-        ),
-        log.clone(),
-    );
-    let (apply_restarting_feature, apply_protocol_commands, apply_protocol_events) = match apply_protocol_runner_endpoint.start_in_restarting_mode() {
-        Ok(restarting_feature) => {
-            let ProtocolRunnerEndpoint {
-                commands,
-                events,
-                ..
-            } = apply_protocol_runner_endpoint;
-            (restarting_feature, commands, events)
-        }
-        Err(e) => panic!("Error to start test_protocol_runner_endpoint: {} - error: {:?}", apply_protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e)
-    };
-
-    // create pool for ffi protocol runner connections (used just for readonly context)
-    let tezos_readonly_api = Arc::new(
-        TezosApiConnectionPool::new_with_readonly_context(
-            String::from("test_ tezos_readonly_api_pool"),
-            TezosApiConnectionPoolConfiguration {
-                min_connections: 0,
-                max_connections: 2,
-                connection_timeout: Duration::from_secs(3),
-                max_lifetime: Duration::from_secs(60),
-                idle_timeout: Duration::from_secs(60),
-            },
-            ProtocolEndpointConfiguration::new(
-                TezosRuntimeConfiguration {
-                    log_enabled: common::is_ocaml_log_enabled(),
-                    no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-                    debug_mode: false,
-                },
-                tezos_env.clone(),
-                false,
-                &context_db_path,
-                &common::protocol_runner_executable_path(),
-                log_level,
-                false,
-            ),
-            log.clone(),
-        )
-    );
+    // start node
+    let mut node = common::infra::NodeInfrastructure::start("__test_actors_apply_blocks_and_check_context_and_mempool", "test_actors_apply_blocks_and_check_context_and_mempool")?;
 
     // test mempool state for validation
     let (test_result_sender, test_result_receiver) = channel();
+    let _ = test_actor::TestActor::actor(&node.actor_system, node.shell_channel.clone(), test_result_sender);
 
-    // run actor's
-    let actor_system = SystemBuilder::new().name("test_actors_apply_blocks_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
-    let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-    let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-    let _ = test_actor::TestActor::actor(&actor_system, shell_channel.clone(), test_result_sender);
-    let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
-    let _ = MempoolPrevalidator::actor(
-        &actor_system,
-        shell_channel.clone(),
-        &persistent_storage,
-        &init_storage_data,
-        tezos_readonly_api.clone(),
-        log.clone(),
-    ).expect("Failed to create chain feeder");
-
-    // we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
+    // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
     let requests = test_data::read_apply_block_requests_until_1326();
-
 
     let clocks = Instant::now();
 
     // 1. test - apply and context - prepare data for apply blocks and wait for current head, and check context
     assert!(
         test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
-            &persistent_storage,
-            tezos_env,
-            log.clone(),
+            &node.tmp_storage.storage(),
+            &node.tezos_env,
+            node.log.clone(),
             &requests,
             1324,
         ).is_ok()
@@ -172,8 +65,8 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     assert!(
         test_scenario_for_add_operations_to_mempool_and_check_state(
             test_result_receiver,
-            shell_channel.clone(),
-            &persistent_storage,
+            node.shell_channel.clone(),
+            &node.tmp_storage.storage(),
             &requests[1323],
             &requests[1324],
             &requests[1325],
@@ -183,20 +76,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     let clocks = clocks.elapsed();
     println!("\nDone in {:?}!", clocks);
 
-    // clean up
-    // shutdown events listening
-    apply_restarting_feature.store(false, Ordering::Release);
-
-    thread::sleep(Duration::from_secs(3));
-    shell_channel.tell(
-        Publish {
-            msg: ShuttingDown.into(),
-            topic: ShellChannelTopic::ShellCommands.into(),
-        }, None,
-    );
-    thread::sleep(Duration::from_secs(2));
-
-    let _ = actor_system.shutdown();
+    node.stop();
 
     Ok(())
 }
