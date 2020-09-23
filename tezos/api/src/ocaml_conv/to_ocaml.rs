@@ -14,8 +14,8 @@ use crate::ffi::{
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use znfe::{
-    impl_to_ocaml_record, ocaml, ocaml_alloc_record, OCaml, OCamlAllocResult, OCamlAllocToken,
-    OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
+    impl_to_ocaml_record, impl_to_ocaml_variant, ocaml, ocaml_alloc_record, OCamlAllocResult,
+    OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
 };
 
 // OCaml type tags
@@ -175,18 +175,15 @@ impl_to_ocaml_record! {
     }
 }
 
-unsafe impl ToOCaml<FfiRpcService> for FfiRpcService {
-    fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<FfiRpcService> {
-        let ocaml_int = match self {
-            FfiRpcService::HelpersRunOperation => OCaml::of_int(0),
-            FfiRpcService::HelpersPreapplyOperations => OCaml::of_int(1),
-            FfiRpcService::HelpersPreapplyBlock => OCaml::of_int(2),
-            FfiRpcService::HelpersCurrentLevel => OCaml::of_int(3),
-            FfiRpcService::DelegatesMinimalValidTime => OCaml::of_int(4),
-            FfiRpcService::HelpersForgeOperations => OCaml::of_int(5),
-            FfiRpcService::ContextContract => OCaml::of_int(6),
-        };
-        unsafe { OCamlAllocResult::of(ocaml_int.raw()) }
+impl_to_ocaml_variant! {
+    FfiRpcService {
+        FfiRpcService::HelpersRunOperation,
+        FfiRpcService::HelpersPreapplyOperations,
+        FfiRpcService::HelpersPreapplyBlock,
+        FfiRpcService::HelpersCurrentLevel,
+        FfiRpcService::DelegatesMinimalValidTime,
+        FfiRpcService::HelpersForgeOperations,
+        FfiRpcService::ContextContract,
     }
 }
 
