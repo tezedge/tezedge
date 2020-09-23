@@ -12,8 +12,8 @@ use crate::ffi::{
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 use znfe::{
-    impl_from_ocaml_record, ocaml_unpack_variant, FromOCaml, IntoRust, OCaml, OCamlBytes, OCamlInt,
-    OCamlInt32, OCamlList,
+    impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, IntoRust, OCaml, OCamlBytes,
+    OCamlInt, OCamlInt32, OCamlList,
 };
 
 macro_rules! from_ocaml_hash {
@@ -105,33 +105,28 @@ impl_from_ocaml_record! {
 }
 
 // TODO: remove this after TE-207 has been solved
-unsafe impl FromOCaml<Path> for FfiPath {
-    fn from_ocaml(v: OCaml<Path>) -> Self {
-        let result = ocaml_unpack_variant! {
-            v => {
-                Left(path: Path, right: OCamlHash) => {
-                    let path: FfiPath = path;
-                    FfiPath(
-                        Path::Left(
-                            Box::new(
-                                PathLeft::new(
-                                    path.0,
-                                    right,
-                                    Default::default()))))
-                },
-                Right(left: OCamlHash, path: Path) => {
-                    let path: FfiPath = path;
-                    FfiPath(
-                        Path::Right(
-                            Box::new(
-                                PathRight::new(
-                                    left,
-                                    path.0,
-                                    Default::default()))))
-                },
-                Op => FfiPath(Path::Op),
-            }
-        };
-        result.unwrap()
+impl_from_ocaml_variant! {
+    Path => FfiPath {
+        Left(path: Path, right: OCamlHash) => {
+            let path: FfiPath = path;
+            FfiPath(
+                Path::Left(
+                    Box::new(
+                        PathLeft::new(
+                            path.0,
+                            right,
+                            Default::default()))))
+        },
+        Right(left: OCamlHash, path: Path) => {
+            let path: FfiPath = path;
+            FfiPath(
+                Path::Right(
+                    Box::new(
+                        PathRight::new(
+                            left,
+                            path.0,
+                            Default::default()))))
+        },
+        Op => FfiPath(Path::Op),
     }
 }
