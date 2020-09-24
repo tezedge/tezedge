@@ -465,7 +465,6 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
                                 msg: PeerMessageReceived {
                                     peer: myself.clone(),
                                     message: Arc::new(msg),
-                                    peer_address,
                                 }.into(),
                                 topic: NetworkChannelTopic::NetworkEvents.into(),
                             }, Some(myself.clone().into()));
