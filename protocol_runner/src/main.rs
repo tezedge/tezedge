@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![forbid(unsafe_code)]
 
 //! Separate Tezos protocol runner, as we used OCaml protocol more and more, we noticed increasing
 //! problems, from panics to high memory usage, for better stability, we separated protocol into

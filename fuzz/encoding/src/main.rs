@@ -1,3 +1,7 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+#![forbid(unsafe_code)]
+
 use std::iter;
 use tezos_encoding::binary_reader::BinaryReader;
 use tezos_encoding::encoding::{Encoding, Field};

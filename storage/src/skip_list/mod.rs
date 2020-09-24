@@ -17,7 +17,6 @@
 //! {S0 → S1 → S2}.
 //! * State re-creation for first 16 blocks can be done simply by traversing faster lanes (L1), and applying
 //! aggregated changes on lane descend {S015, S1215}.
-#![allow(dead_code)]
 
 pub use crate::skip_list::content::{Bucket, ListValue, SkipListError};
 pub use crate::skip_list::lane::{Lane, TypedLane};

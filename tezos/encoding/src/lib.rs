@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+#![forbid(unsafe_code)]
 
 //! This crate provides serialization and deserialization functionality for the data types used by the Tezos shell.
-
 
 pub mod types;
 mod bit_utils;

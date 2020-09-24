@@ -10,7 +10,7 @@ use crate::handlers::handler_messages::PeerMetrics;
 /// Peer specific details about transfer *FROM* peer.
 pub(crate) struct PeerMonitor {
     pub identifier: ActorUri,
-    pub total_transferred: usize,
+    total_transferred: usize,
     pub addr: Option<SocketAddr>,
     pub public_key: Option<String>,
     current_transferred: usize,
@@ -38,10 +38,6 @@ impl PeerMonitor {
 
     pub fn current_speed(&self) -> f32 {
         self.current_transferred as f32 / self.last_update.elapsed().as_secs_f32()
-    }
-
-    pub fn transferred_bytes(&self) -> usize {
-        self.total_transferred
     }
 
     pub fn incoming_bytes(&mut self, incoming: usize) {
