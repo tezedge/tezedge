@@ -1230,8 +1230,8 @@ pub mod tests {
 
     fn create_tokio_runtime() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new()
+            .threaded_scheduler()
             .enable_all()
-            .core_threads(1)
             .build()
             .expect("Failed to create tokio runtime")
     }

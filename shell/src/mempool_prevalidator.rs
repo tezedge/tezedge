@@ -443,7 +443,7 @@ fn begin_construction(protocol_controller: &ProtocolController,
 }
 
 fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controller: &ProtocolController, state: &mut MempoolState, log: &Logger) {
-    debug!(log, "Mempool - handle_pending_operations "; "pendings" => state.pending.len(), "can" => state.can_handle_pending());
+    debug!(log, "Mempool - handle_pending_operations"; "pendings" => state.pending.len(), "can_handle" => state.can_handle_pending());
 
     if !state.can_handle_pending() {
         trace!(log, "Mempool - handle_pending_operations - nothing to handle");
@@ -476,7 +476,7 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                     ) {
                         Ok(response) => {
                             let result = response.result;
-                            debug!(log, "Mempool - validate operation response finished with success "; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
+                            debug!(log, "Mempool - validate operation response finished with success"; "hash" => HashType::OperationHash.bytes_to_string(&pending_op), "result" => format!("{:?}", result));
 
                             // merge new result with existing one
                             state_changed |= state.add_result(&result);

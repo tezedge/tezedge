@@ -14,6 +14,8 @@ use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::block_header::BlockHeader;
 
+pub const HISTORY_MAX_SIZE: u8 = u8::MAX;
+
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranchMessage {
     #[get = "pub"]
@@ -47,6 +49,7 @@ has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
 pub struct CurrentBranch {
     #[get = "pub"]
     current_head: BlockHeader,
+    /// These hashes go from the top of the chain to the bottom (to genesis)
     #[get = "pub"]
     history: Vec<BlockHash>,
     #[serde(skip_serializing)]
