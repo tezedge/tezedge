@@ -74,9 +74,10 @@ pub mod infra {
 
     use riker::actors::*;
     use riker::system::SystemBuilder;
-    use slog::Logger;
+    use slog::{Logger, warn};
+    use tokio::runtime::Runtime;
 
-    use networking::p2p::network_channel::NetworkChannel;
+    use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
     use shell::context_listener::ContextListener;
@@ -93,11 +94,14 @@ pub mod infra {
     use crate::{common, test_data};
 
     pub struct NodeInfrastructure {
+        name: String,
         pub log: Logger,
         pub shell_channel: ShellChannelRef,
+        pub network_channel: NetworkChannelRef,
         pub actor_system: ActorSystem,
         pub tmp_storage: TmpStorage,
         pub tezos_env: TezosEnvironmentConfiguration,
+        pub tokio_runtime: Runtime,
         apply_restarting_feature: Arc<AtomicBool>,
     }
 
@@ -106,6 +110,8 @@ pub mod infra {
             // logger
             let log_level = common::log_level();
             let log = common::create_logger(log_level.clone());
+
+            warn!(log, "Starting node infrastructure"; "name" => name);
 
             // environement
             let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
@@ -182,6 +188,8 @@ pub mod infra {
                 )
             );
 
+            let tokio_runtime = create_tokio_runtime();
+
             // run actor's
             let actor_system = SystemBuilder::new().name(name).log(log.clone()).create().expect("Failed to create actor system");
             let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
@@ -200,9 +208,12 @@ pub mod infra {
 
             Ok(
                 NodeInfrastructure {
+                    name: String::from(name),
                     log,
                     apply_restarting_feature,
                     shell_channel,
+                    network_channel,
+                    tokio_runtime,
                     actor_system,
                     tmp_storage,
                     tezos_env: tezos_env.clone(),
@@ -211,6 +222,8 @@ pub mod infra {
         }
 
         pub fn stop(&mut self) {
+            warn!(self.log, "Stopping node infrastructure"; "name" => self.name.clone());
+
             // clean up
             // shutdown events listening
             self.apply_restarting_feature.store(false, Ordering::Release);
@@ -225,6 +238,15 @@ pub mod infra {
             thread::sleep(Duration::from_secs(2));
 
             let _ = self.actor_system.shutdown();
+            warn!(self.log, "Node infrastructure stopped"; "name" => self.name.clone());
         }
+    }
+
+    fn create_tokio_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new()
+            .basic_scheduler()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime")
     }
 }
