@@ -40,7 +40,6 @@ pub trait ContextApi {
 
 impl ContextApi for TezedgeContext {
     fn set(&mut self, _context_hash: &Option<ContextHash>, key: &[String], value: &[u8]) -> Result<(), ContextError> {
-        //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.set(key.to_vec(), value.to_vec())?;
         Ok(())
@@ -55,8 +54,6 @@ impl ContextApi for TezedgeContext {
     fn commit(&mut self, block_hash: &BlockHash, parent_context_hash: &Option<ContextHash>,
               new_context_hash: &ContextHash, author: String, message: String,
               date: i64) -> Result<(), ContextError> {
-        //TODO ensure_eq_context_hash
-        //date == time?
 
         let mut merkle = self.merkle.write().expect("lock poisoning");
         let date: u64 = date.try_into()?;
@@ -93,21 +90,18 @@ impl ContextApi for TezedgeContext {
     }
     
     fn delete_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_delete: &[String]) -> Result<(), ContextError> {
-        //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.delete(key_prefix_to_delete.to_vec())?;
         Ok(())
     }
 
     fn remove_recursively_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_remove: &[String]) -> Result<(), ContextError> {
-        //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.delete(key_prefix_to_remove.to_vec())?;
         Ok(())
     }
 
     fn copy_to_diff(&self, _context_hash: &Option<ContextHash>, from_key: &[String], to_key: &[String]) -> Result<(), ContextError> {
-        //TODO ensure_eq_context_hash
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.copy(from_key.to_vec(), to_key.to_vec())?;
         Ok(())
@@ -115,8 +109,6 @@ impl ContextApi for TezedgeContext {
 
     fn get_key(&self, key: &Vec<String>) -> Result<Vec<u8>, ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        //TODO NOTE: get_key() tested on shadow branch used get_history() with hash converted from
-        //level
         let val = merkle.get(key)?;
         Ok(val)
     }
@@ -125,7 +117,6 @@ impl ContextApi for TezedgeContext {
         let merkle = self.merkle.read().expect("lock poisoning");
         // clients may pass in a prefix with elements containing slashes (expecting us to split)
         // we need to join with '/' and split again
-        // TODO IMPORTANT: check if it's necessary to do the same thing in all other context methods
         let key = to_key(key).split('/').map(|s| s.to_string()).collect();
 
         match merkle.get_history(context_hash, &key) {
@@ -144,7 +135,6 @@ impl ContextApi for TezedgeContext {
         let merkle = self.merkle.read().expect("lock poisoning");
         // clients may pass in a prefix with elements containing slashes (expecting us to split)
         // we need to join with '/' and split again
-        // TODO IMPORTANT: check if it's necessary to do the same thing in all other context methods
         let prefix = to_key(prefix).split('/').map(|s| s.to_string()).collect();
         merkle.get_key_values_by_prefix(context_hash, &prefix)
     }
