@@ -116,8 +116,6 @@ mod tests {
 
     // number of block
     const NUMBER_OF_BLOCKS: usize = 5000;
-    // number of block per cycle
-    const BLOCKS_PER_CYCLE: usize = 4096;
     // number of shell events
     const NUMBER_OF_BLOCK_EVENTS: usize = 10000;
 

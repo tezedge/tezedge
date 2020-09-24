@@ -38,10 +38,6 @@ impl BootstrapMonitor {
     }
 
     #[inline]
-    pub fn level(&self) -> usize {
-        self.level
-    }
-    #[inline]
     pub fn set_level(&mut self, level: usize)  {
         // only set peer current head level for values higher than the current level
         self.level = if self.level > level { self.level } else { level }
@@ -58,10 +54,7 @@ impl BootstrapMonitor {
             0
         }
     }
-    #[inline]
-    pub fn downloaded_blocks(&self) -> usize {
-        self.downloaded_blocks
-    }
+
     #[inline]
     pub fn increase_block_count(&mut self) {
         self.increase_block_count_by(1);

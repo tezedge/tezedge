@@ -389,22 +389,4 @@ mod tests {
         let original = NodeHeader::new(0, 0, 0);
         assert_eq!(original.index(), 0);
     }
-
-    pub fn header_base_index() {
-        let original = NodeHeader::new(0, 0, 0);
-        assert_eq!(original.base_index(), 0);
-        let original = NodeHeader::new(0, 1, 0);
-        assert_eq!(original.base_index(), 7);
-        let original = NodeHeader::new(0, 2, 0);
-        assert_eq!(original.base_index(), 63);
-    }
-
-    pub fn header_lower_index() {
-        let original = NodeHeader::new(0, 0, 0);
-        assert_eq!(original.lower_index(), 0);
-        let original = NodeHeader::new(0, 1, 0);
-        assert_eq!(original.lower_index(), 7);
-        let original = NodeHeader::new(0, 2, 0);
-        assert_eq!(original.lower_index(), 7);
-    }
 }

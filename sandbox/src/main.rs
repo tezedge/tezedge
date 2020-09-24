@@ -1,3 +1,7 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+#![forbid(unsafe_code)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
