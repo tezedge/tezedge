@@ -46,10 +46,9 @@ use std::path::Path;
 use rocksdb::{DB, ColumnFamilyDescriptor, Options, IteratorMode};
 use crate::persistent::{default_table_options, KeyValueSchema};
 use std::hash::Hash;
-use im::OrdMap as OrdMap;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use failure::Fail;
 use std::sync::Arc;
 
@@ -71,7 +70,7 @@ struct Node {
     entry_hash: EntryHash,
 }
 
-type Tree = OrdMap<String, Node>;
+type Tree = BTreeMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
 struct Commit {
