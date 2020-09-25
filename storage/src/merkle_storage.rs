@@ -43,7 +43,7 @@
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::path::Path;
-use rocksdb::{DB, ColumnFamilyDescriptor, Options, IteratorMode};
+use rocksdb::{DB, ColumnFamilyDescriptor, Options, IteratorMode, WriteBatch};
 use crate::persistent::{default_table_options, KeyValueSchema};
 use std::hash::Hash;
 use serde::Deserialize;
@@ -278,7 +278,7 @@ impl MerkleStorage {
         let entry = Entry::Commit(new_commit.clone());
 
         self.put_to_staging_area(&self.hash_commit(&new_commit), entry.clone());
-        self.persist_staged_entry_recursively(&entry)?;
+        self.persist_staged_entry_to_db(&entry)?;
         self.staged = HashMap::new();
         self.last_commit = Some(new_commit.clone());
         Ok(self.hash_commit(&new_commit))
@@ -410,11 +410,25 @@ impl MerkleStorage {
         self.staged.insert(key.to_vec(), value);
     }
 
-    /// Persists an entry and its descendants from staged area to disk.
-    fn persist_staged_entry_recursively(&self, entry: &Entry) -> Result<(), MerkleError> {
-        self.db.put(
+    /// Persists an entry and its descendants from staged area to database on disk.
+    fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
+        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+
+        // build list of entries to be persisted
+        self.get_entries_recursively(entry, &mut batch)?;
+
+        // atomically write all entries in one batch to DB
+        self.db.write(batch)?;
+
+        Ok(())
+    }
+
+    /// Builds vector of entries to be persisted to DB, recursively
+    fn get_entries_recursively(&self, entry: &Entry, batch: &mut WriteBatch ) -> Result<(), MerkleError> {
+        // add entry to batch
+        batch.put(
             self.hash_entry(entry),
-            bincode::serialize(entry)?)?;
+            bincode::serialize(entry)?);
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -424,7 +438,7 @@ impl MerkleStorage {
                 tree.iter().map(|(_, child_node)| {
                     match self.staged.get(&child_node.entry_hash) {
                         None => Ok(()),
-                        Some(entry) => self.persist_staged_entry_recursively(entry),
+                        Some(entry) => self.get_entries_recursively(entry, batch),
                     }
                 }).find_map(|res| {
                     match res {
@@ -436,7 +450,7 @@ impl MerkleStorage {
             Entry::Commit(commit) => {
                 match self.get_entry(&commit.root_hash) {
                     Err(err) => Err(err),
-                    Ok(entry) => self.persist_staged_entry_recursively(&entry),
+                    Ok(entry) => self.get_entries_recursively(&entry, batch),
                 }
             }
         }
