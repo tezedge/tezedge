@@ -109,16 +109,16 @@ sudo apt install libhidapi-dev
 
 **4. Supported Linux distributions**
 
-We are linking rust code with pre-compiled Tezos shared library. For your convenience we have created pre-compiled binary files
-for most of the popular linux distributions:
+We are linking Rust code with a pre-compiled Tezos shared library. For your convenience, we have created pre-compiled binary files
+for most of the popular Linux distributions.
 
-supported linux distributions:
+Supported Linux distributions:
 * Ubuntu (16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10)
 * Debian (9, 10 )
 * OpenSUSE (15.1, 15.2)
 * CentOS (7, 8)
 
-If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
+If you are missing support for your favorite Linux distribution, create a pull request on the [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
 
 **5. Supported MacOS versions**
 
