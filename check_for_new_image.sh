@@ -10,6 +10,7 @@ fi
 OWNER="adrnagy"
 REPOSITORY="tezedge-private"
 TAG="distroless"
+TEZEDGE_PATH="/home/ado/tezedge"
 
 LATEST="`curl https://hub.docker.com/v2/repositories/$OWNER/$REPOSITORY/tags/$TAG/?page_size=100 | jq -r '.images|.[]|.digest'`"
 LATEST="$OWNER/$REPOSITORY@$LATEST"
@@ -21,7 +22,5 @@ if [ "$RUNNING" == "$LATEST" ];then
 else
     echo "update!"
     echo "$RUNNING != $LATEST"
-    docker-compose down
-    docker-compose pull
-    docker-compose up
+    cd $TEZEDGE_PATH && docker-compose down && docker-compose pull && docker-compose up -d
 fi

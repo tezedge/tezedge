@@ -1,0 +1,13 @@
+version: "3"
+
+services:
+     
+  node:
+    image: adrnagy/tezedge-private:distroless
+    hostname: node
+    ports:
+      - "4927:4927"
+      - "19732:9732"
+      - "18732:18732"
+    networks:
+      - default
