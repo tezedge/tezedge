@@ -191,7 +191,7 @@ impl MerkleStorage {
         }
     }
 
-    // recursion is risky (stack overflow) and inefficient, try to do it iteratively..
+    // TODO: recursion is risky (stack overflow) and inefficient, try to do it iteratively..
     fn get_key_values_from_tree_recursively(&self, path: &str, entry: &Entry, entries: &mut Vec<(ContextKey, ContextValue)> ) -> Result<(), MerkleError> {
         match entry {
             Entry::Blob(blob) => {
@@ -223,9 +223,7 @@ impl MerkleStorage {
             }
         }
     }
-    // first thought about making it an iterator (like a generator) but it'd be too complex with
-    // the recursion..maybe there's no harm in just building a collection of matching key-values
-    // and returning it
+
     pub fn get_key_values_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
         let commit = self.get_commit(&context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
@@ -491,25 +489,16 @@ impl MerkleStorage {
         let mut hasher = State::new(HASH_LEN, None).unwrap();
         let mut out = Vec::with_capacity(HASH_LEN);
 
-        // println!("HASING A TREE...");
         hasher.update(&(tree.len() as u64).to_be_bytes()).expect("hasher");
-        //  println!("len of tree: {:x?}", (tree.len() as u64).to_be_bytes());
         tree.iter().for_each(|(k, v)| {
-            // println!("key {} pointing to {:x?}", k, v.entry_hash.clone().drain(0..4));
             hasher.update(&self.encode_irmin_node_kind(&v.node_kind)).expect("hasher");
-            // println!("child node kind encoded {:x?}", &self.encode_irmin_node_kind(&v.node_kind));
             hasher.update(&[k.len() as u8]).expect("hasher");
-            // println!("key len {:x?}", [k.len() as u8]);
             hasher.update(&k.clone().into_bytes()).expect("hasher");
-            // println!("key bytes {:x?} ({})", k.as_bytes(), k);
             hasher.update(&(HASH_LEN as u64).to_be_bytes()).expect("hasher");
-            // println!("len of hash: {:x?}", (v.entry_hash.len() as u64).to_be_bytes());
             hasher.update(&v.entry_hash).expect("hasher");
-            // println!("entry hash bytes {:x?}", v.entry_hash);
         });
         let hash = hasher.finalize().unwrap();
         out.extend_from_slice(hash.as_ref());
-        // println!("HASHED TREE {:x?}\n", out);
         out
     }
 
@@ -517,12 +506,9 @@ impl MerkleStorage {
         let mut hasher = State::new(HASH_LEN, None).unwrap();
         let mut out = Vec::with_capacity(HASH_LEN);
         hasher.update(&(blob.len() as u64).to_be_bytes()).expect("Failed to update hasher state");
-        // println!("blob len: {:x?}", (blob.len() as u64).to_be_bytes());
         hasher.update(blob).expect("Failed to update hasher state");
-        // println!("blob: {:x?}", blob);
         let hash = hasher.finalize().unwrap();
         out.extend_from_slice(hash.as_ref());
-        // println!("BLOB HASH: {:x?}", out);
         out
     }
 
