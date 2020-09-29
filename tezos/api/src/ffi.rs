@@ -3,7 +3,6 @@
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 
-use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 
@@ -147,10 +146,20 @@ impl fmt::Debug for OperationProtocolDataJsonWithErrorListJson {
     }
 }
 
+trait HasOperationHash {
+    fn operation_hash(&self) -> &OperationHash;
+}
+
 #[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct Applied {
     pub hash: OperationHash,
     pub protocol_data_json: OperationProtocolDataJson,
+}
+
+impl HasOperationHash for Applied {
+    fn operation_hash(&self) -> &OperationHash {
+        &self.hash
+    }
 }
 
 #[inline]
@@ -176,6 +185,12 @@ pub struct Errored {
     pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
 }
 
+impl HasOperationHash for Errored {
+    fn operation_hash(&self) -> &OperationHash {
+        &self.hash
+    }
+}
+
 impl fmt::Debug for Errored {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let operation_hash_encoding = HashType::OperationHash;
@@ -197,65 +212,37 @@ pub struct ValidateOperationResult {
 
 impl ValidateOperationResult {
     /// Merges result with new one, and returns `true/false` if something was changed
-    pub fn merge(&mut self, new_result: &ValidateOperationResult) -> bool {
-        let mut changed = self.merge_applied(&new_result.applied);
-        changed |= self.merge_refused(&new_result.refused);
-        changed |= self.merge_branch_refused(&new_result.branch_refused);
-        changed |= self.merge_branch_delayed(&new_result.branch_delayed);
+    pub fn merge(&mut self, new_result: ValidateOperationResult) -> bool {
+        let mut changed = Self::merge_items(&mut self.applied, new_result.applied);
+        changed |= Self::merge_items(&mut self.refused, new_result.refused);
+        changed |= Self::merge_items(&mut self.branch_refused,  new_result.branch_refused);
+        changed |= Self::merge_items(&mut self.branch_delayed, new_result.branch_delayed);
         changed
     }
 
-    fn merge_applied(&mut self, new_items: &[Applied]) -> bool {
+    fn merge_items<ITEM: HasOperationHash>(result_items: &mut Vec<ITEM>, new_items: Vec<ITEM>) -> bool {
+
         let mut changed = false;
         let mut added = false;
-        let mut m = HashMap::new();
 
-        for a in &self.applied {
-            m.insert(a.hash.clone(), a.clone());
-        }
-        for na in new_items {
-            match m.insert(na.hash.clone(), na.clone()) {
-                Some(_) => changed |= true,
-                None => added |= true,
-            };
-        }
+        for new_item in new_items {
+            // check if present
+            let old_value = result_items
+                .iter()
+                .position(|old_item| old_item.operation_hash().eq(new_item.operation_hash()));
 
-        if added || changed {
-            self.applied = m.values().cloned().collect();
-        }
-        added || changed
-    }
-
-    fn merge_refused(&mut self, new_items: &[Errored]) -> bool {
-        Self::merge_errored(&mut self.refused, new_items)
-    }
-
-    fn merge_branch_refused(&mut self, new_items: &[Errored]) -> bool {
-        Self::merge_errored(&mut self.branch_refused, new_items)
-    }
-
-    fn merge_branch_delayed(&mut self, new_items: &[Errored]) -> bool {
-        Self::merge_errored(&mut self.branch_delayed, new_items)
-    }
-
-    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &[Errored]) -> bool {
-        let mut changed = false;
-        let mut added = false;
-        let mut m = HashMap::new();
-
-        for a in old_items.iter_mut() {
-            m.insert(a.hash.clone(), (*a).clone());
-        }
-        for na in new_items {
-            match m.insert(na.hash.clone(), na.clone()) {
-                Some(_) => changed |= true,
-                None => added |= true,
-            };
+            // replace or add
+            if let Some(idx) = old_value {
+                // replace
+                result_items[idx] = new_item;
+                changed |= true;
+            } else {
+                // add
+                result_items.push(new_item);
+                added |= true;
+            }
         }
 
-        if added || changed {
-            *old_items = m.values().cloned().collect();
-        }
         added || changed
     }
 }
@@ -701,6 +688,164 @@ impl From<CallError> for ComputePathError {
             CallError::InvalidResponseData { message } => ComputePathError::InvalidRequestResponseData {
                 message
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_operation_result_merge() -> Result<(), failure::Error> {
+        let mut validate_result1 = validate_operation_result("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ", "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj");
+        assert_eq!(2, validate_result1.applied.len());
+        assert_eq!(2, validate_result1.refused.len());
+        assert_eq!(2, validate_result1.branch_delayed.len());
+        assert_eq!(2, validate_result1.branch_refused.len());
+
+        // merge empty -> no change
+        assert_eq!(
+            false,
+            validate_result1.merge(ValidateOperationResult {
+                applied: vec![],
+                refused: vec![],
+                branch_refused: vec![],
+                branch_delayed: vec![],
+            })
+        );
+        assert_eq!(2, validate_result1.applied.len());
+        assert_eq!(2, validate_result1.refused.len());
+        assert_eq!(2, validate_result1.branch_delayed.len());
+        assert_eq!(2, validate_result1.branch_refused.len());
+
+        // merge
+        let validate_result2 = validate_operation_result("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ", "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr");
+        assert!(validate_result1.merge(validate_result2));
+        assert_eq!(3, validate_result1.applied.len());
+        assert_eq!(3, validate_result1.refused.len());
+        assert_eq!(3, validate_result1.branch_delayed.len());
+        assert_eq!(3, validate_result1.branch_refused.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_operation_result_merge_items() -> Result<(), failure::Error> {
+        let mut validate_result = ValidateOperationResult {
+            applied: vec![],
+            refused: vec![],
+            branch_refused: vec![],
+            branch_delayed: vec![],
+        };
+        assert_eq!(0, validate_result.applied.len());
+        assert_eq!(false, ValidateOperationResult::merge_items(&mut validate_result.applied, vec![]));
+
+        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                protocol_data_json: "protocol_data_json1".to_string(),
+            },
+        ]));
+        assert_eq!(1, validate_result.applied.len());
+        assert_eq!("protocol_data_json1", validate_result.applied[0].protocol_data_json);
+
+        // merge the same -> test change
+        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                protocol_data_json: "protocol_data_json2".to_string(),
+            },
+        ]));
+        assert_eq!(1, validate_result.applied.len());
+        assert_eq!("protocol_data_json2", validate_result.applied[0].protocol_data_json);
+
+        // merge another new one
+        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
+                protocol_data_json: "protocol_data_json2".to_string(),
+            },
+        ]));
+        assert_eq!(2, validate_result.applied.len());
+
+        Ok(())
+    }
+
+    fn validate_operation_result(op1: &str, op2: &str) -> ValidateOperationResult {
+        let applied = vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+            },
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+            }
+        ];
+
+        let branch_delayed = vec![
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
+        let branch_refused = vec![
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
+        let refused = vec![
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
+        ValidateOperationResult {
+            applied,
+            branch_delayed,
+            branch_refused,
+            refused,
         }
     }
 }

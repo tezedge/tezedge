@@ -78,7 +78,7 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
 
     // stop nodes
     drop(node);
-    mocked_peer_node.stop();
+    drop(mocked_peer_node);
 
     Ok(())
 }
@@ -469,8 +469,14 @@ mod test_node_peer {
             info!(log, "[TEST_PEER_NODE] Stopped to accept messages"; "ip" => format!("{:?}", &peer_address));
         }
 
-        pub fn stop(&self) {
+        pub fn stop(&mut self) {
             self.run.store(false, Ordering::Release);
+        }
+    }
+
+    impl Drop for TestNodePeer {
+        fn drop(&mut self) {
+            self.stop();
         }
     }
 
