@@ -160,7 +160,6 @@ fn to_key(key: &[String]) -> String {
 // context implementation using merkle-tree-like storage
 pub struct TezedgeContext {
     block_storage: BlockStorage,
-//    storage: ContextList,
     merkle: Arc<RwLock<MerkleStorage>>,
 }
 
