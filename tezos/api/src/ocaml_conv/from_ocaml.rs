@@ -11,7 +11,7 @@ use crate::ffi::{
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
-use znfe::{
+use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, IntoRust, OCaml, OCamlBytes,
     OCamlInt, OCamlInt32, OCamlList,
 };

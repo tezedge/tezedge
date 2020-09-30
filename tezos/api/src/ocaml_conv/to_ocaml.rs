@@ -13,9 +13,10 @@ use crate::ffi::{
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-use znfe::{
-    impl_to_ocaml_record, impl_to_ocaml_variant, ocaml, ocaml_alloc_record, OCamlAllocResult,
-    OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, ToOCaml,
+use ocaml_interop::{
+    impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant,
+    OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
+    ToOCaml,
 };
 
 // OCaml type tags
@@ -23,48 +24,44 @@ use znfe::{
 struct BlockHeaderShellHeader {}
 struct OperationShellHeader {}
 
-ocaml! {
-    alloc fn alloc_ocaml_hash(hash: OCamlBytes) -> OCamlHash;
-    alloc fn alloc_operation_list_list_hash(hash: OCamlBytes) -> OCamlOperationListListHash;
-    alloc fn alloc_operation_hash(hash: OCamlBytes) -> OCamlOperationHash;
-    alloc fn alloc_block_hash(hash: OCamlBytes) -> OCamlBlockHash;
-    alloc fn alloc_context_hash(hash: OCamlBytes) -> OCamlContextHash;
-    alloc fn alloc_protocol_hash(hash: OCamlBytes) -> OCamlProtocolHash;
-}
-
 // Hashes
 
 impl<'a> From<&'a Hash> for TaggedHash<'a> {
     fn from(bytes: &'a Hash) -> Self {
-        Self(bytes)
+        TaggedHash::Hash(bytes)
     }
 }
 
 unsafe impl<'a> ToOCaml<OCamlHash> for TaggedHash<'a> {
-    fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<OCamlHash> {
-        unsafe { alloc_ocaml_hash(token, self.0) }
+    fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<OCamlHash> {
+        ocaml_alloc_variant! {
+            self => {
+                TaggedHash::Hash(hash: OCamlBytes)
+            }
+        }
     }
 }
 
 macro_rules! to_ocaml_hash {
-    ($ocaml_name:ty, $rust_name:ty, $allocate:ident) => {
+    ($ocaml_name:ty, $rust_name:ty) => {
         unsafe impl ToOCaml<$ocaml_name> for $rust_name {
-            fn to_ocaml(&self, token: OCamlAllocToken) -> OCamlAllocResult<$ocaml_name> {
-                unsafe { $allocate(token, self) }
+            fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<$ocaml_name> {
+                let tagged = TaggedHash::Hash(self);
+                ocaml_alloc_variant! {
+                    tagged => {
+                        TaggedHash::Hash(hash: OCamlBytes)
+                    }
+                }
             }
         }
     };
 }
 
-to_ocaml_hash!(
-    OCamlOperationListListHash,
-    OperationListListHash,
-    alloc_operation_list_list_hash
-);
-to_ocaml_hash!(OCamlOperationHash, Hash, alloc_operation_hash);
-to_ocaml_hash!(OCamlBlockHash, BlockHash, alloc_block_hash);
-to_ocaml_hash!(OCamlContextHash, ContextHash, alloc_context_hash);
-to_ocaml_hash!(OCamlProtocolHash, ProtocolHash, alloc_protocol_hash);
+to_ocaml_hash!(OCamlOperationListListHash, OperationListListHash);
+to_ocaml_hash!(OCamlOperationHash, Hash);
+to_ocaml_hash!(OCamlBlockHash, BlockHash);
+to_ocaml_hash!(OCamlContextHash, ContextHash);
+to_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
 
 // Other
 
@@ -96,7 +93,7 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeader<'a> {
 impl<'a> From<&'a Operation> for FfiOperationShellHeader<'a> {
     fn from(operation: &'a Operation) -> Self {
         Self {
-            branch: TaggedHash(operation.branch()),
+            branch: TaggedHash::Hash(operation.branch()),
         }
     }
 }
@@ -200,7 +197,7 @@ impl_to_ocaml_record! {
 unsafe impl<'a> ToOCaml<BlockHeaderShellHeader> for FfiBlockHeaderShellHeader<'a> {
     fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<BlockHeaderShellHeader> {
         ocaml_alloc_record! {
-            self => BlockHeaderShellHeader {
+            self {
                 level: OCamlInt32,
                 proto_level: OCamlInt,
                 predecessor: OCamlHash,
@@ -217,7 +214,7 @@ unsafe impl<'a> ToOCaml<BlockHeaderShellHeader> for FfiBlockHeaderShellHeader<'a
 unsafe impl<'a> ToOCaml<BlockHeader> for FfiBlockHeader<'a> {
     fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<BlockHeader> {
         ocaml_alloc_record! {
-            self => BlockHeader {
+            self {
                 shell: BlockHeaderShellHeader,
                 protocol_data: OCamlBytes,
             }
@@ -228,7 +225,7 @@ unsafe impl<'a> ToOCaml<BlockHeader> for FfiBlockHeader<'a> {
 unsafe impl<'a> ToOCaml<OperationShellHeader> for FfiOperationShellHeader<'a> {
     fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<OperationShellHeader> {
         ocaml_alloc_record! {
-            self => OperationShellHeader {
+            self {
                 branch: OCamlHash,
             }
         }
@@ -238,7 +235,7 @@ unsafe impl<'a> ToOCaml<OperationShellHeader> for FfiOperationShellHeader<'a> {
 unsafe impl<'a> ToOCaml<Operation> for FfiOperation<'a> {
     fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<Operation> {
         ocaml_alloc_record! {
-            self => Operation {
+            self {
                 shell: OperationShellHeader,
                 data: OCamlBytes,
             }

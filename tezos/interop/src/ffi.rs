@@ -3,7 +3,7 @@
 
 use std::sync::Once;
 
-use znfe::{
+use ocaml_interop::{
     ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, FromOCaml, IntoRust, OCaml, OCamlBytes,
     OCamlFn1, OCamlInt32, OCamlList, ToOCaml,
 };
@@ -24,7 +24,7 @@ mod tezos_ffi {
         ocaml_conv::OCamlOperationHash,
     };
     use tezos_messages::p2p::encoding::operations_for_blocks::Path;
-    use znfe::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
 
     ocaml! {
         pub fn apply_block(apply_block_request: ApplyBlockRequest) -> ApplyBlockResponse;
@@ -66,7 +66,7 @@ pub fn setup() {
     static INIT: Once = Once::new();
 
     INIT.call_once(|| {
-        znfe::OCamlRuntime::init_persistent();
+        ocaml_interop::OCamlRuntime::init_persistent();
         tezos_interop_callback::initialize_callbacks();
     });
 }
@@ -75,7 +75,7 @@ pub fn setup() {
 ///
 /// https://caml.inria.fr/pub/docs/manual-ocaml/intfc.html#sec467
 pub fn shutdown() {
-    znfe::OCamlRuntime::shutdown_persistent()
+    ocaml_interop::OCamlRuntime::shutdown_persistent()
 }
 
 pub fn change_runtime_configuration(
@@ -86,7 +86,7 @@ pub fn change_runtime_configuration(
             let result = ocaml_call!(tezos_ffi::change_runtime_configuration(
                 gc,
                 OCaml::of_bool(settings.log_enabled),
-                OCaml::of_int(settings.no_of_ffi_calls_treshold_for_gc as i64),
+                OCaml::of_i32(settings.no_of_ffi_calls_treshold_for_gc),
                 OCaml::of_bool(settings.debug_mode)
             ));
             match result {
@@ -173,7 +173,7 @@ pub fn genesis_result_data(
             let ref context_hash = to_ocaml!(gc, context_hash).keep(gc);
             let ref chain_id = to_ocaml!(gc, chain_id).keep(gc);
             let protocol_hash = ocaml_alloc!(protocol_hash.to_ocaml(gc));
-            let genesis_max_operations_ttl = OCaml::of_int(genesis_max_operations_ttl as i64);
+            let genesis_max_operations_ttl = OCaml::of_i32(genesis_max_operations_ttl as i32);
 
             let result = ocaml_call!(tezos_ffi::genesis_result_data(
                 gc,

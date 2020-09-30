@@ -25,7 +25,7 @@ use tezos_messages::p2p::{
     encoding::operations_for_blocks::OperationsForBlocksMessage,
     encoding::operations_for_blocks::Path,
 };
-use znfe::{
+use ocaml_interop::{
     ocaml_call, ocaml_frame, to_ocaml, IntoRust, OCaml, OCamlBytes, OCamlInt, OCamlList, OCamlRef,
     ToOCaml,
 };
@@ -45,7 +45,7 @@ mod tezos_ffi {
         ocaml_conv::OCamlOperationHash, ocaml_conv::OCamlProtocolHash,
     };
     use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-    use znfe::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
 
     ocaml! {
         pub fn construct_and_compare_hash(operation_hash: OCamlOperationHash, hash_bytes: OCamlBytes) -> bool;
@@ -230,8 +230,7 @@ fn test_apply_block_request_conv() {
                 to_ocaml!(gc, FfiBlockHeader::from(&request.block_header)).keep(gc);
             let ref pred_header: OCamlRef<BlockHeader> =
                 to_ocaml!(gc, FfiBlockHeader::from(&request.pred_header)).keep(gc);
-            let max_operations_ttl: OCaml<OCamlInt> =
-                OCaml::of_int(request.max_operations_ttl as i64);
+            let max_operations_ttl: OCaml<OCamlInt> = OCaml::of_i32(request.max_operations_ttl);
             let operations: OCaml<OCamlList<OCamlList<Operation>>> = to_ocaml!(gc, ffi_operations);
 
             ocaml_call!(tezos_ffi::construct_and_compare_apply_block_request(

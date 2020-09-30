@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use znfe::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
+use ocaml_interop::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
 
 use tezos_context::channel::*;
 
@@ -55,7 +55,7 @@ ocaml_export! {
         keyval_and_json: OCaml<(OCamlList<String>, String, Option<String>, bool)>,
         start_time: f64,
         end_time: f64,
-    ) {
+    ) -> OCaml<()> {
         let context_hash = context_hash.into_rust();
         let block_hash = block_hash.into_rust();
         let operation_hash = operation_hash.into_rust();
