@@ -2,7 +2,7 @@ version: "3"
 services:
 
   node:
-    image: simplestakingcom/tezedge:v0.4.0
+    image: simplestakingcom/tezedge:v0.5.0
     build: ./docker/compose
     hostname: node
     ports:
@@ -15,7 +15,7 @@ services:
     tty: true
     
   explorer:
-    image: simplestakingcom/tezedge-explorer:v0.1.8
+    image: simplestakingcom/tezedge-explorer:v0.5.0
     hostname: explorer
     ports:
       - "8080:8080"

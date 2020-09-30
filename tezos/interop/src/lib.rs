@@ -1,6 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-
+#![forbid(unsafe_code)]
 
 /// This modules will allow you to call OCaml code:
 ///
@@ -14,7 +14,7 @@
 /// ```rust, no_run
 /// use tezos_interop::runtime::OcamlResult;
 /// use tezos_interop::runtime;
-/// use znfe::{ocaml, ocaml_frame, ocaml_alloc, ocaml_call, ToOCaml, FromOCaml};
+/// use ocaml_interop::{ocaml, ocaml_frame, ocaml_alloc, ocaml_call, ToOCaml, FromOCaml};
 ///
 /// ocaml! {
 ///     pub fn echo(value: String) -> String;

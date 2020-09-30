@@ -33,6 +33,12 @@ impl OperationsForBlock {
             body: Default::default(),
         }
     }
+
+    /// alternative getter because .hash() causes problem with hash() method from Hash trait
+    #[inline(always)]
+    pub fn block_hash(&self) -> &BlockHash {
+        &self.hash
+    }
 }
 
 cached_data!(OperationsForBlock, body);
@@ -95,6 +101,12 @@ has_encoding!(PathRight, PATH_RIGHT_ENCODING, {
         ])
 });
 
+impl PathRight {
+    pub fn new(left: Hash, path: Path, body: BinaryDataCache) -> Self {
+        Self { left, path, body }
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathLeft {
@@ -113,6 +125,12 @@ has_encoding!(PathLeft, PATH_LEFT_ENCODING, {
             Field::new("right", Encoding::Hash(HashType::OperationListListHash)),
         ])
 });
+
+impl PathLeft {
+    pub fn new(path: Path, right: Hash, body: BinaryDataCache) -> Self {
+        Self { path, right, body }
+    }
+}
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]

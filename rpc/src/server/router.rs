@@ -32,6 +32,12 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     routes.handle("/chains/:chain_id/blocks/:block_id/operation_hashes", handler::get_block_operation_hashes);
     routes.handle("/injection/operation", handler::inject_operation);
 
+    // TODO: TE-226 - implement correctly or just remove, it will be part of protocol router
+    // there should be just two endpoints: context/raw/json (from protocol), context/raw/bytes (shell rpc)
+    // both should return just value (bytes or json) for key, which is part of uri, like: `context/raw/json/rolls/owner/current` -> rolls/owner/current is key to context
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", handler::context_cycle);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", handler::rolls_owner_current);
+
     // TODO: TE-174: just for sandbox
     if is_sandbox {
         routes.handle("/injection/block", handler::inject_block);
@@ -43,8 +49,6 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
 
     // Protocol rpcs - implemented
     routes.handle("/chains/:chain_id/blocks/:block_id/context/constants", handler::context_constants);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", handler::context_cycle);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", handler::rolls_owner_current);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle/:cycle_id", handler::cycle);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh", handler::context_contract);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/counter", handler::get_contract_counter);

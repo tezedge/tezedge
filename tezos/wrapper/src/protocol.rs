@@ -3,7 +3,6 @@
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::*;
-use tezos_api::identity::Identity;
 
 /// Provides trait that must be implemented by a protocol runner.
 pub trait ProtocolApi {
@@ -45,9 +44,6 @@ pub trait ProtocolApi {
         genesis_protocol_hash: &ProtocolHash,
         genesis_max_operations_ttl: u16,
     ) -> Result<CommitGenesisResult, GetDataError>;
-
-    /// Command tezos ocaml code to generate a new identity.
-    fn generate_identity(expected_pow: f64) -> Result<Identity, TezosGenerateIdentityError>;
 
     /// Command tezos ocaml code to compute the operations path
     fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError>;

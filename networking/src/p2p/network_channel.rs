@@ -44,7 +44,6 @@ pub enum PeerBootstrapped {
 pub struct PeerMessageReceived {
     pub peer: PeerRef,
     pub message: Arc<PeerMessageResponse>,
-    pub peer_address: SocketAddr,
 }
 
 /// Network channel event message.

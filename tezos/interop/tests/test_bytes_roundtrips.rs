@@ -5,22 +5,17 @@ extern crate test;
 
 use std::{env, thread};
 
-use znfe::{ocaml_frame, OCaml, OCamlBytes, OCamlList, OCamlFn1, FromOCaml, ToOCaml, ocaml_alloc, ocaml_call};
 use serial_test::serial;
+use ocaml_interop::{FromOCaml, OCaml, ocaml_alloc, ocaml_call, ocaml_frame, OCamlBytes, OCamlList, to_ocaml, ToOCaml};
 
-use crypto::hash::HashType;
-use tezos_api::ffi::{
-    Applied, ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse,
-    BeginConstructionRequest, BeginConstructionRequestBuilder, Errored, FfiMessage, ForkingTestchainData, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, RustBytes,
-    TezosRuntimeConfiguration,
-    ValidateOperationResponse, ValidateOperationResult, ValidateOperationResultBuilder,
-};
+use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId};
+use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
+use tezos_api::ocaml_conv::FfiBlockHeader;
 use tezos_context::channel::{context_receive, ContextAction, enable_context_channel};
 use tezos_interop::ffi;
 use tezos_interop::runtime;
-use tezos_interop::runtime::OcamlError;
-use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 const CHAIN_ID: &str = "8eceda2f";
 const CONTEXT_HASH: &str = "2f358bab4d28c4ee733ad7f2b01dcf116b33474b8c3a6cb40cccda2bdddd6d72";
@@ -28,21 +23,20 @@ const HEADER_HASH: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f017
 const HEADER: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
 const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000000236663bacdca76094fdb73150092659d463fec94eda44ba4db10973a1ad057ef53a5b3239a1b9c383af803fc275465bd28057d68f3cab46adfd5b2452e863ff0a";
 const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e20737071ed73af4";
-const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
-    use znfe::{ocaml, OCamlBytes, OCamlList, Intnat};
-    ocaml!{
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
+
+    use tezos_messages::p2p::encoding::block_header::BlockHeader;
+
+    ocaml! {
         pub fn apply_block_params_roundtrip(chain_id: OCamlBytes, block_header: OCamlBytes, operations: OCamlList<OCamlList<OCamlBytes>>) -> (OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>);
-        pub fn apply_block_request_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn apply_block_response_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn validate_operation_response_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn begin_construction_request_roundtrip(data: OCamlBytes) -> OCamlBytes;
-        pub fn context_callback_roundtrip(count: Intnat, context_hash: OCamlBytes, header_hash: OCamlBytes, operation_hash: OCamlBytes, key: OCamlList<OCamlBytes>, data: OCamlBytes) -> ();
+        pub fn context_callback_roundtrip(count: OCamlInt, context_hash: OCamlBytes, header_hash: OCamlBytes, operation_hash: OCamlBytes, key: OCamlList<OCamlBytes>, data: OCamlBytes) -> ();
         pub fn operation_roundtrip(operation: OCamlBytes) -> OCamlBytes;
         pub fn operations_list_list_roundtrip(operations_list_list: OCamlList<OCamlList<OCamlBytes>>) -> OCamlList<OCamlList<OCamlBytes>>;
         pub fn chain_id_roundtrip(chain_id: OCamlBytes) -> OCamlBytes;
         pub fn block_header_roundtrip(header: OCamlBytes) -> (OCamlBytes, OCamlBytes);
+        pub fn block_header_struct_roundtrip(header: BlockHeader) -> (OCamlBytes, OCamlBytes);
         pub fn block_header_with_hash_roundtrip(header_hash: OCamlBytes, hash: OCamlBytes) -> (OCamlBytes, OCamlBytes);
     }
 }
@@ -76,28 +70,6 @@ macro_rules! roundtrip_test {
                 }
             }
         };
-}
-
-type RoundtripFn = OCamlFn1<OCamlBytes, OCamlBytes>;
-
-fn bytes_encoding_roundtrip<MSG: FfiMessage + 'static>(orig_data: MSG, ffi_roundtrip_fn: RoundtripFn) -> Result<(), OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            // sent bytes to ocaml
-            let data_as_rust_bytes: RustBytes = orig_data.as_rust_bytes().expect("failed to convert");
-            let data = ocaml_alloc!(data_as_rust_bytes.to_ocaml(gc));
-
-            let result = ocaml_call!(ffi_roundtrip_fn(gc, data)).expect("failed to call ffi");
-
-            // check
-            let result = RustBytes::from_ocaml(result);
-
-            let result = MSG::from_rust_bytes(result).expect("failed to convert in ffi");
-            assert_eq!(orig_data, result);
-
-            ()
-        })
-    })
 }
 
 roundtrip_test!(test_chain_id_roundtrip_calls, test_chain_id_roundtrip, 1);
@@ -144,6 +116,37 @@ fn test_block_header_roundtrip(iteration: i32) -> Result<(), failure::Error> {
         assert!(
             result.is_ok(),
             format!("test_block_header_roundtrip roundtrip iteration: {} failed!", iteration)
+        )
+    )
+}
+
+roundtrip_test!(test_block_header_struct_roundtrip_calls, test_block_header_struct_roundtrip, 1);
+
+fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Error> {
+    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(HEADER).unwrap())?;
+    let expected_block_hash: BlockHash = header.message_hash()?;
+    let expected_chain_id = chain_id_from_block_hash(&expected_block_hash);
+
+    let result = runtime::execute(move || {
+        ocaml_frame!(gc, {
+            // sent header to ocaml
+            let header = to_ocaml!(gc, FfiBlockHeader::from(&header));
+            let result = ocaml_call!(tezos_ffi::block_header_struct_roundtrip(gc, header));
+            let (block_hash, chain_id) = <(String, String)>::from_ocaml(result.unwrap());
+
+            let block_hash: BlockHash = block_hash.as_bytes().to_vec();
+            let chain_id: ChainId = chain_id.as_bytes().to_vec();
+
+            assert_eq!(expected_block_hash, block_hash);
+            assert_eq!(expected_chain_id, chain_id);
+            ()
+        })
+    });
+
+    Ok(
+        assert!(
+            result.is_ok(),
+            format!("test_block_header_struct_roundtrip roundtrip iteration: {} failed!", iteration)
         )
     )
 }
@@ -249,226 +252,6 @@ fn test_operations_list_list_roundtrip(iteration: i32, operations: Vec<Option<Ve
 
 #[test]
 #[serial]
-fn test_operations_list_list_roundtrip_times() {
-    init_test_runtime();
-
-    for i in 0..10000 {
-        let result = test_operations_list_list_roundtrip(i, sample_operations(), 4, 1);
-        if result.is_err() {
-            println!("test_operations_list_list_roundtrip_times roundtrip number {} failed!", i);
-        }
-        assert!(result.is_ok())
-    }
-}
-
-roundtrip_test!(test_apply_block_params_roundtrip_calls, test_apply_block_params_roundtrip, 10000);
-
-fn test_apply_block_params_roundtrip(iteration: i32) -> Result<(), failure::Error> {
-    let chain_id = hex::decode(CHAIN_ID).unwrap();
-    let block_header = hex::decode(HEADER).unwrap();
-    let operations = sample_operations();
-
-    Ok(
-        assert!(
-            apply_block_params_roundtrip(chain_id, block_header, operations).is_ok(),
-            format!("test_apply_block_params_roundtrip roundtrip iteration: {} failed!", iteration)
-        )
-    )
-}
-
-fn apply_block_params_roundtrip(chain_id: RustBytes,
-                                block_header: RustBytes,
-                                operations: Vec<Option<Vec<RustBytes>>>) -> Result<(), OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            // sent bytes to ocaml
-            let chain_id = ocaml_alloc!(chain_id.to_ocaml(gc));
-            let ref chain_id_ref = gc.keep(chain_id);
-            let block_header = ocaml_alloc!(block_header.to_ocaml(gc));
-            let ref block_header_ref = gc.keep(block_header);
-            let empty_vec = vec![];
-            let operations: Vec<_> = operations.iter().map(|op| op.as_ref().unwrap_or(&empty_vec)).collect();
-            let operations: OCaml<OCamlList<OCamlList<OCamlBytes>>> = ocaml_alloc!(operations.to_ocaml(gc));
-
-            let result = ocaml_call!(tezos_ffi::apply_block_params_roundtrip(
-                gc,
-                gc.get(chain_id_ref),
-                gc.get(block_header_ref),
-                operations));
-
-            // check
-            let result = <(String, String, Vec<Vec<String>>)>::from_ocaml(result.unwrap());
-            //assert_eq!(3, result.len());
-
-            // check chain_id
-            assert_eq_hash(CHAIN_ID, result.0);
-
-            // check header
-            assert_eq_bytes(HEADER, result.1);
-
-            // check operations
-            assert_eq_operations(result.2, 4, 1);
-
-            ()
-        })
-    })
-}
-
-roundtrip_test!(test_apply_block_request_roundtrip_calls, test_apply_block_request_roundtrip, 10000);
-
-fn test_apply_block_request_roundtrip(iteration: i32) -> Result<(), failure::Error> {
-    // request
-    let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
-        .chain_id(hex::decode(CHAIN_ID).unwrap())
-        .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
-        .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
-        .max_operations_ttl(MAX_OPERATIONS_TTL)
-        .operations(ApplyBlockRequest::convert_operations(block_operations_from_hex(HEADER_HASH, sample_operations_for_request())))
-        .build().unwrap();
-
-    Ok(
-        assert!(
-            bytes_encoding_roundtrip(request, tezos_ffi::apply_block_request_roundtrip).is_ok(),
-            format!("test_apply_block_params_roundtrip roundtrip iteration: {} failed!", iteration)
-        )
-    )
-}
-
-roundtrip_test!(test_apply_block_response_roundtrip_calls, test_apply_block_response_roundtrip, 10000);
-
-fn test_apply_block_response_roundtrip(iteration: i32) -> Result<(), failure::Error> {
-    // request - test data - None
-    let response_with_none_forking_data: ApplyBlockResponse = ApplyBlockResponse {
-        validation_result_message: "validation_result_message".to_string(),
-        context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
-        block_header_proto_json: "block_header_proto_json".to_string(),
-        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
-        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
-        max_operations_ttl: 6,
-        last_allowed_fork_level: 8,
-        forking_testchain: true,
-        forking_testchain_data: None,
-    };
-
-    assert!(
-        bytes_encoding_roundtrip(response_with_none_forking_data.clone(), tezos_ffi::apply_block_response_roundtrip).is_ok(),
-        format!("test_apply_block_response_roundtrip (forking data - none) roundtrip iteration: {} failed!", iteration)
-    );
-
-    // request - test data - None
-    let response_with_some_forking_data: ApplyBlockResponse = ApplyBlockResponse {
-        validation_result_message: "validation_result_message".to_string(),
-        context_hash: HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE").expect("failed to convert"),
-        block_header_proto_json: "block_header_proto_json".to_string(),
-        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
-        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
-        max_operations_ttl: 6,
-        last_allowed_fork_level: 8,
-        forking_testchain: true,
-        forking_testchain_data: Some(ForkingTestchainData {
-            test_chain_id: HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?,
-            forking_block_hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
-        }),
-    };
-
-    assert!(
-        bytes_encoding_roundtrip(response_with_some_forking_data, tezos_ffi::apply_block_response_roundtrip).is_ok(),
-        format!("test_apply_block_response_roundtrip (forking data - some) roundtrip iteration: {} failed!", iteration)
-    );
-
-    Ok(())
-}
-
-roundtrip_test!(test_validate_operation_response_roundtrip_calls, test_validate_operation_response_roundtrip, 10000);
-
-fn test_validate_operation_response_roundtrip(iteration: i32) -> Result<(), failure::Error> {
-    let operation_hash = HashType::OperationHash.string_to_bytes("oobuLSAcTvomrF2dFPCp5mLxABSD8o65v6wL79ihJY75dkUkhdd")?;
-
-    // validation result
-    let result: ValidateOperationResult = ValidateOperationResultBuilder::default()
-        .applied(vec![
-            Applied {
-                hash: operation_hash.clone(),
-                protocol_data_json: "hello".to_string(),
-            }
-        ])
-        .refused(vec![])
-        .branch_refused(vec![
-            Errored {
-                hash: operation_hash.clone(),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "protocol_data_json".to_string(),
-                    error_json: "error_list_json".to_string(),
-                },
-            }
-        ])
-        .branch_delayed(vec![
-            Errored {
-                hash: operation_hash.clone(),
-                is_endorsement: Some(true),
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "".to_string(),
-                    error_json: "error".to_string(),
-                },
-            }
-        ])
-        .build().unwrap();
-
-    // prevalidator
-    let prevalidator = PrevalidatorWrapper {
-        chain_id: HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?,
-        protocol: HashType::ProtocolHash.string_to_bytes("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP")?,
-    };
-
-    // response
-    let orig_validation_response: ValidateOperationResponse = ValidateOperationResponse {
-        result,
-        prevalidator,
-    };
-
-
-    Ok(
-        assert!(
-            bytes_encoding_roundtrip(orig_validation_response, tezos_ffi::validate_operation_response_roundtrip).is_ok(),
-            format!("test_validate_operation_response_roundtrip roundtrip iteration: {} failed!", iteration)
-        )
-    )
-}
-
-roundtrip_test!(test_begin_construction_request_roundtrip_calls, test_begin_construction_request_roundtrip, 10000);
-
-fn test_begin_construction_request_roundtrip(iteration: i32) -> Result<(), failure::Error> {
-
-    // validation result - no protocol data
-    let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
-        .chain_id(HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?)
-        .predecessor(BlockHeader::from_bytes(hex::decode(HEADER)?)?)
-        .protocol_data(None)
-        .build().unwrap();
-
-    assert!(
-        bytes_encoding_roundtrip(request, tezos_ffi::begin_construction_request_roundtrip).is_ok(),
-        format!("test_begin_construction_request_roundtrip (none protocol data) roundtrip iteration: {} failed!", iteration)
-    );
-
-    // validation result - some protocol data
-    let request: BeginConstructionRequest = BeginConstructionRequestBuilder::default()
-        .chain_id(HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?)
-        .predecessor(BlockHeader::from_bytes(hex::decode(HEADER)?)?)
-        .protocol_data(Some(vec![1, 2, 3, 4, 5, 6]))
-        .build().unwrap();
-
-    assert!(
-        bytes_encoding_roundtrip(request, tezos_ffi::begin_construction_request_roundtrip).is_ok(),
-        format!("test_begin_construction_request_roundtrip (some protocol data) roundtrip iteration: {} failed!", iteration)
-    );
-
-    Ok(())
-}
-
-#[test]
-#[serial]
 fn test_context_callback() {
     init_test_runtime();
 
@@ -548,7 +331,7 @@ fn call_to_send_context_events(
     runtime::execute(move || {
         ocaml_frame!(gc, {
             // sent bytes to ocaml
-            let count = OCaml::of_int(count as i64);
+            let count = OCaml::of_i32(count);
             let context_hash: OCaml<OCamlBytes> = ocaml_alloc!(context_hash.to_ocaml(gc));
             let ref context_hash_ref = gc.keep(context_hash);
             let block_header_hash: OCaml<OCamlBytes> = ocaml_alloc!(block_header_hash.to_ocaml(gc));
@@ -576,35 +359,12 @@ fn call_to_send_context_events(
     }).unwrap()
 }
 
-fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<RustBytes>>) -> Vec<OperationsForBlocksMessage> {
-    hex_operations
-        .into_iter()
-        .map(|bo| {
-            let ops = bo
-                .into_iter()
-                .map(|op| Operation::from_bytes(op).unwrap())
-                .collect();
-            OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
-        })
-        .collect()
-}
-
 fn sample_operations() -> Vec<Option<Vec<RustBytes>>> {
     vec![
         Some(vec![hex::decode(OPERATION).unwrap()]),
         Some(vec![]),
         Some(vec![]),
         Some(vec![])
-    ]
-}
-
-fn sample_operations_for_request() -> Vec<Vec<RustBytes>> {
-    vec![
-        vec![hex::decode(OPERATION).unwrap()],
-        vec![],
-        vec![],
-        vec![hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08").unwrap()],
-        vec![]
     ]
 }
 
@@ -698,10 +458,6 @@ mod benches {
     bench_test!(bench_test_chain_id_roundtrip, test_chain_id_roundtrip);
     bench_test!(bench_test_block_header_roundtrip, test_block_header_roundtrip);
     bench_test!(bench_test_block_header_with_hash_roundtrip, test_block_header_with_hash_roundtrip);
+    bench_test!(bench_test_block_header_struct_roundtrip, test_block_header_struct_roundtrip);
     bench_test!(bench_test_operations_list_list_roundtrip_one, test_operations_list_list_roundtrip_for_bench);
-    bench_test!(bench_test_apply_block_params_roundtrip_one, test_apply_block_params_roundtrip);
-    bench_test!(bench_test_apply_block_request_roundtrip_one, test_apply_block_request_roundtrip);
-    bench_test!(bench_test_apply_block_response_roundtrip_one, test_apply_block_response_roundtrip);
-    bench_test!(bench_test_begin_construction_request_roundtrip_one, test_begin_construction_request_roundtrip);
-    bench_test!(bench_test_validate_operation_response_roundtrip_one, test_validate_operation_response_roundtrip);
 }

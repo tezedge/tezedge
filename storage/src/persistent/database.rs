@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use failure::Fail;
-use rocksdb::{DB, DBIterator, DBRawIterator, Error, WriteOptions};
+use rocksdb::{DB, DBIterator, Error, WriteOptions};
 
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::KeyValueSchema;
@@ -150,22 +150,12 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     }
 
     fn contains(&self, key: &S::Key) -> Result<bool, DBError> {
+        let key = key.encode()?;
         let cf = self.cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
-        let key = key.encode()?;
-        let iter = self.iterator_cf(cf, rocksdb::IteratorMode::From(&key, rocksdb::Direction::Forward));
-        let contains = if iter.valid() {
-            let iter: DBRawIterator = iter.into();
-            match iter.key() {
-                Some(key_from_db) => key_from_db == &key[..],
-                None => false
-            }
-        } else {
-            false
-        };
-
-        Ok(contains)
+        let val = self.get_pinned_cf(cf, &key)?;
+        Ok(val.is_some())
     }
 }
 

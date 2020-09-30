@@ -12,6 +12,8 @@ use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError};
 use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
+use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::current_branch::HISTORY_MAX_SIZE;
 
 use crate::collections::{BlockData, UniqueBlockData};
 use crate::shell_channel::BlockApplied;
@@ -102,15 +104,20 @@ impl BlockchainState {
     }
 
     #[inline]
-    pub fn push_missing_history(&mut self, history: Vec<BlockHash>, level: i32) -> Result<(), StorageError> {
+    pub fn push_missing_history(&mut self, history: Vec<BlockHash>, level: Level) -> Result<(), StorageError> {
         let mut rng = rand::thread_rng();
+        let history_max_parts = if history.len() < usize::from(HISTORY_MAX_SIZE) {
+            history.len() as u8
+        } else {
+            HISTORY_MAX_SIZE
+        };
 
         history.iter().enumerate()
             .map(|(idx, history_block_hash)| {
                 self.push_missing_block(
                     MissingBlock::with_level_guess(
                         history_block_hash.clone(),
-                        Self::guess_level(&mut rng, level, history.len() as i32, idx as i32),
+                        Self::guess_level(&mut rng, level, history_max_parts, idx),
                     )
                 )
             })
@@ -167,9 +174,11 @@ impl BlockchainState {
         Ok(history)
     }
 
-    pub(crate) fn guess_level(rng: &mut ThreadRng, level: i32, parts: i32, index: i32) -> i32 {
-        // e.g. we have: level 100 a 5 record in history, so split is 20
-        let split = level / parts;
+    fn guess_level(rng: &mut ThreadRng, level: Level, parts: u8, index: usize) -> i32 {
+        // e.g. we have: level 100 a 5 record in history, so split is 20, never <= 0
+        let split = level / i32::from(parts);
+        // corner case for 1 level;
+        let split = cmp::max(1, split);
 
         // we try to guess level, because in history there is no level
         if index == 0 {
@@ -179,6 +188,11 @@ impl BlockchainState {
             // e.g. next block: idx * split, e.g. for index in history: 1 and split, we guess level is in range (0 * 20 - 1 * 20) -> (0, 20)
             let start_level = ((index as i32 - 1) * split) + 1;
             let end_level = (index as i32) * split;
+
+            // corner case for 1 level
+            let start_level = cmp::min(start_level, level);
+            let end_level = cmp::min(end_level, level);
+
             if start_level == end_level {
                 start_level
             } else {
@@ -348,6 +362,36 @@ mod tests {
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 5);
             assert!(level >= 80 && level < 100);
+        }
+
+        // for block 0 in history [0, 1)
+        for _ in 0..100 {
+            let level = BlockchainState::guess_level(&mut rng, 1, 1, 0);
+            assert!(level >= 0 && level < 1);
+        }
+
+        // corner case (for level 1 if there are two elements)
+        // for block 0 in history [0, 1)
+        for _ in 0..100 {
+            let level = BlockchainState::guess_level(&mut rng, 1, 2, 0);
+            assert!(level >= 0 && level < 1);
+        }
+
+        // corner case (for level 1 if there are two elements)
+        // for block 1 in history [1, 2)
+        for _ in 0..100 {
+            let level = BlockchainState::guess_level(&mut rng, 1, 2, 1);
+            assert!(level >= 1 && level < 2);
+        }
+
+        // corner cases
+        for _ in 0..100 {
+            let level = BlockchainState::guess_level(&mut rng, 1, 3, 0);
+            assert!(level >= 0 && level < 1);
+            let level = BlockchainState::guess_level(&mut rng, 1, 3, 1);
+            assert!(level >= 1 && level < 2);
+            let level = BlockchainState::guess_level(&mut rng, 1, 3, 2);
+            assert!(level >= 1 && level < 2);
         }
     }
 }

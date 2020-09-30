@@ -3,45 +3,18 @@
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 
-use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
-use std::mem::size_of;
 
 use derive_builder::Builder;
 use failure::Fail;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
-use znfe::OCamlError;
+use ocaml_interop::OCamlError;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
-use tezos_encoding::{binary_writer, ser};
-use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
-use tezos_encoding::de::from_value as deserialize_from_value;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
-use tezos_messages::p2p::encoding::operations_for_blocks::path_encoding;
 
 pub type RustBytes = Vec<u8>;
-
-/// Trait for binary encoding messages for ffi.
-pub trait FfiMessage: DeserializeOwned + Serialize + Sized + Send + PartialEq + Debug {
-    #[inline]
-    fn as_rust_bytes(&self) -> Result<RustBytes, ser::Error> {
-        binary_writer::write(&self, Self::encoding())
-    }
-
-    /// Create new struct from bytes.
-    #[inline]
-    fn from_rust_bytes(buf: RustBytes) -> Result<Self, BinaryReaderError> {
-        let value = BinaryReader::new().read(buf, Self::encoding())?;
-        let value: Self = deserialize_from_value(&value)?;
-        Ok(value)
-    }
-
-    fn encoding() -> &'static Encoding;
-}
 
 /// Genesis block information structure
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -105,22 +78,6 @@ impl ApplyBlockRequest {
     }
 }
 
-lazy_static! {
-    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-        Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
-    ]);
-}
-
-impl FfiMessage for ApplyBlockRequest {
-    fn encoding() -> &'static Encoding {
-        &APPLY_BLOCK_REQUEST_ENCODING
-    }
-}
-
 /// Application block result
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ApplyBlockResponse {
@@ -133,31 +90,6 @@ pub struct ApplyBlockResponse {
     pub last_allowed_fork_level: i32,
     pub forking_testchain: bool,
     pub forking_testchain_data: Option<ForkingTestchainData>,
-}
-
-lazy_static! {
-    pub static ref FORKING_TESTCHAIN_DATA_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("forking_block_hash", Encoding::Hash(HashType::BlockHash)),
-        Field::new("test_chain_id", Encoding::Hash(HashType::ChainId)),
-    ]);
-
-    pub static ref APPLY_BLOCK_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("validation_result_message", Encoding::String),
-        Field::new("context_hash", Encoding::Hash(HashType::ContextHash)),
-        Field::new("block_header_proto_json", Encoding::String),
-        Field::new("block_header_proto_metadata_json", Encoding::String),
-        Field::new("operations_proto_metadata_json", Encoding::String),
-        Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("last_allowed_fork_level", Encoding::Int32),
-        Field::new("forking_testchain", Encoding::Bool),
-        Field::new("forking_testchain_data", Encoding::option(FORKING_TESTCHAIN_DATA_ENCODING.clone())),
-    ]);
-}
-
-impl FfiMessage for ApplyBlockResponse {
-    fn encoding() -> &'static Encoding {
-        &APPLY_BLOCK_RESPONSE_ENCODING
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -177,38 +109,11 @@ impl fmt::Debug for PrevalidatorWrapper {
     }
 }
 
-lazy_static! {
-    pub static ref PREVALIDATOR_WRAPPER_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("protocol", Encoding::Hash(HashType::ProtocolHash)),
-    ]);
-}
-
-impl FfiMessage for PrevalidatorWrapper {
-    fn encoding() -> &'static Encoding {
-        &PREVALIDATOR_WRAPPER_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
     pub protocol_data: Option<Vec<u8>>,
-}
-
-lazy_static! {
-    pub static ref BEGIN_CONSTRUCTION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("predecessor", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("protocol_data", Encoding::option(Encoding::list(Encoding::Uint8))),
-    ]);
-}
-
-impl FfiMessage for BeginConstructionRequest {
-    fn encoding() -> &'static Encoding {
-        &BEGIN_CONSTRUCTION_REQUEST_ENCODING
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
@@ -217,36 +122,10 @@ pub struct ValidateOperationRequest {
     pub operation: Operation,
 }
 
-lazy_static! {
-    pub static ref VALIDATE_OPERATION_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("operation", Encoding::dynamic(Operation::encoding().clone())),
-    ]);
-}
-
-impl FfiMessage for ValidateOperationRequest {
-    fn encoding() -> &'static Encoding {
-        &VALIDATE_OPERATION_REQUEST_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub result: ValidateOperationResult,
-}
-
-lazy_static! {
-    pub static ref VALIDATE_OPERATION_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("prevalidator", PREVALIDATOR_WRAPPER_ENCODING.clone()),
-            Field::new("result", VALIDATE_OPERATION_RESULT_ENCODING.clone()),
-    ]);
-}
-
-impl FfiMessage for ValidateOperationResponse {
-    fn encoding() -> &'static Encoding {
-        &VALIDATE_OPERATION_RESPONSE_ENCODING
-    }
 }
 
 pub type OperationProtocolDataJson = String;
@@ -267,10 +146,20 @@ impl fmt::Debug for OperationProtocolDataJsonWithErrorListJson {
     }
 }
 
+trait HasOperationHash {
+    fn operation_hash(&self) -> &OperationHash;
+}
+
 #[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
 pub struct Applied {
     pub hash: OperationHash,
     pub protocol_data_json: OperationProtocolDataJson,
+}
+
+impl HasOperationHash for Applied {
+    fn operation_hash(&self) -> &OperationHash {
+        &self.hash
+    }
 }
 
 #[inline]
@@ -296,6 +185,12 @@ pub struct Errored {
     pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
 }
 
+impl HasOperationHash for Errored {
+    fn operation_hash(&self) -> &OperationHash {
+        &self.hash
+    }
+}
+
 impl fmt::Debug for Errored {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let operation_hash_encoding = HashType::OperationHash;
@@ -317,116 +212,39 @@ pub struct ValidateOperationResult {
 
 impl ValidateOperationResult {
     /// Merges result with new one, and returns `true/false` if something was changed
-    pub fn merge(&mut self, new_result: &ValidateOperationResult) -> bool {
-        let mut changed = self.merge_applied(&new_result.applied);
-        changed |= self.merge_refused(&new_result.refused);
-        changed |= self.merge_branch_refused(&new_result.branch_refused);
-        changed |= self.merge_branch_delayed(&new_result.branch_delayed);
+    pub fn merge(&mut self, new_result: ValidateOperationResult) -> bool {
+        let mut changed = Self::merge_items(&mut self.applied, new_result.applied);
+        changed |= Self::merge_items(&mut self.refused, new_result.refused);
+        changed |= Self::merge_items(&mut self.branch_refused,  new_result.branch_refused);
+        changed |= Self::merge_items(&mut self.branch_delayed, new_result.branch_delayed);
         changed
     }
 
-    fn merge_applied(&mut self, new_items: &[Applied]) -> bool {
+    fn merge_items<ITEM: HasOperationHash>(result_items: &mut Vec<ITEM>, new_items: Vec<ITEM>) -> bool {
+
         let mut changed = false;
         let mut added = false;
-        let mut m = HashMap::new();
 
-        for a in &self.applied {
-            m.insert(a.hash.clone(), a.clone());
-        }
-        for na in new_items {
-            match m.insert(na.hash.clone(), na.clone()) {
-                Some(_) => changed |= true,
-                None => added |= true,
-            };
+        for new_item in new_items {
+            // check if present
+            let old_value = result_items
+                .iter()
+                .position(|old_item| old_item.operation_hash().eq(new_item.operation_hash()));
+
+            // replace or add
+            if let Some(idx) = old_value {
+                // replace
+                result_items[idx] = new_item;
+                changed |= true;
+            } else {
+                // add
+                result_items.push(new_item);
+                added |= true;
+            }
         }
 
-        if added || changed {
-            self.applied = m.values().cloned().collect();
-        }
         added || changed
     }
-
-    fn merge_refused(&mut self, new_items: &[Errored]) -> bool {
-        Self::merge_errored(&mut self.refused, new_items)
-    }
-
-    fn merge_branch_refused(&mut self, new_items: &[Errored]) -> bool {
-        Self::merge_errored(&mut self.branch_refused, new_items)
-    }
-
-    fn merge_branch_delayed(&mut self, new_items: &[Errored]) -> bool {
-        Self::merge_errored(&mut self.branch_delayed, new_items)
-    }
-
-    fn merge_errored(old_items: &mut Vec<Errored>, new_items: &[Errored]) -> bool {
-        let mut changed = false;
-        let mut added = false;
-        let mut m = HashMap::new();
-
-        for a in old_items.iter_mut() {
-            m.insert(a.hash.clone(), (*a).clone());
-        }
-        for na in new_items {
-            match m.insert(na.hash.clone(), na.clone()) {
-                Some(_) => changed |= true,
-                None => added |= true,
-            };
-        }
-
-        if added || changed {
-            *old_items = m.values().cloned().collect();
-        }
-        added || changed
-    }
-}
-
-lazy_static! {
-    static ref OPERATION_DATA_ERROR_JSON_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("protocol_data_json", Encoding::String),
-            Field::new("error_json", Encoding::String),
-    ]);
-
-    pub static ref VALIDATE_OPERATION_RESULT_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("applied", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("protocol_data_json", Encoding::String),
-                        ]
-                    )
-                ))
-            ),
-            Field::new("refused", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
-                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
-                        ]
-                    )
-                ))
-            ),
-            Field::new("branch_refused", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
-                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
-                        ]
-                    )
-                ))
-            ),
-            Field::new("branch_delayed", Encoding::dynamic(Encoding::list(
-                    Encoding::Obj(
-                        vec![
-                            Field::new("hash", Encoding::Hash(HashType::OperationHash)),
-                            Field::new("is_endorsement", Encoding::option(Encoding::Bool)),
-                            Field::new("protocol_data_json_with_error_json", OPERATION_DATA_ERROR_JSON_ENCODING.clone()),
-                        ]
-                    )
-                ))
-            ),
-    ]);
 }
 
 /// Init protocol context result
@@ -514,30 +332,6 @@ impl From<OCamlError> for TezosRuntimeConfigurationError {
         match error {
             OCamlError::Exception(exception) => {
                 TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
-                }
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum TezosGenerateIdentityError {
-    #[fail(display = "Generate identity failed, message: {}!", message)]
-    GenerationError {
-        message: String
-    },
-    #[fail(display = "Generated identity is invalid json! message: {}!", message)]
-    InvalidJsonError {
-        message: String
-    },
-}
-
-impl From<OCamlError> for TezosGenerateIdentityError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => {
-                TezosGenerateIdentityError::GenerationError {
                     message: exception.message().unwrap_or_else(|| "unknown".to_string())
                 }
             }
@@ -787,23 +581,6 @@ pub struct JsonRpcResponse {
     pub body: Json
 }
 
-lazy_static! {
-    pub static ref JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("body", Encoding::String),
-            Field::new("context_path", Encoding::String),
-    ]);
-
-    pub static ref JSON_RPC_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("body", Encoding::String),
-    ]);
-}
-
-impl FfiMessage for JsonRpcResponse {
-    fn encoding() -> &'static Encoding {
-        &JSON_RPC_RESPONSE_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct ProtocolJsonRpcRequest {
     pub block_header: BlockHeader,
@@ -825,34 +602,6 @@ pub enum FfiRpcService {
     DelegatesMinimalValidTime,
     HelpersForgeOperations,
     ContextContract,
-}
-
-lazy_static! {
-    pub static ref PROTOCOL_JSON_RPC_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("chain_arg", Encoding::String),
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("request", JSON_RPC_REQUEST_ENCODING.clone()),
-            Field::new("ffi_service", Encoding::Tags(
-                    size_of::<u16>(),
-                    TagMap::new(vec![
-                        Tag::new(0, "HelpersRunOperation", Encoding::Unit),
-                        Tag::new(1, "HelpersPreapplyOperations", Encoding::Unit),
-                        Tag::new(2, "HelpersPreapplyBlock", Encoding::Unit),
-                        Tag::new(3, "HelpersCurrentLevel", Encoding::Unit),
-                        Tag::new(4, "DelegatesMinimalValidTime", Encoding::Unit),
-                        Tag::new(5, "HelpersForgeOperations", Encoding::Unit),
-                        Tag::new(6, "ContextContract", Encoding::Unit),
-                    ]),
-                )
-            ),
-    ]);
-}
-
-impl FfiMessage for ProtocolJsonRpcRequest {
-    fn encoding() -> &'static Encoding {
-        &PROTOCOL_JSON_RPC_REQUEST_ENCODING
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
@@ -906,30 +655,6 @@ pub struct ComputePathResponse {
     pub operations_hashes_path: Vec<Path>,
 }
 
-lazy_static! {
-    pub static ref COMPUTE_PATH_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))))),
-    ]);
-}
-
-lazy_static! {
-    pub static ref COMPUTE_PATH_RESPONSE_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("operations_hashes_path", Encoding::dynamic(Encoding::list(path_encoding()))),
-    ]);
-}
-
-impl FfiMessage for ComputePathRequest {
-    fn encoding() -> &'static Encoding {
-        &COMPUTE_PATH_REQUEST_ENCODING
-    }
-}
-
-impl FfiMessage for ComputePathResponse {
-    fn encoding() -> &'static Encoding {
-        &COMPUTE_PATH_RESPONSE_ENCODING
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum ComputePathError {
     #[fail(display = "Path computation failed, message: {}!", message)]
@@ -963,6 +688,164 @@ impl From<CallError> for ComputePathError {
             CallError::InvalidResponseData { message } => ComputePathError::InvalidRequestResponseData {
                 message
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_operation_result_merge() -> Result<(), failure::Error> {
+        let mut validate_result1 = validate_operation_result("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ", "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj");
+        assert_eq!(2, validate_result1.applied.len());
+        assert_eq!(2, validate_result1.refused.len());
+        assert_eq!(2, validate_result1.branch_delayed.len());
+        assert_eq!(2, validate_result1.branch_refused.len());
+
+        // merge empty -> no change
+        assert_eq!(
+            false,
+            validate_result1.merge(ValidateOperationResult {
+                applied: vec![],
+                refused: vec![],
+                branch_refused: vec![],
+                branch_delayed: vec![],
+            })
+        );
+        assert_eq!(2, validate_result1.applied.len());
+        assert_eq!(2, validate_result1.refused.len());
+        assert_eq!(2, validate_result1.branch_delayed.len());
+        assert_eq!(2, validate_result1.branch_refused.len());
+
+        // merge
+        let validate_result2 = validate_operation_result("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ", "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr");
+        assert!(validate_result1.merge(validate_result2));
+        assert_eq!(3, validate_result1.applied.len());
+        assert_eq!(3, validate_result1.refused.len());
+        assert_eq!(3, validate_result1.branch_delayed.len());
+        assert_eq!(3, validate_result1.branch_refused.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_operation_result_merge_items() -> Result<(), failure::Error> {
+        let mut validate_result = ValidateOperationResult {
+            applied: vec![],
+            refused: vec![],
+            branch_refused: vec![],
+            branch_delayed: vec![],
+        };
+        assert_eq!(0, validate_result.applied.len());
+        assert_eq!(false, ValidateOperationResult::merge_items(&mut validate_result.applied, vec![]));
+
+        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                protocol_data_json: "protocol_data_json1".to_string(),
+            },
+        ]));
+        assert_eq!(1, validate_result.applied.len());
+        assert_eq!("protocol_data_json1", validate_result.applied[0].protocol_data_json);
+
+        // merge the same -> test change
+        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                protocol_data_json: "protocol_data_json2".to_string(),
+            },
+        ]));
+        assert_eq!(1, validate_result.applied.len());
+        assert_eq!("protocol_data_json2", validate_result.applied[0].protocol_data_json);
+
+        // merge another new one
+        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
+                protocol_data_json: "protocol_data_json2".to_string(),
+            },
+        ]));
+        assert_eq!(2, validate_result.applied.len());
+
+        Ok(())
+    }
+
+    fn validate_operation_result(op1: &str, op2: &str) -> ValidateOperationResult {
+        let applied = vec![
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+            },
+            Applied {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+            }
+        ];
+
+        let branch_delayed = vec![
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
+        let branch_refused = vec![
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
+        let refused = vec![
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
+        ValidateOperationResult {
+            applied,
+            branch_delayed,
+            branch_refused,
+            refused,
         }
     }
 }

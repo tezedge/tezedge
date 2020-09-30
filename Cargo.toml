@@ -5,6 +5,7 @@ members = [
     "crypto",
     "tezos/api",
     "tezos/messages",
+    "tezos/identity",
     "tezos/interop",
     "tezos/interop_callback",
     "tezos/encoding",

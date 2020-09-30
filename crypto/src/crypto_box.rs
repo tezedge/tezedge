@@ -5,12 +5,12 @@ use failure::Fail;
 use hex::{FromHex, FromHexError};
 use sodiumoxide::crypto::box_;
 
-use super::nonce::Nonce;
+use super::{nonce::Nonce, hash::{CryptoboxPublicKeyHash, HashType}};
 use std::ops::Deref;
 
 pub const BOX_ZERO_BYTES: usize = 32;
-const CRYPTO_KEY_SIZE: usize = 32;
-const NONCE_SIZE: usize = 24;
+pub(crate) const CRYPTO_KEY_SIZE: usize = 32;
+pub(crate) const NONCE_SIZE: usize = 24;
 
 /// Convenience wrapper around `sodiumoxide::crypto::box_::PublicKey`
 #[derive(Clone, PartialEq)]
@@ -70,6 +70,11 @@ impl FromHex for SecretKey {
         arr.copy_from_slice(&bytes);
         Ok(SecretKey(box_::SecretKey(arr)))
     }
+}
+
+pub fn random_keypair() -> (SecretKey, PublicKey, CryptoboxPublicKeyHash) {
+    let (pk, sk) = box_::gen_keypair();
+    (SecretKey(sk), PublicKey(pk), (HashType::CryptoboxPublicKeyHash.hash_fn())(pk.as_ref()))
 }
 
 #[derive(Clone, PartialEq)]

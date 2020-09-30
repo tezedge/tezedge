@@ -22,7 +22,7 @@ use tokio::time::timeout;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
-use tezos_api::identity::Identity;
+use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::PeerConnectionThreshold;
@@ -295,10 +295,11 @@ impl Actor for PeerManager {
         let listener_port = self.listener_port;
         let myself = ctx.myself();
         let rx_run = self.rx_run.clone();
+        let log = ctx.system.log();
 
         // start to listen for incoming p2p connections
         self.tokio_executor.spawn(async move {
-            begin_listen_incoming(listener_port, myself, rx_run).await;
+            begin_listen_incoming(listener_port, myself, rx_run, &log).await;
         });
     }
 
@@ -498,15 +499,18 @@ impl Receive<AcceptPeer> for PeerManager {
 }
 
 /// Start to listen for incoming connections indefinitely.
-async fn begin_listen_incoming(listener_port: u16, peer_manager: PeerManagerRef, rx_run: Arc<AtomicBool>) {
+async fn begin_listen_incoming(listener_port: u16, peer_manager: PeerManagerRef, rx_run: Arc<AtomicBool>, log: &Logger) {
     let listener_address = format!("0.0.0.0:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
     let mut listener = TcpListener::bind(&listener_address).await.expect("Failed to bind to address");
+    info!(log, "Start to listen for incoming p2p connections"; "port" => listener_port);
 
     while rx_run.load(Ordering::Acquire) {
         if let Ok((stream, address)) = listener.accept().await {
             peer_manager.tell(AcceptPeer { stream: Arc::new(Mutex::new(Some(stream))), address }, None);
         }
     }
+
+    info!(log, "Stop listening for incoming p2p connections"; "port" => listener_port);
 }
 
 /// Do DNS lookup for collection of names and create collection of socket addresses
