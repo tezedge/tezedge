@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use znfe::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
+use ocaml_interop::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
 
 use tezos_context::channel::*;
 

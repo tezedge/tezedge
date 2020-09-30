@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use derive_builder::Builder;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
-use znfe::OCamlError;
+use ocaml_interop::OCamlError;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};

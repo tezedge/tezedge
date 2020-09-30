@@ -1908,6 +1908,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ab52be62400ca80aa00285d25253d7f7c437b7375c4de678f5405d3afe82ca5"
 
 [[package]]
+name = "ocaml-interop"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a61c73e3bea8ccd18ffd16e7242bfa836e2ed3f64cb878ed83a6d3d1dc3674ed"
+
+[[package]]
 name = "once_cell"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3199,11 +3205,11 @@ dependencies = [
  "failure",
  "hex",
  "lazy_static",
+ "ocaml-interop",
  "serde 1.0.114",
  "serde_json",
  "slog",
  "tezos_messages",
- "znfe",
 ]
 
 [[package]]
@@ -3270,6 +3276,7 @@ dependencies = [
  "futures",
  "hex",
  "lazy_static",
+ "ocaml-interop",
  "os_type",
  "serde 1.0.114",
  "serde_json",
@@ -3279,15 +3286,14 @@ dependencies = [
  "tezos_context",
  "tezos_interop_callback",
  "tezos_messages",
- "znfe",
 ]
 
 [[package]]
 name = "tezos_interop_callback"
 version = "0.5.0"
 dependencies = [
+ "ocaml-interop",
  "tezos_context",
- "znfe",
 ]
 
 [[package]]
@@ -3908,8 +3914,3 @@ dependencies = [
  "podio",
  "time",
 ]
-
-[[package]]
-name = "znfe"
-version = "0.1.11"
-source = "git+https://github.com/simplestaking/znfe.git?tag=v0.1.11#1b48388f487677a374465832c78c8b3c5ebe3b5f"

@@ -6,7 +6,7 @@ extern crate test;
 use std::{env, thread};
 
 use serial_test::serial;
-use znfe::{FromOCaml, OCaml, ocaml_alloc, ocaml_call, ocaml_frame, OCamlBytes, OCamlList, to_ocaml, ToOCaml};
+use ocaml_interop::{FromOCaml, OCaml, ocaml_alloc, ocaml_call, ocaml_frame, OCamlBytes, OCamlList, to_ocaml, ToOCaml};
 
 use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId};
 use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
@@ -25,7 +25,7 @@ const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b685
 const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e20737071ed73af4";
 
 mod tezos_ffi {
-    use znfe::{ocaml, OCamlBytes, OCamlInt, OCamlList};
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
 
     use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
@@ -130,7 +130,7 @@ fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Err
     let result = runtime::execute(move || {
         ocaml_frame!(gc, {
             // sent header to ocaml
-            let header = to_ocaml!(gc, FfiBlockHeader(header));
+            let header = to_ocaml!(gc, FfiBlockHeader::from(&header));
             let result = ocaml_call!(tezos_ffi::block_header_struct_roundtrip(gc, header));
             let (block_hash, chain_id) = <(String, String)>::from_ocaml(result.unwrap());
 
@@ -331,7 +331,7 @@ fn call_to_send_context_events(
     runtime::execute(move || {
         ocaml_frame!(gc, {
             // sent bytes to ocaml
-            let count = OCaml::of_int(count as i64);
+            let count = OCaml::of_i32(count);
             let context_hash: OCaml<OCamlBytes> = ocaml_alloc!(context_hash.to_ocaml(gc));
             let ref context_hash_ref = gc.keep(context_hash);
             let block_header_hash: OCaml<OCamlBytes> = ocaml_alloc!(block_header_hash.to_ocaml(gc));
