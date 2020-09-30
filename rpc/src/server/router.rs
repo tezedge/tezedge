@@ -15,6 +15,7 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
 
     // Shell rpc - implemented
     routes.handle("/version", handler::node_version);
+    routes.handle("/database_memstats", handler::database_memstats);
     routes.handle("/monitor/bootstrapped", handler::bootstrapped);
     routes.handle("/monitor/commit_hash", handler::commit_hash);
     routes.handle("/monitor/active_chains", handler::active_chains);
