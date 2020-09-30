@@ -8,6 +8,6 @@ edition = "2018"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-ocaml-interop ={ git = "https://github.com/simplestaking/znfe.git", tag="v0.2.0" }
+ocaml-interop = "0.2"
 # local dependencies
 tezos_context = { path = "../context" }
