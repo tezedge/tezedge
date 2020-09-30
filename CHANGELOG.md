@@ -31,6 +31,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nothing.
 
 
+## [0.5.0] - 2020-09-30
+
+### Added
+
+- New OCaml FFI `ocaml-interop` integration
+- Integration test for chain_manager through p2p layer
+
+### Changed
+
+- New library `tezos/identity` for generate/validate identity/pow in rust
+- Several structs/algorithms unnecessary `clone` optimization
+- Refactoring and cleanup
+
+### Removed
+
+- Generate identity through OCaml FFI (reimplemented in `tezos/identity`)
+
+### Security
+
+- Added `#![forbid(unsafe_code)]` to (almost every) modules
+
 ## [0.4.0] - 2020-09-16
 
 ### Added
@@ -39,25 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New rpc `forge/operations`.
 - New docker-compose file to start a setup with the sandbox launcher, tezedge-explorer front-end and tezedge-debugger.
 
-### Changed
-
-- Nothing.
-
-### Deprecated
-
-- Nothing.
-
-### Removed
-
-- Nothing.
-
 ### Fixed
 
 - Various bugs in the sandbox launcher.
-
-### Security
-
-- Nothing.
 
 
 ## [0.3.0] - 2020-08-31
@@ -78,21 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New OCaml FFI - `ocaml-rs` was replaced with a new custom library based on `caml-oxide` to get GC under control and improve performance.
 - P2P bootstrap process - NACK version control after metadata exchange.
 
-### Deprecated
-
-- Nothing.
-
-### Removed
-
-- Nothing.
-
-### Fixed
-
-- Nothing.
-
-### Security
-
-- Nothing.
 
 ## [0.2.0] - 2020-07-29
 
@@ -107,21 +97,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - FFI upgrade based on Tezos gitlab latest-release (v7.2), now supports OCaml 4.09.1
 - Support for parallel access (readonly context) to Tezos FFI OCaml runtime through r2d2 connection pooling.
 
-### Deprecated
-
-- Nothing.
-
-### Removed
-
-- Nothing.
-
-### Fixed
-
-- Nothing.
-
-### Security
-
-- Nothing.
 
 ## [0.1.0] - 2020-06-25
 
@@ -169,13 +144,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.5.0...HEAD
 [0.0.1]: https://github.com/simplestaking/tezedge/releases/v0.0.1
 [0.0.2]: https://github.com/simplestaking/tezedge/releases/v0.0.2
 [0.1.0]: https://github.com/simplestaking/tezedge/releases/v0.1.0
 [0.2.0]: https://github.com/simplestaking/tezedge/releases/v0.2.0
 [0.3.0]: https://github.com/simplestaking/tezedge/releases/v0.3.0
 [0.4.0]: https://github.com/simplestaking/tezedge/releases/v0.4.0
+[0.5.0]: https://github.com/simplestaking/tezedge/releases/v0.5.0
 ___
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
