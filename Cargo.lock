@@ -135,9 +135,9 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.53.3"
+version = "0.54.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c72a978d268b1d70b0e963217e60fdabd9523a941457a6c42a7315d15c7e89e5"
+checksum = "66c0bb6167449588ff70803f4127f0684f9063097eca5016f37eb52b92c2cf36"
 dependencies = [
  "bitflags",
  "cexpr",
@@ -1487,9 +1487,9 @@ dependencies = [
 
 [[package]]
 name = "librocksdb-sys"
-version = "6.7.4"
+version = "6.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "883213ae3d09bfc3d104aefe94b25ebb183b6f4d3a515b23b14817e1f4854005"
+checksum = "eb5b56f651c204634b936be2f92dbb42c36867e00ff7fe2405591f3b9fa66f09"
 dependencies = [
  "bindgen",
  "cc",
@@ -1772,7 +1772,7 @@ dependencies = [
  "networking",
  "rand 0.7.3",
  "riker",
- "rocksdb",
+ "rocksdb 0.14.0",
  "serde 1.0.114",
  "serde_json",
  "shell",
@@ -2541,6 +2541,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rocksdb"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23d83c02c429044d58474eaf5ae31e062d0de894e21125b47437ec0edc1397e6"
+dependencies = [
+ "libc",
+ "librocksdb-sys",
+]
+
+[[package]]
 name = "rpc"
 version = "0.6.0"
 dependencies = [
@@ -2558,7 +2568,7 @@ dependencies = [
  "path-tree",
  "rayon",
  "riker",
- "rocksdb",
+ "rocksdb 0.14.0",
  "serde 1.0.114",
  "serde_json",
  "shell",
@@ -3035,7 +3045,7 @@ dependencies = [
  "maplit",
  "num_cpus",
  "rand 0.7.3",
- "rocksdb",
+ "rocksdb 0.15.0",
  "serde 1.0.114",
  "serial_test",
  "slog",
