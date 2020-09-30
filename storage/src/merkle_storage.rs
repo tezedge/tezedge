@@ -93,6 +93,7 @@ pub struct MerkleStorage {
     db: Arc<DB>,
     staged: HashMap<EntryHash, Entry>,
     last_commit: Option<Commit>,
+    map_stats: MerkleMapStats,
 }
 
 const HASH_LEN: usize = 32;
@@ -132,6 +133,26 @@ impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self { MerkleError::SerializationError { error } }
 }
 
+#[derive(Serialize, Debug, Clone, Copy)]
+pub struct MerkleMapStats {
+    staged_area_elems: u64,
+    current_tree_elems: u64,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct RocksDBStats {
+    mem_table_total: u64,
+    mem_table_unflushed: u64,
+    mem_table_readers_total: u64,
+    cache_total: u64,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct MerkleStorageStats {
+    rocksdb_stats: RocksDBStats,
+    map_stats: MerkleMapStats,
+}
+
 impl KeyValueSchema for MerkleStorage {
     type Key = Vec<u8>;
     type Value = Vec<u8>;
@@ -156,6 +177,7 @@ impl MerkleStorage {
             staged: HashMap::new(),
             current_stage_tree: None,
             last_commit: None,
+            map_stats: MerkleMapStats{staged_area_elems: 0 , current_tree_elems: 0},
         }
     }
 
@@ -253,8 +275,10 @@ impl MerkleStorage {
     pub fn checkout(&mut self, context_hash: EntryHash) -> Result<(), MerkleError> {
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
+        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         self.last_commit = Some(commit);
         self.staged = HashMap::new();
+        self.map_stats.staged_area_elems = 0;
         Ok(())
     }
 
@@ -278,6 +302,7 @@ impl MerkleStorage {
         self.put_to_staging_area(&self.hash_commit(&new_commit), entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = HashMap::new();
+        self.map_stats.staged_area_elems = 0;
         self.last_commit = Some(new_commit.clone());
         Ok(self.hash_commit(&new_commit))
     }
@@ -287,6 +312,7 @@ impl MerkleStorage {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._set(&root, key, value)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
+        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         Ok(())
     }
 
@@ -302,6 +328,7 @@ impl MerkleStorage {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._delete(&root, key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
+        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         Ok(())
     }
 
@@ -317,6 +344,7 @@ impl MerkleStorage {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._copy(&root, from_key, to_key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
+        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         Ok(())
     }
 
@@ -398,14 +426,19 @@ impl MerkleStorage {
             None => {
                 let tree = Tree::new();
                 self.put_to_staging_area(&self.hash_tree(&tree), Entry::Tree(tree.clone()));
+                self.map_stats.current_tree_elems = tree.len() as u64;
                 Ok(tree)
             }
-            Some(tree) => Ok(tree.clone()),
+            Some(tree) => {
+                self.map_stats.current_tree_elems = tree.len() as u64;
+                Ok(tree.clone())
+            }
         }
     }
 
     fn put_to_staging_area(&mut self, key: &[u8], value: Entry) {
         self.staged.insert(key.to_vec(), value);
+        self.map_stats.staged_area_elems = self.staged.len() as u64;
     }
 
     /// Persists an entry and its descendants from staged area to database on disk.
@@ -593,6 +626,15 @@ impl MerkleStorage {
             Some(c) => Some(self.hash_commit(&c)),
             None    => None
         }
+    }
+
+    pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
+        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self.db]), None)?;
+        let rocksdb_stats = RocksDBStats{ mem_table_total: memory_usage_stats.mem_table_total,
+                                          mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
+                                          mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
+                                          cache_total: memory_usage_stats.cache_total };
+        Ok(MerkleStorageStats{ rocksdb_stats: rocksdb_stats, map_stats: self.map_stats })
     }
 }
 

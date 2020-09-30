@@ -16,6 +16,7 @@ use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
 use storage::persistent::PersistentStorage;
+use storage::merkle_storage::MerkleStorageStats;
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
@@ -450,6 +451,13 @@ pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &Pe
 
 pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeVersion, failure::Error> {
     Ok(NodeVersion::new(network_version))
+}
+
+pub(crate) fn get_database_memstats(persistent_storage: &PersistentStorage) -> Result<MerkleStorageStats, failure::Error> {
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+    let stats = context.get_merkle_stats()?;
+
+    Ok(stats)
 }
 
 pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {

@@ -7,7 +7,7 @@ use std::num::TryFromIntError;
 
 use failure::Fail;
 
-use crate::merkle_storage::{MerkleStorage, MerkleError, ContextKey, ContextValue};
+use crate::merkle_storage::{MerkleStorage, MerkleError, ContextKey, ContextValue, MerkleStorageStats};
 use crypto::hash::{BlockHash, ContextHash, HashType};
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 
@@ -36,12 +36,15 @@ pub trait ContextApi {
     fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError>;
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
+    // get stats from merkle storage
+    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError>;
 }
 
 impl ContextApi for TezedgeContext {
     fn set(&mut self, _context_hash: &Option<ContextHash>, key: &[String], value: &[u8]) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.set(key.to_vec(), value.to_vec())?;
+
         Ok(())
     }
 
@@ -56,6 +59,7 @@ impl ContextApi for TezedgeContext {
               date: i64) -> Result<(), ContextError> {
 
         let mut merkle = self.merkle.write().expect("lock poisoning");
+
         let date: u64 = date.try_into()?;
         merkle.commit(date, author, message)?;
 
@@ -147,9 +151,17 @@ impl ContextApi for TezedgeContext {
             _ => Err(ContextError::UnknownLevelError{level: level.to_string()})
         }
     }
+
     fn get_last_commit_hash(&self) -> Option<Vec<u8>> {
         let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_last_commit_hash()
+    }
+
+    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError> {
+        let merkle = self.merkle.read().expect("lock poisoning");
+        let stats = merkle.get_merkle_stats()?;
+
+        Ok(stats)
     }
 }
 
