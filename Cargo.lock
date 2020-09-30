@@ -1909,9 +1909,9 @@ checksum = "1ab52be62400ca80aa00285d25253d7f7c437b7375c4de678f5405d3afe82ca5"
 
 [[package]]
 name = "ocaml-interop"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c989c943cf9ca445f17117e3233cd87d1665d0e1c3911bb42300c4ce980daba4"
+checksum = "a61c73e3bea8ccd18ffd16e7242bfa836e2ed3f64cb878ed83a6d3d1dc3674ed"
 
 [[package]]
 name = "once_cell"
