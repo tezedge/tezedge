@@ -33,6 +33,12 @@ impl OperationsForBlock {
             body: Default::default(),
         }
     }
+
+    /// alternative getter because .hash() causes problem with hash() method from Hash trait
+    #[inline(always)]
+    pub fn block_hash(&self) -> &BlockHash {
+        &self.hash
+    }
 }
 
 cached_data!(OperationsForBlock, body);

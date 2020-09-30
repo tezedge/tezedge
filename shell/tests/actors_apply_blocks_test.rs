@@ -28,18 +28,25 @@ use storage::skip_list::Bucket;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
-use tezos_messages::p2p::encoding::operations_for_blocks::{OperationsForBlock, OperationsForBlocksMessage};
-use tezos_messages::p2p::encoding::operations_for_blocks;
+use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 use tezos_messages::p2p::encoding::prelude::Operation;
+use crate::test_data::OperationsForBlocksMessageKey;
 
 mod common;
 
 #[ignore]
 #[test]
 fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failure::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level.clone());
 
     // start node
-    let mut node = common::infra::NodeInfrastructure::start("__test_actors_apply_blocks_and_check_context_and_mempool", "test_actors_apply_blocks_and_check_context_and_mempool")?;
+    let node = common::infra::NodeInfrastructure::start(
+        "__test_actors_apply_blocks_and_check_context_and_mempool", "test_actors_apply_blocks_and_check_context_and_mempool",
+        None,
+        (log, log_level),
+    )?;
 
     // test mempool state for validation
     let (test_result_sender, test_result_receiver) = channel();
@@ -47,6 +54,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
     let requests = test_data::read_apply_block_requests_until_1326();
+    let operations = test_data::read_operations_for_blocks_message_until_1328();
 
     let clocks = Instant::now();
 
@@ -57,6 +65,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
             &node.tezos_env,
             node.log.clone(),
             &requests,
+            &operations,
             1324,
         ).is_ok()
     );
@@ -76,7 +85,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     let clocks = clocks.elapsed();
     println!("\nDone in {:?}!", clocks);
 
-    node.stop();
+    drop(node);
 
     Ok(())
 }
@@ -174,6 +183,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     tezos_env: &TezosEnvironmentConfiguration,
     log: Logger,
     requests: &Vec<String>,
+    operations: &HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     apply_to_level: i32) -> Result<(), failure::Error> {
     // prepare dbs
     let block_storage = BlockStorage::new(&persistent_storage);
@@ -203,11 +213,12 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
         operations_meta_storage.put_block_header(&block, &chain_id)?;
 
         // store operations to db
-        for (idx, ops) in request.operations.into_iter().enumerate() {
-            let opb = OperationsForBlock::new(block.hash.clone(), idx as i8);
-            let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, operations_for_blocks::Path::Op, ops);
-            operations_storage.put_operations(&msg)?;
-            operations_meta_storage.put_operations(&msg)?;
+        let validation_pass: u8 = block.header.validation_pass();
+        for vp in 0..validation_pass {
+            if let Some(msg) = operations.get(&OperationsForBlocksMessageKey::new(block.hash.clone(), vp as i8)) {
+                operations_storage.put_operations(msg)?;
+                operations_meta_storage.put_operations(msg)?;
+            }
         }
         assert!(operations_meta_storage.is_complete(&block.hash)?);
 
@@ -387,13 +398,17 @@ mod test_data {
 
     use lazy_static::lazy_static;
 
-    use crypto::hash::HashType;
+    use crypto::hash::{HashType, BlockHash};
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::ApplyBlockRequest;
     use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
     use tezos_encoding::de::from_value as deserialize_from_value;
     use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-    use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+    use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
+    use std::collections::HashMap;
+    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use itertools::Itertools;
+    use std::io::BufRead;
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
 
@@ -425,6 +440,57 @@ mod test_data {
         }
 
         requests
+    }
+
+    pub fn read_operations_for_blocks_message_until_1328() -> HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join("OperationsForBlocksMessage.zip");
+        let file = File::open(path).expect("Couldn't open file: tests/resources/OperationsForBlocksMessage.zip");
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let file = archive.by_name("OperationsForBlocksMessage").unwrap();
+
+        let mut operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> = HashMap::new();
+
+        // read file by lines
+        let reader = io::BufReader::new(file);
+        let lines = reader.lines();
+        for line in lines {
+            if let Ok(mut line) = line {
+                let _ = line.remove(0);
+                let split = line.split("|").collect_vec();
+                assert_eq!(3, split.len());
+
+                let block_hash = HashType::BlockHash.string_to_bytes(split[0]).expect("Failed to parse block_hash");
+                let validation_pass = split[1].parse::<i8>().expect("Failed to parse validation_pass");
+
+                let operations_for_blocks_message = hex::decode(split[2]).expect("Failed to parse operations_for_blocks_message");
+                let operations_for_blocks_message = OperationsForBlocksMessage::from_bytes(operations_for_blocks_message).expect("Failed to readed bytes for operations_for_blocks_message");
+
+                operations.insert(
+                    OperationsForBlocksMessageKey::new(block_hash, validation_pass),
+                    operations_for_blocks_message,
+                );
+            }
+        }
+
+        operations
+    }
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct OperationsForBlocksMessageKey {
+        block_hash: String,
+        validation_pass: i8,
+    }
+
+    impl OperationsForBlocksMessageKey {
+        pub fn new(block_hash: BlockHash, validation_pass: i8) -> Self {
+            OperationsForBlocksMessageKey {
+                block_hash: HashType::BlockHash.bytes_to_string(&block_hash),
+                validation_pass,
+            }
+        }
     }
 
     /// Create new struct from bytes.

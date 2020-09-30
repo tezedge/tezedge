@@ -34,7 +34,7 @@ pub type PeerId = String;
 pub type PublicKey = Vec<u8>;
 
 #[derive(Debug, Fail)]
-enum PeerError {
+pub enum PeerError {
     #[fail(display = "Unsupported protocol - supported_version: {} vs. {}", supported_version, incompatible_versions)]
     UnsupportedProtocol {
         supported_version: String,
@@ -164,6 +164,18 @@ pub struct Local {
     proof_of_work_stamp: String,
     /// version of network protocol
     version: NetworkVersion,
+}
+
+impl Local {
+    pub fn new(listener_port: u16, public_key: String, secret_key: String, proof_of_work_stamp: String, network_version: NetworkVersion) -> Self {
+        Local {
+            listener_port,
+            public_key,
+            secret_key,
+            proof_of_work_stamp,
+            version: network_version,
+        }
+    }
 }
 
 pub type PeerRef = ActorRef<PeerMsg>;
@@ -334,9 +346,9 @@ impl Receive<SendMessage> for Peer {
 }
 
 /// Output values of the successful bootstrap process
-struct BootstrapOutput(EncryptedMessageReader, EncryptedMessageWriter, PublicKey, MetadataMessage);
+pub struct BootstrapOutput(pub EncryptedMessageReader, pub EncryptedMessageWriter, pub PublicKey, pub MetadataMessage);
 
-async fn bootstrap(
+pub async fn bootstrap(
     msg: Bootstrap,
     info: Arc<Local>,
     log: &Logger,
@@ -465,15 +477,14 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
                                 msg: PeerMessageReceived {
                                     peer: myself.clone(),
                                     message: Arc::new(msg),
-                                    peer_address,
                                 }.into(),
                                 topic: NetworkChannelTopic::NetworkEvents.into(),
                             }, Some(myself.clone().into()));
                     }
                 }
                 Err(e) => {
-                    if let StreamError::DeserializationError { error: BinaryReaderError::UnsupportedTag { .. } } = e {
-                        info!(log, "Messages with unsupported tags are ignored");
+                    if let StreamError::DeserializationError { error: BinaryReaderError::UnsupportedTag { tag } } = e {
+                        warn!(log, "Messages with unsupported tags are ignored"; "tag" => tag);
                     } else {
                         warn!(log, "Failed to read peer message"; "reason" => e);
                         break;

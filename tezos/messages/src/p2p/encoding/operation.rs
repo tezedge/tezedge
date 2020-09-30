@@ -16,7 +16,7 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 #[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
 pub struct OperationMessage {
     #[get = "pub"]
-    operation: Operation,
+    pub operation: Operation,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,

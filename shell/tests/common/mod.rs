@@ -70,42 +70,49 @@ pub mod infra {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     use riker::actors::*;
     use riker::system::SystemBuilder;
-    use slog::Logger;
+    use slog::{info, Level, Logger, warn};
+    use tokio::runtime::Runtime;
 
-    use networking::p2p::network_channel::NetworkChannel;
+    use crypto::hash::{BlockHash, HashType};
+    use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
     use shell::context_listener::ContextListener;
     use shell::mempool_prevalidator::MempoolPrevalidator;
+    use shell::peer_manager::{P2p, PeerManager};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::resolve_storage_init_chain_data;
+    use storage::{ChainMetaStorage, resolve_storage_init_chain_data};
+    use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
     use tezos_api::ffi::TezosRuntimeConfiguration;
+    use tezos_identity::Identity;
+    use tezos_messages::p2p::encoding::version::NetworkVersion;
     use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
     use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
     use crate::{common, test_data};
 
     pub struct NodeInfrastructure {
+        name: String,
         pub log: Logger,
         pub shell_channel: ShellChannelRef,
+        pub network_channel: NetworkChannelRef,
         pub actor_system: ActorSystem,
         pub tmp_storage: TmpStorage,
         pub tezos_env: TezosEnvironmentConfiguration,
+        pub tokio_runtime: Runtime,
         apply_restarting_feature: Arc<AtomicBool>,
     }
 
     impl NodeInfrastructure {
-        pub fn start(test_storage_path: &str, name: &str) -> Result<Self, failure::Error> {
-            // logger
-            let log_level = common::log_level();
-            let log = common::create_logger(log_level.clone());
+        pub fn start(test_storage_path: &str, name: &str, p2p: Option<(Identity, P2p, NetworkVersion)>, (log, log_level): (Logger, Level)) -> Result<Self, failure::Error> {
+            warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
             // environement
             let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
@@ -182,6 +189,8 @@ pub mod infra {
                 )
             );
 
+            let tokio_runtime = create_tokio_runtime();
+
             // run actor's
             let actor_system = SystemBuilder::new().name(name).log(log.clone()).create().expect("Failed to create actor system");
             let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
@@ -198,11 +207,27 @@ pub mod infra {
                 log.clone(),
             ).expect("Failed to create chain feeder");
 
+            // and than open p2p and others - if configured
+            if let Some((identity, p2p_config, network_version)) = p2p {
+                let _ = PeerManager::actor(
+                    &actor_system,
+                    network_channel.clone(),
+                    shell_channel.clone(),
+                    tokio_runtime.handle().clone(),
+                    identity,
+                    network_version,
+                    p2p_config,
+                ).expect("Failed to create peer manager");
+            }
+
             Ok(
                 NodeInfrastructure {
+                    name: String::from(name),
                     log,
                     apply_restarting_feature,
                     shell_channel,
+                    network_channel,
+                    tokio_runtime,
                     actor_system,
                     tmp_storage,
                     tezos_env: tezos_env.clone(),
@@ -211,6 +236,8 @@ pub mod infra {
         }
 
         pub fn stop(&mut self) {
+            warn!(self.log, "[NODE] Stopping node infrastructure"; "name" => self.name.clone());
+
             // clean up
             // shutdown events listening
             self.apply_restarting_feature.store(false, Ordering::Release);
@@ -225,6 +252,47 @@ pub mod infra {
             thread::sleep(Duration::from_secs(2));
 
             let _ = self.actor_system.shutdown();
+            warn!(self.log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
         }
+
+        pub fn wait_for_new_current_head(&self, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+            let tested_head = Some(tested_head).map(|th| HashType::BlockHash.bytes_to_string(&th));
+
+            let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
+            let result = loop {
+                let current_head = chain_meta_data.get_current_head(&self.tezos_env.main_chain_id()?)?
+                    .map(|ch| ch.hash)
+                    .map(|ch| HashType::BlockHash.bytes_to_string(&ch));
+
+                if current_head.eq(&tested_head) {
+                    info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head);
+                    break Ok(());
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    thread::sleep(delay);
+                } else {
+                    break Err(failure::format_err!("wait_for_new_current_head - timeout (timeout: {:?}, delay: {:?}) exceeded!", timeout, delay));
+                }
+            };
+            result
+        }
+    }
+
+    impl Drop for NodeInfrastructure {
+        fn drop(&mut self) {
+            warn!(self.log, "[NODE] Dropping node infrastructure"; "name" => self.name.clone());
+            self.stop();
+        }
+    }
+
+    fn create_tokio_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .build()
+            .expect("Failed to create tokio runtime")
     }
 }
