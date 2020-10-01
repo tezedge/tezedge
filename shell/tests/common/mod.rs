@@ -89,14 +89,14 @@ pub mod infra {
     use storage::{ChainMetaStorage, resolve_storage_init_chain_data};
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::tests_common::TmpStorage;
-    use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
-    use tezos_api::ffi::TezosRuntimeConfiguration;
+    use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
+    use tezos_api::ffi::{TezosRuntimeConfiguration, PatchContext};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::version::NetworkVersion;
     use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
     use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
-    use crate::{common, test_data};
+    use crate::common;
 
     pub struct NodeInfrastructure {
         name: String,
@@ -111,11 +111,17 @@ pub mod infra {
     }
 
     impl NodeInfrastructure {
-        pub fn start(test_storage_path: &str, name: &str, p2p: Option<(Identity, P2p, NetworkVersion)>, (log, log_level): (Logger, Level)) -> Result<Self, failure::Error> {
+        pub fn start(
+            test_storage_path: &str,
+            name: &str,
+            tezos_env: &TezosEnvironment,
+            patch_context: Option<PatchContext>,
+            p2p: Option<(Identity, P2p, NetworkVersion)>,
+            (log, log_level): (Logger, Level)) -> Result<Self, failure::Error> {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
             // environement
-            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
+            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&tezos_env).expect("no environment configuration");
             let is_sandbox = false;
             let p2p_threshold = PeerConnectionThreshold::new(1, 1);
 
@@ -127,7 +133,7 @@ pub mod infra {
 
             let storage_db_path = PathBuf::from(storage_db_path);
             let context_db_path = PathBuf::from(context_db_path);
-            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &None, &log)
+            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &patch_context, &log)
                 .expect("Failed to resolve init storage chain data");
 
             // apply block protocol runner endpoint
@@ -274,7 +280,7 @@ pub mod infra {
                 if start.elapsed()?.le(&timeout) {
                     thread::sleep(delay);
                 } else {
-                    break Err(failure::format_err!("wait_for_new_current_head - timeout (timeout: {:?}, delay: {:?}) exceeded!", timeout, delay));
+                    break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!", tested_head, timeout, delay));
                 }
             };
             result
