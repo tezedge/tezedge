@@ -62,8 +62,7 @@ fn default_kv_options(cfg: &DbConfiguration) -> Options {
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
     db_opts.set_bytes_per_sync(1048576);
     db_opts.set_level_compaction_dynamic_level_bytes(true);
-    db_opts.set_max_background_compactions(4);
-    db_opts.set_max_background_flushes(2);
+    db_opts.set_max_background_jobs(6);
 
     // resolve thread count to use
     let num_of_threads = match cfg.max_threads {
