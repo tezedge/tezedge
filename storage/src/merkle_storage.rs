@@ -43,8 +43,10 @@
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::path::Path;
-use rocksdb::{DB, ColumnFamilyDescriptor, Options, IteratorMode, WriteBatch};
-use crate::persistent::{default_table_options, KeyValueSchema};
+use rocksdb::{DB, ColumnFamilyDescriptor, Options, WriteBatch};
+use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::database::RocksDBStats;
+use crate::persistent;
 use std::hash::Hash;
 use serde::Deserialize;
 use serde::Serialize;
@@ -88,9 +90,11 @@ enum Entry {
     Commit(Commit),
 }
 
+pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+
 pub struct MerkleStorage {
     current_stage_tree: Option<Tree>,
-    db: Arc<DB>,
+    db: Arc<MerkleStorageKV>,
     staged: HashMap<EntryHash, Entry>,
     last_commit: Option<Commit>,
     map_stats: MerkleMapStats,
@@ -102,7 +106,7 @@ const HASH_LEN: usize = 32;
 pub enum MerkleError {
     /// External libs errors
     #[fail(display = "RocksDB error: {:?}", error)]
-    DBError { error: rocksdb::Error },
+    DBError { error: persistent::database::DBError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
 
@@ -125,8 +129,8 @@ pub enum MerkleError {
     KeyEmpty,
 }
 
-impl From<rocksdb::Error> for MerkleError {
-    fn from(error: rocksdb::Error) -> Self { MerkleError::DBError { error } }
+impl From<persistent::database::DBError> for MerkleError {
+    fn from(error: persistent::database::DBError) -> Self { MerkleError::DBError { error } }
 }
 
 impl From<bincode::Error> for MerkleError {
@@ -137,14 +141,6 @@ impl From<bincode::Error> for MerkleError {
 pub struct MerkleMapStats {
     staged_area_elems: u64,
     current_tree_elems: u64,
-}
-
-#[derive(Serialize, Debug, Clone)]
-pub struct RocksDBStats {
-    mem_table_total: u64,
-    mem_table_unflushed: u64,
-    mem_table_readers_total: u64,
-    cache_total: u64,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -171,7 +167,7 @@ impl KeyValueSchema for MerkleStorage {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
             staged: HashMap::new(),
@@ -449,7 +445,7 @@ impl MerkleStorage {
         self.get_entries_recursively(entry, &mut batch)?;
 
         // atomically write all entries in one batch to DB
-        self.db.write(batch)?;
+        self.db.write_batch(batch)?;
 
         Ok(())
     }
@@ -457,9 +453,10 @@ impl MerkleStorage {
     /// Builds vector of entries to be persisted to DB, recursively
     fn get_entries_recursively(&self, entry: &Entry, batch: &mut WriteBatch ) -> Result<(), MerkleError> {
         // add entry to batch
-        batch.put(
-            self.hash_entry(entry),
-            bincode::serialize(entry)?);
+        self.db.put_batch(
+            batch,
+            &self.hash_entry(entry),
+            &bincode::serialize(entry)?)?;
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -552,13 +549,6 @@ impl MerkleStorage {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn print_db(&self) { // Dev/debug method
-        self.db.iterator(IteratorMode::Start).take(1_000).for_each(|(k, v)| {
-            let val: Entry = bincode::deserialize(&*v).unwrap();
-            println!("{:x?} --- {:x?}", k, val);
-        });
-    }
 
     fn get_tree(&self, hash: &EntryHash) -> Result<Tree, MerkleError> {
         match self.get_entry(hash)? {
@@ -610,7 +600,7 @@ impl MerkleStorage {
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
 
-        DB::open(&db_opts, path).unwrap()
+        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor()]).unwrap()
     }
 
     fn key_to_string(&self, key: &ContextKey) -> String {
@@ -629,12 +619,8 @@ impl MerkleStorage {
     }
 
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self.db]), None)?;
-        let rocksdb_stats = RocksDBStats{ mem_table_total: memory_usage_stats.mem_table_total,
-                                          mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
-                                          mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
-                                          cache_total: memory_usage_stats.cache_total };
-        Ok(MerkleStorageStats{ rocksdb_stats: rocksdb_stats, map_stats: self.map_stats })
+        let db_stats = self.db.get_mem_use_stats()?;
+        Ok(MerkleStorageStats{ rocksdb_stats: db_stats, map_stats: self.map_stats })
     }
 }
 
