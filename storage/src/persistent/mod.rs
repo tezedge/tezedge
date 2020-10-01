@@ -63,6 +63,8 @@ fn default_kv_options(cfg: &DbConfiguration) -> Options {
     db_opts.set_bytes_per_sync(1048576);
     db_opts.set_level_compaction_dynamic_level_bytes(true);
     db_opts.set_max_background_jobs(6);
+    db_opts.enable_statistics();
+    db_opts.set_report_bg_io_stats(true);
 
     // resolve thread count to use
     let num_of_threads = match cfg.max_threads {
