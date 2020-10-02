@@ -63,6 +63,7 @@ steps:
     - cargo test --package shell --release -- --nocapture --ignored test_readonly_protocol_runner_connection_pool
     - cargo test --package shell --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
     - cargo test --package shell --release -- --nocapture --ignored test_process_current_branch_on_level3_with_empty_storage
+    - cargo test --package shell --release -- --nocapture --ignored test_process_reorg_with_different_current_branches_with_empty_storage
     # build and run benches
     - cargo bench -- --nocapture
     - cargo bench --tests -- --nocapture
