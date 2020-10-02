@@ -30,9 +30,11 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 use tezos_messages::p2p::encoding::prelude::Operation;
-use crate::test_data::OperationsForBlocksMessageKey;
+
+use crate::samples::OperationsForBlocksMessageKey;
 
 mod common;
+mod samples;
 
 #[ignore]
 #[test]
@@ -41,9 +43,14 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     let log_level = common::log_level();
     let log = common::create_logger(log_level.clone());
 
+    // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
+    let (requests, operations, tezos_env) = samples::read_data_apply_block_request_until_1326();
+
     // start node
     let node = common::infra::NodeInfrastructure::start(
         "__test_actors_apply_blocks_and_check_context_and_mempool", "test_actors_apply_blocks_and_check_context_and_mempool",
+        &tezos_env,
+        None,
         None,
         (log, log_level),
     )?;
@@ -51,10 +58,6 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     // test mempool state for validation
     let (test_result_sender, test_result_receiver) = channel();
     let _ = test_actor::TestActor::actor(&node.actor_system, node.shell_channel.clone(), test_result_sender);
-
-    // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
-    let requests = test_data::read_apply_block_requests_until_1326();
-    let operations = test_data::read_operations_for_blocks_message_until_1328();
 
     let clocks = Instant::now();
 
@@ -123,27 +126,27 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     // check level 131 - total compare
     let ctxt = list.get(131)?;
     assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_131.json").expect("context_131.json not found"));
+    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_131.json").expect("context_131.json not found"));
 
     // check level 181 - total compare
     let ctxt = list.get(181)?;
     assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_181.json").expect("context_181.json not found"));
+    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_181.json").expect("context_181.json not found"));
 
     // check level 553 - total compare
     let ctxt = list.get(553)?;
     assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_553.json").expect("context_553.json not found"));
+    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_553.json").expect("context_553.json not found"));
 
     // check level 834 - total compare
     let ctxt = list.get(834)?;
     assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_834.json").expect("context_834.json not found"));
+    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_834.json").expect("context_834.json not found"));
 
     // check level 1322 - total compare
     let ctxt = list.get(1322)?;
     assert!(ctxt.is_some());
-    assert_ctxt(ctxt.unwrap(), test_data::read_context_json("context_1322.json").expect("context_1322.json not found"));
+    assert_ctxt(ctxt.unwrap(), samples::read_carthagenet_context_json("context_1322.json").expect("context_1322.json not found"));
 
     Ok(())
 }
@@ -200,7 +203,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     for request in requests {
 
         // parse request
-        let request = test_data::from_captured_bytes(hex::decode(request)?)?;
+        let request = samples::from_captured_bytes(request)?;
         let header = request.block_header.clone();
 
         // store header to db
@@ -266,7 +269,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     last_applied_request_1324: &String,
     request_1325: &String,
     request_1326: &String) -> Result<(), failure::Error> {
-    let last_applied_block: BlockHash = test_data::from_captured_bytes(hex::decode(last_applied_request_1324)?)?.block_header.message_hash()?;
+    let last_applied_block: BlockHash = samples::from_captured_bytes(last_applied_request_1324)?.block_header.message_hash()?;
     let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
     // wait mempool for last_applied_block
@@ -347,7 +350,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
 }
 
 fn add_operations_to_mempool(request: &String, shell_channel: ShellChannelRef, mempool_storage: &mut MempoolStorage) -> Result<HashSet<OperationHash>, failure::Error> {
-    let request = test_data::from_captured_bytes(hex::decode(request)?)?;
+    let request = samples::from_captured_bytes(request)?;
     let mut operation_hashes = HashSet::new();
     for operations in request.operations {
         for operation in operations {
@@ -389,137 +392,6 @@ fn contains_all_keys(map: &HashMap<OperationHash, Operation>, keys: &HashSet<Ope
         }
     }
     contains_counter == keys.len()
-}
-
-mod test_data {
-    use std::{env, io};
-    use std::fs::File;
-    use std::path::Path;
-
-    use lazy_static::lazy_static;
-
-    use crypto::hash::{HashType, BlockHash};
-    use tezos_api::environment::TezosEnvironment;
-    use tezos_api::ffi::ApplyBlockRequest;
-    use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
-    use tezos_encoding::de::from_value as deserialize_from_value;
-    use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-    use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
-    use std::collections::HashMap;
-    use tezos_messages::p2p::binary_message::BinaryMessage;
-    use itertools::Itertools;
-    use std::io::BufRead;
-
-    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
-
-    lazy_static! {
-        pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("max_operations_ttl", Encoding::Int31),
-            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
-        ]);
-    }
-
-    pub fn read_apply_block_requests_until_1326() -> Vec<String> {
-        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-            .join("tests")
-            .join("resources")
-            .join("apply_block_request_until_1326.zip");
-        let file = File::open(path).expect("Couldn't open file: tests/resources/apply_block_request_until_1326.zip");
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-
-        let mut requests: Vec<String> = Vec::new();
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).unwrap();
-            let mut writer: Vec<u8> = vec![];
-            io::copy(&mut file, &mut writer).unwrap();
-            requests.push(String::from_utf8(writer).expect("error"));
-        }
-
-        requests
-    }
-
-    pub fn read_operations_for_blocks_message_until_1328() -> HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> {
-        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-            .join("tests")
-            .join("resources")
-            .join("OperationsForBlocksMessage.zip");
-        let file = File::open(path).expect("Couldn't open file: tests/resources/OperationsForBlocksMessage.zip");
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let file = archive.by_name("OperationsForBlocksMessage").unwrap();
-
-        let mut operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> = HashMap::new();
-
-        // read file by lines
-        let reader = io::BufReader::new(file);
-        let lines = reader.lines();
-        for line in lines {
-            if let Ok(mut line) = line {
-                let _ = line.remove(0);
-                let split = line.split("|").collect_vec();
-                assert_eq!(3, split.len());
-
-                let block_hash = HashType::BlockHash.string_to_bytes(split[0]).expect("Failed to parse block_hash");
-                let validation_pass = split[1].parse::<i8>().expect("Failed to parse validation_pass");
-
-                let operations_for_blocks_message = hex::decode(split[2]).expect("Failed to parse operations_for_blocks_message");
-                let operations_for_blocks_message = OperationsForBlocksMessage::from_bytes(operations_for_blocks_message).expect("Failed to readed bytes for operations_for_blocks_message");
-
-                operations.insert(
-                    OperationsForBlocksMessageKey::new(block_hash, validation_pass),
-                    operations_for_blocks_message,
-                );
-            }
-        }
-
-        operations
-    }
-
-    #[derive(Debug, PartialEq, Eq, Hash)]
-    pub struct OperationsForBlocksMessageKey {
-        block_hash: String,
-        validation_pass: i8,
-    }
-
-    impl OperationsForBlocksMessageKey {
-        pub fn new(block_hash: BlockHash, validation_pass: i8) -> Self {
-            OperationsForBlocksMessageKey {
-                block_hash: HashType::BlockHash.bytes_to_string(&block_hash),
-                validation_pass,
-            }
-        }
-    }
-
-    /// Create new struct from bytes.
-    #[inline]
-    pub fn from_captured_bytes(buf: Vec<u8>) -> Result<ApplyBlockRequest, BinaryReaderError> {
-        let value = BinaryReader::new().read(buf, &APPLY_BLOCK_REQUEST_ENCODING)?;
-        let value: ApplyBlockRequest = deserialize_from_value(&value)?;
-        Ok(value)
-    }
-
-    pub fn read_context_json(file_name: &str) -> Option<String> {
-        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-            .join("tests")
-            .join("resources")
-            .join("ocaml_context_jsons.zip");
-        let file = File::open(path).expect("Couldn't open file: tests/resources/ocaml_context_jsons.zip");
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).unwrap();
-            if file.name().eq(file_name) {
-                let mut writer: Vec<u8> = vec![];
-                io::copy(&mut file, &mut writer).unwrap();
-                return Some(String::from_utf8(writer).expect("error"));
-            }
-        }
-
-        None
-    }
 }
 
 mod test_actor {
