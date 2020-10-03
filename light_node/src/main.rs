@@ -63,8 +63,8 @@ macro_rules! create_terminal_logger {
 macro_rules! create_file_logger {
     ($type:expr, $path:expr) => {{
         let appender = FileAppenderBuilder::new($path)
-            .rotate_size(10_485_760) // 10 MB
-            .rotate_keep(4)
+            .rotate_size(10_485_760 * 10) // 100 MB
+            .rotate_keep(2)
             .rotate_compress(true)
             .build();
 
