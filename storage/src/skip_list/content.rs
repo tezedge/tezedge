@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use failure::_core::marker::PhantomData;
 use failure::Fail;
-use rocksdb::{ColumnFamilyDescriptor, SliceTransform};
+use rocksdb::{ColumnFamilyDescriptor, SliceTransform, Cache};
 use serde::{Deserialize, Serialize};
 
 use crate::num_from_slice;
@@ -147,8 +147,8 @@ impl KeyValueSchema for ListValue {
     type Key = ListValueKey;
     type Value = Vec<u8>;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ListValueKey::LEN_ID));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)

@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Cache};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
@@ -98,8 +98,8 @@ impl KeyValueSchema for OperationsMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_merge_operator("operations_meta_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() -> Result<(), Error> {
-        use rocksdb::{Options, DB};
+        use rocksdb::{Options, DB, Cache};
 
         let path = "__opmeta_storage_mergetest";
         if Path::new(path).exists() {
@@ -338,8 +338,9 @@ mod tests {
         {
             let t = true as u8;
             let f = false as u8;
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
-            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()], &DbConfiguration::default())?;
+            let db = open_kv(path, vec![OperationsMetaStorage::descriptor(&cache)], &DbConfiguration::default())?;
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,

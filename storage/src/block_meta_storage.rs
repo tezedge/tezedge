@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Cache};
 use slog::{Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
@@ -263,8 +263,8 @@ impl KeyValueSchema for BlockMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() -> Result<(), Error> {
-        use rocksdb::{Options, DB};
+        use rocksdb::{Options, DB, Cache};
 
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
@@ -411,7 +411,8 @@ mod tests {
         }
 
         {
-            let db = open_kv(path, vec![BlockMetaStorage::descriptor()], &DbConfiguration::default()).unwrap();
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            let db = open_kv(path, vec![BlockMetaStorage::descriptor(&cache)], &DbConfiguration::default()).unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,

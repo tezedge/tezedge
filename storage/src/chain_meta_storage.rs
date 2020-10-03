@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use rocksdb::ColumnFamilyDescriptor;
+use rocksdb::{ColumnFamilyDescriptor, Cache};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
@@ -104,10 +104,8 @@ impl KeyValueSchema for ChainMetaStorage {
     type Key = MetaKey;
     type Value = MetadataValue;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
-        // 1 MB
-        cf_opts.set_write_buffer_size(1024 * 1024);
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let cf_opts = default_table_options(cache);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 

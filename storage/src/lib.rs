@@ -30,6 +30,7 @@ pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
 use crate::merkle_storage::MerkleStorage;
+use rocksdb::Cache;
 
 pub mod persistent;
 pub mod merkle_storage;
@@ -394,25 +395,28 @@ pub mod tests_common {
 
             let cfg = DbConfiguration::default();
 
+            // create common RocksDB block cache to be shared among column families
+            let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
+
             let kv = open_kv(&path, vec![
-                block_storage::BlockPrimaryIndex::descriptor(),
-                block_storage::BlockByLevelIndex::descriptor(),
-                block_storage::BlockByContextHashIndex::descriptor(),
-                BlockMetaStorage::descriptor(),
-                OperationsStorage::descriptor(),
-                OperationsMetaStorage::descriptor(),
-                context_action_storage::ContextActionByBlockHashIndex::descriptor(),
-                context_action_storage::ContextActionByContractIndex::descriptor(),
-                context_action_storage::ContextActionByTypeIndex::descriptor(),
-                MerkleStorage::descriptor(),
-                SystemStorage::descriptor(),
-                Sequences::descriptor(),
-                DatabaseBackedSkipList::descriptor(),
-                Lane::descriptor(),
-                ListValue::descriptor(),
-                MempoolStorage::descriptor(),
-                ContextActionStorage::descriptor(),
-                ChainMetaStorage::descriptor(),
+                block_storage::BlockPrimaryIndex::descriptor(&cache),
+                block_storage::BlockByLevelIndex::descriptor(&cache),
+                block_storage::BlockByContextHashIndex::descriptor(&cache),
+                BlockMetaStorage::descriptor(&cache),
+                OperationsStorage::descriptor(&cache),
+                OperationsMetaStorage::descriptor(&cache),
+                context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+                context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+                context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+                MerkleStorage::descriptor(&cache),
+                SystemStorage::descriptor(&cache),
+                Sequences::descriptor(&cache),
+                DatabaseBackedSkipList::descriptor(&cache),
+                Lane::descriptor(&cache),
+                ListValue::descriptor(&cache),
+                MempoolStorage::descriptor(&cache),
+                ContextActionStorage::descriptor(&cache),
+                ChainMetaStorage::descriptor(&cache),
             ], &cfg)?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),

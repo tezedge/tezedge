@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use rocksdb::ColumnFamilyDescriptor;
+use rocksdb::{ColumnFamilyDescriptor, Cache};
 
 use crate::persistent::codec::Codec;
 use crate::persistent::default_table_options;
@@ -11,8 +11,8 @@ pub trait KeyValueSchema {
     type Key: Codec;
     type Value: Codec;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        ColumnFamilyDescriptor::new(Self::name(), default_table_options())
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        ColumnFamilyDescriptor::new(Self::name(), default_table_options(cache))
     }
 
     fn name() -> &'static str;

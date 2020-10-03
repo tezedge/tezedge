@@ -34,6 +34,7 @@ use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfigura
 
 use crate::configuration::LogFormat;
 use storage::merkle_storage::MerkleStorage;
+use rocksdb::Cache;
 
 mod configuration;
 mod identity;
@@ -322,23 +323,28 @@ fn main() {
 
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
+    // create common RocksDB block cache to be shared among column families
+    // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
+    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
+
     let schemas = vec![
-        block_storage::BlockPrimaryIndex::descriptor(),
-        block_storage::BlockByLevelIndex::descriptor(),
-        block_storage::BlockByContextHashIndex::descriptor(),
-        BlockMetaStorage::descriptor(),
-        OperationsStorage::descriptor(),
-        OperationsMetaStorage::descriptor(),
-        context_action_storage::ContextActionByBlockHashIndex::descriptor(),
-        context_action_storage::ContextActionByContractIndex::descriptor(),
-        context_action_storage::ContextActionByTypeIndex::descriptor(),
-        ContextActionStorage::descriptor(),
-        MerkleStorage::descriptor(),
-        SystemStorage::descriptor(),
-        Sequences::descriptor(),
-        MempoolStorage::descriptor(),
-        ChainMetaStorage::descriptor(),
+        block_storage::BlockPrimaryIndex::descriptor(&cache),
+        block_storage::BlockByLevelIndex::descriptor(&cache),
+        block_storage::BlockByContextHashIndex::descriptor(&cache),
+        BlockMetaStorage::descriptor(&cache),
+        OperationsStorage::descriptor(&cache),
+        OperationsMetaStorage::descriptor(&cache),
+        context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+        context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+        context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+        ContextActionStorage::descriptor(&cache),
+        MerkleStorage::descriptor(&cache),
+        SystemStorage::descriptor(&cache),
+        Sequences::descriptor(&cache),
+        MempoolStorage::descriptor(&cache),
+        ChainMetaStorage::descriptor(&cache),
     ];
+
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.db_path; "reason" => e), actor_system)

@@ -452,15 +452,17 @@ mod tests {
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
-        use rocksdb::{Options, DB};
+        use rocksdb::{Options, DB, Cache};
 
         let path = "__block_level_index_test";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
 
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+
         {
-            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()], &DbConfiguration::default()).unwrap();
+            let db = open_kv(path, vec![BlockByLevelIndex::descriptor(&cache)], &DbConfiguration::default()).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {

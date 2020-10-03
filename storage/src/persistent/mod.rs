@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use derive_builder::Builder;
-use rocksdb::{BlockBasedOptions, ColumnFamilyDescriptor, DB, Options};
+use rocksdb::{BlockBasedOptions, ColumnFamilyDescriptor, DB, Options, Cache};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
@@ -83,22 +83,24 @@ fn default_kv_options(cfg: &DbConfiguration) -> Options {
 /// based on recommended setting:
 ///     https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
 ///     https://rocksdb.org/blog/2019/03/08/format-version-4.html
-pub fn default_table_options() -> Options {
+pub fn default_table_options(cache: &Cache) -> Options {
     // default db options
     let mut db_opts = Options::default();
+
 
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
     db_opts.set_level_compaction_dynamic_level_bytes(true);
 
     // block table options
     let mut table_options = BlockBasedOptions::default();
+    table_options.set_block_cache(cache);
     table_options.set_block_size(16 * 1024);
     table_options.set_cache_index_and_filter_blocks(true);
     table_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
 
     // set format_version 4 https://rocksdb.org/blog/2019/03/08/format-version-4.html
     table_options.set_format_version(4);
-    table_options.set_block_restart_interval(16);
+    table_options.set_index_block_restart_interval(16);
 
     db_opts.set_block_based_table_factory(&table_options);
 

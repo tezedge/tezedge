@@ -1527,6 +1527,7 @@ dependencies = [
  "networking",
  "riker",
  "rlimit",
+ "rocksdb 0.15.0",
  "rpc",
  "serde_json",
  "shell",
