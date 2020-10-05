@@ -53,6 +53,7 @@ use std::collections::{HashMap, BTreeMap};
 use failure::Fail;
 use std::sync::Arc;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use sodiumoxide::crypto::generichash::State;
 
@@ -98,6 +99,9 @@ pub struct MerkleStorage {
     staged: HashMap<EntryHash, Entry>,
     last_commit: Option<Commit>,
     map_stats: MerkleMapStats,
+    cumul_set_exec_time: f64, // divide this by the next field to get avg time spent in _set
+    set_exec_times: u64,
+    set_exec_times_to_discard: u64, // first N measurements to discard
 }
 
 const HASH_LEN: usize = 32;
@@ -143,10 +147,16 @@ pub struct MerkleMapStats {
     current_tree_elems: u64,
 }
 
+#[derive(Serialize, Debug, Clone, Copy)]
+pub struct MerklePerfStats {
+    pub avg_set_exec_time_ns: f64,
+}
+
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
     rocksdb_stats: RocksDBStats,
     map_stats: MerkleMapStats,
+    pub perf_stats: MerklePerfStats,
 }
 
 impl KeyValueSchema for MerkleStorage {
@@ -172,6 +182,9 @@ impl MerkleStorage {
             current_stage_tree: None,
             last_commit: None,
             map_stats: MerkleMapStats{staged_area_elems: 0 , current_tree_elems: 0},
+            cumul_set_exec_time: 0.0,
+            set_exec_times: 0,
+            set_exec_times_to_discard: 20,
         }
     }
 
@@ -314,7 +327,15 @@ impl MerkleStorage {
         let blob_hash = self.hash_blob(&value);
         self.put_to_staging_area(&blob_hash, Entry::Blob(value));
         let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
-        self.compute_new_root_with_change(root, &key, Some(new_node))
+        let instant = Instant::now();
+        let rv = self.compute_new_root_with_change(root, &key, Some(new_node));
+        let elapsed = instant.elapsed().as_nanos() as f64;
+        if self.set_exec_times >= self.set_exec_times_to_discard.into() {
+            self.cumul_set_exec_time += elapsed;
+        }
+        self.set_exec_times += 1;
+        rv
+
     }
 
     /// Delete an item from the staging area.
@@ -618,7 +639,12 @@ impl MerkleStorage {
 
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
         let db_stats = self.db.get_mem_use_stats()?;
-        Ok(MerkleStorageStats{ rocksdb_stats: db_stats, map_stats: self.map_stats })
+        let mut avg_set_exec_time_ns: f64 = 0.0;
+        if self.set_exec_times > self.set_exec_times_to_discard {
+                avg_set_exec_time_ns = self.cumul_set_exec_time / ((self.set_exec_times - self.set_exec_times_to_discard) as f64);
+        }
+        let perf = MerklePerfStats { avg_set_exec_time_ns: avg_set_exec_time_ns};
+        Ok(MerkleStorageStats{ rocksdb_stats: db_stats, map_stats: self.map_stats, perf_stats: perf })
     }
 }
 
