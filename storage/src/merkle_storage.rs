@@ -379,7 +379,7 @@ impl MerkleStorage {
     /// * `new_entry_hash` - None for deletion, Some for inserting a hash under the key.
     fn compute_new_root_with_change(&mut self,
                                     root: &Tree,
-                                    key: &ContextKey,
+                                    key: &[String],
                                     new_node: Option<Node>,
     ) -> Result<EntryHash, MerkleError> {
         if key.is_empty() {
@@ -388,8 +388,8 @@ impl MerkleStorage {
         }
 
         let last = key.last().unwrap();
-        let path = key.clone().drain(0..key.len() - 1).collect();
-        let mut tree = self.find_tree(root, &path)?;
+        let path = &key[..key.len() - 1];
+        let mut tree = self.find_tree(root, path)?;
 
         match new_node {
             None => tree.remove(last),
@@ -399,12 +399,12 @@ impl MerkleStorage {
         };
 
         if tree.is_empty() {
-            self.compute_new_root_with_change(root, &path, None)
+            self.compute_new_root_with_change(root, path, None)
         } else {
             let new_tree_hash = self.hash_tree(&tree);
             self.put_to_staging_area(&new_tree_hash, Entry::Tree(tree));
             self.compute_new_root_with_change(
-                root, &path, Some(self.get_non_leaf(new_tree_hash)))
+                root, path, Some(self.get_non_leaf(new_tree_hash)))
         }
     }
 
@@ -415,7 +415,7 @@ impl MerkleStorage {
     ///
     /// * `root` - reference to a tree in which we search
     /// * `key` - sought path
-    fn find_tree(&self, root: &Tree, key: &ContextKey) -> Result<Tree, MerkleError> {
+    fn find_tree(&self, root: &Tree, key: &[String]) -> Result<Tree, MerkleError> {
         if key.is_empty() { return Ok(root.clone()); }
 
         let child_node = match root.get(key.first().unwrap()) {
@@ -425,7 +425,7 @@ impl MerkleStorage {
 
         match self.get_entry(&child_node.entry_hash)? {
             Entry::Tree(tree) => {
-                self.find_tree(&tree, &key.clone().drain(1..).collect())
+                self.find_tree(&tree, &key[1..])
             }
             Entry::Blob(_) => Ok(Tree::new()),
             Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
