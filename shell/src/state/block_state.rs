@@ -54,13 +54,10 @@ impl BlockchainState {
     /// - Some(head), if head was updated
     pub fn try_set_new_current_head(&self, block: &BlockApplied) -> Result<Option<Head>, StorageError> {
 
-        let head = Head {
-            hash: block.header().hash.clone(),
-            level: block.header().header.level(),
-        };
+        let head = Head::new(block.header().hash.clone(), block.header().header.level());
 
         // set head to db
-        self.chain_meta_storage.set_current_head(&self.chain_id, &head)?;
+        self.chain_meta_storage.set_current_head(&self.chain_id, head.clone())?;
 
         Ok(Some(head))
     }

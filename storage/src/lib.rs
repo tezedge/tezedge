@@ -251,10 +251,7 @@ pub fn store_commit_genesis_result(
         Some(genesis) => {
             chain_meta_storage.set_current_head(
                 &chain_id,
-                &Head {
-                    hash: genesis.hash.clone(),
-                    level: genesis.header.level(),
-                },
+                Head::new(genesis.hash.clone(), genesis.header.level()),
             )?;
 
             Ok(block_json_data)

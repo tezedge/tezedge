@@ -48,11 +48,11 @@ impl ChainMetaStorage {
     }
 
     #[inline]
-    pub fn set_current_head(&self, chain_id: &ChainId, head: &Head) -> Result<(), StorageError> {
+    pub fn set_current_head(&self, chain_id: &ChainId, head: Head) -> Result<(), StorageError> {
         self.kv
             .put(
                 &MetaKey::key_current_head(chain_id.clone()),
-                &MetadataValue::CurrentHead(head.clone()),
+                &MetadataValue::CurrentHead(head),
             )
             .map_err(StorageError::from)
     }
@@ -198,40 +198,40 @@ mod tests {
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
         let chain_id1 = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
-        let block_1 = Head {
-            hash: HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
-            level: 1,
-        };
+        let block_1 = Head::new(
+            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            1,
+        );
 
         let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
-        let block_2 = Head {
-            hash: HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
-            level: 2,
-        };
+        let block_2 = Head::new(
+            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            2,
+        );
 
         // no current heads
         assert!(index.get_current_head(&chain_id1)?.is_none());
         assert!(index.get_current_head(&chain_id2)?.is_none());
 
         // set for chain_id1
-        index.set_current_head(&chain_id1, &block_1)?;
+        index.set_current_head(&chain_id1, block_1.clone())?;
         assert!(index.get_current_head(&chain_id1)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().hash, block_1.hash.clone());
+        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().hash(), block_1.hash());
         assert!(index.get_current_head(&chain_id2)?.is_none());
 
         // set for chain_id2
-        index.set_current_head(&chain_id2, &block_2)?;
+        index.set_current_head(&chain_id2, block_2.clone())?;
         assert!(index.get_current_head(&chain_id1)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().hash, block_1.hash.clone());
+        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().hash(), block_1.hash());
         assert!(index.get_current_head(&chain_id2)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id2)?.unwrap().hash, block_2.hash.clone());
+        assert_eq!(index.get_current_head(&chain_id2)?.unwrap().hash(), block_2.hash());
 
         // update for chain_id1
-        index.set_current_head(&chain_id1, &block_2)?;
+        index.set_current_head(&chain_id1, block_2.clone())?;
         assert!(index.get_current_head(&chain_id1)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().hash, block_2.hash.clone());
+        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().hash(), block_2.hash());
         assert!(index.get_current_head(&chain_id2)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id2)?.unwrap().hash, block_2.hash.clone());
+        assert_eq!(index.get_current_head(&chain_id2)?.unwrap().hash(), block_2.hash());
 
         Ok(())
     }

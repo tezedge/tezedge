@@ -261,8 +261,8 @@ fn feed_chain_to_protocol(
     let chain_id = &init_storage_data.chain_id;
 
     // now resolve where to start apply next blocks (at least genesis should be there)
-    let mut current_head_hash: BlockHash = match &chain_meta_storage.get_current_head(chain_id)? {
-        Some(block) => block.hash.clone(),
+    let mut current_head_hash: BlockHash = match chain_meta_storage.get_current_head(chain_id)? {
+        Some(block) => block.into(),
         None => {
             // this should not happen here, we applied at least genesis before
             return Err(FeedChainError::UnknownCurrentHeadError);

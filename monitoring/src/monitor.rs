@@ -20,6 +20,7 @@ use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo}
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{
     handlers::handler_messages::PeerConnectionStatus,
@@ -103,9 +104,9 @@ impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellCh
             iter.count()
         } else { 0 };
         // get last header level
-        let level = chain_meta_storage.get_current_head(&chain_id)
+        let level: Level = chain_meta_storage.get_current_head(&chain_id)
             .unwrap_or(None)
-            .map(|head| head.level)
+            .map(|head| head.into())
             .unwrap_or(0);
 
         let mut bootstrap_monitor = BootstrapMonitor::new();
@@ -261,7 +262,7 @@ impl Receive<ShellChannelMsg> for Monitor {
             }
             ShellChannelMsg::NewCurrentHead(head, ..) => {
                 // update stats for block applications
-                self.chain_monitor.process_block_application(head.level as usize);
+                self.chain_monitor.process_block_application(*head.level() as usize);
 
                 self.blocks_monitor.block_was_applied_by_protocol();
                 self.block_application_monitor.block_was_applied(head);

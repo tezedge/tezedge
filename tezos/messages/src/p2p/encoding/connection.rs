@@ -17,13 +17,13 @@ use crate::p2p::encoding::version::NetworkVersion;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct ConnectionMessage {
-    pub port: u16,
+    port: u16,
     #[get = "pub"]
-    pub versions: Vec<NetworkVersion>,
+    versions: Vec<NetworkVersion>,
     #[get = "pub"]
-    pub public_key: Vec<u8>,
-    pub proof_of_work_stamp: Vec<u8>,
-    pub message_nonce: Vec<u8>,
+    public_key: Vec<u8>,
+    proof_of_work_stamp: Vec<u8>,
+    message_nonce: Vec<u8>,
 }
 
 impl ConnectionMessage {

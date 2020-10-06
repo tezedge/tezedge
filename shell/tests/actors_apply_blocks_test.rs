@@ -27,7 +27,6 @@ use storage::persistent::{ContextList, PersistentStorage};
 use storage::skip_list::Bucket;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
-use tezos_messages::p2p::encoding::operation::OperationMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 use tezos_messages::p2p::encoding::prelude::Operation;
 
@@ -220,7 +219,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
         for vp in 0..validation_pass {
             if let Some(msg) = operations.get(&OperationsForBlocksMessageKey::new(block.hash.clone(), vp as i8)) {
                 operations_storage.put_operations(msg)?;
-                operations_meta_storage.put_operations(msg)?;
+                let _ = operations_meta_storage.put_operations(msg)?;
             }
         }
         assert!(operations_meta_storage.is_complete(&block.hash)?);
@@ -239,8 +238,8 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
         match chain_meta_storage.get_current_head(&chain_id)? {
             None => (),
             Some(head) => {
-                if head.level >= apply_to_level {
-                    let header = block_storage.get(&head.hash).expect("failed to read current head").expect("current head not found");
+                if head.level() >= &apply_to_level {
+                    let header = block_storage.get(head.hash()).expect("failed to read current head").expect("current head not found");
                     // TE-168: check if context is also asynchronously stored
                     let context_hash = header.header.context();
                     let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");
@@ -263,7 +262,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
 ///
 /// Than tries to validate operations from block 1326, which are `branch_delayed`.
 fn test_scenario_for_add_operations_to_mempool_and_check_state(
-    test_result_receiver: QueueReceiver<CurrentMempoolState>,
+    test_result_receiver: QueueReceiver<Arc<CurrentMempoolState>>,
     shell_channel: ShellChannelRef,
     persistent_storage: &PersistentStorage,
     last_applied_request_1324: &String,
@@ -273,7 +272,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
     // wait mempool for last_applied_block
-    let mut current_mempool_state: Option<CurrentMempoolState> = None;
+    let mut current_mempool_state: Option<Arc<CurrentMempoolState>> = None;
     while let Ok(result) = test_result_receiver.recv_timeout(Duration::from_secs(10)) {
         let done = if let Some(head) = &result.head {
             *head == last_applied_block
@@ -291,8 +290,8 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     assert!(current_mempool_state.is_some());
     let current_mempool_state = current_mempool_state.unwrap();
     assert!(current_mempool_state.head.is_some());
-    let mempool_head = current_mempool_state.head.unwrap();
-    assert_eq!(mempool_head, last_applied_block);
+    let mempool_head = current_mempool_state.head.as_ref().unwrap();
+    assert_eq!(*mempool_head, last_applied_block);
 
     // check operations in mempool - should by empty all
     assert!(current_mempool_state.result.applied.is_empty());
@@ -306,7 +305,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     assert_ne!(0, operations_from_1325_count);
 
     // we expect here message for every operation
-    let mut current_mempool_state: Option<CurrentMempoolState> = None;
+    let mut current_mempool_state: Option<Arc<CurrentMempoolState>> = None;
     while let Ok(result) = test_result_receiver.recv_timeout(Duration::from_secs(10)) {
         let done = contains_all_keys(&result.operations, &operations_from_1325);
         current_mempool_state = Some(result);
@@ -329,7 +328,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     assert_ne!(0, operations_from_1326_count);
 
     // we expect here message for every operation
-    let mut current_mempool_state: Option<CurrentMempoolState> = None;
+    let mut current_mempool_state: Option<Arc<CurrentMempoolState>> = None;
     while let Ok(result) = test_result_receiver.recv_timeout(Duration::from_secs(10)) {
         let done = contains_all_keys(&result.operations, &operations_from_1326);
         current_mempool_state = Some(result);
@@ -356,14 +355,15 @@ fn add_operations_to_mempool(request: &String, shell_channel: ShellChannelRef, m
         for operation in operations {
             // this is done by chain_manager when received new operations
 
+            let operation_hash = operation.message_hash()?;
+
             // add to mempool storage
             mempool_storage.put(
                 MempoolOperationType::Pending,
-                OperationMessage::new(operation.clone()),
+                operation.into(),
                 SystemTime::now(),
             )?;
 
-            let operation_hash = operation.message_hash()?;
 
             // ping channel - mempool_prevalidator listens
             shell_channel.tell(
@@ -405,7 +405,7 @@ mod test_actor {
 
     #[actor(ShellChannelMsg)]
     pub(crate) struct TestActor {
-        result_sender: Arc<Mutex<QueueSender<CurrentMempoolState>>>,
+        result_sender: Arc<Mutex<QueueSender<Arc<CurrentMempoolState>>>>,
         shell_channel: ShellChannelRef,
     }
 
@@ -426,8 +426,8 @@ mod test_actor {
         }
     }
 
-    impl ActorFactoryArgs<(ShellChannelRef, Arc<Mutex<QueueSender<CurrentMempoolState>>>)> for TestActor {
-        fn create_args((shell_channel, result_sender): (ShellChannelRef, Arc<Mutex<QueueSender<CurrentMempoolState>>>)) -> Self {
+    impl ActorFactoryArgs<(ShellChannelRef, Arc<Mutex<QueueSender<Arc<CurrentMempoolState>>>>)> for TestActor {
+        fn create_args((shell_channel, result_sender): (ShellChannelRef, Arc<Mutex<QueueSender<Arc<CurrentMempoolState>>>>)) -> Self {
             Self {
                 shell_channel,
                 result_sender,
@@ -449,7 +449,7 @@ mod test_actor {
     impl TestActor {
         pub fn name() -> &'static str { "test-actor" }
 
-        pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, result_sender: QueueSender<CurrentMempoolState>) -> Result<TestActorRef, CreateError> {
+        pub fn actor(sys: &ActorSystem, shell_channel: ShellChannelRef, result_sender: QueueSender<Arc<CurrentMempoolState>>) -> Result<TestActorRef, CreateError> {
             Ok(
                 sys.actor_of_props::<TestActor>(
                     Self::name(),

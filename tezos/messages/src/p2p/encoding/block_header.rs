@@ -50,6 +50,12 @@ impl From<BlockHeader> for BlockHeaderMessage {
     }
 }
 
+impl From<BlockHeaderMessage> for BlockHeader {
+    fn from(msg: BlockHeaderMessage) -> Self {
+        msg.block_header
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetBlockHeadersMessage {

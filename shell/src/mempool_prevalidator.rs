@@ -130,7 +130,7 @@ impl MempoolPrevalidator {
             ShellChannelMsg::NewCurrentHead(head, block) => {
                 // add NewHead to queue
                 self.validator_event_sender.lock().unwrap().send(
-                    Event::NewHead(head.hash, block.header().header.clone())
+                    Event::NewHead(head.into(), block.header().header.clone())
                 )?;
             }
             ShellChannelMsg::MempoolOperationReceived(operation) => {
@@ -340,7 +340,7 @@ fn process_prevalidation(
                                 "received_block_hash" => HashType::BlockHash.bytes_to_string(&header_hash));
 
                     // try to begin construction new context
-                    let (prevalidator, head) = begin_construction(&protocol_controller, &chain_id, &header_hash, header, &log)?;
+                    let (prevalidator, head) = begin_construction(&protocol_controller, &chain_id, header_hash, header, &log)?;
 
                     // reinitialize state for new prevalidator and head
                     let operations_to_delete = state.reinit(prevalidator, head);
@@ -367,7 +367,7 @@ fn process_prevalidation(
                             debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
                         } else {
                             // just add operations to pendings
-                            state.add_to_pending(oph, operation.operation);
+                            state.add_to_pending(oph, operation.into());
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.bytes_to_string(&oph));
@@ -397,13 +397,13 @@ fn hydrate_state(
 
     // load current head
     let current_head = match chain_meta_storage.get_current_head(&chain_id)? {
-        Some(head) => block_storage.get(&head.hash)?.map(|header| (head, header.header)),
+        Some(head) => block_storage.get(head.hash())?.map(|header| (head, header.header)),
         None => None,
     };
 
     // begin construction for a current head
     let (prevalidator, head) = match current_head {
-        Some((head, header)) => begin_construction(protocol_controller, &chain_id, &head.hash, header, &log)?,
+        Some((head, header)) => begin_construction(protocol_controller, &chain_id, head.into(), header, &log)?,
         None => (None, None)
     };
 
@@ -427,7 +427,7 @@ fn hydrate_state(
 
 fn begin_construction(protocol_controller: &ProtocolController,
                       chain_id: &ChainId,
-                      block_hash: &BlockHash,
+                      block_hash: BlockHash,
                       block_header: Arc<BlockHeader>,
                       log: &Logger) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
 
@@ -441,7 +441,7 @@ fn begin_construction(protocol_controller: &ProtocolController,
     ) {
         Ok(prevalidator) => (
             Some(prevalidator),
-            Some(block_hash.clone()),
+            Some(block_hash),
         ),
         Err(err) => {
             warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.bytes_to_string(&block_hash), "error" => format!("{:?}", err));

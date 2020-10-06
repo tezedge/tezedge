@@ -41,7 +41,8 @@ impl OperationsMetaStorage {
         )
     }
 
-    pub fn put_operations(&self, message: &OperationsForBlocksMessage) -> Result<(), StorageError> {
+    /// Stores operation validation_passes metadata and check if is_complete
+    pub fn put_operations(&self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
         let block_hash = message.operations_for_block().hash().clone();
 
         match self.get(&block_hash)? {
@@ -52,6 +53,7 @@ impl OperationsMetaStorage {
                 meta.is_validation_pass_present[validation_pass as usize] = true as u8;
                 meta.is_complete = meta.is_validation_pass_present.iter().all(|v| *v == (true as u8));
                 self.put(&block_hash, &meta)
+                    .and(Ok(meta.is_complete))
             }
             None => Err(StorageError::MissingKey),
         }
