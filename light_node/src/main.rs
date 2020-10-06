@@ -323,7 +323,7 @@ fn main() {
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
-            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.clone().into_os_string().into_string().unwrap());
+            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.clone().into_os_string().into_string().unwrap(), "peer_id" => &identity.peer_id);
             identity
         }
         Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
