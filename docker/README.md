@@ -1,16 +1,13 @@
 ## Building an image
 
-The first thing is to build the builder image that will contain all the necesarry tezedge binaries and libraries
+Build from the repository's root directory.
+Possible targets: 
+- light-node: builds only the tezedge node
+- sandbox: builds the node and the sandbox launcher
+
+In the build command, we need to specify the git branch to build the node from with the help of th build argument *SOURCE_BRANCH*
 
 ```
-docker build -t builder --build-arg SOURCE_BRANCH=master -f docker/builder/Dockerfile .
-```
-
-Note that we specify the git branch to build from
-
-Next, We build a distroless image. Depending on which image you want to build (just a *light-node* or a *sandbox* version of the node) you specify the target
-
-```
-docker build --target light-node -t local:new-distroless docker/distroless
+docker build -t local:tezedge --target light-node --build-arg SOURCE_BRANCH=develop -f docker/distroless/Dockerfile .
 ```
 
