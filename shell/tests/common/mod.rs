@@ -90,7 +90,7 @@ pub mod infra {
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
-    use tezos_api::ffi::{TezosRuntimeConfiguration, PatchContext};
+    use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::version::NetworkVersion;
     use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
@@ -268,7 +268,10 @@ pub mod infra {
             let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
             let result = loop {
                 let current_head = chain_meta_data.get_current_head(&self.tezos_env.main_chain_id()?)?
-                    .map(|ch| ch.hash)
+                    .map(|ch| {
+                        let ch: BlockHash = ch.into();
+                        ch
+                    })
                     .map(|ch| HashType::BlockHash.bytes_to_string(&ch));
 
                 if current_head.eq(&tested_head) {

@@ -13,6 +13,7 @@
 
 use std::cmp;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use failure::Error;
@@ -23,7 +24,7 @@ use slog::{debug, info, Logger, trace, warn};
 use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
 use networking::p2p::peer::{PeerRef, SendMessage};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
@@ -96,7 +97,7 @@ impl CurrentHead {
     fn need_update_remote_level(&self, new_remote_level: i32) -> bool {
         match &self.remote {
             None => true,
-            Some(current_remote_head) => new_remote_level > current_remote_head.level
+            Some(current_remote_head) => new_remote_level > *current_remote_head.level()
         }
     }
 
@@ -142,6 +143,8 @@ pub struct ChainManager {
     peers: HashMap<ActorUri, PeerState>,
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
+    /// Block meta storage
+    block_meta_storage: Box<dyn BlockMetaStorageReader>,
     /// Chain meta storage
     chain_meta_storage: Box<dyn ChainMetaStorageReader>,
     /// Operations storage
@@ -155,7 +158,7 @@ pub struct ChainManager {
     /// Current head information
     current_head: CurrentHead,
     // current last known mempool state
-    current_mempool_state: Option<CurrentMempoolState>,
+    current_mempool_state: Option<Arc<CurrentMempoolState>>,
     /// Internal stats
     stats: Stats,
     /// Indicates that system is shutting down
@@ -304,6 +307,7 @@ impl ChainManager {
             operations_state,
             shell_channel,
             block_storage,
+            block_meta_storage,
             operations_storage,
             stats,
             mempool_storage,
@@ -333,20 +337,24 @@ impl ChainManager {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
                                     debug!(log, "Received current branch");
-                                    if message.current_branch().current_head().level() > 0 {
+                                    let message_current_head = message.current_branch().current_head();
+                                    let message_current_head_block_hash: BlockHash = message_current_head.message_hash()?;
+                                    let message_current_head_level = message_current_head.level();
+
+                                    if message_current_head_level > 0 {
                                         // schedule predecessor
                                         chain_state.push_missing_block(
                                             MissingBlock::with_level_guess(
-                                                message.current_branch().current_head().predecessor().clone(),
-                                                message.current_branch().current_head().level() - 1,
+                                                message_current_head.predecessor().clone(),
+                                                message_current_head_level - 1,
                                             )
                                         )?;
 
                                         // schedule current_head
                                         chain_state.push_missing_block(
                                             MissingBlock::with_level(
-                                                message.current_branch().current_head().message_hash()?,
-                                                message.current_branch().current_head().level(),
+                                                message_current_head_block_hash.clone(),
+                                                message_current_head_level,
                                             )
                                         )?
                                     }
@@ -354,22 +362,20 @@ impl ChainManager {
                                     // schedule history - we try to prioritize download from the beginning, so the history is reversed here
                                     chain_state.push_missing_history(
                                         message.current_branch().history().iter().cloned().rev().collect(),
-                                        message.current_branch().current_head().level(),
+                                        message_current_head_level,
                                     )?;
 
-                                    let peer_current_head = message.current_branch().current_head();
-
                                     // if needed, update remote current head
-                                    if current_head.need_update_remote_level(message.current_branch().current_head().level()) {
-                                        current_head.remote = Some(Head {
-                                            hash: message.current_branch().current_head().message_hash()?,
-                                            level: message.current_branch().current_head().level(),
-                                        });
+                                    if current_head.need_update_remote_level(message_current_head_level) {
+                                        current_head.remote = Some(Head::new(
+                                            message_current_head_block_hash.clone(),
+                                            message_current_head_level,
+                                        ));
                                     }
 
                                     // update peer stats
-                                    if peer.current_head_level.is_none() || (message.current_branch().current_head().level() > peer.current_head_level.unwrap()) {
-                                        peer.current_head_level = Some(message.current_branch().current_head().level());
+                                    if peer.current_head_level.is_none() || (message_current_head_level > peer.current_head_level.unwrap()) {
+                                        peer.current_head_level = Some(message_current_head_level);
                                         peer.current_head_update_last = Instant::now();
                                     }
 
@@ -377,8 +383,8 @@ impl ChainManager {
                                     shell_channel.tell(
                                         Publish {
                                             msg: BlockReceived {
-                                                hash: peer_current_head.message_hash()?,
-                                                level: peer_current_head.level(),
+                                                hash: message_current_head_block_hash,
+                                                level: message_current_head_level,
                                             }.into(),
                                             topic: ShellChannelTopic::ShellEvents.into(),
                                         }, Some(ctx.myself().into()));
@@ -390,7 +396,7 @@ impl ChainManager {
                                     debug!(log, "Current branch requested by a peer");
                                     if chain_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head_local) = &current_head.local {
-                                            if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
+                                            if let Some(current_head) = block_storage.get(current_head_local.hash())? {
                                                 let history = chain_state.get_history()?;
                                                 let msg = CurrentBranchMessage::new(chain_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
                                                 tell_peer(msg.into(), peer);
@@ -445,7 +451,7 @@ impl ChainManager {
                                     debug!(log, "Current head requested");
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         if let Some(current_head_local) = &current_head.local {
-                                            if let Some(current_head) = block_storage.get(&current_head_local.hash)? {
+                                            if let Some(current_head) = block_storage.get(current_head_local.hash())? {
                                                 let msg = CurrentHeadMessage::new(
                                                     chain_state.get_chain_id().clone(),
                                                     (*current_head.header).clone(),
@@ -473,12 +479,12 @@ impl ChainManager {
                                                     ctx.myself().tell(CheckChainCompleteness, None);
 
                                                     // notify others that new all operations for block were received
-                                                    let block = block_storage.get(&block_hash)?.ok_or(StorageError::MissingKey)?;
+                                                    let block_meta = block_meta_storage.get(&block_hash)?.ok_or(StorageError::MissingKey)?;
                                                     shell_channel.tell(
                                                         Publish {
                                                             msg: AllBlockOperationsReceived {
-                                                                hash: block.hash,
-                                                                level: block.header.level(),
+                                                                hash: block_hash.clone(),
+                                                                level: block_meta.level(),
                                                             }.into(),
                                                             topic: ShellChannelTopic::ShellEvents.into(),
                                                         }, Some(ctx.myself().into()));
@@ -595,11 +601,11 @@ impl ChainManager {
 
                 // we try to set it as "new current head", if some means set, if none means just ignore block
                 if let Some(new_head) = self.chain_state.try_set_new_current_head(&message)? {
-                    debug!(ctx.system.log(), "New current head"; "block_header_hash" => HashType::BlockHash.bytes_to_string(&new_head.hash), "level" => &new_head.level);
+                    debug!(ctx.system.log(), "New current head"; "block_header_hash" => HashType::BlockHash.bytes_to_string(new_head.hash()), "level" => new_head.level());
 
                     // we need to check, if previous head is predecessor of new_head (for later use)
                     let new_branch_detected = match &self.current_head.local {
-                        Some(previos_head) => if previos_head.hash == *message.header().header.predecessor() {
+                        Some(previos_head) => if previos_head.hash() == message.header().header.predecessor() {
                             false
                         } else {
                             // if previous head is not predecesor of new head, means it could be new branch
@@ -623,8 +629,7 @@ impl ChainManager {
                     // we can do this, only if we are bootstrapped,
                     // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
                     if self.is_bootstrapped {
-                        if new_branch_detected {
-                        } else {
+                        if new_branch_detected {} else {
                             // send new current_head to peers
                             let header: &BlockHeader = &message.header().header;
                             let chain_id = self.chain_state.get_chain_id();
@@ -714,12 +719,12 @@ impl ChainManager {
                     if level > 1 {
                         // safe unwrap after above first block
                         let operations = inject_data.operations.clone().unwrap();
-                        let header = block_header_with_hash.header;
+                        let header_hash = block_header_with_hash.hash.clone();
                         let op_paths = inject_data.operation_paths.clone().unwrap();
 
                         // iterate through all validation passes 
                         for (idx, ops) in operations.iter().enumerate() {
-                            let opb = OperationsForBlock::new(header.message_hash()?, idx as i8);
+                            let opb = OperationsForBlock::new(header_hash.clone(), idx as i8);
 
                             // create OperationsForBlocksMessage - the operations are stored in DB as a OperationsForBlocksMessage per validation pass per block
                             // e.g one block -> 4 validation passes -> 4 OperationsForBlocksMessage to store for the block
@@ -732,12 +737,12 @@ impl ChainManager {
                                 ctx.myself().tell(CheckChainCompleteness, None);
 
                                 // notify others that new all operations for block were received
-                                let block = self.block_storage.get(&header.message_hash()?)?.ok_or(StorageError::MissingKey)?;
+                                let block_meta = self.block_meta_storage.get(&header_hash)?.ok_or(StorageError::MissingKey)?;
                                 self.shell_channel.tell(
                                     Publish {
                                         msg: AllBlockOperationsReceived {
-                                            hash: block.hash,
-                                            level: block.header.level(),
+                                            hash: header_hash.clone(),
+                                            level: block_meta.level(),
                                         }.into(),
                                         topic: ShellChannelTopic::ShellEvents.into(),
                                     }, Some(ctx.myself().into()));
@@ -791,8 +796,9 @@ impl ChainManager {
     /// Updates currnet local head and some stats.
     /// Also checks/sets [is_bootstrapped] flag
     fn update_local_current_head(&mut self, new_head: Head, log: &Logger) {
-        self.current_head.local = Some(new_head.clone());
-        self.stats.applied_block_level = Some(new_head.level);
+        let new_level = new_head.level().clone();
+        self.current_head.local = Some(new_head);
+        self.stats.applied_block_level = Some(new_level);
         self.stats.applied_block_last = Some(Instant::now());
         self.resolve_is_bootstrapped(log);
     }
@@ -808,13 +814,13 @@ impl ChainManager {
 
         // simple implementation:
         // peer is considered as bootstrapped, only if his level is less_equal to chain_manager's level
-        let chain_manager_current_level = self.current_head.local.as_ref().map(|head| head.level).unwrap_or(0);
+        let chain_manager_current_level = self.current_head.local.as_ref().map(|head| head.level()).unwrap_or(&0);
         self.peers
             .iter_mut()
             .filter(|(_, peer_state)| !peer_state.is_bootstrapped)
             .for_each(|(_, peer_state)| {
                 let peer_level = peer_state.current_head_level.unwrap_or(0);
-                if peer_level > 0 && peer_level <= chain_manager_current_level {
+                if peer_level > 0 && peer_level <= *chain_manager_current_level {
                     info!(log, "Peer is bootstrapped"; "peer_level" => peer_level, "chain_manager_current_level" => chain_manager_current_level);
                     peer_state.is_bootstrapped = true;
                 }
@@ -842,6 +848,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ch
             network_channel,
             shell_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             chain_meta_storage: Box::new(ChainMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
@@ -1183,15 +1190,15 @@ fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
     Mempool::new(known_valid, pending)
 }
 
-fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<CurrentMempoolState>, current_head: &Head) -> Mempool {
+fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Arc<CurrentMempoolState>>, current_head: &Head) -> Mempool {
     if !peer.mempool_enabled {
         return Mempool::default();
     }
 
     if let Some(mempool_state) = mempool_state {
         if let Some(mempool_head_hash) = &mempool_state.head {
-            if *mempool_head_hash == current_head.hash {
-                resolve_mempool_to_send(mempool_state)
+            if mempool_head_hash == current_head.hash() {
+                resolve_mempool_to_send(&mempool_state)
             } else {
                 Mempool::default()
             }
@@ -1302,10 +1309,10 @@ pub mod tests {
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, false);
 
         // simulate - BlockApplied event with level 4
-        let new_head = Head {
-            hash: HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
-            level: 4,
-        };
+        let new_head = Head::new(
+            HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+            4,
+        );
         chain_manager.update_local_current_head(new_head, &log);
 
         // check chain_manager and peer (not bootstrapped)
@@ -1313,10 +1320,10 @@ pub mod tests {
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, false);
 
         // simulate - BlockApplied event with level 5
-        let new_head = Head {
-            hash: HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
-            level: 5,
-        };
+        let new_head = Head::new(
+            HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+            5,
+        );
         chain_manager.update_local_current_head(new_head, &log);
 
         // check chain_manager and peer (should be bootstrapped now)

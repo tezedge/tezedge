@@ -7,6 +7,7 @@ use crate::handlers::handler_messages::IncomingTransferMetrics;
 
 /// General statistics about incoming transfer
 pub(crate) struct BootstrapMonitor {
+    // TODO: review
     // total number of blocks
     level: usize,
     // already downloaded blocks

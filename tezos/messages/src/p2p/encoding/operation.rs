@@ -16,19 +16,10 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 #[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
 pub struct OperationMessage {
     #[get = "pub"]
-    pub operation: Operation,
+    operation: Operation,
 
     #[serde(skip_serializing)]
     body: BinaryDataCache,
-}
-
-impl OperationMessage {
-    pub fn new(operation: Operation) -> Self {
-        Self {
-            operation,
-            body: Default::default(),
-        }
-    }
 }
 
 cached_data!(OperationMessage, body);
@@ -37,6 +28,21 @@ has_encoding!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
         Field::new("operation", Operation::encoding().clone())
     ])
 });
+
+impl From<Operation> for OperationMessage {
+    fn from(operation: Operation) -> Self {
+        Self {
+            operation,
+            body: Default::default(),
+        }
+    }
+}
+
+impl From<OperationMessage> for Operation {
+    fn from(msg: OperationMessage) -> Self {
+        msg.operation
+    }
+}
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
@@ -84,8 +90,8 @@ has_encoding!(Operation, OPERATION_ENCODING, {
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct DecodedOperation {
-    pub branch: String,
-    pub data: String,
+    branch: String,
+    data: String,
 }
 
 impl From<Operation> for DecodedOperation {

@@ -43,10 +43,10 @@ impl ApplicationMonitor {
     }
 
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
-        let last_block = if let Some(ref block) = self.last_applied_block {
+        let last_block = if let Some(block) = &self.last_applied_block {
             Some(BlockInfo {
-                hash: HashType::BlockHash.bytes_to_string(&block.hash),
-                level: block.level,
+                hash: HashType::BlockHash.bytes_to_string(block.hash()),
+                level: *block.level(),
             })
         } else {
             None

@@ -35,7 +35,7 @@ pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     chain_id: ChainId,
     #[get = "pub(crate)"]
-    current_mempool_state: Option<CurrentMempoolState>,
+    current_mempool_state: Option<Arc<CurrentMempoolState>>,
     #[get = "pub(crate)"]
     head_update_time: TimeStamp,
     #[get_copy = "pub(crate)"]
@@ -152,7 +152,7 @@ fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId,
     match chain_meta_storage.get_current_head(chain_id) {
         Ok(Some(head)) => {
             let block_applied = BlockStorage::new(persistent_storage)
-                .get_with_json_data(&head.hash)
+                .get_with_json_data(head.hash())
                 .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));
             match block_applied {
                 Ok(block) => Some(block),

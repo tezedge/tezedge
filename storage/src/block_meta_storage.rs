@@ -18,8 +18,7 @@ use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
-    /// Load local head (block with highest level) from dedicated storage
-    fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError>;
+    fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
 }
 
 #[derive(Clone)]
@@ -130,19 +129,9 @@ impl BlockMetaStorage {
 }
 
 impl BlockMetaStorageReader for BlockMetaStorage {
-    fn load_current_head(&self) -> Result<Option<(BlockHash, Level)>, StorageError> {
-        self.iter(IteratorMode::End)
-            .map(|meta_iterator|
-                meta_iterator
-                    // unwrap a tuple of Result
-                    .filter_map(|(block_hash_res, meta_res)| block_hash_res.and_then(|block_hash| meta_res.map(|meta| (block_hash, meta))).ok())
-                    // we are interested in applied blocks only
-                    .filter(|(_, meta)| meta.is_applied())
-                    // get block with the highest level
-                    .max_by_key(|(_, meta)| meta.level())
-                    // get data for the block
-                    .map(|(block_hash, meta)| (block_hash, meta.level()))
-            )
+    fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
+        self.kv.get(block_hash)
+            .map_err(StorageError::from)
     }
 }
 
