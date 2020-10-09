@@ -14,7 +14,7 @@ mod handlers;
 mod node_runner;
 mod tezos_client_runner;
 
-const TEZOS_CLIENT_DIR: &str = "./tezos-client";
+const TEZOS_CLIENT_DIR: &str = "./tezos-client-dir";
 
 #[tokio::main]
 async fn main() {

@@ -841,4 +841,31 @@ trigger:
 depends_on:
   - connect-from-different-network-test
 
+##############################################################################################################
+# This pipeline builds a docker image and pushes it to docker HUB
+##############################################################################################################
+---
+kind: pipeline
+name: deploy-develop
 
+steps:
+- name: build-light-node-image  
+  image: plugins/docker
+  settings:
+    repo: simplestakingcom/tezedge
+    target: light-node
+    tag: latest
+    dockerfile: docker/distroless/Dockerfile
+    build_args:
+      - SOURCE_BRANCH=develop
+    username:
+      from_secret: docker_hub_username
+    password:
+      from_secret: docker_hub_pswd
+
+trigger:
+  branch: develop
+  event: push
+
+depends_on:
+  - integration-offline-tests
