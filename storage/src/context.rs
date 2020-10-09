@@ -125,7 +125,7 @@ impl ContextApi for TezedgeContext {
 
         match merkle.get_history(context_hash, &key) {
             Err(MerkleError::ValueNotFound{key: _}) => Ok(None),
-            Err(MerkleError::EntryNotFound) =>  {
+            Err(MerkleError::EntryNotFound{hash: _}) =>  {
                 Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.bytes_to_string(context_hash) })
             },
             Err(err) => {

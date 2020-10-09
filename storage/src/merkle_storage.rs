@@ -54,6 +54,7 @@ use failure::Fail;
 use std::sync::Arc;
 use std::path::Path;
 use std::time::{Duration, Instant};
+use crypto::hash::HashType;
 
 use sodiumoxide::crypto::generichash::State;
 
@@ -123,8 +124,8 @@ pub enum MerkleError {
     ValueIsNotABlob { key: String },
     #[fail(display = "Found wrong structure. Was looking for {}, but found {}", sought, found)]
     FoundUnexpectedStructure { sought: String, found: String },
-    #[fail(display = "Entry not found!")]
-    EntryNotFound,
+    #[fail(display = "Entry not found! Hash={}", hash)]
+    EntryNotFound { hash: String },
 
     /// Wrong user input errors
     #[fail(display = "No value under key {:?}.", key)]
@@ -602,7 +603,7 @@ impl MerkleStorage {
             None => {
                 let entry_bytes = self.db.get(hash)?;
                 match entry_bytes {
-                    None => Err(MerkleError::EntryNotFound),
+                    None => Err(MerkleError::EntryNotFound { hash: HashType::ContextHash.bytes_to_string(hash) } ),
                     Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
                 }
             }
