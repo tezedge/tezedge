@@ -263,7 +263,7 @@ pub mod infra {
             warn!(self.log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
         }
 
-        pub fn wait_for_new_current_head(&self, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        pub fn wait_for_new_current_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
             let tested_head = Some(tested_head).map(|th| HashType::BlockHash.bytes_to_string(&th));
 
@@ -277,7 +277,7 @@ pub mod infra {
                     .map(|ch| HashType::BlockHash.bytes_to_string(&ch));
 
                 if current_head.eq(&tested_head) {
-                    info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head);
+                    info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head, "marker" => marker);
                     break Ok(());
                 }
 
@@ -285,7 +285,7 @@ pub mod infra {
                 if start.elapsed()?.le(&timeout) {
                     thread::sleep(delay);
                 } else {
-                    break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!", tested_head, timeout, delay));
+                    break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
                 }
             };
             result
