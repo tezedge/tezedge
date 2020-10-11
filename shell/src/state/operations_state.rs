@@ -35,23 +35,26 @@ impl OperationsState {
     ///
     /// If block header is not already present in storage, return `true`.
     ///
-    /// If block is already present in storage return `false`.
+    /// Returns true, if validation_passes are completed (can happen, when validation_pass = 0)
     pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
-        if !self.operations_meta_storage.contains(&block_header.hash)? {
-            if block_header.header.validation_pass() > 0 {
-                self.missing_operations_for_blocks.push(MissingOperations {
-                    block_hash: block_header.hash.clone(),
-                    validation_passes: (0..block_header.header.validation_pass())
-                        .filter(|i| *i < std::i8::MAX.try_into().unwrap())
-                        .map(|i| i.try_into().unwrap())
-                        .collect(),
-                    level: block_header.header.level()
-                });
+        match self.operations_meta_storage.get(&block_header.hash)? {
+            Some(meta) => {
+                Ok(meta.is_complete())
             }
-            self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
-            Ok(true)
-        } else {
-            Ok(false)
+            None => {
+                if block_header.header.validation_pass() > 0 {
+                    self.missing_operations_for_blocks.push(MissingOperations {
+                        block_hash: block_header.hash.clone(),
+                        validation_passes: (0..block_header.header.validation_pass())
+                            .filter(|i| *i < std::i8::MAX.try_into().unwrap())
+                            .map(|i| i.try_into().unwrap())
+                            .collect(),
+                        level: block_header.header.level(),
+                    });
+                }
+                let is_complate = self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
+                Ok(is_complate)
+            }
         }
     }
 
@@ -59,15 +62,16 @@ impl OperationsState {
     /// As the the header is injected via RPC, the operations are as well, so we
     /// won't mark its operations as missing
     ///
-    /// If block header is not already present in storage, return `true`.
-    ///
-    /// If block is already present in storage return `false`.
+    /// Returns true, if validation_passes are completed (can happen, when validation_pass = 0)
     pub fn process_injected_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
-        if !self.operations_meta_storage.contains(&block_header.hash)? {
-            self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
-            Ok(true)
-        } else {
-            Ok(false)
+        match self.operations_meta_storage.get(&block_header.hash)? {
+            Some(meta) => {
+                Ok(meta.is_complete())
+            }
+            None => {
+                let is_complete = self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
+                Ok(is_complete)
+            }
         }
     }
 
@@ -93,13 +97,17 @@ impl OperationsState {
             .collect()
     }
 
-    pub fn push_missing_block_operations<Q: Iterator<Item=MissingOperations>>(&mut self, missing_operations: Q) -> Result<(), StorageError>{
+    pub fn push_missing_block_operations<Q: Iterator<Item=MissingOperations>>(&mut self, missing_operations: Q) -> Result<(), StorageError> {
         for missing_operation in missing_operations {
             if !self.operations_meta_storage.is_complete(&missing_operation.block_hash)? {
                 self.missing_operations_for_blocks.push(missing_operation);
             }
         }
         Ok(())
+    }
+
+    pub fn are_operations_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
+        self.operations_meta_storage.is_complete(block_hash)
     }
 
     #[inline]
@@ -126,14 +134,13 @@ impl OperationsState {
 
         Ok(())
     }
-
 }
 
 #[derive(Clone, Debug)]
 pub struct MissingOperations {
     pub block_hash: BlockHash,
     pub validation_passes: HashSet<i8>,
-    pub level: i32
+    pub level: i32,
 }
 
 impl BlockData for MissingOperations {
@@ -182,22 +189,22 @@ mod tests {
         heap.push(MissingOperations {
             level: 15,
             block_hash: vec![0, 0, 0, 1],
-            validation_passes: HashSet::new()
+            validation_passes: HashSet::new(),
         });
         heap.push(MissingOperations {
             level: 7,
             block_hash: vec![0, 0, 0, 9],
-            validation_passes: HashSet::new()
+            validation_passes: HashSet::new(),
         });
         heap.push(MissingOperations {
             level: 0,
             block_hash: vec![0, 0, 0, 4],
-            validation_passes: HashSet::new()
+            validation_passes: HashSet::new(),
         });
         heap.push(MissingOperations {
             level: 1,
             block_hash: vec![0, 0, 0, 5],
-            validation_passes: HashSet::new()
+            validation_passes: HashSet::new(),
         });
 
         let levels = (0..heap.len())

@@ -28,17 +28,18 @@ impl OperationsMetaStorage {
         Self { kv: persistent_storage.kv() }
     }
 
+    /// Initialize stored validation_passes metadata for block and check if is_complete
     #[inline]
-    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
-        self.put(&block_header.hash.clone(),
-                 &Meta {
-                     validation_passes: block_header.header.validation_pass(),
-                     is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
-                     is_complete: block_header.header.validation_pass() == 0,
-                     level: block_header.header.level(),
-                     chain_id: chain_id.clone(),
-                 },
-        )
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<bool, StorageError> {
+        let meta = Meta {
+            validation_passes: block_header.header.validation_pass(),
+            is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
+            is_complete: block_header.header.validation_pass() == 0,
+            level: block_header.header.level(),
+            chain_id: chain_id.clone(),
+        };
+        self.put(&block_header.hash, &meta)
+            .and(Ok(meta.is_complete))
     }
 
     /// Stores operation validation_passes metadata and check if is_complete

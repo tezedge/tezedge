@@ -10,10 +10,11 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError};
+use storage::block_meta_storage::Meta;
 use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
-use tezos_messages::p2p::encoding::block_header::Level;
-use tezos_messages::p2p::encoding::current_branch::HISTORY_MAX_SIZE;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
 
 use crate::collections::{BlockData, UniqueBlockData};
 use crate::shell_channel::BlockApplied;
@@ -47,13 +48,82 @@ impl BlockchainState {
         }
     }
 
+    /// Validate if we can accept branch
+    pub fn can_accept_branch(&self, branch: &CurrentBranchMessage, current_head: &Option<Head>) -> bool {
+        if branch.current_branch().current_head().level() <= 0 {
+            return false;
+        }
+        true
+    }
+
+    /// Returns true, if [block] can be applied
+    pub fn can_apply_block<'b, OP>(&self, (block, block_metadata): (&'b BlockHash, &'b Meta), operations_complete: OP) -> Result<bool, StorageError>
+        where OP: Fn(&'b BlockHash) -> Result<bool, StorageError> /* func returns true, if operations are completed */
+    {
+        let block_predecessor = block_metadata.predecessor();
+
+        // check if block is already applied, dont need to apply second time
+        if block_metadata.is_applied() {
+            return Ok(false);
+        }
+
+        // we need to have predecessor (every block has)
+        if block_predecessor.is_none() {
+            return Ok(false);
+        }
+
+        // if operations are not complete, we cannot apply block
+        if !operations_complete(block)? {
+            return Ok(false);
+        }
+
+        // check if predecesor is applied
+        if let Some(predecessor) = block_predecessor {
+            if let Some(predecessor_meta) = self.block_meta_storage.get(predecessor)? {
+                return Ok(predecessor_meta.is_applied());
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Resolves missing blocks and schedules them for download from network
+    pub fn schedule_branch_bootstrap(&mut self, block_hash: &BlockHash, block_header: &BlockHeader, history: &Vec<BlockHash>) -> Result<(), StorageError> {
+        let block_level = block_header.level();
+
+        // at first schedule history - we try to prioritize download from the beginning, so the history is reversed here
+        self.push_missing_history(
+            history.iter().cloned().rev().collect(),
+            block_level,
+        )?;
+
+        // schedule predecessor (if not present in history)
+        if !history.contains(block_header.predecessor()) {
+            self.push_missing_block(
+                MissingBlock::with_level_guess(
+                    block_header.predecessor().clone(),
+                    std::cmp::max(1, block_level - 1),
+                )
+            )?;
+        }
+
+        // schedule also current_head
+        self.push_missing_block(
+            MissingBlock::with_level(
+                block_hash.clone(),
+                block_level,
+            )
+        )?;
+
+        Ok(())
+    }
+
     /// Resolve if new applied block can be set as new current head.
     /// Original algorithm is in [chain_validator][on_request], where just fitness is checked.
     /// Returns:
     /// - None, if head was not updated
     /// - Some(head), if head was updated
     pub fn try_set_new_current_head(&self, block: &BlockApplied) -> Result<Option<Head>, StorageError> {
-
         let head = Head::new(block.header().hash.clone(), block.header().header.level());
 
         // set head to db
@@ -62,7 +132,7 @@ impl BlockchainState {
         Ok(Some(head))
     }
 
-    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
+    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(Meta, bool), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(
             MissingBlock::with_level_guess(
@@ -74,9 +144,7 @@ impl BlockchainState {
         // store block
         self.block_storage.put_block_header(block_header)?;
         // update meta
-        self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)?;
-
-        Ok(())
+        self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)
     }
 
     #[inline]
@@ -101,7 +169,7 @@ impl BlockchainState {
     }
 
     #[inline]
-    pub fn push_missing_history(&mut self, history: Vec<BlockHash>, level: Level) -> Result<(), StorageError> {
+    fn push_missing_history(&mut self, history: Vec<BlockHash>, level: Level) -> Result<(), StorageError> {
         let mut rng = rand::thread_rng();
         let history_max_parts = if history.len() < usize::from(HISTORY_MAX_SIZE) {
             history.len() as u8
