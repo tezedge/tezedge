@@ -61,7 +61,8 @@ impl ContextApi for TezedgeContext {
         let mut merkle = self.merkle.write().expect("lock poisoning");
 
         let date: u64 = date.try_into()?;
-        merkle.commit(date, author, message)?;
+        let commit_hash = merkle.commit(date, author, message)?;
+        assert_eq!(&commit_hash, new_context_hash);
 
         // associate block and context_hash
         if let Err(e) = self.block_storage.assign_to_context(block_hash, new_context_hash) {
