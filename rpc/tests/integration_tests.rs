@@ -38,22 +38,22 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // ---------------------- Please keep one function per test ----------------------
 
         // --------------------------- Tests for each block_id - shell rpcs ---------------------------
-        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header/shell")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "hash")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "protocols")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "operation_hashes")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/rolls/owner/current")).await;
-        // TODO: this compare as unordered
+        // test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header/shell")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "hash")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "protocols")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "operation_hashes")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/rolls/owner/current")).await;
+        // // TODO: this compare as unordered
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "live_blocks")).await;
 
         // --------------------------- Tests for each block_id - protocol rpcs ---------------------------
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
+        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
         // TODO: TE-226 - uncomment after protocol rpc router is done
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/current_level")).await;
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "minimal_valid_time")).await;
@@ -128,10 +128,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 
             // ------------------- End of tests for each cycle of the cycle --------------------
 
-            if cycle_loop_counter == MAX_CYCLE_LOOPS * 2 {
-                break;
-            }
-            cycle_loop_counter += 1;
+            // if cycle_loop_counter == MAX_CYCLE_LOOPS * 2 {
+            //     break;
+            // }
+            // cycle_loop_counter += 1;
         }
     }
 }
