@@ -13,7 +13,7 @@ use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
-use tezos_api::ffi::ValidateOperationResult;
+use tezos_api::ffi::{ApplyBlockRequest, ValidateOperationResult};
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, Path};
 
@@ -81,7 +81,7 @@ pub enum ShellChannelMsg {
     /// Chain_feeder propagates if block successfully validated and applied
     /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
     BlockApplied(BlockApplied),
-    ApplyBlock(BlockHash),
+    ApplyBlock(BlockHash, Arc<ApplyBlockRequest>),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),

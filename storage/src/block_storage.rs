@@ -83,11 +83,12 @@ impl BlockStorage {
 
     /// Stores header in key-value store and commit_log.
     /// If called multiple times for the same header, data are stored just first time.
-    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+    /// Returns true, if it is a new block
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
 
         if self.primary_index.contains(&block_header.hash)? {
             // we assume that, if primary_index contains hash, then also commit_log contains header data, header data cannot be change, so there is nothing to do
-            return Ok(())
+            return Ok(false)
         }
 
         self.clog.append(&BlockStorageColumn::BlockHeader(block_header.clone()))
@@ -100,6 +101,7 @@ impl BlockStorage {
                 };
                 self.primary_index.put(&block_header.hash, &location)
                     .and(self.by_level_index.put(block_header.header.level(), &location))
+                    .and(Ok(true))
             })
     }
 

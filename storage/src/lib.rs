@@ -286,7 +286,7 @@ pub fn initialize_storage_with_genesis_block(
         hash: init_storage_data.genesis_block_header_hash.clone(),
         header: Arc::new(tezos_env.genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?),
     };
-    block_storage.put_block_header(&genesis_with_hash)?;
+    let _ = block_storage.put_block_header(&genesis_with_hash)?;
 
     // store additional data
     let genesis_additional_data = tezos_env.genesis_additional_data();

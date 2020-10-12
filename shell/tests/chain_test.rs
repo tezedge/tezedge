@@ -3,7 +3,7 @@
 #![feature(test)]
 extern crate test;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
 
@@ -58,6 +58,7 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
     node.wait_for_new_current_head("genesis", node.tezos_env.genesis_header_hash()?, (Duration::from_secs(5), Duration::from_millis(250)))?;
 
     // connect mocked node peer with test data set
+    let clocks = Instant::now();
     let mocked_peer_node = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE",
         NODE_P2P_CFG.1.listener_port,
@@ -70,6 +71,7 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
 
     // wait for current head on level 3
     node.wait_for_new_current_head("3", db.block_hash(3)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+    println!("\nProcessed [3] in {:?}!\n", clocks.elapsed());
 
     // TODO: other context and checks
 
@@ -109,6 +111,7 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
 
     // connect mocked node peer with data for branch_1
     let (db_branch_1, ..) = test_cases_data::sandbox_branch_1_level3::init_data(&node.log);
+    let clocks = Instant::now();
     let mocked_peer_node_branch_1 = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE_BRANCH_1",
         NODE_P2P_CFG.1.listener_port,
@@ -121,8 +124,12 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
 
     // wait for current head on level 3
     node.wait_for_new_current_head("branch1-3", db_branch_1.block_hash(3)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+    println!("\nProcessed [branch1-3] in {:?}!\n", clocks.elapsed());
+
+    drop(mocked_peer_node_branch_1);
 
     // connect mocked node peer with data for branch_2
+    let clocks = Instant::now();
     let (db_branch_2, ..) = test_cases_data::sandbox_branch_2_level4::init_data(&node.log);
     let mocked_peer_node_branch_2 = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE_BRANCH_2",
@@ -136,12 +143,13 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
 
     // wait for current head on level 4
     node.wait_for_new_current_head("branch2-4", db_branch_2.block_hash(4)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+    println!("\nProcessed [branch2-4] in {:?}!\n", clocks.elapsed());
 
     // TODO: other context and checks
 
     // stop nodes
     drop(node);
-    drop(mocked_peer_node_branch_1);
+    // drop(mocked_peer_node_branch_1);
     drop(mocked_peer_node_branch_2);
 
     Ok(())

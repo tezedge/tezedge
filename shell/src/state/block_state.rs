@@ -142,9 +142,11 @@ impl BlockchainState {
         )?;
 
         // store block
-        self.block_storage.put_block_header(block_header)?;
+        let is_new_block = self.block_storage.put_block_header(block_header)?;
         // update meta
-        self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)
+        let metadata = self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)?;
+
+        Ok((metadata, is_new_block))
     }
 
     #[inline]

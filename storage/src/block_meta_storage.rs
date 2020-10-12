@@ -33,8 +33,8 @@ impl BlockMetaStorage {
 
 
     /// Creates/updates metadata record in storage from given block header
-    /// Returns metadata + true, if it is a new block
-    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<(Meta, bool), StorageError> {
+    /// Returns block metadata
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<Meta, StorageError> {
         // create/update record for block
         let block_metadata = match self.get(&block_header.hash)? {
             Some(mut meta) => {
@@ -61,7 +61,7 @@ impl BlockMetaStorage {
                     self.put(&block_header.hash, &meta)?;
                 }
 
-                (meta, false)
+                meta
             }
             None => {
                 let meta = Meta {
@@ -72,7 +72,7 @@ impl BlockMetaStorage {
                     chain_id: chain_id.clone(),
                 };
                 self.put(&block_header.hash, &meta)?;
-                (meta, true)
+                meta
             }
         };
 

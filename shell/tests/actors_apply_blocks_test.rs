@@ -84,8 +84,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
         ).is_ok()
     );
 
-    let clocks = clocks.elapsed();
-    println!("\nDone in {:?}!", clocks);
+    println!("\nDone in {:?}!", clocks.elapsed());
 
     drop(node);
 
