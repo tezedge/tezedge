@@ -22,7 +22,7 @@ export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
 
 rm -rf ./light_node/etc/tezedge_sandbox/tezos-client/*
 
-cargo run --release --bin sandbox -- \
+./target/release/sandbox -- \
                             --log-level "info" \
                             --sandbox-rpc-port "3030" \
                             --light-node-path "./target/release/light-node" \

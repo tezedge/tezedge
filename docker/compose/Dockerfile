@@ -9,7 +9,9 @@ ENV PATH=/home/appuser/.cargo/bin:$PATH
 ENV RUST_BACKTRACE=1
 ENV SODIUM_USE_PKG_CONFIG=1
 ENV OCAML_BUILD_CHAIN=remote
-RUN cd /home/appuser && git clone ${tezedge_git} && cd tezedge && cargo build --release
+RUN cd /home/appuser && git clone ${tezedge_git} && cd tezedge
+RUN git checkout origin/feature/sandbox
+RUN cargo build --release
 WORKDIR /home/appuser/tezedge
 RUN mkdir /tmp/tezedge
 RUN chown appuser:appuser /tmp/tezedge
