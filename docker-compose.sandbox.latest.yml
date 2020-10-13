@@ -1,0 +1,56 @@
+version: "3"
+
+services:
+
+  rust-debugger:
+    image: simplestakingcom/tezedge-debugger:v0.1.0
+    build: .
+    network_mode: "service:rust-network"
+    environment:
+      - RUST_BACKTRACE=1
+    volumes:
+      - "rust-shared-data:/tmp/volume"
+    entrypoint: ./tezedge-debugger
+
+  rust-sandbox:
+    image: simplestakingcom/tezedge:sandbox-latest
+    network_mode: "service:rust-network"
+    depends_on:
+      - rust-debugger
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:10001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "rust-shared-data:/tmp/tezedge"
+
+  rust-explorer:
+    image: simplestakingcom/tezedge-explorer:sandbox
+    network_mode: "service:rust-network"
+    depends_on:
+      - rust-debugger
+
+  rust-network:
+    image: simplestakingcom/tezedge-debugger:v0.1.0
+    build: .
+    ports:
+      # Explorer specific ports
+      - "8080:8080"
+      # Node specific ports
+      - "4927:4927"       # node WS port (required only for tezedge)
+      - "9732:9732"       # node P2P port
+      - "18732:18732"     # node RPC port
+      - "3030:3030"       # sandbox launcher port
+      # Debugger Ports must be specified on node service, because of debugger network_mode attaches
+      # debugger's container to the node container, allowing it to analyze node's traffic
+      - "17732:13031"      # debugger RPC port
+      - "10001:13131/udp"  # debugger syslog port
+    entrypoint: sleep inf
+
+volumes:
+  rust-shared-data:
+    external: false

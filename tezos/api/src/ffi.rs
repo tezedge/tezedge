@@ -40,7 +40,7 @@ pub struct PatchContext {
 
 impl fmt::Debug for PatchContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "key: {}, json: {:?}", &self.key, &self.json)
+        write!(f, "(key: {}, json: {})", &self.key, &self.json)
     }
 }
 

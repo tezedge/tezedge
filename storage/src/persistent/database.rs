@@ -38,6 +38,12 @@ impl From<Error> for DBError {
     }
 }
 
+impl slog::Value for DBError {
+    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+        serializer.emit_arguments(key, &format_args!("{}", self))
+    }
+}
+
 /// Custom trait extending RocksDB to better handle and enforce database schema
 pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     /// Insert new key value pair into the database. If key already exists, method will fail

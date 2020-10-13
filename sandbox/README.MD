@@ -16,8 +16,11 @@ Runs the launcher
 
 Start a tezedge light-node with the provided arguments in request body.
 
+All successfully started sandbox nodes can be accessed on host/ip `localhost`.
+For example, node's RPCs: `http://localhost:18732/version`
+
 ```
-curl --location --request POST 'http://116.202.128.230:3030/start' \
+curl --location --request POST 'http://localhost:3030/start' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "identity_expected_pow": 0,
@@ -25,10 +28,11 @@ curl --location --request POST 'http://116.202.128.230:3030/start' \
     "network": "sandbox",
     "peer_thresh_low": 1,
     "peer_thresh_high": 1,
-    "sandbox_patch_context_json_file": "./light_node/etc/tezedge_sandbox/sandbox-patch-context.json",
-    "protocol_runner": "./target/release/protocol-runner",
+    "sandbox_patch_context_json": {
+        "genesis_pubkey": "edpkuSLWfVU1Vq7Jg9FucPyKmma6otcMHac9zG4oU1KMHSTBpJuGQ2"
+    },
     "tezos_data_dir": "/tmp/tezedge/tezos-node",
-    "identity_file": "./light_node/identity.json",
+    "identity_file": "/tmp/tezedge/identity.json",
     "bootstrap_db_path": "/tmp/tezedge/light-node",
     "db_cfg_max_threads": "4",
     "log_format": "simple",
@@ -36,7 +40,6 @@ curl --location --request POST 'http://116.202.128.230:3030/start' \
     "ocaml_log_enabled": false,
     "p2p_port": 9732,
     "rpc_port": 18732,
-    "monitor_port": 4040,
     "websocket_address": "0.0.0.0:4927",
     "ffi_calls_gc_threshold": 50,
     "ffi_pool_max_connections": 10,
@@ -54,7 +57,7 @@ curl --location --request POST 'http://116.202.128.230:3030/start' \
 Initializes the tezos-client with the provided accounts. In this example, we provide 2 accounts.
 
 ```
-curl --location --request POST 'http://116.202.128.230:3030/init_client' \
+curl --location --request POST 'http://localhost:3030/init_client' \
 --header 'Content-Type: application/json' \
 --data-raw '[
     {
@@ -79,10 +82,10 @@ curl --location --request POST 'http://116.202.128.230:3030/init_client' \
 Activates a protocol with the provided parameters.
 
 Note that _timestamp_ field contains the current time in RFC3339 format.
-The _protocol\_hash_ field contains the protocol hash of the protocol we want to activate.
+The _protocol_hash_ field contains the protocol hash of the protocol we want to activate.
 
 ```
-curl --location --request POST 'http://127.0.0.1:3030/activate_protocol' \
+curl --location --request POST 'http://localhost:3030/activate_protocol' \
 --header 'Content-Type: application/json' \
 --data-raw '{
   "timestamp": "2020-06-24T08:02:48Z",
@@ -130,7 +133,7 @@ curl --location --request POST 'http://127.0.0.1:3030/activate_protocol' \
 You can verify the activated protocol parameters by calling the node's constanta RPC.
 
 ```
-curl --location --request GET 'http://116.202.128.230:18732/chains/main/blocks/head/context/constants'
+curl --location --request GET 'http://localhost:18732/chains/main/blocks/head/context/constants'
 ```
 
 ### **5. call the bake RPC**
@@ -138,18 +141,33 @@ curl --location --request GET 'http://116.202.128.230:18732/chains/main/blocks/h
 Bake a block using the provided account. (The account must me initialized in previous call of the /init_client endpoint) 
 
 ```
-curl --location --request POST 'http://116.202.128.230:3030/bake' \
+curl --location --request POST 'http://localhost:3030/bake' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "alias": "bootstrap1"
 }'
 ```
 
-### **6. call the stop RPC**
+### **6. call the list of wallets**
+
+Lists initialized wallets.
+
+```
+curl --location --request GET 'http://127.0.0.1:3030/wallets'
+```
+
+### **7. call the list of running nodes**
+
+Lists all running nodes.
+
+```
+curl --location --request GET 'http://127.0.0.1:3030/list_nodes'
+```
+
+### **8. call the stop RPC**
 
 Stopping the node. Also cleans the nodes DB and the the tezos-client directory. 
 
 ```
 curl --location --request GET 'http://127.0.0.1:3030/stop'
 ```
-

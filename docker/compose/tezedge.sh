@@ -20,8 +20,7 @@ rm -rf $TEZOS_DIR && mkdir $TEZOS_DIR
 export LD_LIBRARY_PATH="/home/appuser/tezedge/tezos/interop/lib_tezos/artifacts:/home/appuser/tezedge/target/release"
 
 # start node
-cargo run --release --bin light-node -- \
-                            --config-file "$CONFIG_FILE" \
+./target/release/light-node --config-file "$CONFIG_FILE" \
                             --tezos-data-dir "$TEZOS_DIR" \
                             --bootstrap-db-path "$BOOTSTRAP_DIR" \
                             --identity-file "$IDENTITY_FILE" \

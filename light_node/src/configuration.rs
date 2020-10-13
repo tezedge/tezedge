@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -85,6 +86,10 @@ pub struct Environment {
     pub tezos_network: TezosEnvironment,
     pub enable_testchain: bool,
     pub tokio_threads: usize,
+
+    /// This flag is used, just for to stop node immediatelly after generate identity,
+    /// to prevent and initialize actors and create data (except identity)
+    pub validate_cfg_identity_and_stop: bool,
 }
 
 macro_rules! parse_validator_fn {
@@ -105,6 +110,10 @@ pub fn tezos_app() -> App<'static, 'static> {
         .author("SimpleStaking and the project contributors")
         .about("Rust implementation of the tezos node")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
+        .arg(Arg::with_name("validate-cfg-identity-and-stop")
+            .long("validate-cfg-identity-and-stop")
+            .takes_value(false)
+            .help("Validate configuration and generated identity, than just stops application"))
         .arg(Arg::with_name("config-file")
             .long("config-file")
             .takes_value(true)
@@ -230,12 +239,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("IP:PORT")
             .help("Websocket address where various node metrics and statistics are available")
             .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
-        .arg(Arg::with_name("monitor-port")
-            .long("monitor-port")
-            .takes_value(true)
-            .value_name("PORT")
-            .help("Port on which the Tezedge node monitoring information will be exposed")
-            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("peers")
             .long("peers")
             .takes_value(true)
@@ -331,7 +334,6 @@ pub fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "network");
     validate_required_arg(args, "bootstrap-db-path");
     validate_required_arg(args, "log-format");
-    validate_required_arg(args, "monitor-port");
     validate_required_arg(args, "ocaml-log-enabled");
     validate_required_arg(args, "p2p-port");
     validate_required_arg(args, "protocol-runner");
@@ -567,12 +569,18 @@ impl Environment {
                         Some(path) => {
                             let path = path.parse::<PathBuf>().expect("Provided value cannot be converted to path");
                             let path = get_final_path(&data_dir, path);
-                            match fs::read_to_string(path) {
-                                | Ok(content) => Some(PatchContext {
-                                    key: "sandbox_parameter".to_string(),
-                                    json: content,
-                                }),
-                                | Err(e) => panic!("Cannot read file, reason: {:?}", e)
+                            match fs::read_to_string(&path) {
+                                | Ok(content) => {
+                                    // validate valid json
+                                    if let Err(e) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&content) {
+                                        panic!("Invalid json file: {}, reason: {}", path.as_path().display().to_string(), e);
+                                    }
+                                    Some(PatchContext {
+                                        key: "sandbox_parameter".to_string(),
+                                        json: content.to_string(),
+                                    })
+                                }
+                                | Err(e) => panic!("Cannot read file, reason: {}", e)
                             }
                         }
                         None => None
@@ -635,6 +643,8 @@ impl Environment {
                 .unwrap_or("false")
                 .parse::<bool>()
                 .expect("Provided value cannot be converted to bool"),
+            validate_cfg_identity_and_stop: args
+                .is_present("validate-cfg-identity-and-stop"),
         }
     }
 }

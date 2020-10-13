@@ -56,6 +56,15 @@ docker-compose up
 
 ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/node_bootstrap.gif)
 
+**Docker for Windows**
+
+Images use hostname `localhost` to access running services.
+When using docker for windows, check, please:
+```
+docker-machine ip
+```
+and make sure that port forwarding is set up correctly for docker.
+
 **3. Open the TezEdge Explorer in your browser**
 
 You can view the status of the node in your browser by entering this address into your browser's URL bar:
