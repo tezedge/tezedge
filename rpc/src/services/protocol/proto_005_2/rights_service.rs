@@ -26,6 +26,8 @@ use crate::helpers::ContextProtocolParam;
 use crate::services::protocol::proto_005_2::helpers::{EndorserSlots, get_prng_number, init_prng, RightsConstants, RightsContextData, RightsParams};
 use storage::context_action_storage::contract_id_to_contract_address_for_index;
 
+use print_perf::*;
+
 /// Return generated baking rights.
 ///
 /// # Arguments
@@ -56,13 +58,19 @@ pub(crate) fn check_and_get_baking_rights(
     // get block level first
     let block_level: i64 = context_proto_params.level.try_into()?;
 
+    let baking_rights_perf = perf!("baking_rights_perf");
     let constants: RightsConstants = RightsConstants::parse_rights_constants(context_proto_params)?;
+    baking_rights_perf.split("Constants parsing");
 
     let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
+    baking_rights_perf.split("Rights params parasing");
 
     let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context)?;
+    baking_rights_perf.split("Context data parsing");
 
-    get_baking_rights(&context_data, &params, &constants)
+    let result = get_baking_rights(&context_data, &params, &constants);
+    baking_rights_perf.split("Baking Rights Computation");
+    result
 }
 
 /// Use prepared data to generate baking rights

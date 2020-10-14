@@ -11,6 +11,8 @@ pub use storage::persistent::{ContextList, ContextMap};
 
 use crate::rpc_actor::RpcCollectedStateRef;
 
+use print_perf::*;
+
 pub mod encoding;
 mod helpers;
 pub mod rpc_actor;
@@ -31,6 +33,13 @@ pub(crate) fn options() -> ServiceResult {
         .body(Body::empty())?)
 }
 
+pub(crate) fn _use_serde<T: serde::Serialize>(content: &T) -> Result<String, serde_json::Error> {
+    let serialization_perf = perf!("Serde to JSON string");
+    let res = serde_json::to_string(content);
+    serialization_perf.end();
+    res
+}
+
 /// Function to generate JSON response from serializable object
 pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
     Ok(Response::builder()
@@ -40,7 +49,7 @@ pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceRes
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
-        .body(Body::from(serde_json::to_string(content)?))?)
+        .body(Body::from(_use_serde(content)?))?)
 }
 
 /// Function to generate JSON response from a stream
