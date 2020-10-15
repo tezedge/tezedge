@@ -16,8 +16,11 @@ Runs the launcher
 
 Start a tezedge light-node with the provided arguments in request body.
 
+All successfully started sandbox nodes can be accessed on host/ip `localhost`.
+For example, node's RPCs: `http://localhost:18732/version`
+
 ```
-curl --location --request POST 'http://116.202.128.230:3030/start' \
+curl --location --request POST 'http://localhost:3030/start' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "identity_expected_pow": 0,
