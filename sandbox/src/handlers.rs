@@ -236,7 +236,7 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
                 }
             }
         } else if let Some(lnre) = err.find::<LightNodeRunnerError>() {
-            // Tezos client errors
+            // Light-node errors
             match lnre {
                 LightNodeRunnerError::JsonParsingError { .. }
                 | LightNodeRunnerError::IOError { .. }

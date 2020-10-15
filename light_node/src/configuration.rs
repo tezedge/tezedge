@@ -230,12 +230,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("IP:PORT")
             .help("Websocket address where various node metrics and statistics are available")
             .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
-        .arg(Arg::with_name("monitor-port")
-            .long("monitor-port")
-            .takes_value(true)
-            .value_name("PORT")
-            .help("Port on which the Tezedge node monitoring information will be exposed")
-            .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("peers")
             .long("peers")
             .takes_value(true)
@@ -331,7 +325,6 @@ pub fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "network");
     validate_required_arg(args, "bootstrap-db-path");
     validate_required_arg(args, "log-format");
-    validate_required_arg(args, "monitor-port");
     validate_required_arg(args, "ocaml-log-enabled");
     validate_required_arg(args, "p2p-port");
     validate_required_arg(args, "protocol-runner");
