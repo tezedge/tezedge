@@ -68,20 +68,28 @@ pub async fn start_node_with_config(
     client_runner: TezosClientRunnerRef,
     peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    info!(
-        log,
-        "Received request to start the light node with config: {:?}", cfg
-    );
+    info!(log, "Received request to start the light node"; "config" => format!("{:?})", cfg));
 
     // aquire a write lock to the runner
     let mut runner = runner.write().unwrap();
 
-    info!(log, "Starting light-node...");
+    // one node will have its own temp folder for data (identity, dbs, ...)
+    let data_dir = temp_dir("sandbox-node");
 
     // spawn the node
-    runner.spawn(cfg)?;
+    info!(log, "Starting light-node...");
+    let node_ref = runner.spawn(cfg, data_dir.clone(), &log)?;
 
-    Ok(StatusCode::OK)
+    // initialize data for tezos client
+    info!(log, "Initializing tezos-client data  for light-node"; "node_ref" => format!("{}", &node_ref));
+    let mut client_runner = client_runner.write().unwrap();
+    client_runner.init_sandbox_data(node_ref.clone(), data_dir);
+
+    // store node
+    peers.lock().unwrap().insert(node_ref.clone());
+
+    info!(log, "Light-node started successfully!"; "node_ref" => format!("{}", &node_ref));
+    Ok(warp::reply::with_status(warp::reply::json(&node_ref), StatusCode::OK))
 }
 
 pub async fn stop_node(

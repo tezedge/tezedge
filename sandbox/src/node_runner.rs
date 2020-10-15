@@ -12,6 +12,8 @@ use failure::Fail;
 use itertools::Itertools;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
+use serde::{Deserialize, Serialize};
+use slog::{info, Logger};
 use wait_timeout::ChildExt;
 use warp::reject;
 
@@ -66,9 +68,13 @@ impl reject::Reject for LightNodeRunnerError {}
 pub type LightNodeRunnerRef = Arc<RwLock<LightNodeRunner>>;
 
 const SANDBOX_NODE_IP: &'static str = "localhost";
+const NODE_CONFIG_RPC_PORT: &'static str = "rpc_port";
+const NODE_CONFIG_TEZOS_DATA_DIR: &'static str = "tezos_data_dir";
+const NODE_CONFIG_TEZEDGE_DATA_DIR: &'static str = "bootstrap_db_path";
+const NODE_CONFIG_IDENTITY_FILE: &'static str = "identity_file";
 
 /// RPC ip/port, where is light node listening for rpc requests
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize)]
 pub struct NodeRpcIpPort {
     pub ip: String,
     pub port: u16,
@@ -76,7 +82,7 @@ pub struct NodeRpcIpPort {
 
 impl NodeRpcIpPort {
     pub fn new(cfg: &serde_json::Value) -> Result<Self, LightNodeRunnerError> {
-        let port = match cfg.get("rpc_port") {
+        let port = match cfg.get(NODE_CONFIG_RPC_PORT) {
             Some(value) => match value.as_u64() {
                 Some(port) => if port <= u16::MAX as u64 {
                     port as u16
@@ -124,12 +130,19 @@ impl LightNodeRunner {
     }
 
     /// Spawn a light-node child process with health check
-    pub fn spawn(&mut self, cfg: serde_json::Value) -> Result<NodeRpcIpPort, LightNodeRunnerError> {
+    ///
+    /// `data_dir` - one node will have its own temp folder for data (identity, dbs, temp files,...)
+    ///            - so we need to filter and modify input cfg properties: [NODE_CONFIG_TEZOS_DATA_DIR][NODE_CONFIG_TEZEDGE_DATA_DIR][NODE_CONFIG_IDENTITY_FILE]
+    pub fn spawn(&mut self, cfg: serde_json::Value, data_dir: PathBuf, log: &Logger) -> Result<NodeRpcIpPort, LightNodeRunnerError> {
         if self.is_running() {
             Err(LightNodeRunnerError::NodeAlreadyRunning)
         } else {
             // parse rpc settings
             let node = NodeRpcIpPort::new(&cfg)?;
+
+            // fix setting for sandbox temp dir
+            let cfg = Self::ensure_sandbox_cfg(cfg, data_dir, log);
+
             // spawn the process for a "health check" with piped stderr
             let mut process = Command::new(&self.executable_path)
                 .args(Self::construct_args(cfg.clone())?)
@@ -146,7 +159,7 @@ impl LightNodeRunner {
                 // process exited, we need to handle and show the exact error
                 Ok(Some(_)) => {
                     let error_msg = handle_stderr(&mut process);
-                    return Err(LightNodeRunnerError::NodeStartupError { reason: error_msg.split("USAGE:").take(1).join("").replace("error:", "").trim().into() }.into());
+                    return Err(LightNodeRunnerError::NodeStartupError { reason: error_msg.split("USAGE:").take(1).join("").replace("error:", "").trim().into() });
                 }
                 // the process started up OK, but we restart it to enable normal logging (stderr won't be piped)
                 _ => {
@@ -163,7 +176,7 @@ impl LightNodeRunner {
                     // enable a to shut down gracefully
                     thread::sleep(Duration::from_secs(5));
 
-                    // start the process again
+                    // start the process again without piped stdout/stderr, e.g. to have ability log to syslog in docker to tezos-debugger
                     let process = Command::new(&self.executable_path)
                         .args(Self::construct_args(cfg)?)
                         .spawn()
@@ -240,6 +253,33 @@ impl LightNodeRunner {
                 json: cfg,
             })
         }
+    }
+
+    /// This function will filter and modify input cfg properties: [NODE_CONFIG_TEZOS_DATA_DIR][NODE_CONFIG_TEZEDGE_DATA_DIR][NODE_CONFIG_IDENTITY_FILE]
+    fn ensure_sandbox_cfg(mut cfg: serde_json::Value, sandbox_data_dir: PathBuf, log: &Logger) -> serde_json::Value {
+        if let Some(map) = cfg.as_object_mut() {
+            let sandboxed = sandbox_data_dir
+                .join("sandbox_tezos_db")
+                .as_path().display().to_string();
+            if let Some(old_value) = map.insert(NODE_CONFIG_TEZOS_DATA_DIR.to_string(), serde_json::Value::String(sandboxed.clone())) {
+                info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_TEZOS_DATA_DIR.to_string(), "old_value" => old_value.to_string(), "new_value" => sandboxed);
+            }
+
+            let sandboxed = sandbox_data_dir
+                .join("sandbox_tezedge_db")
+                .as_path().display().to_string();
+            if let Some(old_value) = map.insert(NODE_CONFIG_TEZEDGE_DATA_DIR.to_string(), serde_json::Value::String(sandboxed.clone())) {
+                info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_TEZEDGE_DATA_DIR.to_string(), "old_value" => old_value.to_string(), "new_value" => sandboxed);
+            }
+
+            let sandboxed = sandbox_data_dir
+                .join("sandbox_identity.json")
+                .as_path().display().to_string();
+            if let Some(old_value) = map.insert(NODE_CONFIG_IDENTITY_FILE.to_string(), serde_json::Value::String(sandboxed.clone())) {
+                info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_IDENTITY_FILE.to_string(), "old_value" => old_value.to_string(), "new_value" => sandboxed);
+            }
+        }
+        cfg
     }
 
     /// Send SIGINT signal to the process with PID, light-node is cheking for this signal and shuts down
