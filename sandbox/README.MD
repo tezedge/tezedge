@@ -57,7 +57,7 @@ curl --location --request POST 'http://localhost:3030/start' \
 Initializes the tezos-client with the provided accounts. In this example, we provide 2 accounts.
 
 ```
-curl --location --request POST 'http://116.202.128.230:3030/init_client' \
+curl --location --request POST 'http://localhost:3030/init_client' \
 --header 'Content-Type: application/json' \
 --data-raw '[
     {
@@ -82,10 +82,10 @@ curl --location --request POST 'http://116.202.128.230:3030/init_client' \
 Activates a protocol with the provided parameters.
 
 Note that _timestamp_ field contains the current time in RFC3339 format.
-The _protocol\_hash_ field contains the protocol hash of the protocol we want to activate.
+The _protocol_hash_ field contains the protocol hash of the protocol we want to activate.
 
 ```
-curl --location --request POST 'http://127.0.0.1:3030/activate_protocol' \
+curl --location --request POST 'http://localhost:3030/activate_protocol' \
 --header 'Content-Type: application/json' \
 --data-raw '{
   "timestamp": "2020-06-24T08:02:48Z",
@@ -133,7 +133,7 @@ curl --location --request POST 'http://127.0.0.1:3030/activate_protocol' \
 You can verify the activated protocol parameters by calling the node's constanta RPC.
 
 ```
-curl --location --request GET 'http://116.202.128.230:18732/chains/main/blocks/head/context/constants'
+curl --location --request GET 'http://localhost:18732/chains/main/blocks/head/context/constants'
 ```
 
 ### **5. call the bake RPC**
@@ -141,7 +141,7 @@ curl --location --request GET 'http://116.202.128.230:18732/chains/main/blocks/h
 Bake a block using the provided account. (The account must me initialized in previous call of the /init_client endpoint) 
 
 ```
-curl --location --request POST 'http://116.202.128.230:3030/bake' \
+curl --location --request POST 'http://localhost:3030/bake' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "alias": "bootstrap1"

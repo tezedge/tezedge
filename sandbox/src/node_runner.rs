@@ -13,7 +13,7 @@ use itertools::Itertools;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
-use slog::{info, Logger};
+use slog::{error, info, Logger};
 use wait_timeout::ChildExt;
 use warp::reject;
 
@@ -159,6 +159,7 @@ impl LightNodeRunner {
                 // process exited, we need to handle and show the exact error
                 Ok(Some(_)) => {
                     let error_msg = handle_stderr(&mut process);
+                    error!(log, "Failed to start sandbox light-nde"; "reason" => error_msg.clone());
                     return Err(LightNodeRunnerError::NodeStartupError { reason: error_msg.split("USAGE:").take(1).join("").replace("error:", "").trim().into() });
                 }
                 // the process started up OK, but we restart it to enable normal logging (stderr won't be piped)

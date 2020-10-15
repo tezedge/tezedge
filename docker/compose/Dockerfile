@@ -10,8 +10,10 @@ ENV RUST_BACKTRACE=1
 ENV SODIUM_USE_PKG_CONFIG=1
 ENV OCAML_BUILD_CHAIN=remote
 RUN cd /home/appuser && git clone ${tezedge_git} && cd tezedge
+WORKDIR /home/appuser/tezedge
 RUN git checkout origin/feature/sandbox
 RUN cargo build --release
+RUN git fetch --all && git reset --hard origin/feature/sandbox
 WORKDIR /home/appuser/tezedge
 RUN mkdir /tmp/tezedge
 RUN chown appuser:appuser /tmp/tezedge

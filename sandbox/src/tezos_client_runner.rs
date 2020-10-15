@@ -192,7 +192,10 @@ impl TezosClientRunner {
         mut activation_parameters: TezosProtcolActivationParameters,
         node_ref: &NodeRpcIpPort,
     ) -> Result<TezosClientReply, TezosClientRunnerError> {
-        let mut client_output: TezosClientReply = Default::default();
+        let data_dir = match self.sandbox_data.get(node_ref) {
+            Some(data) => &data.data_dir_path,
+            None => return Err(TezosClientRunnerError::SandboxDataDirNotInitialized { node_ref: node_ref.clone() })
+        };
 
         // get as mutable object, so we can insert the hardcoded bootstrap accounts
         let params = if let Some(params) = activation_parameters.protocol_parameters.as_object_mut() {
@@ -218,12 +221,13 @@ impl TezosClientRunner {
             .prefix("protocol_parameters")
             .suffix(".json")
             .rand_bytes(5)
-            .tempfile()?;
+            .tempfile_in(data_dir)?;
         let mut file = fs::File::create(protocol_parameters_json_file.path())
             .map_err(|err| TezosClientRunnerError::IOError { reason: err })?;
         writeln!(file, "{}", activation_parameters.protocol_parameters)
             .map_err(|err| TezosClientRunnerError::IOError { reason: err })?;
 
+        let mut client_output: TezosClientReply = Default::default();
         self.run_client(
             node_ref,
             [

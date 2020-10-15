@@ -79,10 +79,13 @@ steps:
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json /tmp/sandbox/
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json /tmp/sandbox/
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json /tmp/sandbox/
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json /tmp/sandbox/
     - cp ./light_node/etc/drone/assert_equals.sh /artifacts/ && chmod 755 /artifacts/assert_equals.sh
     - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
-    - cp ./light_node/etc/drone/sandbox_light_node_args.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
 
 volumes:
@@ -144,14 +147,72 @@ steps:
   commands:
     - sleep 5
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_light_node_args.json
-    - sleep 5
+    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_start_light_node_args.json
 
-- name: test-node-start
+- name: wait-sandbox-node-start
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-  
+
+- name: init-client
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_init_client_request.json)
+    - /tmp/sandbox/assert_contains.sh "$resp" "Tezos address added"
+
+- name: activate_protocol
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_activate_protocol_request.json)
+    - /tmp/sandbox/assert_contains.sh "$resp" "Injected B"
+
+- name: wait-sandbox-node-start-level-1
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=1 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+- name: check-context-constants
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    # call context/constants on sandbox node
+    - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - resp=$(curl "SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
+    - echo "Sandbox node context constants - $resp"
+    - /tmp/sandbox/assert_contains.sh "$resp" "protocol_hash"
+    - /tmp/sandbox/assert_contains.sh "$resp" "bootstrap_accounts"
+
+- name: bake-empty-block
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_bake_empty_block.json)
+    - /tmp/sandbox/assert_contains.sh "$resp" "Injected B"
+
+- name: wait-sandbox-node-start-level-2
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap --bootstrap --level=2 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
 - name: stop-tezedge-node-via-rpc
   user: root
   image: cfmanteiga/alpine-bash-curl-jq
