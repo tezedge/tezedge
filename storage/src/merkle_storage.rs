@@ -56,12 +56,16 @@ use std::sync::Arc;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use crypto::hash::HashType;
+use std::convert::TryInto;
+use crate::persistent::BincodeEncoded;
 
 use sodiumoxide::crypto::generichash::State;
 
+const HASH_LEN: usize = 32;
+
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
-pub type EntryHash = Vec<u8>;
+pub type EntryHash = [u8; HASH_LEN];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 enum NodeKind {
@@ -79,7 +83,7 @@ type Tree = OrdMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
 struct Commit {
-    parent_commit_hash: EntryHash,
+    parent_commit_hash: Option<EntryHash>,
     root_hash: EntryHash,
     time: u64,
     author: String,
@@ -105,8 +109,6 @@ pub struct MerkleStorage {
     set_exec_times: u64,
     set_exec_times_to_discard: u64, // first N measurements to discard
 }
-
-const HASH_LEN: usize = 32;
 
 #[derive(Debug, Fail)]
 pub enum MerkleError {
@@ -161,8 +163,10 @@ pub struct MerkleStorageStats {
     pub perf_stats: MerklePerfStats,
 }
 
+impl BincodeEncoded for EntryHash {}
+
 impl KeyValueSchema for MerkleStorage {
-    type Key = Vec<u8>;
+    type Key = EntryHash;
     type Value = Vec<u8>;
 
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
@@ -256,7 +260,7 @@ impl MerkleStorage {
     }
 
     pub fn get_key_values_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let commit = self.get_commit(&context_hash)?;
+        let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
         let prefixed_tree = self.find_tree(&root_tree, prefix)?;
         let mut keyvalues: Vec<(ContextKey, ContextValue)> = Vec::new();
@@ -281,7 +285,7 @@ impl MerkleStorage {
     }
 
     /// Flush the staging area and and move to work on a certain commit from history.
-    pub fn checkout(&mut self, context_hash: EntryHash) -> Result<(), MerkleError> {
+    pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
         self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
@@ -302,7 +306,8 @@ impl MerkleStorage {
         let staged_root = self.get_staged_root()?;
         let staged_root_hash = self.hash_tree(&staged_root);
         let parent_commit_hash= self.last_commit.as_ref()
-            .map_or(vec![], |c| self.hash_commit(&c));
+            .map_or(None, |c| Some(self.hash_commit(&c)));
+
         let new_commit = Commit {
             root_hash: staged_root_hash, parent_commit_hash, time, author, message,
         };
@@ -453,8 +458,8 @@ impl MerkleStorage {
         }
     }
 
-    fn put_to_staging_area(&mut self, key: &[u8], value: Entry) {
-        self.staged.insert(key.to_vec(), value);
+    fn put_to_staging_area(&mut self, key: &EntryHash, value: Entry) {
+        self.staged.insert(*key, value);
         self.map_stats.staged_area_elems = self.staged.len() as u64;
     }
 
@@ -515,16 +520,15 @@ impl MerkleStorage {
 
     fn hash_commit(&self, commit: &Commit) -> EntryHash {
         let mut hasher = State::new(HASH_LEN, None).unwrap();
-        let mut out = Vec::with_capacity(HASH_LEN);
         hasher.update(&(HASH_LEN as u64).to_be_bytes()).expect("hasher");
         hasher.update(&commit.root_hash).expect("hasher");
 
-        if commit.parent_commit_hash.is_empty() {
+        if commit.parent_commit_hash.is_none() {
             hasher.update(&(0 as u64).to_be_bytes()).expect("hasher");
         } else {
             hasher.update(&(1 as u64).to_be_bytes()).expect("hasher"); // # of parents; we support only 1
-            hasher.update(&(commit.parent_commit_hash.len() as u64).to_be_bytes()).expect("hasher");
-            hasher.update(&commit.parent_commit_hash).expect("hasher");
+            hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes()).expect("hasher");
+            hasher.update(&commit.parent_commit_hash.unwrap()).expect("hasher");
         }
         hasher.update(&(commit.time as u64).to_be_bytes()).expect("hasher");
         hasher.update(&(commit.author.len() as u64).to_be_bytes()).expect("hasher");
@@ -532,13 +536,11 @@ impl MerkleStorage {
         hasher.update(&(commit.message.len() as u64).to_be_bytes()).expect("hasher");
         hasher.update(&commit.message.clone().into_bytes()).expect("hasher");
 
-        out.extend_from_slice(hasher.finalize().unwrap().as_ref());
-        out
+        hasher.finalize().unwrap().as_ref().try_into().expect("EntryHash conversion error")
     }
 
     fn hash_tree(&self, tree: &Tree) -> EntryHash {
         let mut hasher = State::new(HASH_LEN, None).unwrap();
-        let mut out = Vec::with_capacity(HASH_LEN);
 
         hasher.update(&(tree.len() as u64).to_be_bytes()).expect("hasher");
         tree.iter().for_each(|(k, v)| {
@@ -548,19 +550,16 @@ impl MerkleStorage {
             hasher.update(&(HASH_LEN as u64).to_be_bytes()).expect("hasher");
             hasher.update(&v.entry_hash).expect("hasher");
         });
-        let hash = hasher.finalize().unwrap();
-        out.extend_from_slice(hash.as_ref());
-        out
+
+        hasher.finalize().unwrap().as_ref().try_into().expect("EntryHash conversion error")
     }
 
     fn hash_blob(&self, blob: &ContextValue) -> EntryHash {
         let mut hasher = State::new(HASH_LEN, None).unwrap();
-        let mut out = Vec::with_capacity(HASH_LEN);
         hasher.update(&(blob.len() as u64).to_be_bytes()).expect("Failed to update hasher state");
         hasher.update(blob).expect("Failed to update hasher state");
-        let hash = hasher.finalize().unwrap();
-        out.extend_from_slice(hash.as_ref());
-        out
+
+        hasher.finalize().unwrap().as_ref().try_into().expect("EntryHash conversion error")
     }
 
     fn encode_irmin_node_kind(&self, kind: &NodeKind) -> Vec<u8> {

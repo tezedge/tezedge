@@ -7,7 +7,7 @@ use std::num::TryFromIntError;
 
 use failure::Fail;
 
-use crate::merkle_storage::{MerkleStorage, MerkleError, ContextKey, ContextValue, MerkleStorageStats};
+use crate::merkle_storage::{MerkleStorage, MerkleError, ContextKey, ContextValue, MerkleStorageStats, EntryHash};
 use crypto::hash::{BlockHash, ContextHash, HashType};
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 
@@ -50,7 +50,9 @@ impl ContextApi for TezedgeContext {
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.checkout(context_hash.clone())?;
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        merkle.checkout(&context_hash_arr)?;
+
         Ok(())
     }
 
@@ -62,7 +64,8 @@ impl ContextApi for TezedgeContext {
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
-        assert_eq!(&commit_hash, new_context_hash);
+        let new_hash_arr: EntryHash = new_context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        assert_eq!(&commit_hash, &new_hash_arr);
 
         // associate block and context_hash
         if let Err(e) = self.block_storage.assign_to_context(block_hash, new_context_hash) {
@@ -124,7 +127,8 @@ impl ContextApi for TezedgeContext {
         // we need to join with '/' and split again
         let key = to_key(key).split('/').map(|s| s.to_string()).collect();
 
-        match merkle.get_history(context_hash, &key) {
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        match merkle.get_history(&context_hash_arr, &key) {
             Err(MerkleError::ValueNotFound{key: _}) => Ok(None),
             Err(MerkleError::EntryNotFound{hash: _}) =>  {
                 Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.bytes_to_string(context_hash) })
@@ -141,7 +145,8 @@ impl ContextApi for TezedgeContext {
         // clients may pass in a prefix with elements containing slashes (expecting us to split)
         // we need to join with '/' and split again
         let prefix = to_key(prefix).split('/').map(|s| s.to_string()).collect();
-        merkle.get_key_values_by_prefix(context_hash, &prefix)
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        merkle.get_key_values_by_prefix(&context_hash_arr, &prefix)
     }
 
     fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError> {
@@ -155,7 +160,7 @@ impl ContextApi for TezedgeContext {
 
     fn get_last_commit_hash(&self) -> Option<Vec<u8>> {
         let merkle = self.merkle.read().expect("lock poisoning");
-        merkle.get_last_commit_hash()
+        merkle.get_last_commit_hash().map(|x| x.to_vec())
     }
 
     fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError> {
