@@ -147,11 +147,18 @@ curl --location --request POST 'http://localhost:3030/bake' \
 }'
 ```
 
-### **6. call the stop RPC**
+### **6. call the list of running nodes**
+
+Lists all running nodes.
+
+```
+curl --location --request GET 'http://127.0.0.1:3030/list_nodes'
+```
+
+### **7. call the stop RPC**
 
 Stopping the node. Also cleans the nodes DB and the the tezos-client directory. 
 
 ```
 curl --location --request GET 'http://127.0.0.1:3030/stop'
 ```
-

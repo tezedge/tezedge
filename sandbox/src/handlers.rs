@@ -6,6 +6,7 @@ use std::convert::Infallible;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use itertools::Itertools;
 use serde::Serialize;
 use slog::{error, info, Logger};
 use warp::{reject, Rejection, Reply};
@@ -127,6 +128,22 @@ pub async fn stop_node(
                     "errors" => errors.join(", "));
         Ok(warp::reply::with_status(warp::reply::json(&errors), StatusCode::OK))
     }
+}
+
+pub async fn list_nodes(
+    log: Logger,
+    peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>,
+) -> Result<impl warp::Reply, reject::Rejection> {
+    info!(log, "Received request to list sandbox nodes...");
+
+    // return all nodes
+    let mut nodes = peers.lock().unwrap()
+        .iter()
+        .cloned()
+        .collect_vec();
+    nodes.sort_by_key(|k| k.port);
+
+    Ok(warp::reply::with_status(warp::reply::json(&nodes), StatusCode::OK))
 }
 
 pub async fn init_client_data(

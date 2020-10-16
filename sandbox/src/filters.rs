@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use slog::Logger;
 use warp::Filter;
 
-use crate::handlers::{activate_protocol, bake_block_with_client, bake_block_with_client_arbitrary, get_wallets, handle_rejection, init_client_data, resolve_node_from_request, start_node_with_config, stop_node};
+use crate::handlers::{activate_protocol, bake_block_with_client, bake_block_with_client_arbitrary, get_wallets, handle_rejection, init_client_data, list_nodes, resolve_node_from_request, start_node_with_config, stop_node};
 use crate::node_runner::{LightNodeRunnerRef, NodeRpcIpPort};
 use crate::tezos_client_runner::{
     BakeRequest, SandboxWallets, TezosClientRunnerRef, TezosProtcolActivationParameters,
@@ -27,6 +27,7 @@ pub fn sandbox(
 
     start(log.clone(), runner.clone(), client_runner.clone(), peers.clone())
         .or(stop(log.clone(), runner, client_runner.clone(), peers.clone()))
+        .or(list(log.clone(), peers.clone()))
         .or(init_client(log.clone(), client_runner.clone(), peers.clone()))
         .or(wallets(log.clone(), client_runner.clone(), peers.clone()))
         .or(activate(log.clone(), client_runner.clone(), peers.clone()))
@@ -68,6 +69,17 @@ pub fn stop(
         .and(with_peers(peers.clone()))
         .and(with_peer(peers))
         .and_then(stop_node)
+}
+
+pub fn list(
+    log: Logger,
+    peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>,
+) -> impl Filter<Extract=impl warp::Reply, Error=warp::Rejection> + Clone {
+    warp::path!("list_nodes")
+        .and(warp::get())
+        .and(with_log(log))
+        .and(with_peers(peers.clone()))
+        .and_then(list_nodes)
 }
 
 pub fn init_client(

@@ -150,6 +150,22 @@ steps:
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
     - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @/tmp/sandbox/sandbox_start_light_node_args.json
 
+- name: check-running-nodes
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+    - nodes_count=$(echo $resp | jq '. | length')
+    - /artifacts/assert_equals.sh 1 $nodes_count
+    - /artifacts/assert_contains.sh "$resp" "localhost"
+    - /artifacts/assert_contains.sh "$resp" "18732"
+
 - name: wait-sandbox-node-start
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
@@ -199,8 +215,8 @@ steps:
     - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
     - echo "Sandbox node context constants - $resp"
-    - /artifacts/assert_contains.sh "$resp" "protocol_hash"
-    - /artifacts/assert_contains.sh "$resp" "bootstrap_accounts"
+    - /artifacts/assert_contains.sh "$resp" "baking_reward_per_endorsement"
+    - /artifacts/assert_contains.sh "$resp" "time_between_blocks"
 
 - name: bake-empty-block
   user: root
@@ -232,6 +248,20 @@ steps:
     - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
     # On a successfull stop, HTTP code 200 is returned
     - /tmp/sandbox/assert_equals.sh 200 $resp
+
+- name: check-running-nodes-empty
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: sandbox-data
+      path: /tmp/sandbox
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+    - nodes_count=$(echo $resp | jq '. | length')
+    - /artifacts/assert_equals.sh 0 $nodes_count
 
 volumes:
   - name: build
