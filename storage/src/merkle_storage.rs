@@ -49,7 +49,8 @@ use crate::persistent;
 use std::hash::Hash;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::{HashMap, BTreeMap};
+use std::collections::HashMap;
+use im::OrdMap;
 use failure::Fail;
 use std::sync::Arc;
 use std::path::Path;
@@ -74,7 +75,7 @@ struct Node {
     entry_hash: EntryHash,
 }
 
-type Tree = BTreeMap<String, Node>;
+type Tree = OrdMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
 struct Commit {
