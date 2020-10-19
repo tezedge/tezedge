@@ -954,7 +954,7 @@ depends_on:
   - connect-from-different-network-test
 
 ##############################################################################################################
-# This pipeline builds a docker image and pushes it to docker HUB
+# This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
 ##############################################################################################################
 ---
 kind: pipeline
@@ -992,6 +992,49 @@ steps:
 trigger:
   branch: develop
   event: push
+
+depends_on:
+  - integration-offline-tests
+
+##############################################################################################################
+# This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
+##############################################################################################################
+---
+kind: pipeline
+name: deploy-release-tag-version
+
+steps:
+  - name: build-light-node-image
+    image: plugins/docker
+    settings:
+      repo: simplestakingcom/tezedge
+      target: light-node
+      tag: ${DRONE_TAG}
+      dockerfile: docker/distroless/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-sandbox-image
+    image: plugins/docker
+    settings:
+      repo: simplestakingcom/tezedge
+      target: sandbox
+      tag: sandbox-${DRONE_TAG}
+      dockerfile: docker/distroless/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+trigger:
+  ref: refs/tags/**
+  event: tag
 
 depends_on:
   - integration-offline-tests
