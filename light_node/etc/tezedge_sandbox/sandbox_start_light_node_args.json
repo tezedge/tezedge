@@ -4,8 +4,9 @@
     "network": "sandbox",
     "peer_thresh_low": 1,
     "peer_thresh_high": 1,
-    "sandbox_patch_context_json_file": "/tmp/sandbox/sandbox-patch-context.json",
-    "protocol_runner": "/tmp/sandbox/protocol-runner",
+    "sandbox_patch_context_json": {
+        "genesis_pubkey": "edpkuSLWfVU1Vq7Jg9FucPyKmma6otcMHac9zG4oU1KMHSTBpJuGQ2"
+    },
     "tezos_data_dir": "/tmp/tezedge_developer/tezos-node",
     "identity_file": "/tmp/sandbox/light-node/identity.json",
     "bootstrap_db_path": "bootstrap_db",
@@ -15,7 +16,6 @@
     "ocaml_log_enabled": false,
     "p2p_port": 9732,
     "rpc_port": 18732,
-    "monitor_port": 4040,
     "websocket_address": "0.0.0.0:4927",
     "ffi_calls_gc_threshold": 50,
     "ffi_pool_max_connections": 10,

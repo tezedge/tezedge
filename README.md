@@ -56,6 +56,15 @@ docker-compose up
 
 ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/node_bootstrap.gif)
 
+**Docker for Windows**
+
+Images use hostname `localhost` to access running services.
+When using docker for windows, check, please:
+```
+docker-machine ip
+```
+and make sure that port forwarding is set up correctly for docker.
+
 **3. Open the TezEdge Explorer in your browser**
 
 You can view the status of the node in your browser by entering this address into your browser's URL bar:
@@ -189,3 +198,32 @@ Open shell and type this code into the command line and then press Enter:
 
 For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
 
+Prearranged docker-compose files
+----------------
+
+### light-node + tezedge-explorer
+* Run last released version:
+```
+docker docker-compose.yml pull
+docker docker-compose.yml up
+```
+* Run actual development version:
+```
+docker docker-compose.latest.yml pull
+docker docker-compose.latest.yml up
+```
+
+### sandbox launcher + tezedge-explorer + tezedge-debugger
+* Run last released version:
+```
+docker docker-compose.sandbox.yml pull
+docker docker-compose.sandbox.yml up
+```
+* Run actual development version:
+```
+docker docker-compose.sandbox.latest.yml pull
+docker docker-compose.sandbox.latest.yml up
+
+# stop and remove docker volume
+docker docker-compose.sandbox.latest.yml down -v
+```

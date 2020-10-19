@@ -7,7 +7,7 @@ if ! [ -n "$BASH_VERSION" ];then
     exit;
 fi
 
-# First, run the debugger 
+# First, run the debugger
 docker-compose -f docker-compose.debugger.yml run -d --service-ports debugger
 
 wait-for-debugger() {
