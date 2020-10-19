@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 // #![forbid(unsafe_code)]
 
-use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -284,22 +283,6 @@ fn block_on_actors(
         info!(log, "Shutting down protocol runner pools");
         drop(tezos_readonly_api);
         debug!(log, "Shutdown tezos_readonly_api complete");
-
-        if is_sandbox {
-            debug!(log, "Shutting down from sandbox mode, deleting DB");
-
-            if env.storage.db_path.exists() {
-                fs::remove_dir_all(env.storage.db_path).expect("Cannot delete db_path directory");
-            } else {
-                debug!(log, "db_path directory does not exist, perhaps was already deleted")
-            }
-
-            if env.storage.tezos_data_dir.exists() {
-                fs::remove_dir_all(env.storage.tezos_data_dir).expect("Cannot delete tezos_data_dir directory");
-            } else {
-                debug!(log, "tezos_data_dir directory does not exist, perhaps was already deleted")
-            }
-        }
 
         info!(log, "Shutdown complete");
     });
