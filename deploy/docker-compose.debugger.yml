@@ -1,23 +1,23 @@
 version: "3"
 
 services:
-     
+
   debugger:
     image: simplestakingcom/tezedge-debugger:latest
     build: .
     network_mode: "service:rust-network"
     environment:
       - RUST_BACKTRACE=1
-    depends_on: 
+    depends_on:
       - rust-network
     volumes:
       - "rust-shared-data:/tmp/volume"
     entrypoint: ./tezedge-debugger
 
   rust-node:
-    image: simplestakingcom/tezedge:v0.5.0
+    image: simplestakingcom/tezedge:latest
     network_mode: "service:rust-network"
-    depends_on: 
+    depends_on:
       - rust-explorer
     logging:
       # Produce syslogs instead of terminal logs
