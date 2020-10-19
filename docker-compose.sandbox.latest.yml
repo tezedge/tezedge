@@ -29,7 +29,7 @@ services:
       - "rust-shared-data:/tmp/tezedge"
 
   rust-explorer:
-    image: simplestakingcom/tezedge-explorer:sandbox
+    image: simplestakingcom/tezedge-explorer:sandbox-latest
     network_mode: "service:rust-network"
     depends_on:
       - rust-debugger

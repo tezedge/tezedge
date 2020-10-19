@@ -198,3 +198,32 @@ Open shell and type this code into the command line and then press Enter:
 
 For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
 
+Prearranged docker-compose files
+----------------
+
+### light-node + tezedge-explorer
+* Run last released version:
+```
+docker docker-compose.yml pull
+docker docker-compose.yml up
+```
+* Run actual development version:
+```
+docker docker-compose.latest.yml pull
+docker docker-compose.latest.yml up
+```
+
+### sandbox launcher + tezedge-explorer + tezedge-debugger
+* Run last released version:
+```
+docker docker-compose.sandbox.yml pull
+docker docker-compose.sandbox.yml up
+```
+* Run actual development version:
+```
+docker docker-compose.sandbox.latest.yml pull
+docker docker-compose.sandbox.latest.yml up
+
+# stop and remove docker volume
+docker docker-compose.sandbox.latest.yml down -v
+```

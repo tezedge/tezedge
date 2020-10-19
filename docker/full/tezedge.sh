@@ -13,7 +13,7 @@ IDENTITY_FILE="/tmp/tezedge/identity.json"
 
 
 # cleanup data directory
-rm -rf $BOOTSTRAP_DIR && mkdir $BOOTSTRAP_DIR 
+rm -rf $BOOTSTRAP_DIR && mkdir $BOOTSTRAP_DIR
 rm -rf $TEZOS_DIR && mkdir $TEZOS_DIR
 
 # protocol_runner needs 'libtezos.so' to run

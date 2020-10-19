@@ -13,8 +13,7 @@ services:
     entrypoint: ./tezedge-debugger
 
   rust-sandbox:
-    image: simplestakingcom/tezedge:sandbox
-    entrypoint: sh -c "sleep 5 && /home/appuser/tezedge/docker/compose/sandbox.sh"
+    image: simplestakingcom/tezedge:sandbox-v0.6.0
     network_mode: "service:rust-network"
     depends_on:
       - rust-debugger
@@ -30,7 +29,7 @@ services:
       - "rust-shared-data:/tmp/tezedge"
 
   rust-explorer:
-    image: simplestakingcom/tezedge-explorer:sandbox
+    image: simplestakingcom/tezedge-explorer:sandbox-v0.6.0
     network_mode: "service:rust-network"
     depends_on:
       - rust-debugger
