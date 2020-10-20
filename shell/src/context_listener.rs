@@ -124,6 +124,7 @@ fn store_action(storage: &mut ContextActionStorage, should_store: bool, action: 
         | ContextAction::RemoveRecursively { block_hash: Some(block_hash), .. }
         | ContextAction::Mem { block_hash: Some(block_hash), .. }
         | ContextAction::DirMem { block_hash: Some(block_hash), .. }
+        | ContextAction::Commit { block_hash: Some(block_hash), .. }
         | ContextAction::Get { block_hash: Some(block_hash), .. }
         | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
             storage.put_action(&block_hash.clone(), action)?;
