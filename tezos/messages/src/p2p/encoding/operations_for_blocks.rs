@@ -57,7 +57,7 @@ pub struct OperationsForBlocksMessage {
     #[get = "pub"]
     operation_hashes_path: Path,
     #[get = "pub"]
-    pub operations: Vec<Operation>,
+    operations: Vec<Operation>,
     #[serde(skip_serializing)]
     body: BinaryDataCache,
 }
@@ -81,6 +81,12 @@ has_encoding!(OperationsForBlocksMessage, OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING
             Field::new("operations", Encoding::list(Encoding::dynamic(Operation::encoding().clone()))),
         ])
 });
+
+impl From<OperationsForBlocksMessage> for Vec<Operation> {
+    fn from(msg: OperationsForBlocksMessage) -> Self {
+        msg.operations
+    }
+}
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]

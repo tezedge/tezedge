@@ -104,7 +104,7 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
-                        if let Some((handler, params)) = routes.find(&req.uri().path().to_string()) {
+                        if let Some((handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches("/")) {
                             match *req.method() {
                                 Method::OPTIONS => {
                                     // lets globaly handle options

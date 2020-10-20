@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [0.6.0] - 2020-10-20
+
+### Added
+
+- Added distroless docker builds
+- Drone pipeline for releasing docker images (develop, master/tag)
+
+### Fixed
+
+- Cleanup unnecessary clones + some small optimization
+- Sandbox improved error handling + cleanup
+
 
 ## [0.5.0] - 2020-09-30
 
@@ -144,14 +156,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.5.0...HEAD
-[0.0.1]: https://github.com/simplestaking/tezedge/releases/v0.0.1
-[0.0.2]: https://github.com/simplestaking/tezedge/releases/v0.0.2
-[0.1.0]: https://github.com/simplestaking/tezedge/releases/v0.1.0
-[0.2.0]: https://github.com/simplestaking/tezedge/releases/v0.2.0
-[0.3.0]: https://github.com/simplestaking/tezedge/releases/v0.3.0
-[0.4.0]: https://github.com/simplestaking/tezedge/releases/v0.4.0
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/simplestaking/tezedge/releases/v0.6.0
 [0.5.0]: https://github.com/simplestaking/tezedge/releases/v0.5.0
+[0.4.0]: https://github.com/simplestaking/tezedge/releases/v0.4.0
+[0.3.0]: https://github.com/simplestaking/tezedge/releases/v0.3.0
+[0.2.0]: https://github.com/simplestaking/tezedge/releases/v0.2.0
+[0.1.0]: https://github.com/simplestaking/tezedge/releases/v0.1.0
+[0.0.2]: https://github.com/simplestaking/tezedge/releases/v0.0.2
+[0.0.1]: https://github.com/simplestaking/tezedge/releases/v0.0.1
 ___
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

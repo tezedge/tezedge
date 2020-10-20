@@ -5,6 +5,7 @@
 //! This crate provides definitions of tezos messages.
 
 use chrono::prelude::*;
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
@@ -22,16 +23,37 @@ pub fn ts_to_rfc3339(ts: i64) -> String {
 }
 
 /// This common struct holds info about head and his level
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Getters, Serialize, Deserialize)]
 pub struct Head {
     /// BlockHash of head.
-    pub hash: BlockHash,
+    #[get = "pub"]
+    hash: BlockHash,
     /// Level of the head.
-    pub level: Level,
+    #[get = "pub"]
+    level: Level,
 }
 
 impl Head {
+    pub fn new(hash: BlockHash, level: Level) -> Self {
+        Self {
+            hash,
+            level,
+        }
+    }
+
     pub fn to_debug_info(&self) -> (String, Level) {
         (HashType::BlockHash.bytes_to_string(&self.hash), self.level)
+    }
+}
+
+impl From<Head> for BlockHash {
+    fn from(h: Head) -> Self {
+        h.hash
+    }
+}
+
+impl From<Head> for Level {
+    fn from(h: Head) -> Self {
+        h.level
     }
 }

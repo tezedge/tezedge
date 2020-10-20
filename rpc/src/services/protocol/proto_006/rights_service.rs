@@ -134,7 +134,7 @@ pub(crate) fn get_baking_rights(context_data: &RightsContextData, parameters: &R
 fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConstants, context_data: &RightsContextData, level: i32, estimated_head_timestamp: i64, is_cycle: bool, baking_rights: &mut Vec<BakingRights>) -> Result<(), failure::Error> {
     const BAKING_USE_STRING: &[u8] = b"level baking:";
 
-    // hashset is defined to keep track of the delegates with priorities allready assigned
+    // hashset is defined to keep track of the delegates with priorities already assigned
     let mut assigned = HashSet::new();
 
     let time_between_blocks = constants.time_between_blocks();
@@ -168,7 +168,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
             continue;
         }
 
-        // we omit the estimated_time field if the block on the requested level is allready baked
+        // we omit the estimated_time field if the block on the requested level is already baked
         let priority_timestamp = if block_level < (level as i64) {
             Some(estimated_head_timestamp + (priority as i64 * time_between_blocks[1]))
         } else {

@@ -8,8 +8,8 @@ use std::fmt::Debug;
 
 use derive_builder::Builder;
 use failure::Fail;
-use serde::{Deserialize, Serialize};
 use ocaml_interop::OCamlError;
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
@@ -40,7 +40,7 @@ pub struct PatchContext {
 
 impl fmt::Debug for PatchContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "key: {}, json: {:?}", &self.key, &self.json)
+        write!(f, "(key: {}, json: {})", &self.key, &self.json)
     }
 }
 
@@ -73,7 +73,7 @@ impl ApplyBlockRequest {
     pub fn convert_operations(block_operations: Vec<OperationsForBlocksMessage>) -> Vec<Vec<Operation>> {
         block_operations
             .into_iter()
-            .map(|ops| ops.operations)
+            .map(|ops| ops.into())
             .collect()
     }
 }
@@ -100,11 +100,9 @@ pub struct PrevalidatorWrapper {
 
 impl fmt::Debug for PrevalidatorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let chain_hash_encoding = HashType::ChainId;
-        let protocol_hash_encoding = HashType::ProtocolHash;
         write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}]",
-               chain_hash_encoding.bytes_to_string(&self.chain_id),
-               protocol_hash_encoding.bytes_to_string(&self.protocol)
+               HashType::ChainId.bytes_to_string(&self.chain_id),
+               HashType::ProtocolHash.bytes_to_string(&self.protocol)
         )
     }
 }
@@ -139,9 +137,8 @@ pub struct OperationProtocolDataJsonWithErrorListJson {
 
 impl fmt::Debug for OperationProtocolDataJsonWithErrorListJson {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[error_json: {}, protocol_data_json: {}]",
-               format_json_single_line(&self.error_json),
-               format_json_single_line(&self.protocol_data_json)
+        write!(f, "[error_json: {}, protocol_data_json: (-stripped-)]",
+               &self.error_json,
         )
     }
 }
@@ -162,18 +159,11 @@ impl HasOperationHash for Applied {
     }
 }
 
-#[inline]
-fn format_json_single_line(origin: &str) -> String {
-    let json = serde_json::json!(origin);
-    serde_json::to_string(&json).unwrap_or_else(|_| origin.to_string())
-}
-
 impl fmt::Debug for Applied {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let operation_hash_encoding = HashType::OperationHash;
         write!(f, "[hash: {}, protocol_data_json: {}]",
-               operation_hash_encoding.bytes_to_string(&self.hash),
-               format_json_single_line(&self.protocol_data_json)
+               HashType::OperationHash.bytes_to_string(&self.hash),
+               &self.protocol_data_json
         )
     }
 }
@@ -193,9 +183,8 @@ impl HasOperationHash for Errored {
 
 impl fmt::Debug for Errored {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let operation_hash_encoding = HashType::OperationHash;
         write!(f, "[hash: {}, protocol_data_json_with_error_json: {:?}]",
-               operation_hash_encoding.bytes_to_string(&self.hash),
+               HashType::OperationHash.bytes_to_string(&self.hash),
                &self.protocol_data_json_with_error_json
         )
     }
@@ -215,13 +204,12 @@ impl ValidateOperationResult {
     pub fn merge(&mut self, new_result: ValidateOperationResult) -> bool {
         let mut changed = Self::merge_items(&mut self.applied, new_result.applied);
         changed |= Self::merge_items(&mut self.refused, new_result.refused);
-        changed |= Self::merge_items(&mut self.branch_refused,  new_result.branch_refused);
+        changed |= Self::merge_items(&mut self.branch_refused, new_result.branch_refused);
         changed |= Self::merge_items(&mut self.branch_delayed, new_result.branch_delayed);
         changed
     }
 
     fn merge_items<ITEM: HasOperationHash>(result_items: &mut Vec<ITEM>, new_items: Vec<ITEM>) -> bool {
-
         let mut changed = false;
         let mut added = false;
 

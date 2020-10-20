@@ -78,8 +78,7 @@ impl OperationsState {
     /// If there are still block operations to be processed return `false`.
     pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
         self.operations_storage.put_operations(message)?;
-        self.operations_meta_storage.put_operations(message)?;
-        self.operations_meta_storage.is_complete(message.operations_for_block().hash())
+        self.operations_meta_storage.put_operations(message)
     }
 
     pub fn drain_missing_block_operations(&mut self, n: usize, level_max: i32) -> Vec<MissingOperations> {

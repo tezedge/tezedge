@@ -1,0 +1,23 @@
+version: "3"
+
+services:
+
+  node:
+    image: simplestakingcom/tezedge:latest
+    hostname: node
+    ports:
+      - "4927:4927"
+      - "19732:9732"
+      - "18732:18732"
+    networks:
+      - default
+    tty: true
+
+  explorer:
+    image: simplestakingcom/tezedge-explorer:latest
+    hostname: explorer
+    ports:
+      - "8080:8080"
+    networks:
+      - default
+    tty: true

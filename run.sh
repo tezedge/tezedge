@@ -198,12 +198,11 @@ run_sandbox() {
 
   export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
 
-  rm -rf ./light_node/etc/tezedge_sandbox/tezos-client/*
-
   cargo run $CARGO_PROFILE_ARG --bin sandbox -- \
                                 --log-level "info" \
                                 --sandbox-rpc-port "3030" \
                                 --light-node-path "./target/$PROFILE/light-node" \
+                                --protocol-runner-path "./target/$PROFILE/protocol-runner" \
                                 --tezos-client-path "./sandbox/artifacts/tezos-client" "${args[@]}"
 }
 

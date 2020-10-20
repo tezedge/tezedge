@@ -3,11 +3,9 @@
 #![feature(test)]
 extern crate test;
 
-use std::sync::Once;
 use std::time::Duration;
 
 use lazy_static::lazy_static;
-use slog::{info, Logger};
 
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
@@ -15,6 +13,7 @@ use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 mod common;
+mod samples;
 
 lazy_static! {
     pub static ref NETWORK_VERSION: NetworkVersion = NetworkVersion::new("TEST_CHAIN".to_string(), 0, 0);
@@ -34,16 +33,6 @@ lazy_static! {
     );
 }
 
-fn init_data(log: &Logger) {
-    static INIT_DATA: Once = Once::new();
-    INIT_DATA.call_once(|| {
-        info!(log, "Initializing test data...");
-        let _ = NODE_P2P_CFG.clone();
-        let _ = test_data::DB.block_hash(1);
-        info!(log, "Test data initialized!");
-    });
-}
-
 #[ignore]
 #[test]
 fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), failure::Error> {
@@ -51,11 +40,13 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
     let log_level = common::log_level();
     let log = common::create_logger(log_level.clone());
 
-    init_data(&log);
+    let db = test_cases_data::current_branch_on_level_3::init_data(&log);
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
         "__test_01", "test_process_current_branch_on_level3_with_empty_storage",
+        &db.tezos_env,
+        None,
         Some(NODE_P2P_CFG.clone()),
         (log, log_level),
     )?;
@@ -65,16 +56,19 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
 
     // connect mocked node peer with test data set
     let mocked_peer_node = test_node_peer::TestNodePeer::connect(
+        "TEST_PEER_NODE",
         NODE_P2P_CFG.1.listener_port,
         NODE_P2P_CFG.2.clone(),
         tezos_identity::Identity::generate(0f64),
         node.log.clone(),
         &node.tokio_runtime,
-        test_cases_data::current_branch_on_level_3,
+        test_cases_data::current_branch_on_level_3::serve_data,
     );
 
     // wait for current head on level 3
-    node.wait_for_new_current_head(test_data::DB.block_hash(3)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+    node.wait_for_new_current_head(db.block_hash(3)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+
+    // TODO: other context and checks
 
     // stop nodes
     drop(node);
@@ -83,80 +77,124 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
     Ok(())
 }
 
+#[ignore]
+#[test]
+fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Result<(), failure::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level.clone());
+
+    // prepare env data
+    let (tezos_env, patch_context) = {
+        let (db, patch_context) = test_cases_data::sandbox_branch_1_level3::init_data(&log);
+        (db.tezos_env, patch_context)
+    };
+
+    // start node
+    let node = common::infra::NodeInfrastructure::start(
+        "__test_02", "test_process_reorg_with_different_current_branches_with_empty_storage",
+        &tezos_env,
+        patch_context,
+        Some(NODE_P2P_CFG.clone()),
+        (log, log_level),
+    )?;
+
+    // wait for storage initialization to genesis
+    node.wait_for_new_current_head(node.tezos_env.genesis_header_hash()?, (Duration::from_secs(5), Duration::from_millis(250)))?;
+
+    // connect mocked node peer with data for branch_1
+    let (db_branch_1, ..) = test_cases_data::sandbox_branch_1_level3::init_data(&node.log);
+    let mocked_peer_node_branch_1 = test_node_peer::TestNodePeer::connect(
+        "TEST_PEER_NODE_BRANCH_1",
+        NODE_P2P_CFG.1.listener_port,
+        NODE_P2P_CFG.2.clone(),
+        tezos_identity::Identity::generate(0f64),
+        node.log.clone(),
+        &node.tokio_runtime,
+        test_cases_data::sandbox_branch_1_level3::serve_data,
+    );
+
+    // wait for current head on level 3
+    node.wait_for_new_current_head(db_branch_1.block_hash(3)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+
+    // connect mocked node peer with data for branch_2
+    let (db_branch_2, ..) = test_cases_data::sandbox_branch_2_level4::init_data(&node.log);
+    let mocked_peer_node_branch_2 = test_node_peer::TestNodePeer::connect(
+        "TEST_PEER_NODE_BRANCH_2",
+        NODE_P2P_CFG.1.listener_port,
+        NODE_P2P_CFG.2.clone(),
+        tezos_identity::Identity::generate(0f64),
+        node.log.clone(),
+        &node.tokio_runtime,
+        test_cases_data::sandbox_branch_2_level4::serve_data,
+    );
+
+    // wait for current head on level 4
+    node.wait_for_new_current_head(db_branch_2.block_hash(4)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
+
+    // TODO: other context and checks
+
+    // stop nodes
+    drop(node);
+    drop(mocked_peer_node_branch_1);
+    drop(mocked_peer_node_branch_2);
+
+    Ok(())
+}
+
 /// Stored first cca first 1300 apply block data
 mod test_data {
-    use std::{env, io};
     use std::collections::HashMap;
     use std::convert::TryInto;
-    use std::fs::File;
-    use std::io::BufRead;
-    use std::path::Path;
 
     use failure::format_err;
-    use itertools::Itertools;
-    use lazy_static::lazy_static;
 
-    use crypto::hash::{BlockHash, HashType};
+    use crypto::hash::BlockHash;
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::ApplyBlockRequest;
-    use tezos_encoding::binary_reader::BinaryReader;
-    use tezos_encoding::de::from_value as deserialize_from_value;
-    use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-    use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+    use tezos_messages::p2p::binary_message::MessageHash;
     use tezos_messages::p2p::encoding::block_header::Level;
-    use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlock, OperationsForBlocksMessage};
+    use tezos_messages::p2p::encoding::prelude::{BlockHeader, OperationsForBlock, OperationsForBlocksMessage};
 
-    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
-
-    lazy_static! {
-        pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("max_operations_ttl", Encoding::Int31),
-            Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
-        ]);
-
-        // prepared data - we have stored 1326 request for apply block
-        pub static ref DB: Db = Db::init_db();
-    }
+    use crate::samples::OperationsForBlocksMessageKey;
 
     pub struct Db {
+        pub tezos_env: TezosEnvironment,
         requests: Vec<String>,
         headers: HashMap<BlockHash, Level>,
         operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     }
 
     impl Db {
-        fn init_db() -> Db {
-            let requests = read_apply_block_requests_until_1326();
+        pub(crate) fn init_db((requests, operations, tezos_env): (Vec<String>, HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>, TezosEnvironment)) -> Db {
             let mut headers: HashMap<BlockHash, Level> = HashMap::new();
 
             // init headers
             for (idx, request) in requests.iter().enumerate() {
-                let request = from_captured_bytes(request).expect("Failed to parse request");
+                let request = crate::samples::from_captured_bytes(request).expect("Failed to parse request");
                 let block = request.block_header.message_hash().expect("Failed to decode message_hash");
                 headers.insert(block, to_level(idx));
             }
 
             Db {
+                tezos_env,
                 requests,
                 headers,
-                operations: read_operations_for_blocks_message_until_1328(),
+                operations,
             }
         }
 
         pub fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeader>, failure::Error> {
-            match DB.headers.get(block_hash) {
+            match self.headers.get(block_hash) {
                 Some(level) => {
-                    Ok(Some(self.from_captured_requests(level.clone())?.block_header))
+                    Ok(Some(self.captured_requests(level.clone())?.block_header))
                 }
                 None => Ok(None)
             }
         }
 
         pub fn get_operations_for_block(&self, block: &OperationsForBlock) -> Result<Option<OperationsForBlocksMessage>, failure::Error> {
-            match DB.operations.get(&OperationsForBlocksMessageKey::new(block.block_hash().clone(), block.validation_pass())) {
+            match self.operations.get(&OperationsForBlocksMessageKey::new(block.block_hash().clone(), block.validation_pass())) {
                 Some(operations) => {
                     Ok(Some(operations.clone()))
                 }
@@ -176,8 +214,8 @@ mod test_data {
         }
 
         /// Create new struct from captured requests by level.
-        pub fn from_captured_requests(&self, level: Level) -> Result<ApplyBlockRequest, failure::Error> {
-            from_captured_bytes(&self.requests[to_index(level)])
+        fn captured_requests(&self, level: Level) -> Result<ApplyBlockRequest, failure::Error> {
+            crate::samples::from_captured_bytes(&self.requests[to_index(level)])
         }
     }
 
@@ -189,105 +227,146 @@ mod test_data {
     fn to_level(idx: usize) -> Level {
         (idx + 1).try_into().expect("Failed to convert index to Level")
     }
-
-    /// Create new struct from bytes.
-    #[inline]
-    fn from_captured_bytes(request: &str) -> Result<ApplyBlockRequest, failure::Error> {
-        let bytes = hex::decode(request)?;
-        let value = BinaryReader::new().read(bytes, &APPLY_BLOCK_REQUEST_ENCODING)?;
-        let value: ApplyBlockRequest = deserialize_from_value(&value)?;
-        Ok(value)
-    }
-
-    pub fn read_apply_block_requests_until_1326() -> Vec<String> {
-        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-            .join("tests")
-            .join("resources")
-            .join("apply_block_request_until_1326.zip");
-        let file = File::open(path).expect("Couldn't open file: tests/resources/apply_block_request_until_1326.zip");
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-
-        let mut requests: Vec<String> = Vec::new();
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).unwrap();
-            let mut writer: Vec<u8> = vec![];
-            io::copy(&mut file, &mut writer).unwrap();
-            requests.push(String::from_utf8(writer).expect("error"));
-        }
-
-        requests
-    }
-
-    pub fn read_operations_for_blocks_message_until_1328() -> HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> {
-        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-            .join("tests")
-            .join("resources")
-            .join("OperationsForBlocksMessage.zip");
-        let file = File::open(path).expect("Couldn't open file: tests/resources/OperationsForBlocksMessage.zip");
-        let mut archive = zip::ZipArchive::new(file).unwrap();
-        let file = archive.by_name("OperationsForBlocksMessage").unwrap();
-
-        let mut operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> = HashMap::new();
-
-        // read file by lines
-        let reader = io::BufReader::new(file);
-        let lines = reader.lines();
-        for line in lines {
-            if let Ok(mut line) = line {
-                let _ = line.remove(0);
-                let split = line.split("|").collect_vec();
-                assert_eq!(3, split.len());
-
-                let block_hash = HashType::BlockHash.string_to_bytes(split[0]).expect("Failed to parse block_hash");
-                let validation_pass = split[1].parse::<i8>().expect("Failed to parse validation_pass");
-
-                let operations_for_blocks_message = hex::decode(split[2]).expect("Failed to parse operations_for_blocks_message");
-                let operations_for_blocks_message = OperationsForBlocksMessage::from_bytes(operations_for_blocks_message).expect("Failed to readed bytes for operations_for_blocks_message");
-
-                operations.insert(
-                    OperationsForBlocksMessageKey::new(block_hash, validation_pass),
-                    operations_for_blocks_message,
-                );
-            }
-        }
-
-        operations
-    }
-
-    #[derive(Debug, PartialEq, Eq, Hash)]
-    pub struct OperationsForBlocksMessageKey {
-        block_hash: String,
-        validation_pass: i8,
-    }
-
-    impl OperationsForBlocksMessageKey {
-        pub fn new(block_hash: BlockHash, validation_pass: i8) -> Self {
-            OperationsForBlocksMessageKey {
-                block_hash: HashType::BlockHash.bytes_to_string(&block_hash),
-                validation_pass,
-            }
-        }
-    }
 }
 
 /// Predefined data sets as callback functions for test node peer
 mod test_cases_data {
-    use crypto::hash::BlockHash;
+    use std::{env, fs};
+    use std::path::Path;
+    use std::sync::Once;
+
+    use lazy_static::lazy_static;
+    use slog::{info, Logger};
+
+    use tezos_api::ffi::PatchContext;
+    use tezos_messages::p2p::encoding::block_header::Level;
     use tezos_messages::p2p::encoding::prelude::{BlockHeaderMessage, CurrentBranch, CurrentBranchMessage, PeerMessage, PeerMessageResponse};
 
-    use crate::test_data::DB;
+    use crate::test_data::Db;
 
-    pub fn current_branch_on_level_3(message: PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error> {
-        full_data(message, Some(DB.block_hash(3)?))
+    lazy_static! {
+        // prepared data - we have stored 1326 request for apply block + operations for CARTHAGENET
+        pub static ref DB_1326_CARTHAGENET: Db = Db::init_db(
+            crate::samples::read_data_apply_block_request_until_1326(),
+        );
     }
 
-    pub fn full_data(message: PeerMessageResponse, desired_current_branch: Option<BlockHash>) -> Result<Vec<PeerMessageResponse>, failure::Error> {
+    fn init_data_db_1326_carthagenet(log: &Logger) -> &'static Db {
+        static INIT_DATA: Once = Once::new();
+        INIT_DATA.call_once(|| {
+            info!(log, "Initializing test data 1326_carthagenet...");
+            let _ = DB_1326_CARTHAGENET.block_hash(1);
+            info!(log, "Test data 1326_carthagenet initialized!");
+        });
+        &DB_1326_CARTHAGENET
+    }
+
+    pub mod current_branch_on_level_3 {
+        use slog::Logger;
+
+        use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
+
+        use crate::test_cases_data::{full_data, init_data_db_1326_carthagenet};
+        use crate::test_data::Db;
+
+        pub fn init_data(log: &Logger) -> &'static Db {
+            init_data_db_1326_carthagenet(log)
+        }
+
+        pub fn serve_data(message: PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error> {
+            full_data(message, Some(3), &super::DB_1326_CARTHAGENET)
+        }
+    }
+
+    pub mod sandbox_branch_1_level3 {
+        use std::sync::Once;
+
+        use lazy_static::lazy_static;
+        use slog::{info, Logger};
+
+        use tezos_api::environment::TezosEnvironment;
+        use tezos_api::ffi::PatchContext;
+        use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
+
+        use crate::test_cases_data::full_data;
+        use crate::test_data::Db;
+
+        lazy_static! {
+            pub static ref DB: Db = Db::init_db(
+                crate::samples::read_data_zip("sandbox_branch_1_level3.zip", TezosEnvironment::Sandbox),
+            );
+        }
+
+        pub fn init_data(log: &Logger) -> (&'static Db, Option<PatchContext>) {
+            static INIT_DATA: Once = Once::new();
+            INIT_DATA.call_once(|| {
+                info!(log, "Initializing test data sandbox_branch_1_level3...");
+                let _ = DB.block_hash(1);
+                info!(log, "Test data sandbox_branch_1_level3 initialized!");
+            });
+            (&DB, Some(super::read_patch_context("sandbox-patch-context.json")))
+        }
+
+        pub fn serve_data(message: PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error> {
+            full_data(message, Some(3), &DB)
+        }
+    }
+
+    pub mod sandbox_branch_2_level4 {
+        use std::sync::Once;
+
+        use lazy_static::lazy_static;
+        use slog::{info, Logger};
+
+        use tezos_api::environment::TezosEnvironment;
+        use tezos_api::ffi::PatchContext;
+        use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
+
+        use crate::test_cases_data::full_data;
+        use crate::test_data::Db;
+
+        lazy_static! {
+            pub static ref DB: Db = Db::init_db(
+                crate::samples::read_data_zip("sandbox_branch_2_level4.zip", TezosEnvironment::Sandbox),
+            );
+        }
+
+        pub fn init_data(log: &Logger) -> (&'static Db, Option<PatchContext>) {
+            static INIT_DATA: Once = Once::new();
+            INIT_DATA.call_once(|| {
+                info!(log, "Initializing test data sandbox_branch_2_level4...");
+                let _ = DB.block_hash(1);
+                info!(log, "Test data sandbox_branch_2_level4 initialized!");
+            });
+            (&DB, Some(super::read_patch_context("sandbox-patch-context.json")))
+        }
+
+        pub fn serve_data(message: PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error> {
+            full_data(message, Some(4), &DB)
+        }
+    }
+
+    fn read_patch_context(patch_context_json: &str) -> PatchContext {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join(patch_context_json);
+        match fs::read_to_string(path) {
+            | Ok(content) => PatchContext {
+                key: "sandbox_parameter".to_string(),
+                json: content,
+            },
+            | Err(e) => panic!("Cannot read file, reason: {:?}", e)
+        }
+    }
+
+    fn full_data(message: PeerMessageResponse, desired_current_branch_level: Option<Level>, db: &Db) -> Result<Vec<PeerMessageResponse>, failure::Error> {
         match message.messages().get(0).unwrap() {
             PeerMessage::GetCurrentBranch(request) => {
-                match desired_current_branch {
-                    Some(block_hash) => {
-                        if let Some(block_header) = DB.get(&block_hash)? {
+                match desired_current_branch_level {
+                    Some(level) => {
+                        let block_hash = db.block_hash(level)?;
+                        if let Some(block_header) = db.get(&block_hash)? {
                             let current_branch = CurrentBranchMessage::new(
                                 request.chain_id.clone(),
                                 CurrentBranch::new(
@@ -309,7 +388,7 @@ mod test_cases_data {
             PeerMessage::GetBlockHeaders(request) => {
                 let mut responses: Vec<PeerMessageResponse> = Vec::new();
                 for block_hash in request.get_block_headers() {
-                    if let Some(block_header) = DB.get(block_hash)? {
+                    if let Some(block_header) = db.get(block_hash)? {
                         let msg: BlockHeaderMessage = block_header.into();
                         responses.push(msg.into());
                     }
@@ -319,7 +398,7 @@ mod test_cases_data {
             PeerMessage::GetOperationsForBlocks(request) => {
                 let mut responses: Vec<PeerMessageResponse> = Vec::new();
                 for block in request.get_operations_for_blocks() {
-                    if let Some(msg) = DB.get_operations_for_block(block)? {
+                    if let Some(msg) = db.get_operations_for_block(block)? {
                         responses.push(msg.into());
                     }
                 }
@@ -357,6 +436,7 @@ mod test_node_peer {
 
     impl TestNodePeer {
         pub fn connect(
+            name: &'static str,
             connect_to_node_port: u16,
             network_version: NetworkVersion,
             identity: Identity,
@@ -373,7 +453,7 @@ mod test_node_peer {
                     // init socket connection to server node
                     match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
                         Ok(Ok(stream)) => {
-                            info!(log, "[TEST_PEER_NODE] Connection successful"; "ip" => server_address);
+                            info!(log, "[{}] Connection successful", name; "ip" => server_address);
 
                             // authenticate
                             let local = Arc::new(Local::new(
@@ -394,35 +474,36 @@ mod test_node_peer {
                                 bootstrap,
                                 local,
                                 &log,
-                            ).await.expect("[TEST_PEER_NODE] Failed to bootstrap");
+                            ).await.expect(&format!("[{}] Failed to bootstrap", name));
 
                             // process messages
                             run.store(true, Ordering::Release);
-                            Self::begin_process_incoming(bootstrap_result, run, log, server_address, handle_message_callback).await;
+                            Self::begin_process_incoming(name, bootstrap_result, run, log, server_address, handle_message_callback).await;
                         }
                         Ok(Err(e)) => {
-                            error!(log, "[TEST_PEER_NODE] Connection failed"; "ip" => server_address, "reason" => format!("{:?}", e));
+                            error!(log, "[{}] Connection failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
                         }
                         Err(_) => {
-                            error!(log, "[TEST_PEER_NODE] Connection timed out"; "ip" => server_address);
+                            error!(log, "[{}] Connection timed out", name; "ip" => server_address);
                         }
                     }
                 });
             }
 
             TestNodePeer {
-                run
+                run,
             }
         }
 
         /// Start to process incoming data
         async fn begin_process_incoming(
+            name: &str,
             bootstrap: BootstrapOutput,
             run: Arc<AtomicBool>,
             log: Logger,
             peer_address: SocketAddr,
             handle_message_callback: fn(PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error>) {
-            info!(log, "[TEST_PEER_NODE] Starting to accept messages"; "ip" => format!("{:?}", &peer_address));
+            info!(log, "[{}] Starting to accept messages", name; "ip" => format!("{:?}", &peer_address));
             let BootstrapOutput(mut rx, mut tx, ..) = bootstrap;
 
             while run.load(Ordering::Acquire) {
@@ -430,43 +511,43 @@ mod test_node_peer {
                     Ok(res) => match res {
                         Ok(msg) => {
                             let msg_type = msg_type(&msg);
-                            info!(log, "[TEST_PEER_NODE] Handle message"; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
+                            info!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
 
                             // apply callback
                             match handle_message_callback(msg) {
                                 Ok(responses) => {
-                                    info!(log, "[TEST_PEER_NODE] Message handled({})", !responses.is_empty(); "msg_type" => msg_type);
+                                    info!(log, "[{}] Message handled({})", name, !responses.is_empty(); "msg_type" => msg_type);
                                     for response in responses {
                                         // send back response
-                                        tx.write_message(&response).await.expect("[TEST_PEER_NODE] Failed to send message");
+                                        tx.write_message(&response).await.expect(&format!("[{}] Failed to send message", name));
                                     };
                                 }
-                                Err(e) => error!(log, "[TEST_PEER_NODE] Failed to handle message"; "reason" => format!("{:?}", e), "msg_type" => msg_type)
+                                Err(e) => error!(log, "[{}] Failed to handle message", name; "reason" => format!("{:?}", e), "msg_type" => msg_type)
                             }
                         }
                         Err(e) => {
-                            crit!(log, "[TEST_PEER_NODE] Failed to read peer message"; "reason" => e);
+                            crit!(log, "[{}] Failed to read peer message", name; "reason" => e);
                             break;
                         }
                     }
                     Err(_) => {
-                        warn!(log, "[TEST_PEER_NODE] Peer message read timed out"; "secs" => READ_TIMEOUT_LONG.as_secs());
+                        warn!(log, "[{}] Peer message read timed out", name; "secs" => READ_TIMEOUT_LONG.as_secs());
                         break;
                     }
                 }
             }
 
-            debug!(log, "[TEST_PEER_NODE] Shutting down peer connection"; "ip" => format!("{:?}", &peer_address));
+            debug!(log, "[{}] Shutting down peer connection", name; "ip" => format!("{:?}", &peer_address));
             // let mut tx_lock = tx.lock().await;
             // if let Some(tx) = tx_lock.take() {
             let socket = rx.unsplit(tx);
             match socket.shutdown(Shutdown::Both) {
-                Ok(()) => debug!(log, "[TEST_PEER_NODE] Connection shutdown successful"; "socket" => format!("{:?}", socket)),
-                Err(err) => debug!(log, "[TEST_PEER_NODE] Failed to shutdown connection"; "err" => format!("{:?}", err), "socket" => format!("{:?}", socket)),
+                Ok(()) => debug!(log, "[{}] Connection shutdown successful", name; "socket" => format!("{:?}", socket)),
+                Err(err) => debug!(log, "[{}] Failed to shutdown connection", name; "err" => format!("{:?}", err), "socket" => format!("{:?}", socket)),
             }
             // }
 
-            info!(log, "[TEST_PEER_NODE] Stopped to accept messages"; "ip" => format!("{:?}", &peer_address));
+            info!(log, "[{}] Stopped to accept messages", name; "ip" => format!("{:?}", &peer_address));
         }
 
         pub fn stop(&mut self) {

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use failure::format_err;
@@ -8,16 +9,16 @@ use serde_json::Value;
 use slog::Logger;
 
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic, InjectBlock};
+use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use storage::mempool_storage::MempoolOperationType;
 use storage::MempoolStorage;
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{Applied, Errored, ComputePathRequest};
+use tezos_api::ffi::{Applied, ComputePathRequest, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
-use tezos_messages::p2p::encoding::prelude::{Operation, OperationMessage, BlockHeader};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
-use crate::rpc_actor::RpcCollectedStateRef;
+use crate::rpc_actor::{RpcCollectedState, RpcCollectedStateRef};
 use crate::server::RpcServiceEnvironment;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -43,11 +44,12 @@ pub fn get_pending_operations(
 
     // get actual known state of mempool
     let state = state.read().unwrap();
-    let current_mempool_state: &Option<CurrentMempoolState> = state.current_mempool_state();
+    let current_mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>> = state.current_mempool_state();
 
     // convert to rpc data
     match current_mempool_state {
         Some(mempool) => {
+            let mempool = mempool.read().unwrap();
             let protocol = match &mempool.protocol {
                 Some(protocol) => protocol,
                 None => return Err(format_err!("missing protocol for mempool current state"))
@@ -136,11 +138,10 @@ pub fn inject_operation(
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
 
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
-    let operation_message = OperationMessage::new(operation.clone());
-    let ttl = SystemTime::now() + Duration::from_secs(60);
     let operation_hash = operation.message_hash()?;
+    let ttl = SystemTime::now() + Duration::from_secs(60);
 
-    mempool_storage.put(MempoolOperationType::Pending, operation_message, ttl)?;
+    mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
 
     shell_channel.tell(
         Publish {
@@ -158,17 +159,13 @@ pub fn inject_block(
     injection_data: &str,
     env: &RpcServiceEnvironment,
     shell_channel: ShellChannelRef) -> Result<String, failure::Error> {
-
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
 
     let header: BlockHeader = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?;
-
-    let injected_level = header.level();
-
     let block_hash = HashType::BlockHash.bytes_to_string(&header.message_hash()?);
 
     // special case for block on level 1 - has 0 validation passes
-    let validation_passes: Option<Vec<Vec<Operation>>> = if injected_level > 1 {
+    let validation_passes: Option<Vec<Vec<Operation>>> = if header.validation_pass() > 0 {
         Some(block_with_op.operations.into_iter()
             .map(|validation_pass| validation_pass.into_iter()
                 .map(|op| op.into())
@@ -178,12 +175,46 @@ pub fn inject_block(
         None
     };
 
+    // clean actual mempool_state - just applied should be enough
+    if let Some(validation_passes) = &validation_passes {
+        let current_head_ref: &mut RpcCollectedState = &mut *env.state().write().unwrap();
+        if let Some(mempool) = current_head_ref.current_mempool_state() {
+            let mut mempool = mempool.write().unwrap();
+            for vps in validation_passes {
+                for vp in vps {
+                    let oph: OperationHash = vp.message_hash()?;
+
+                    // remove from applied
+                    if let Some(pos) = mempool.result.applied.iter().position(|x| oph.eq(&x.hash)) {
+                        mempool.result.applied.remove(pos);
+                        mempool.operations.remove(&oph);
+                    }
+                    // remove from branch_delayed
+                    if let Some(pos) = mempool.result.branch_delayed.iter().position(|x| oph.eq(&x.hash)) {
+                        mempool.result.branch_delayed.remove(pos);
+                        mempool.operations.remove(&oph);
+                    }
+                    // remove from branch_refused
+                    if let Some(pos) = mempool.result.branch_refused.iter().position(|x| oph.eq(&x.hash)) {
+                        mempool.result.branch_refused.remove(pos);
+                        mempool.operations.remove(&oph);
+                    }
+                    // remove from refused
+                    if let Some(pos) = mempool.result.refused.iter().position(|x| oph.eq(&x.hash)) {
+                        mempool.result.refused.remove(pos);
+                        mempool.operations.remove(&oph);
+                    }
+                }
+            }
+        }
+    }
+
     // compute the paths for each validation passes
     let paths = if let Some(vps) = validation_passes.clone() {
         let request = ComputePathRequest {
             operations: vps.clone().iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
         };
-        
+
         let response = env.tezos_readonly_api().pool.get()?.api.compute_path(request)?;
         Some(response.operations_hashes_path)
     } else {
@@ -194,7 +225,7 @@ pub fn inject_block(
     shell_channel.tell(
         Publish {
             msg: InjectBlock {
-                block_header: header.clone(),
+                block_header: header,
                 operations: validation_passes,
                 operation_paths: paths,
             }.into(),

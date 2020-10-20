@@ -1,9 +1,9 @@
 version: "3"
+
 services:
 
   node:
-    image: simplestakingcom/tezedge:v0.5.0
-    build: ./docker/compose
+    image: simplestakingcom/tezedge:v0.6.0
     hostname: node
     ports:
       - "4927:4927"
@@ -11,15 +11,13 @@ services:
       - "18732:18732"
     networks:
       - default
-    entrypoint: /home/appuser/tezedge/docker/compose/tezedge.sh
     tty: true
-    
+
   explorer:
-    image: simplestakingcom/tezedge-explorer:v0.5.0
+    image: simplestakingcom/tezedge-explorer:v0.6.0
     hostname: explorer
     ports:
       - "8080:8080"
     networks:
       - default
     tty: true
-  

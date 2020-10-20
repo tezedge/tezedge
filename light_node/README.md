@@ -113,12 +113,6 @@ The node exposes various metrics and statistics in real-time through a websocket
 --websocket-address <IP:PORT>
 ```
 
-### Monitor port
-The port on which the monitoring information for the TezEdge node will be exposed
-```
---monitor-port <PORT>
-```
-
 ### Peers <optional>
 Allowed network peers to bootstrap from. This argument is good to use in a controlled testing environmnet.
 Each peer is described by its address and port in `IP:PORT` format, delimited by a colon.

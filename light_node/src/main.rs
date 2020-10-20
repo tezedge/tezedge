@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 // #![forbid(unsafe_code)]
 
-use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -285,22 +284,6 @@ fn block_on_actors(
         drop(tezos_readonly_api);
         debug!(log, "Shutdown tezos_readonly_api complete");
 
-        if is_sandbox {
-            debug!(log, "Shutting down from sandbox mode, deleting DB");
-
-            if env.storage.db_path.exists() {
-                fs::remove_dir_all(env.storage.db_path).expect("Cannot delete db_path directory");
-            } else {
-                debug!(log, "db_path directory does not exist, perhaps was already deleted")
-            }
-
-            if env.storage.tezos_data_dir.exists() {
-                fs::remove_dir_all(env.storage.tezos_data_dir).expect("Cannot delete tezos_data_dir directory");
-            } else {
-                debug!(log, "tezos_data_dir directory does not exist, perhaps was already deleted")
-            }
-        }
-
         info!(log, "Shutdown complete");
     });
 }
@@ -315,19 +298,26 @@ fn main() {
     // Creates default logger
     let log = create_logger(&env);
 
+    // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
+    let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
+        Ok(identity) => {
+            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string(), "peer_id" => &identity.peer_id);
+            if env.validate_cfg_identity_and_stop {
+                info!(log, "Configuration and identity is ok!");
+                return;
+            }
+            identity
+        }
+        Err(e) => {
+            error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.as_path().display().to_string());
+            panic!("Failed to load identity: {}", env.identity.identity_json_file_path.as_path().display().to_string());
+        }
+    };
+
     // Enable core dumps and increase open files limit
     system::init_limits(&log);
 
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
-
-    // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
-        Ok(identity) => {
-            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.clone().into_os_string().into_string().unwrap());
-            identity
-        }
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.into_os_string().into_string().unwrap()), actor_system),
-    };
 
     let schemas = vec![
         block_storage::BlockPrimaryIndex::descriptor(),
@@ -350,7 +340,7 @@ fn main() {
     ];
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
-        Err(_) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.db_path), actor_system)
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.db_path; "reason" => e), actor_system)
     };
     debug!(log, "Loaded RocksDB database");
 
@@ -378,7 +368,7 @@ fn main() {
             &env.storage.patch_context,
             &log) {
             Ok(init_data) => block_on_actors(env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
-            Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data. Reason: {}", e), actor_system),
+            Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data."; "reason" => e), actor_system),
         }
     }
 }
