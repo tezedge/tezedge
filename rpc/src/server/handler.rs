@@ -426,8 +426,9 @@ async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRpcRequest, f
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
 
+
     Ok(JsonRpcRequest {
         body,
-        context_path,
+        context_path: String::from(context_path.trim_end_matches("/")),
     })
 }

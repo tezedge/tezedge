@@ -35,7 +35,7 @@ pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     chain_id: ChainId,
     #[get = "pub(crate)"]
-    current_mempool_state: Option<Arc<CurrentMempoolState>>,
+    current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
     #[get = "pub(crate)"]
     head_update_time: TimeStamp,
     #[get_copy = "pub(crate)"]
@@ -69,7 +69,7 @@ impl RpcServer {
             chain_id: init_storage_data.chain_id.clone(),
             current_mempool_state: None,
             head_update_time: current_time_timestamp(),
-            is_sandbox
+            is_sandbox,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),

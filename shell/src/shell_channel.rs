@@ -4,7 +4,7 @@
 //! Shell channel is used to transmit high level shell messages.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use getset::Getters;
 use riker::actors::*;
@@ -85,7 +85,7 @@ pub enum ShellChannelMsg {
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
-    MempoolStateChanged(Arc<CurrentMempoolState>),
+    MempoolStateChanged(Arc<RwLock<CurrentMempoolState>>),
     InjectBlock(InjectBlock),
     ShuttingDown(ShuttingDown),
 }
@@ -110,7 +110,7 @@ impl From<MempoolOperationReceived> for ShellChannelMsg {
 
 impl From<CurrentMempoolState> for ShellChannelMsg {
     fn from(msg: CurrentMempoolState) -> Self {
-        ShellChannelMsg::MempoolStateChanged(Arc::new(msg))
+        ShellChannelMsg::MempoolStateChanged(Arc::new(RwLock::new(msg)))
     }
 }
 

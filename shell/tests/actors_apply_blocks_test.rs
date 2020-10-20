@@ -462,7 +462,7 @@ mod test_actor {
             match msg {
                 ShellChannelMsg::MempoolStateChanged(new_mempool_state) => {
                     debug!(ctx.system.log(), "TestActor received event"; "mempool" => format!("{:?}", new_mempool_state));
-                    self.result_sender.lock().unwrap().send(new_mempool_state)?;
+                    self.result_sender.lock().unwrap().send(Arc::new(new_mempool_state.read().unwrap().clone()))?;
                 }
                 _ => ()
             }

@@ -13,7 +13,7 @@
 
 use std::cmp;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use failure::Error;
@@ -158,7 +158,7 @@ pub struct ChainManager {
     /// Current head information
     current_head: CurrentHead,
     // current last known mempool state
-    current_mempool_state: Option<Arc<CurrentMempoolState>>,
+    current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
     /// Internal stats
     stats: Stats,
     /// Indicates that system is shutting down
@@ -650,20 +650,25 @@ impl ChainManager {
                 }
             }
             ShellChannelMsg::MempoolStateChanged(new_mempool_state) => {
-                // prepare mempool/header to send to peers
-                let (mempool_to_send, header_to_send) = match &new_mempool_state.head {
-                    Some(head_hash) => {
-                        if let Some(header) = self.block_storage.get(&head_hash)? {
-                            (resolve_mempool_to_send(&new_mempool_state), Some((*header.header).clone()))
-                        } else {
-                            (Mempool::default(), None)
-                        }
-                    }
-                    None => (Mempool::default(), None)
-                };
-
                 // set current mempool state
                 self.current_mempool_state = Some(new_mempool_state);
+
+                // prepare mempool/header to send to peers
+                let (mempool_to_send, header_to_send) = if let Some(mempool_state) = &self.current_mempool_state {
+                    let mempool_state = mempool_state.read().unwrap();
+                    match &mempool_state.head {
+                        Some(head_hash) => {
+                            if let Some(header) = self.block_storage.get(&head_hash)? {
+                                (resolve_mempool_to_send(&mempool_state), Some((*header.header).clone()))
+                            } else {
+                                (Mempool::default(), None)
+                            }
+                        }
+                        None => (Mempool::default(), None)
+                    }
+                } else {
+                    (Mempool::default(), None)
+                };
 
                 // send CurrentHead, only if we have anything in mempool (just to peers with enabled mempool)
                 if let Some(header_to_send) = header_to_send {
@@ -1190,12 +1195,13 @@ fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
     Mempool::new(known_valid, pending)
 }
 
-fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Arc<CurrentMempoolState>>, current_head: &Head) -> Mempool {
+fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>, current_head: &Head) -> Mempool {
     if !peer.mempool_enabled {
         return Mempool::default();
     }
 
     if let Some(mempool_state) = mempool_state {
+        let mempool_state = mempool_state.read().unwrap();
         if let Some(mempool_head_hash) = &mempool_state.head {
             if mempool_head_hash == current_head.hash() {
                 resolve_mempool_to_send(&mempool_state)
