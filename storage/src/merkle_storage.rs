@@ -57,8 +57,8 @@ use std::time::Instant;
 use crypto::hash::HashType;
 use std::convert::TryInto;
 use crate::persistent::BincodeEncoded;
-
-use sodiumoxide::crypto::generichash::State;
+use blake2::VarBlake2b;
+use blake2::digest::{Update, VariableOutput};
 
 const HASH_LEN: usize = 32;
 
@@ -578,47 +578,47 @@ impl MerkleStorage {
     }
 
     fn hash_commit(&self, commit: &Commit) -> EntryHash {
-        let mut hasher = State::new(HASH_LEN, None).unwrap();
-        hasher.update(&(HASH_LEN as u64).to_be_bytes()).expect("hasher");
-        hasher.update(&commit.root_hash).expect("hasher");
+        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+        hasher.update(&(HASH_LEN as u64).to_be_bytes());
+        hasher.update(&commit.root_hash);
 
         if commit.parent_commit_hash.is_none() {
-            hasher.update(&(0 as u64).to_be_bytes()).expect("hasher");
+            hasher.update(&(0 as u64).to_be_bytes());
         } else {
-            hasher.update(&(1 as u64).to_be_bytes()).expect("hasher"); // # of parents; we support only 1
-            hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes()).expect("hasher");
-            hasher.update(&commit.parent_commit_hash.unwrap()).expect("hasher");
+            hasher.update(&(1 as u64).to_be_bytes()); // # of parents; we support only 1
+            hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes());
+            hasher.update(&commit.parent_commit_hash.unwrap());
         }
-        hasher.update(&(commit.time as u64).to_be_bytes()).expect("hasher");
-        hasher.update(&(commit.author.len() as u64).to_be_bytes()).expect("hasher");
-        hasher.update(&commit.author.clone().into_bytes()).expect("hasher");
-        hasher.update(&(commit.message.len() as u64).to_be_bytes()).expect("hasher");
-        hasher.update(&commit.message.clone().into_bytes()).expect("hasher");
+        hasher.update(&(commit.time as u64).to_be_bytes());
+        hasher.update(&(commit.author.len() as u64).to_be_bytes());
+        hasher.update(&commit.author.clone().into_bytes());
+        hasher.update(&(commit.message.len() as u64).to_be_bytes());
+        hasher.update(&commit.message.clone().into_bytes());
 
-        hasher.finalize().unwrap().as_ref().try_into().expect("EntryHash conversion error")
+        hasher.finalize_boxed().as_ref().try_into().expect("EntryHash conversion error")
     }
 
     fn hash_tree(&self, tree: &Tree) -> EntryHash {
-        let mut hasher = State::new(HASH_LEN, None).unwrap();
+        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
 
-        hasher.update(&(tree.len() as u64).to_be_bytes()).expect("hasher");
+        hasher.update(&(tree.len() as u64).to_be_bytes());
         tree.iter().for_each(|(k, v)| {
-            hasher.update(&self.encode_irmin_node_kind(&v.node_kind)).expect("hasher");
-            hasher.update(&[k.len() as u8]).expect("hasher");
-            hasher.update(&k.clone().into_bytes()).expect("hasher");
-            hasher.update(&(HASH_LEN as u64).to_be_bytes()).expect("hasher");
-            hasher.update(&v.entry_hash).expect("hasher");
+            hasher.update(&self.encode_irmin_node_kind(&v.node_kind));
+            hasher.update(&[k.len() as u8]);
+            hasher.update(&k.clone().into_bytes());
+            hasher.update(&(HASH_LEN as u64).to_be_bytes());
+            hasher.update(&v.entry_hash);
         });
 
-        hasher.finalize().unwrap().as_ref().try_into().expect("EntryHash conversion error")
+        hasher.finalize_boxed().as_ref().try_into().expect("EntryHash conversion error")
     }
 
     fn hash_blob(&self, blob: &ContextValue) -> EntryHash {
-        let mut hasher = State::new(HASH_LEN, None).unwrap();
-        hasher.update(&(blob.len() as u64).to_be_bytes()).expect("Failed to update hasher state");
-        hasher.update(blob).expect("Failed to update hasher state");
+        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+        hasher.update(&(blob.len() as u64).to_be_bytes());
+        hasher.update(blob);
 
-        hasher.finalize().unwrap().as_ref().try_into().expect("EntryHash conversion error")
+        hasher.finalize_boxed().as_ref().try_into().expect("EntryHash conversion error")
     }
 
     fn encode_irmin_node_kind(&self, kind: &NodeKind) -> Vec<u8> {
