@@ -621,10 +621,10 @@ impl MerkleStorage {
         hasher.finalize_boxed().as_ref().try_into().expect("EntryHash conversion error")
     }
 
-    fn encode_irmin_node_kind(&self, kind: &NodeKind) -> Vec<u8> {
+    fn encode_irmin_node_kind(&self, kind: &NodeKind) -> [u8; 8] {
         match kind {
-            NodeKind::NonLeaf => vec![0, 0, 0, 0, 0, 0, 0, 0],
-            NodeKind::Leaf => vec![255, 0, 0, 0, 0, 0, 0, 0],
+            NodeKind::NonLeaf => [0, 0, 0, 0, 0, 0, 0, 0],
+            NodeKind::Leaf => [255, 0, 0, 0, 0, 0, 0, 0],
         }
     }
 
