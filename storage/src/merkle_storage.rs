@@ -42,23 +42,25 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use rocksdb::{ColumnFamilyDescriptor, WriteBatch, Cache};
-use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
-use crate::persistent::database::RocksDBStats;
-use crate::persistent;
+use std::collections::{HashMap, BTreeMap};
+use std::time::Instant;
 use std::hash::Hash;
+use std::sync::Arc;
+use std::convert::TryInto;
+
+use rocksdb::{ColumnFamilyDescriptor, WriteBatch, Cache};
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::{HashMap, BTreeMap};
 use im::OrdMap;
 use failure::Fail;
-use std::sync::Arc;
-use std::time::Instant;
 use crypto::hash::HashType;
-use std::convert::TryInto;
-use crate::persistent::BincodeEncoded;
 use blake2::VarBlake2b;
 use blake2::digest::{Update, VariableOutput};
+
+use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::database::RocksDBStats;
+use crate::persistent::BincodeEncoded;
+use crate::persistent;
 
 const HASH_LEN: usize = 32;
 
