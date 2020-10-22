@@ -104,7 +104,7 @@ pub struct MerkleStorage {
     current_stage_tree: Option<Tree>,
     db: Arc<MerkleStorageKV>,
     staged: HashMap<EntryHash, Entry>,
-    last_commit: Option<Commit>,
+    last_commit_hash: Option<EntryHash>,
     map_stats: MerkleMapStats,
     cumul_set_exec_time: f64, // divide this by the next field to get avg time spent in _set
     set_exec_times: u64,
@@ -195,7 +195,7 @@ impl MerkleStorage {
             db,
             staged: HashMap::new(),
             current_stage_tree: None,
-            last_commit: None,
+            last_commit_hash: None,
             map_stats: MerkleMapStats{staged_area_elems: 0 , current_tree_elems: 0},
             cumul_set_exec_time: 0.0,
             set_exec_times: 0,
@@ -351,7 +351,7 @@ impl MerkleStorage {
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
         self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
-        self.last_commit = Some(commit);
+        self.last_commit_hash = Some(*context_hash);
         self.staged = HashMap::new();
         self.map_stats.staged_area_elems = 0;
         Ok(())
@@ -367,8 +367,7 @@ impl MerkleStorage {
     ) -> Result<EntryHash, MerkleError> {
         let staged_root = self.get_staged_root()?;
         let staged_root_hash = self.hash_tree(&staged_root);
-        let parent_commit_hash= self.last_commit.as_ref()
-            .map_or(None, |c| Some(self.hash_commit(&c)));
+        let parent_commit_hash = self.last_commit_hash;
 
         let new_commit = Commit {
             root_hash: staged_root_hash, parent_commit_hash, time, author, message,
@@ -379,8 +378,9 @@ impl MerkleStorage {
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = HashMap::new();
         self.map_stats.staged_area_elems = 0;
-        self.last_commit = Some(new_commit.clone());
-        Ok(self.hash_commit(&new_commit))
+        let last_commit_hash = self.hash_commit(&new_commit);
+        self.last_commit_hash = Some(last_commit_hash);
+        Ok(last_commit_hash)
     }
 
     /// Set key/val to the staging area.
@@ -685,10 +685,7 @@ impl MerkleStorage {
     }
 
     pub fn get_last_commit_hash(&self) -> Option<EntryHash> {
-        match &self.last_commit {
-            Some(c) => Some(self.hash_commit(&c)),
-            None    => None
-        }
+        self.last_commit_hash
     }
 
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
