@@ -49,7 +49,7 @@ use crate::persistent;
 use std::hash::Hash;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use im::OrdMap;
 use failure::Fail;
 use std::sync::Arc;
@@ -179,6 +179,14 @@ impl KeyValueSchema for MerkleStorage {
     }
 }
 
+pub type StringTree = BTreeMap<String, StringTreeEntry>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StringTreeEntry {
+    Tree(StringTree),
+    Blob(String),
+}
+
 impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
@@ -262,6 +270,49 @@ impl MerkleStorage {
                 }
             }
         }
+    }
+
+    fn get_context_recursive(&self, path: &str, entry: &Entry) -> Result<StringTreeEntry, MerkleError> {
+        match entry {
+            Entry::Blob(blob) => {
+                Ok(StringTreeEntry::Blob(hex::encode(blob).to_string()))
+            }
+            Entry::Tree(tree) => {
+                // Go through all descendants and gather errors. Remap error if there is a failure
+                // anywhere in the recursion paths. TODO: is revert possible?
+                let mut new_tree = StringTree::new();
+                for (key, child_node) in tree.iter() {
+                    let fullpath = path.to_owned() + "/" + key;
+                    let e = self.get_entry(&child_node.entry_hash)?;
+                    new_tree.insert(key.to_owned(), self.get_context_recursive(&fullpath, &e)?);
+                }
+                Ok(StringTreeEntry::Tree(new_tree))
+            }
+            Entry::Commit(_) => Err(MerkleError::FoundUnexpectedStructure { sought:"Tree/Blob".to_string(),
+                                                                                 found:"Commit".to_string() })
+        }
+    }
+
+    pub fn get_context_tree_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<StringTree, MerkleError> {
+        let mut out = StringTree::new();
+        let commit = self.get_commit(context_hash)?;
+        let root_tree = self.get_tree(&commit.root_hash)?;
+        let prefixed_tree = self.find_tree(&root_tree, prefix)?;
+
+        for (key, child_node) in prefixed_tree.iter() {
+            let entry = self.get_entry(&child_node.entry_hash)?;
+            let delimiter: &str;
+            if prefix.is_empty() {
+                delimiter = "";
+            } else {
+                delimiter = "/";
+            }
+
+            let fullpath = self.key_to_string(prefix) + delimiter + key;
+            out.insert(key.to_owned(), self.get_context_recursive(&fullpath, &entry)?);
+        }
+
+        Ok(out)
     }
 
     pub fn get_key_values_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
@@ -931,5 +982,40 @@ mod tests {
             0, "".to_string(), "".to_string());
 
         assert!(if let MerkleError::DBError { .. } = res.err().unwrap() { true } else { false });
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_context_tree_by_prefix() { // Test getting entire tree in string format for JSON RPC
+        { clean_db(); }
+
+        let all_json = "{\"adata\":{\"b\":{\"x\":{\"y\":\"090a\"}}},\
+                        \"data\":{\"a\":{\"x\":{\"y\":\"0506\"}},\
+                        \"b\":{\"x\":{\"y\":\"0708\"}},\"c\":\"0102\"}}";
+        let data_json = "{\
+                        \"a\":{\"x\":{\"y\":\"0506\"}},\
+                        \"b\":{\"x\":{\"y\":\"0708\"}},\"c\":\"0102\"}";
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let mut storage = get_storage(&cache);
+        let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+
+        storage.set(&vec!["data".to_string(),  "a".to_string(), "x".to_string()], &vec![3,4]);
+        storage.set(&vec!["data".to_string(),  "a".to_string() ], &vec![1,2]);
+        storage.set(&vec!["data".to_string(),  "a".to_string(), "x".to_string(), "y".to_string() ], &vec![5,6]);
+        storage.set(&vec!["data".to_string(),  "b".to_string(), "x".to_string(), "y".to_string() ], &vec![7,8]);
+        storage.set(&vec!["data".to_string(),  "c".to_string() ], &vec![1,2]);
+        storage.set(&vec!["adata".to_string(),  "b".to_string(), "x".to_string(), "y".to_string() ], &vec![9,10]);
+        //data-a[1,2]
+        //data-a-x[3,4]
+        //data-a-x-y[5,6]
+        //data-b-x-y[7,8]
+        //data-c[1,2]
+        //adata-b-x-y[9,10]
+        let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+        let rv_all = storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec![]).unwrap();
+        let rv_data = storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec!["data".to_string()]).unwrap();
+        assert_eq!(all_json, serde_json::to_string(&rv_all).unwrap());
+        assert_eq!(data_json, serde_json::to_string(&rv_data).unwrap());
     }
 }

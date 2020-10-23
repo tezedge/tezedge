@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::bail;
@@ -16,26 +15,13 @@ use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
 use storage::persistent::PersistentStorage;
-use storage::merkle_storage::MerkleStorageStats;
+use storage::merkle_storage::{MerkleStorageStats, StringTree};
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
-
-// Serialize, Deserialize,
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Cycle {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    last_roll: Option<HashMap<String, String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    nonces: Option<HashMap<String, String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    random_seed: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    roll_snapshot: Option<String>,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CycleJson {
@@ -218,92 +204,34 @@ pub(crate) fn get_cycle_length_for_block(block_id: &str, storage: &PersistentSto
     }
 }
 
-pub(crate) fn get_cycle_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
-
+pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persistent_storage: &PersistentStorage, context: &TezedgeContext, state: &RpcCollectedStateRef, log: &Logger) -> Result<Option<StringTree>, failure::Error> {
     // TODO: should be replaced by context_hash
     // get block level first
-    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
-        Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
+    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state) {
+        Ok(Some(val)) => {
+            let rv = val.try_into();
+            if rv.is_err() {
+                slog::warn!(log, "Block level not found");
+                return Ok(None);
+            }
+            rv.unwrap()
+        }
+        _ => {
+            slog::warn!(log, "Block level not found");
+            return Ok(None);
+        }
     };
-
-    // let context_data = {
-    //     let reader = list.read().expect("mutex poisoning");
-    //     if let Ok(Some(c)) = reader.get(ctxt_level) {
-    //         c
-    //     } else {
-    //         bail!("Context data not found")
-    //     }
-    // };
 
     let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
-    let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/cycle".to_string()])?;
-
-    let cycle_lists = if let Some(ctx) = context_data {
-        ctx
-    } else {
-        bail!("Error getting context data")
-    };
-
-    // transform cycle list
-    let mut cycles: HashMap<String, Cycle> = HashMap::new();
-
-    // process every key value pair
-    for (path, value) in cycle_lists.iter() {
-
-        // convert value from bytes to hex
-        let value = hex::encode(value).to_string();
-
-        // create new cycle
-        // TODO: !!! check path and move to match
-        cycles.entry(path[2].to_string()).or_insert(Cycle {
-            last_roll: None,
-            nonces: None,
-            random_seed: None,
-            roll_snapshot: None,
-        });
-
-        // process cycle key value pairs
-        let path: Vec<&str> = path.iter().map(String::as_str).collect();
-        match path.as_slice() {
-            ["data", "cycle", cycle, "random_seed"] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    cycle.random_seed = Some(value);
-                });
-            }
-            ["data", "cycle", cycle, "roll_snapshot"] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    cycle.roll_snapshot = Some(value);
-                });
-            }
-            ["data", "cycle", cycle, "nonces", nonces] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    match cycle.nonces.as_mut() {
-                        Some(entry) => entry.insert(nonces.to_string(), value),
-                        None => {
-                            cycle.nonces = Some(HashMap::new());
-                            cycle.nonces.as_mut().unwrap().insert(nonces.to_string(), value)
-                        }
-                    };
-                });
-            }
-            ["data", "cycle", cycle, "last_roll", last_roll] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    match cycle.last_roll.as_mut() {
-                        Some(entry) => entry.insert(last_roll.to_string(), value),
-                        None => {
-                            cycle.last_roll = Some(HashMap::new());
-                            cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(), value)
-                        }
-                    };
-                });
-            }
-            _ => ()
-        };
+    let ctx_hash = context.level_to_hash(ctxt_level);
+    if ctx_hash.is_err() {
+        slog::warn!(log, "Block level not found");
+        return Ok(None);
     }
-
-    Ok(Some(cycles))
+    match context.get_context_tree_by_prefix(&ctx_hash.unwrap(), &prefix) {
+        Ok(tree) => Ok(Some(tree)),
+        Err(_) => Ok(None), // return None to avoid a panic
+    }
 }
 
 pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
@@ -331,68 +259,6 @@ pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, per
         }
         _ => bail!("Context data not found")
     }
-}
-
-pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
-
-    // TODO: should be replaced by context_hash
-    // get block level first
-    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
-        Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
-    };
-
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
-    let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/current".to_string()])?;
-
-    // create rolls list
-    let mut rolls: HashMap<String, HashMap<String, HashMap<String, String>>> = HashMap::new();
-
-    let rolls_lists = if let Some(ctx) = context_data {
-        ctx
-    } else {
-        bail!("Error getting context data")
-    };
-    // process every key value pair
-    for (path, value) in rolls_lists.iter() {
-
-        // convert value from bytes to hex
-        let value = hex::encode(value).to_string();
-
-        // process roll key value pairs
-        let path: Vec<&str> = path.iter().map(String::as_str).collect();
-        match path.as_slice() {
-            ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
-                rolls.entry(path1.to_string())
-                    .and_modify(|roll| {
-                        roll.entry(path2.to_string())
-                            .and_modify(|index2| {
-                                index2.insert(path3.to_string(), value.to_string());
-                            })
-                            .or_insert({
-                                let mut index3 = HashMap::new();
-                                index3.insert(path3.to_string(), value.to_string());
-                                index3
-                            });
-                    })
-                    .or_insert({
-                        let mut index2 = HashMap::new();
-                        index2.entry(path2.to_string())
-                            .or_insert({
-                                let mut index3 = HashMap::new();
-                                index3.insert(path3.to_string(), value.to_string());
-                                index3
-                            });
-                        index2
-                    });
-            }
-            _ => ()
-        }
-    }
-
-
-    Ok(Some(rolls))
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {

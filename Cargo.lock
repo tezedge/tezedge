@@ -3038,6 +3038,7 @@ dependencies = [
  "rand 0.7.3",
  "rocksdb",
  "serde 1.0.114",
+ "serde_json",
  "serial_test",
  "slog",
  "slog-async",

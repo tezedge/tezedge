@@ -35,8 +35,8 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     // TODO: TE-226 - implement correctly or just remove, it will be part of protocol router
     // there should be just two endpoints: context/raw/json (from protocol), context/raw/bytes (shell rpc)
     // both should return just value (bytes or json) for key, which is part of uri, like: `context/raw/json/rolls/owner/current` -> rolls/owner/current is key to context
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/cycle", handler::context_cycle);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/rolls/owner/current", handler::rolls_owner_current);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes", handler::context_raw_bytes);
+    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any", handler::context_raw_bytes);
 
     // TODO: TE-174: just for sandbox
     if is_sandbox {
