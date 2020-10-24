@@ -42,7 +42,7 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use rocksdb::{ColumnFamilyDescriptor, WriteBatch, Cache, DB, Options};
+use rocksdb::{ColumnFamilyDescriptor, WriteBatch, Cache};
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::persistent::database::RocksDBStats;
 use crate::persistent;
@@ -53,7 +53,6 @@ use std::collections::HashMap;
 use im::OrdMap;
 use failure::Fail;
 use std::sync::Arc;
-use std::path::Path;
 use std::time::Instant;
 use crypto::hash::HashType;
 use std::convert::TryInto;
@@ -332,7 +331,7 @@ impl MerkleStorage {
     }
 
     /// Set key/val to the staging area.
-    pub fn set(&mut self, key: ContextKey, value: ContextValue) -> Result<(), MerkleError> {
+    pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._set(&root, key, value)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
@@ -340,9 +339,9 @@ impl MerkleStorage {
         Ok(())
     }
 
-    fn _set(&mut self, root: &Tree, key: ContextKey, value: ContextValue) -> Result<EntryHash, MerkleError> {
+    fn _set(&mut self, root: &Tree, key: &ContextKey, value: &ContextValue) -> Result<EntryHash, MerkleError> {
         let blob_hash = self.hash_blob(&value);
-        self.put_to_staging_area(&blob_hash, Entry::Blob(value));
+        self.put_to_staging_area(&blob_hash, Entry::Blob(value.clone()));
         let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
         let instant = Instant::now();
         let rv = self.compute_new_root_with_change(root, &key, Some(new_node));
@@ -356,7 +355,7 @@ impl MerkleStorage {
     }
 
     /// Delete an item from the staging area.
-    pub fn delete(&mut self, key: ContextKey) -> Result<(), MerkleError> {
+    pub fn delete(&mut self, key: &ContextKey) -> Result<(), MerkleError> {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._delete(&root, key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
@@ -364,7 +363,7 @@ impl MerkleStorage {
         Ok(())
     }
 
-    fn _delete(&mut self, root: &Tree, key: ContextKey) -> Result<EntryHash, MerkleError> {
+    fn _delete(&mut self, root: &Tree, key: &ContextKey) -> Result<EntryHash, MerkleError> {
         if key.is_empty() { return Ok(self.hash_tree(root)); }
 
         self.compute_new_root_with_change(root, &key, None)
@@ -372,7 +371,7 @@ impl MerkleStorage {
 
     /// Copy subtree under a new path.
     /// TODO Consider copying values!
-    pub fn copy(&mut self, from_key: ContextKey, to_key: ContextKey) -> Result<(), MerkleError> {
+    pub fn copy(&mut self, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), MerkleError> {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._copy(&root, from_key, to_key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
@@ -380,7 +379,7 @@ impl MerkleStorage {
         Ok(())
     }
 
-    fn _copy(&mut self, root: &Tree, from_key: ContextKey, to_key: ContextKey) -> Result<EntryHash, MerkleError> {
+    fn _copy(&mut self, root: &Tree, from_key: &ContextKey, to_key: &ContextKey) -> Result<EntryHash, MerkleError> {
         let source_tree = self.find_tree(root, &from_key)?;
         let source_tree_hash = self.hash_tree(&source_tree);
         Ok(self.compute_new_root_with_change(
@@ -625,14 +624,6 @@ impl MerkleStorage {
         Node { node_kind: NodeKind::NonLeaf, entry_hash: hash }
     }
 
-    fn get_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
-        let mut db_opts = Options::default();
-        db_opts.create_if_missing(true);
-        db_opts.create_missing_column_families(true);
-
-        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
-    }
-
     fn key_to_string(&self, key: &ContextKey) -> String {
         key.clone().join("/")
     }
@@ -663,16 +654,25 @@ impl MerkleStorage {
 #[allow(unused_must_use)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::fs;
     use serial_test::serial;
-    use rocksdb::DB;
+    use rocksdb::{DB, Options};
 
     /*
     * Tests need to run sequentially, otherwise they will try to open RocksDB at the same time.
     */
 
+    fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
+        let mut db_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
+
+        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
+    }
+
     fn get_db_name() -> &'static str { "_merkle_db_test" }
-    fn get_db(cache: &Cache) -> DB { MerkleStorage::get_db(get_db_name(), &cache) }
+    fn get_db(cache: &Cache) -> DB { open_db(get_db_name(), &cache) }
     fn get_storage(cache: &Cache) -> MerkleStorage { MerkleStorage::new(Arc::new(get_db(&cache))) }
     fn clean_db() {
         let _ = DB::destroy(&Options::default(), get_db_name());
@@ -684,11 +684,11 @@ mod tests {
     fn test_tree_hash() {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(&cache);
-        storage.set(vec!["a".to_string(), "foo".to_string()], vec![97, 98, 99]); // abc
-        storage.set(vec!["b".to_string(), "boo".to_string()], vec![97, 98]);
-        storage.set(vec!["a".to_string(), "aaa".to_string()], vec![97, 98, 99, 100]);
-        storage.set(vec!["x".to_string()], vec![97]);
-        storage.set(vec!["one".to_string(), "two".to_string(), "three".to_string()], vec![97]);
+        storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
+        storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
+        storage.set(&vec!["a".to_string(), "aaa".to_string()], &vec![97, 98, 99, 100]);
+        storage.set(&vec!["x".to_string()], &vec![97]);
+        storage.set(&vec!["one".to_string(), "two".to_string(), "three".to_string()], &vec![97]);
         let tree = storage.current_stage_tree.clone().unwrap().clone();
 
         let hash = storage.hash_tree(&tree);
@@ -701,14 +701,14 @@ mod tests {
     fn test_commit_hash() {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(&cache);
-        storage.set(vec!["a".to_string()], vec![97, 98, 99]);
+        storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(
             0, "Tezos".to_string(), "Genesis".to_string());
 
         assert_eq!([0xCF, 0x95, 0x18, 0x33], commit.unwrap()[0..4]);
 
-        storage.set(vec!["data".to_string(), "x".to_string()], vec![97]);
+        storage.set(&vec!["data".to_string(), "x".to_string()], &vec![97]);
         let commit = storage.commit(
             0, "Tezos".to_string(), "".to_string());
 
@@ -724,9 +724,9 @@ mod tests {
         let _commit = storage.commit(
             0, "Tezos".to_string(), "Genesis".to_string());
 
-        storage.set(vec!["data".to_string(),  "a".to_string(), "x".to_string()], vec![97]);
-        storage.copy(vec!["data".to_string(), "a".to_string()], vec!["data".to_string(), "b".to_string()]);
-        storage.delete(vec!["data".to_string(), "b".to_string(), "x".to_string()]);
+        storage.set(&vec!["data".to_string(),  "a".to_string(), "x".to_string()], &vec![97]);
+        storage.copy(&vec!["data".to_string(), "a".to_string()], &vec!["data".to_string(), "b".to_string()]);
+        storage.delete(&vec!["data".to_string(), "b".to_string(), "x".to_string()]);
         let commit = storage.commit(
             0, "Tezos".to_string(), "".to_string());
 
@@ -740,37 +740,37 @@ mod tests {
 
         let commit1;
         let commit2;
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let key_abx: ContextKey = vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        let key_eab: ContextKey = vec!["e".to_string(), "a".to_string(), "b".to_string()];
-        let key_az: ContextKey = vec!["a".to_string(), "z".to_string()];
-        let key_d: ContextKey = vec!["d".to_string()];
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
+        let key_eab: &ContextKey = &vec!["e".to_string(), "a".to_string(), "b".to_string()];
+        let key_az: &ContextKey = &vec!["a".to_string(), "z".to_string()];
+        let key_d: &ContextKey = &vec!["d".to_string()];
 
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(&cache);
-            storage.set(key_abc.clone(), vec![1u8, 2u8]);
-            storage.set(key_abx.clone(), vec![3u8]);
+            storage.set(key_abc, &vec![1u8, 2u8]);
+            storage.set(key_abx, &vec![3u8]);
             assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
             assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(key_az.clone(), vec![4u8]);
-            storage.set(key_abx.clone(), vec![5u8]);
-            storage.set(key_d.clone(), vec![6u8]);
-            storage.set(key_eab.clone(), vec![7u8]);
-            assert_eq!(storage.get(&key_abx).unwrap(), vec![5u8]);
+            storage.set(key_az, &vec![4u8]);
+            storage.set(key_abx, &vec![5u8]);
+            storage.set(key_d, &vec![6u8]);
+            storage.set(key_eab, &vec![7u8]);
+            assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let storage = get_storage(&cache);
-        assert_eq!(storage.get_history(&commit1, &key_abc).unwrap(), vec![1u8, 2u8]);
-        assert_eq!(storage.get_history(&commit1, &key_abx).unwrap(), vec![3u8]);
-        assert_eq!(storage.get_history(&commit2, &key_abx).unwrap(), vec![5u8]);
-        assert_eq!(storage.get_history(&commit2, &key_az).unwrap(), vec![4u8]);
-        assert_eq!(storage.get_history(&commit2, &key_d).unwrap(), vec![6u8]);
-        assert_eq!(storage.get_history(&commit2, &key_eab).unwrap(), vec![7u8]);
+        assert_eq!(storage.get_history(&commit1, key_abc).unwrap(), vec![1u8, 2u8]);
+        assert_eq!(storage.get_history(&commit1, key_abx).unwrap(), vec![3u8]);
+        assert_eq!(storage.get_history(&commit2, key_abx).unwrap(), vec![5u8]);
+        assert_eq!(storage.get_history(&commit2, key_az).unwrap(), vec![4u8]);
+        assert_eq!(storage.get_history(&commit2, key_d).unwrap(), vec![6u8]);
+        assert_eq!(storage.get_history(&commit2, key_eab).unwrap(), vec![7u8]);
     }
 
     #[test]
@@ -780,9 +780,9 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(&cache);
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(key_abc.clone(), vec![1 as u8]);
-        storage.copy(vec!["a".to_string()], vec!["z".to_string()]);
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        storage.set(key_abc, &vec![1 as u8]);
+        storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
 
         assert_eq!(
             vec![1 as u8],
@@ -797,11 +797,11 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(&cache);
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let key_abx: ContextKey = vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(key_abc.clone(), vec![2 as u8]);
-        storage.set(key_abx.clone(), vec![3 as u8]);
-        storage.delete(key_abx.clone());
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
+        storage.set(key_abc, &vec![2 as u8]);
+        storage.set(key_abx, &vec![3 as u8]);
+        storage.delete(key_abx);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert!(storage.get_history(&commit1, &key_abx).is_err());
@@ -814,10 +814,10 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(&cache);
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(key_abc.clone(), vec![2 as u8]);
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        storage.set(key_abc, &vec![2 as u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        storage.delete(key_abc.clone());
+        storage.delete(key_abc);
         let _commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert_eq!(vec![2 as u8], storage.get_history(&commit1, &key_abc).unwrap());
@@ -830,13 +830,13 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(&cache);
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let key_abx: ContextKey = vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(key_abc.clone(), vec![2 as u8]).unwrap();
-        storage.set(key_abx.clone(), vec![3 as u8]).unwrap();
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
+        storage.set(key_abc, &vec![2 as u8]).unwrap();
+        storage.set(key_abx, &vec![3 as u8]).unwrap();
         storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        storage.delete(key_abx.clone());
+        storage.delete(key_abx);
         let commit2 = storage.commit(
             0, "".to_string(), "".to_string()).unwrap();
 
@@ -850,18 +850,18 @@ mod tests {
 
         let commit1;
         let commit2;
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let key_abx: ContextKey = vec!["a".to_string(), "b".to_string(), "x".to_string()];
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(&cache);
-            storage.set(key_abc.clone(), vec![1u8]).unwrap();
-            storage.set(key_abx.clone(), vec![2u8]).unwrap();
+            storage.set(key_abc, &vec![1u8]).unwrap();
+            storage.set(key_abx, &vec![2u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(key_abc.clone(), vec![3u8]).unwrap();
-            storage.set(key_abx.clone(), vec![4u8]).unwrap();
+            storage.set(key_abc, &vec![3u8]).unwrap();
+            storage.set(key_abx, &vec![4u8]).unwrap();
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
@@ -871,7 +871,7 @@ mod tests {
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
         // this set be wiped by checkout
-        storage.set(key_abc.clone(), vec![8u8]).unwrap();
+        storage.set(key_abc, &vec![8u8]).unwrap();
 
         storage.checkout(&commit2);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![3u8]);
@@ -883,14 +883,14 @@ mod tests {
     fn test_persistence_over_reopens() {
         { clean_db(); }
 
-        let key_abc: ContextKey = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let commit1;
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(&cache);
-            let key_abx: ContextKey = vec!["a".to_string(), "b".to_string(), "x".to_string()];
-            storage.set(key_abc.clone(), vec![2 as u8]).unwrap();
-            storage.set(key_abx.clone(), vec![3 as u8]).unwrap();
+            let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
+            storage.set(key_abc, &vec![2 as u8]).unwrap();
+            storage.set(key_abx, &vec![3 as u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
@@ -911,7 +911,6 @@ mod tests {
         assert!(if let MerkleError::KeyEmpty = res.err().unwrap() { true } else { false });
 
         let res = storage.get(&vec!["a".to_string()]);
-        println!("wtf {:?}", res);
         assert!(if let MerkleError::ValueNotFound { .. } = res.err().unwrap() { true } else { false });
     }
 
@@ -928,7 +927,7 @@ mod tests {
         let db = DB::open_for_read_only(
             &Options::default(), get_db_name(), true).unwrap();
         let mut storage = MerkleStorage::new(Arc::new(db));
-        storage.set(vec!["a".to_string()], vec![1u8]);
+        storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(
             0, "".to_string(), "".to_string());
 
