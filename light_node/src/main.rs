@@ -286,14 +286,19 @@ fn block_on_actors(
         identity.clone(),
     ).expect("Failed to create chain manager");
 
-    let _ = MempoolPrevalidator::actor(
-        &actor_system,
-        shell_channel.clone(),
-        &persistent_storage,
-        &init_storage_data,
-        tezos_readonly_api_pool.clone(),
-        log.clone(),
-    ).expect("Failed to create chain feeder");
+    if env.p2p.disable_mempool {
+        info!(log, "Mempool disabled");
+    } else {
+        info!(log, "Mempool enabled");
+        let _ = MempoolPrevalidator::actor(
+            &actor_system,
+            shell_channel.clone(),
+            &persistent_storage,
+            &init_storage_data,
+            tezos_readonly_api_pool.clone(),
+            log.clone(),
+        ).expect("Failed to create mempool prevalidator");
+    }
 
     // and than open p2p and others
     let _ = PeerManager::actor(
@@ -323,6 +328,7 @@ fn block_on_actors(
         network_version,
         &init_storage_data,
         is_sandbox,
+        env.p2p.disable_mempool,
     ).expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {

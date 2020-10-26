@@ -50,7 +50,7 @@ pub enum SignaturePublicKeyHash {
 
 impl SignaturePublicKeyHash {
     #[inline]
-    pub fn to_string(&self) -> String {
+    pub fn to_string_representation(&self) -> String {
         match self {
             SignaturePublicKeyHash::Ed25519(h) => HashType::ContractTz1Hash.hash_to_b58check(h),
             SignaturePublicKeyHash::Secp256k1(h) => HashType::ContractTz2Hash.hash_to_b58check(h),
@@ -210,7 +210,7 @@ mod tests {
             &"ed25519",
         )?;
         assert_eq!(
-            result.to_string().as_str(),
+            result.to_string_representation().as_str(),
             "tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17"
         );
 
@@ -219,7 +219,7 @@ mod tests {
             &"secp256k1",
         )?;
         assert_eq!(
-            result.to_string().as_str(),
+            result.to_string_representation().as_str(),
             "tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj"
         );
 
@@ -228,7 +228,7 @@ mod tests {
             &"p256",
         )?;
         assert_eq!(
-            result.to_string().as_str(),
+            result.to_string_representation().as_str(),
             "tz3WXYtyDUNL91qfiCJtVUX746QpNv5i5ve5"
         );
 

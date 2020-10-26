@@ -9,7 +9,7 @@ use std::sync::{Arc, RwLock};
 use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
@@ -37,6 +37,10 @@ impl BlockApplied {
 #[derive(Clone, Debug)]
 pub struct ShuttingDown;
 
+/// Request peers to send their current heads
+#[derive(Clone, Debug)]
+pub struct RequestCurrentHead;
+
 /// Message informing actors about receiving block header
 #[derive(Clone, Debug)]
 pub struct BlockReceived {
@@ -60,6 +64,7 @@ pub struct MempoolOperationReceived {
 
 #[derive(Clone, Debug)]
 pub struct CurrentMempoolState {
+    pub chain_id: Option<ChainId>,
     pub head: Option<BlockHash>,
     pub protocol: Option<ProtocolHash>,
     pub fitness: Option<Fitness>,
@@ -89,6 +94,7 @@ pub enum ShellChannelMsg {
     MempoolOperationReceived(MempoolOperationReceived),
     MempoolStateChanged(Arc<RwLock<CurrentMempoolState>>),
     InjectBlock(InjectBlock),
+    RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
 }
 
@@ -131,6 +137,12 @@ impl From<AllBlockOperationsReceived> for ShellChannelMsg {
 impl From<ShuttingDown> for ShellChannelMsg {
     fn from(msg: ShuttingDown) -> Self {
         ShellChannelMsg::ShuttingDown(msg)
+    }
+}
+
+impl From<RequestCurrentHead> for ShellChannelMsg {
+    fn from(msg: RequestCurrentHead) -> Self {
+        ShellChannelMsg::RequestCurrentHead(msg)
     }
 }
 

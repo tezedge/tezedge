@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::{Error, format_err};
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, info, Logger, trace, warn};
+use slog::{crit, debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
 use crypto::seeded_step::Seed;
@@ -268,7 +268,7 @@ impl ChainManager {
 
     /// Check for missing blocks in local chain copy, and schedule downloading for those blocks
     fn check_chain_completeness(&mut self, ctx: &Context<ChainManagerMsg>) -> Result<(), Error> {
-        let ChainManager { peers, chain_state, operations_state, stats, .. } = self;
+        let ChainManager { peers, chain_state, operations_state, stats, current_head, .. } = self;
 
         // check for missing blocks
         if chain_state.has_missing_blocks() {
@@ -278,9 +278,10 @@ impl ChainManager {
                 .sorted_by_key(|peer| peer.available_block_queue_capacity()).rev()
                 .for_each(|peer| {
                     let mut missing_blocks = chain_state.drain_missing_blocks(peer.available_block_queue_capacity(), peer.current_head_level.unwrap());
-                    if !missing_blocks.is_empty() {
+
+                    if !missing_blocks.is_empty() && current_head.local.is_some(){
                         let queued_blocks = missing_blocks.drain(..)
-                            .map(|missing_block| {
+                            .filter_map(|missing_block| {
                                 let missing_block_hash = missing_block.block_hash.clone();
                                 if peer.queued_block_headers.insert(missing_block_hash.clone(), missing_block).is_none() {
                                     // block was not already present in queue
@@ -290,7 +291,6 @@ impl ChainManager {
                                     None
                                 }
                             })
-                            .filter_map(|missing_block_hash| missing_block_hash)
                             .collect::<Vec<_>>();
 
                         if !queued_blocks.is_empty() {
@@ -383,6 +383,7 @@ impl ChainManager {
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
+                                    crit!(log, "current branch: {:?}", message);
                                     // at first, check if we can accept branch or just ignore it
                                     if !chain_state.can_accept_branch(&message, &current_head.local) {
                                         let head = message.current_branch().current_head();
@@ -441,6 +442,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
+                                    // info!(log, "MESSAGE BLOCKHEADER RECIEVED - RAW: {:?}", message);
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(_) => {
@@ -461,10 +463,12 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetBlockHeaders(message) => {
+                                    info!(log, "Recieved block GetBlockHeaders message: {:?}", message);
                                     for block_hash in message.get_block_headers() {
                                         if let Some(block) = block_storage.get(block_hash)? {
                                             let msg: BlockHeaderMessage = (*block.header).clone().into();
                                             tell_peer(msg.into(), peer);
+                                            info!(log, "Header {:?} sent", BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
                                         }
                                     }
                                 }
@@ -891,6 +895,17 @@ impl ChainManager {
                     warn!(log, "Injected duplicated block - will be ignored!");
                 }
             }
+            ShellChannelMsg::RequestCurrentHead(_) => {
+                let ChainManager { peers, chain_state, .. } = self;
+                peers.iter_mut()
+                    .filter(|(_, peer)| peer.mempool_enabled)
+                    .for_each(|(_, peer)| {
+                        tell_peer(
+                            GetCurrentHeadMessage::new(chain_state.get_chain_id().to_vec()).into(),
+                            peer,
+                        )
+                    });
+            }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
                 unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
@@ -987,7 +1002,7 @@ impl ChainManager {
     }
 
     /// Resolves if chain_manager is bootstrapped,
-    /// means that we have at_least <num_of_peers_for_bootstrap_threshold> boostrapped peers
+    /// means that we have at_least <> boostrapped peers
     ///
     /// "bootstrapped peer" means, that peer.current_level <= chain_manager.current_level
     fn resolve_is_bootstrapped(&mut self, log: &Logger) {

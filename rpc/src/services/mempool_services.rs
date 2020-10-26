@@ -5,13 +5,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
-use failure::format_err;
+use failure::{bail, format_err};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic, RequestCurrentHead};
 use shell::validation;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
@@ -141,10 +141,15 @@ pub fn inject_operation(
     let block_meta_storage: Box<dyn BlockMetaStorageReader> = Box::new(BlockMetaStorage::new(persistent_storage));
     let state = env.state();
 
+    let state = state.read().unwrap();
+
+    if state.disable_mempool() {
+        bail!("Cannot inject operation, mempool is disabled")
+    }
+
     // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
     let operation_hash = operation.message_hash()?;
-    let state = state.read().unwrap();
 
     // do prevalidation before add the operation to mempool
     let result = validation::prevalidate_operation(
@@ -261,6 +266,28 @@ pub fn inject_block(
 
     // return the block hash to the caller
     Ok(block_hash)
+}
+
+pub fn request_operations(
+    _data: &str,
+    env: &RpcServiceEnvironment,
+    shell_channel: ShellChannelRef) -> Result<HashMap<String, String>, failure::Error> {
+    let state = env.state();
+
+    let state = state.read().unwrap();
+
+    if state.disable_mempool() {
+        bail!("Cannot request operations, mempool is disabled")
+    }
+
+    // request current head from the peers
+    shell_channel.tell(
+        Publish {
+            msg: RequestCurrentHead.into(),
+            topic: ShellChannelTopic::ShellEvents.into(),
+        }, None);
+
+    Ok(HashMap::new())
 }
 
 #[cfg(test)]

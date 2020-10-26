@@ -1,7 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use shell::mempool_prevalidator::MempoolPrevalidatorMsg;
+use riker::actors::ActorRef;
+use riker::actors::BasicActorRef;
+use std::convert::TryInto;
+
 use failure::bail;
+use riker::actor::ActorReference;
+use serde::Serialize;
 
 use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType};
 use shell::shell_channel::BlockApplied;
@@ -12,7 +19,7 @@ use storage::merkle_storage::StringTree;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_context_hash, MonitorHeadStream, NodeVersion, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, MempoolOperationsQuery, MonitorRpc, get_action_types, get_context_hash, MonitorHeadStream, NodeVersion, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::server::RpcServiceEnvironment;
 
@@ -29,18 +36,61 @@ pub(crate) fn get_blocks(chain_id: ChainId, block_hash: BlockHash, every_nth_lev
 }
 
 /// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_current_head_monitor_header(chain_id: ChainId, state: &RpcCollectedStateRef) -> Result<Option<MonitorHeadStream>, failure::Error> {
-    // create and return the a new stream on rpc call
+pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Result<Option<MonitorHeadStream>, failure::Error> {
+
+    // create and return the a new stream on rpc call 
     Ok(Some(MonitorHeadStream {
-        chain_id,
-        state: state.clone(),
+        chain_id: chain_id.clone(),
+        state: env.state().clone(),
+        protocol: protocol.clone(),
         last_polled_timestamp: None,
+        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
+        log: env.log().clone(),
+        query: None,
+        rpc_type: MonitorRpc::Head,
+        streamed_operations: None,
+        delay: None,
     }))
 }
 
 /// Get information about block
 pub(crate) fn get_full_block(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Option<FullBlockInfo>, failure::Error> {
     Ok(get_block_by_block_id(chain_id, block_hash, persistent_storage)?)
+}
+
+/// Get information about current head monitor header as a stream of Json strings
+pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<MonitorHeadStream>, failure::Error> {
+
+    println!("Q: {:?}", mempool_operaions_query);
+    // create and return the a new stream on rpc call 
+    Ok(Some(MonitorHeadStream {
+        chain_id: chain_id.clone(),
+        state: env.state().clone(),
+        protocol: None,
+        last_polled_timestamp: None,
+        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
+        log: env.log().clone(),
+        query: mempool_operaions_query,
+        rpc_type: MonitorRpc::MempoolOperations,
+        streamed_operations: None,
+        delay: None,
+    }))
+}
+
+/// Get information about current head
+pub(crate) fn get_current_head_metadata(chain_id: &ChainId, state: &RpcCollectedStateRef) -> Result<Option<BlockMetadata>, failure::Error> {
+    let state = state.read().unwrap();
+    let current_head = state.current_head().as_ref().map(|current_head| {
+        FullBlockInfo::new(current_head, chain_id_to_b58_string(chain_id))
+    });
+
+    Ok(Some(current_head.unwrap().metadata))
+}
+
+/// Get block metadata
+pub(crate) fn get_block_metadata(chain_id: &ChainId, block_hash: &BlockHash, env: &RpcServiceEnvironment) -> Result<Option<BlockMetadata>, failure::Error> {
+    let block = get_full_block(chain_id, block_hash, env.persistent_storage())?.unwrap();
+    Ok(Some(block.metadata))
 }
 
 /// Get information about block header
@@ -105,6 +155,39 @@ pub(crate) fn get_context_raw_bytes(
     Ok(env.tezedge_context().get_context_tree_by_prefix(&ctx_hash, &key_prefix)?)
 }
 
+#[derive(Serialize, Debug)]
+pub(crate) struct Prevalidator {
+    chain_id: String,
+    since: String,
+}
+
+// TODO: implement the json structure form ocaml's RPC 
+pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
+    
+    let prevalidation_actors = env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").collect::<Vec<BasicActorRef>>();
+
+    if prevalidation_actors.is_empty() {
+        Ok(vec![])
+    } else {
+        let rpc_state = env.state().read().unwrap();
+        let current_mempool = if let Some(mempool_state) = rpc_state.current_mempool_state(){
+            mempool_state.read().unwrap()
+        } else {
+            return Ok(vec![])
+        };
+        let chain_id = if let Some(chain_id) = &current_mempool.chain_id {
+            chain_id
+        } else {
+            return Ok(vec![])
+        };
+        Ok(vec![Prevalidator {
+            chain_id: chain_id_to_b58_string(&chain_id),
+            since: env.sys().start_date().to_rfc3339(),
+        }])
+    }
+
+}
+
 /// Extract the current_protocol and the next_protocol from the block metadata
 pub(crate) fn get_block_protocols(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Protocols, failure::Error> {
     if let Some(block_info) = get_block_by_block_id(chain_id, &block_hash, persistent_storage)? {
@@ -141,6 +224,11 @@ pub(crate) fn get_block_by_block_id(chain_id: &ChainId, block_hash: &BlockHash, 
             .get_with_json_data(&block_hash)?
             .map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &chain_id))
     )
+}
+
+// TODO: This requires further investigation, for now, just mock an empty vector for python tests' sake
+pub(crate) fn get_user_activated_upgrades(_env: &RpcServiceEnvironment) -> Result<Vec<String>, failure::Error> {
+    Ok(vec![])
 }
 
 #[inline]

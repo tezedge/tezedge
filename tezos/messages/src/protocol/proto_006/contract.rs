@@ -19,7 +19,7 @@ pub struct Counter {
 }
 
 impl Counter {
-    pub fn to_string(&self) -> String {
+    pub fn to_numeric_string(&self) -> String {
         self.counter.0.to_str_radix(10)
     }
 }
