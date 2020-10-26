@@ -20,7 +20,7 @@ pub enum SignaturePublicKey {
 
 impl SignaturePublicKey {
     #[inline]
-    pub fn to_string(&self) -> String {
+    pub fn to_string_representation(&self) -> String {
         match self {
             SignaturePublicKey::Ed25519(h) => HashType::PublicKeyEd25519.hash_to_b58check(h),
             SignaturePublicKey::Secp256k1(h) => HashType::PublicKeySecp256k1.hash_to_b58check(h),

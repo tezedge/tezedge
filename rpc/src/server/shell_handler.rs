@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use bytes::buf::BufExt;
-use hyper::{Body, Request};
+use hyper::{Body, Method, Request};
 use serde::Serialize;
 
 use crypto::hash::{chain_id_to_b58_string, HashType};
@@ -24,7 +24,7 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
+use crate::helpers::{MempoolOperationsQuery, create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
@@ -72,6 +72,47 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     make_json_stream_response(base_services::get_current_head_monitor_header(chain_id, env.state())?.unwrap())
 }
 
+pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+
+    let applied = query.get_str("applied");
+    let branch_refused = query.get_str("branch_refused");
+    let branch_delayed = query.get_str("branch_delayed");
+    let refused = query.get_str("refused");
+
+    let mempool_query = MempoolOperationsQuery{
+        applied: applied == Some("yes"),
+        branch_refused: branch_refused == Some("yes"),
+        branch_delayed: branch_delayed == Some("yes"),
+        refused: refused == Some("yes"),
+    };
+
+    if chain_id == "main" {
+        make_json_stream_response(base_services::get_operations_monitor(&env, Some(mempool_query))?.unwrap())
+    } else {
+        // TODO: implement... 
+        //empty()
+        make_json_stream_response(base_services::get_operations_monitor(&env, Some(mempool_query))?.unwrap())
+    }
+}
+
+pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let length = query.get_str("length").unwrap_or("0");
+    let head = query.get_str("head").unwrap();
+    // TODO: implement min_date query arg
+
+    // TODO: This can be implemented in a more optimised and cleaner way
+    // Note: Need to investigate the "more heads per level" variant
+    if chain_id == "main" {
+        make_json_response(&vec![base_services::get_blocks(None, head, length.parse::<usize>()?, env.persistent_storage(), env.state())?.iter()
+            .map(|block| block.hash.clone())
+            .collect::<Vec<String>>()])
+    } else {
+        empty()
+    }
+}
+
 pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
     let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
@@ -113,6 +154,21 @@ pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Q
         ),
         env.log(),
     )
+}
+
+pub async fn chains_block_id_metadata(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = params.get_str("chain_id").unwrap();
+    let block_id = params.get_str("block_id").unwrap();
+
+    if chain_id == "main" {
+        if block_id == "head" {
+            result_option_to_json_response(base_services::get_current_head_metadata(env.state()).map(|res| res), env.log())
+        } else {
+            result_option_to_json_response(base_services::get_block_metadata(block_id, &env).map(|res| res), env.log())
+        }
+    } else {
+        empty()
+    }
 }
 
 pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -179,6 +235,18 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
             &env,
             shell_channel,
         ),
+        env.log(),
+    )
+}
+
+pub async fn mempool_request_operations(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+
+    let shell_channel = env.shell_channel();
+
+    result_to_json_response(
+        services::mempool_services::request_operations(&body, &env, shell_channel.clone()),
         env.log(),
     )
 }
@@ -280,6 +348,74 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
 pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
         base_services::get_node_version(env.network_version()),
+        env.log(),
+    )
+}
+
+pub async fn config_user_activated_upgrades(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        services::base_services::get_user_activated_upgrades(&env),
+        env.log(),
+    )
+}
+
+// TODO: remove. This is a 'fake it till you make it' handler
+/// Handler mockin the describe routes in ocaml to be compatible with tezoses python test framework
+pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let path: Vec<String> = req.uri().path().split("/").skip(2).map(|v| v.to_string()).collect();
+
+    let service_fields = serde_json::json!({
+        "meth": method.as_str(),
+        "path": path,
+        "description": "Handler mockin the describe routes in ocaml to be compatible with tezoses python test framework.",
+        "query": [],
+        "output": {
+            "json_schema": {},
+            "binary_schema": {
+                "toplevel": {
+                    "fields": [],
+                },
+                "fields": [],
+            },
+        },
+        "error": {
+            "json_schema": {},
+            "binary_schema": {
+                "toplevel": {
+                    "fields": [],
+                },
+                "fields": [],
+            },
+        },
+    });
+
+    let describe_json = match method {
+        Method::GET => {
+            serde_json::json!({
+                "static": {
+                    "get_service": service_fields
+                },
+            })
+        }
+        Method::POST => {
+            serde_json::json!({
+                "static": {
+                    "post_service": service_fields
+                },
+            })
+        }
+        _ => unimplemented!()
+    };
+
+    result_to_json_response(
+        Ok(describe_json),
+        env.log(),
+    )
+}
+
+pub async fn worker_prevalidators(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        base_services::get_prevalidators(&env),
         env.log(),
     )
 }

@@ -250,7 +250,7 @@ fn action_key_to_contract_address(key: &[String]) -> Option<ContractAddress> {
         // check if case 2.
         match SignaturePublicKeyHash::from_hex_hash_and_curve(&key[4..10].join(""), &key[3].as_str()) {
             Err(_) => None,
-            Ok(pubkey) => match contract_id_to_contract_address_for_index(pubkey.to_string().as_str()) {
+            Ok(pubkey) => match contract_id_to_contract_address_for_index(pubkey.to_string_representation().as_str()) {
                 Err(_) => None,
                 Ok(address) => Some(address)
             }

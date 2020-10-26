@@ -132,7 +132,7 @@ impl PeerManager {
                  p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
-            PeerManager::name(),
+            &format!("{}-{}", PeerManager::name(), &identity.peer_id),
             Props::new_args((
                 network_channel,
                 shell_channel,
@@ -199,7 +199,6 @@ impl PeerManager {
                 }.into(),
                 topic: NetworkChannelTopic::NetworkEvents.into(),
             }, None);
-
         peer
     }
 
@@ -334,6 +333,13 @@ impl Actor for PeerManager {
         self.tokio_executor.spawn(async move {
             begin_listen_incoming(listener_port, myself, rx_run, &log).await;
         });
+    }
+
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        if !self.initial_peers.is_empty() {
+            info!(ctx.system.log(), "Connecting to defined peers");
+            self.initial_peers.drain().for_each(|address| ctx.myself().tell(ConnectToPeer { address: address.clone() }, ctx.myself().into()));
+        }
     }
 
     fn post_stop(&mut self) {

@@ -188,7 +188,7 @@ impl RightsContextData {
             let roll_num = key.last().unwrap();
 
             // the values are public keys
-            let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?.to_string();
+            let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?.to_string_representation();
             roll_owners.insert(roll_num.parse()?, delegate);
         }
         if roll_owners.is_empty() {

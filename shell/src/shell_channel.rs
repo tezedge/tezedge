@@ -37,6 +37,10 @@ impl BlockApplied {
 #[derive(Clone, Debug)]
 pub struct ShuttingDown;
 
+/// Request peers to send their current heads
+#[derive(Clone, Debug)]
+pub struct RequestCurrentHead;
+
 /// Message informing actors about receiving block header
 #[derive(Clone, Debug)]
 pub struct BlockReceived {
@@ -89,6 +93,7 @@ pub enum ShellChannelMsg {
     MempoolOperationReceived(MempoolOperationReceived),
     MempoolStateChanged(Arc<RwLock<CurrentMempoolState>>),
     InjectBlock(InjectBlock),
+    RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
 }
 
@@ -131,6 +136,12 @@ impl From<AllBlockOperationsReceived> for ShellChannelMsg {
 impl From<ShuttingDown> for ShellChannelMsg {
     fn from(msg: ShuttingDown) -> Self {
         ShellChannelMsg::ShuttingDown(msg)
+    }
+}
+
+impl From<RequestCurrentHead> for ShellChannelMsg {
+    fn from(msg: RequestCurrentHead) -> Self {
+        ShellChannelMsg::RequestCurrentHead(msg)
     }
 }
 

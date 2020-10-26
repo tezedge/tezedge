@@ -47,7 +47,7 @@ impl ToRpcJsonMap for EndorsingRight {
         ret.insert("level", UniversalValue::num(self.level));
         ret.insert(
             "delegate",
-            UniversalValue::string(self.delegate.to_string()),
+            UniversalValue::string(self.delegate.to_string_representation()),
         );
         ret.insert("slots", UniversalValue::num_list(self.slots.iter()));
         if let Some(ts) = self.estimated_time {
@@ -96,7 +96,7 @@ impl ToRpcJsonMap for BakingRights {
         ret.insert("level", UniversalValue::num(self.level));
         ret.insert(
             "delegate",
-            UniversalValue::string(self.delegate.to_string()),
+            UniversalValue::string(self.delegate.to_string_representation()),
         );
         ret.insert("priority", UniversalValue::num(self.priority));
         if let Some(ts) = self.estimated_time {
