@@ -166,3 +166,9 @@ impl PersistentStorage {
         self.kv.flush().expect("Failed to flush database");
     }
 }
+
+impl Drop for PersistentStorage {
+    fn drop(&mut self) {
+        self.flush_dbs();
+    }
+}

@@ -157,7 +157,7 @@ fn block_on_actors(
     init_storage_data: StorageInitInfo,
     identity: Identity,
     actor_system: ActorSystem,
-    mut persistent_storage: PersistentStorage,
+    persistent_storage: PersistentStorage,
     log: Logger) {
 
     // if feeding is started, than run chain manager
@@ -286,7 +286,8 @@ fn block_on_actors(
         debug!(log, "Shutdown tezos_readonly_api complete");
 
         info!(log, "Flushing databases");
-        persistent_storage.flush_dbs();
+        drop(persistent_storage);
+        info!(log, "Databases flushed");
 
         info!(log, "Shutdown complete");
     });
