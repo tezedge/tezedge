@@ -50,7 +50,7 @@ pub enum SignaturePublicKeyHash {
 
 impl SignaturePublicKeyHash {
     #[inline]
-    pub fn to_string(&self) -> String {
+    pub fn to_string_representation(&self) -> String {
         match self {
             SignaturePublicKeyHash::Ed25519(h) => HashType::ContractTz1Hash.hash_to_b58check(h),
             SignaturePublicKeyHash::Secp256k1(h) => HashType::ContractTz2Hash.hash_to_b58check(h),

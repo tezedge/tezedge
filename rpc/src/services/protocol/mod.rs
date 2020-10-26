@@ -278,7 +278,7 @@ pub(crate) fn get_votes_listings(block_hash: BlockHash, env: &RpcServiceEnvironm
         let address = keystr.split("/").skip(4).take(6).join("");
         let curve = keystr.split("/").skip(3).take(1).join("");
 
-        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
+        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string_representation();
         listings.push(VoteListings::new(address_decoded, num_from_slice!(value, 0, i32)));
     }
 

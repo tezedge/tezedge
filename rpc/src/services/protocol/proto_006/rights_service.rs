@@ -175,7 +175,12 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
 
         // we omit the estimated_time field if the block on the requested level is already baked
         let priority_timestamp = if block_level < (level as i64) {
-            Some(estimated_head_timestamp + (priority as i64 * time_between_blocks[1]))
+            let time = if time_between_blocks.len() == 1 {
+                time_between_blocks[0]
+            } else {
+                time_between_blocks[1]
+            };
+            Some(estimated_head_timestamp + (priority as i64 * time))
         } else {
             None
         };
