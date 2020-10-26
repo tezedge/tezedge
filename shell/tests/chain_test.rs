@@ -73,7 +73,10 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
     node.wait_for_new_current_head("3", db.block_hash(3)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
     println!("\nProcessed [3] in {:?}!\n", clocks.elapsed());
 
-    // TODO: other context and checks
+    // check context stored for all blocks
+    node.wait_for_context("ctx_1", db.context_hash(1)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("ctx_2", db.context_hash(2)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("ctx_3", db.context_hash(3)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
 
     // stop nodes
     drop(node);
@@ -145,7 +148,16 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
     node.wait_for_new_current_head("branch2-4", db_branch_2.block_hash(4)?, (Duration::from_secs(30), Duration::from_millis(750)))?;
     println!("\nProcessed [branch2-4] in {:?}!\n", clocks.elapsed());
 
-    // TODO: other context and checks
+
+    // check context stored for all branches
+    node.wait_for_context("db_branch_1_ctx_1", db_branch_1.context_hash(1)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("db_branch_1_ctx_2", db_branch_1.context_hash(2)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("db_branch_1_ctx_3", db_branch_1.context_hash(3)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+
+    node.wait_for_context("db_branch_2_ctx_1", db_branch_2.context_hash(1)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("db_branch_2_ctx_2", db_branch_2.context_hash(2)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("db_branch_2_ctx_3", db_branch_2.context_hash(3)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+    node.wait_for_context("db_branch_2_ctx_4", db_branch_2.context_hash(4)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
 
     // stop nodes
     drop(node);
@@ -162,7 +174,7 @@ mod test_data {
 
     use failure::format_err;
 
-    use crypto::hash::BlockHash;
+    use crypto::hash::{BlockHash, ContextHash};
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::ApplyBlockRequest;
     use tezos_messages::p2p::binary_message::MessageHash;
@@ -174,19 +186,20 @@ mod test_data {
     pub struct Db {
         pub tezos_env: TezosEnvironment,
         requests: Vec<String>,
-        headers: HashMap<BlockHash, Level>,
+        headers: HashMap<BlockHash, (Level, ContextHash)>,
         operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     }
 
     impl Db {
         pub(crate) fn init_db((requests, operations, tezos_env): (Vec<String>, HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>, TezosEnvironment)) -> Db {
-            let mut headers: HashMap<BlockHash, Level> = HashMap::new();
+            let mut headers: HashMap<BlockHash, (Level, ContextHash)> = HashMap::new();
 
             // init headers
             for (idx, request) in requests.iter().enumerate() {
                 let request = crate::samples::from_captured_bytes(request).expect("Failed to parse request");
                 let block = request.block_header.message_hash().expect("Failed to decode message_hash");
-                headers.insert(block, to_level(idx));
+                let context_hash: ContextHash = request.block_header.context().clone();
+                headers.insert(block, (to_level(idx), context_hash));
             }
 
             Db {
@@ -199,8 +212,8 @@ mod test_data {
 
         pub fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeader>, failure::Error> {
             match self.headers.get(block_hash) {
-                Some(level) => {
-                    Ok(Some(self.captured_requests(level.clone())?.block_header))
+                Some((level, _)) => {
+                    Ok(Some(self.captured_requests(*level)?.block_header))
                 }
                 None => Ok(None)
             }
@@ -215,14 +228,25 @@ mod test_data {
             }
         }
 
-        pub fn block_hash(&self, level: Level) -> Result<BlockHash, failure::Error> {
+        pub fn block_hash(&self, searched_level: Level) -> Result<BlockHash, failure::Error> {
             let block_hash = self.headers
                 .iter()
-                .find(|(_, value)| level.eq(*value))
+                .find(|(_, (level, _))| searched_level.eq(level))
                 .map(|(k, _)| k.clone());
             match block_hash {
                 Some(block_hash) => Ok(block_hash),
-                None => Err(format_err!("No header found for level: {}", level))
+                None => Err(format_err!("No header found for level: {}", searched_level))
+            }
+        }
+
+        pub fn context_hash(&self, searched_level: Level) -> Result<ContextHash, failure::Error> {
+            let context_hash = self.headers
+                .iter()
+                .find(|(_, (level, _))| searched_level.eq(level))
+                .map(|(_, (_, context_hash))| context_hash.clone());
+            match context_hash {
+                Some(context_hash) => Ok(context_hash),
+                None => Err(format_err!("No header found for level: {}", searched_level))
             }
         }
 

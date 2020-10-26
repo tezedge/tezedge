@@ -77,7 +77,7 @@ pub mod infra {
     use slog::{info, Level, Logger, warn};
     use tokio::runtime::Runtime;
 
-    use crypto::hash::{BlockHash, HashType};
+    use crypto::hash::{BlockHash, ContextHash, HashType};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
@@ -86,8 +86,9 @@ pub mod infra {
     use shell::peer_manager::{P2p, PeerManager};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::{ChainMetaStorage, resolve_storage_init_chain_data};
+    use storage::{BlockStorage, ChainMetaStorage, resolve_storage_init_chain_data};
     use storage::chain_meta_storage::ChainMetaStorageReader;
+    use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
     use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
@@ -286,6 +287,35 @@ pub mod infra {
                     thread::sleep(delay);
                 } else {
                     break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
+                }
+            };
+            result
+        }
+
+        /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
+        pub fn wait_for_context(&self, marker: &str, context_hash: ContextHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+
+            let context = TezedgeContext::new(
+                BlockStorage::new(self.tmp_storage.storage()),
+                self.tmp_storage.storage().merkle(),
+            );
+
+            let protocol_key = vec!["protocol".to_string()];
+
+            // try checkout context
+            let result = loop {
+                // if success, than ok
+                if let Ok(Some(_)) = context.get_key_from_history(&context_hash, &protocol_key) {
+                    info!(self.log, "[NODE] Expected context found"; "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash), "marker" => marker);
+                    break Ok(());
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    thread::sleep(delay);
+                } else {
+                    break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", HashType::ContextHash.bytes_to_string(&context_hash), timeout, delay, marker));
                 }
             };
             result
