@@ -351,7 +351,6 @@ impl MerkleStorage {
         }
         self.set_exec_times += 1;
         rv
-
     }
 
     /// Delete an item from the staging area.
@@ -625,7 +624,7 @@ impl MerkleStorage {
     }
 
     fn key_to_string(&self, key: &ContextKey) -> String {
-        key.clone().join("/")
+        key.join("/")
     }
 
     fn string_to_key(&self, string: &str) -> ContextKey {
