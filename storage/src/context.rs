@@ -4,6 +4,7 @@
 use std::sync::{Arc, RwLock};
 use std::convert::TryInto;
 use std::num::TryFromIntError;
+use std::array::TryFromSliceError;
 
 use failure::Fail;
 
@@ -54,7 +55,7 @@ impl ContextApi for TezedgeContext {
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
         merkle.checkout(&context_hash_arr)?;
 
         Ok(())
@@ -68,7 +69,7 @@ impl ContextApi for TezedgeContext {
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
-        let new_hash_arr: EntryHash = new_context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        let new_hash_arr: EntryHash = new_context_hash.as_slice().try_into()?;
         assert_eq!(&commit_hash, &new_hash_arr);
 
         // associate block and context_hash
@@ -137,7 +138,7 @@ impl ContextApi for TezedgeContext {
         // we need to join with '/' and split again
         let key = to_key(key).split('/').map(|s| s.to_string()).collect();
 
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
         match merkle.get_history(&context_hash_arr, &key) {
             Err(MerkleError::ValueNotFound{key: _}) => Ok(None),
             Err(MerkleError::EntryNotFound{hash: _}) =>  {
@@ -155,7 +156,7 @@ impl ContextApi for TezedgeContext {
         // clients may pass in a prefix with elements containing slashes (expecting us to split)
         // we need to join with '/' and split again
         let prefix = to_key(prefix).split('/').map(|s| s.to_string()).collect();
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
         merkle.get_key_values_by_prefix(&context_hash_arr, &prefix)
     }
 
@@ -169,7 +170,7 @@ impl ContextApi for TezedgeContext {
         };
         // clients assume that root is at /data
         prefix.insert(0, "data".to_string());
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into().expect("EntryHash conversion error");
+        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
         merkle.get_context_tree_by_prefix(&context_hash_arr, &prefix)
     }
 
@@ -236,6 +237,10 @@ pub enum ContextError {
     InvalidCommitDate {
         error: TryFromIntError,
     },
+    #[fail(display = "Failed to convert hash to array: {}", error)]
+    HashConversionError {
+        error: TryFromSliceError,
+    },
 }
 
 impl From<MerkleError> for ContextError {
@@ -246,5 +251,10 @@ impl From<MerkleError> for ContextError {
 impl From<TryFromIntError> for ContextError {
     fn from(error: TryFromIntError) -> Self {
         ContextError::InvalidCommitDate { error }
+    }
+}
+impl From<TryFromSliceError> for ContextError {
+    fn from(error: TryFromSliceError) -> Self {
+        ContextError::HashConversionError { error }
     }
 }
