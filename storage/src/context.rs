@@ -198,6 +198,7 @@ fn to_key(key: &ContextKey) -> String {
 }
 
 // context implementation using merkle-tree-like storage
+#[derive(Clone)]
 pub struct TezedgeContext {
     block_storage: BlockStorage,
     merkle: Arc<RwLock<MerkleStorage>>,

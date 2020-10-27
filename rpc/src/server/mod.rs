@@ -16,6 +16,7 @@ use slog::Logger;
 use crypto::hash::{BlockHash, HashType};
 use shell::shell_channel::ShellChannelRef;
 use storage::persistent::PersistentStorage;
+use storage::context::TezedgeContext;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
@@ -36,6 +37,8 @@ pub struct RpcServiceEnvironment {
     actor: RpcServerRef,
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
+    #[get = "pub(crate)"]
+    tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
     genesis_hash: String,
     #[get = "pub(crate)"]
@@ -65,6 +68,7 @@ impl RpcServiceEnvironment {
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: NetworkVersion,
         persistent_storage: &PersistentStorage,
+        tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
@@ -78,6 +82,7 @@ impl RpcServiceEnvironment {
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),
+            tezedge_context: tezedge_context.clone(),
             genesis_hash: HashType::BlockHash.bytes_to_string(genesis_hash),
             state,
             log: log.clone(),

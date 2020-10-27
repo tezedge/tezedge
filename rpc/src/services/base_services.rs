@@ -222,7 +222,6 @@ pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persis
         }
     };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
     let ctx_hash = context.level_to_hash(ctxt_level);
     if ctx_hash.is_err() {
         slog::warn!(log, "Block level not found");
@@ -234,7 +233,7 @@ pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persis
     }
 }
 
-pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
+pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, context: &TezedgeContext, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
@@ -242,8 +241,6 @@ pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, per
         Some(val) => val.try_into()?,
         None => bail!("Block level not found")
     };
-
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
     let ctx_hash = context.level_to_hash(ctxt_level)?;
     let random_seed = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?;
@@ -319,8 +316,7 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeV
     Ok(NodeVersion::new(network_version))
 }
 
-pub(crate) fn get_database_memstats(persistent_storage: &PersistentStorage) -> Result<MerkleStorageStats, failure::Error> {
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+pub(crate) fn get_database_memstats(context: &TezedgeContext) -> Result<MerkleStorageStats, failure::Error> {
     let stats = context.get_merkle_stats()?;
 
     Ok(stats)

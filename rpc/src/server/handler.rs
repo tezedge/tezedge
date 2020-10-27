@@ -141,13 +141,13 @@ pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: 
 pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
     let prefix = params.get_str("any");
-    result_option_to_json_response(base_services::get_context_raw_bytes(block_id, prefix, env.persistent_storage(), env.state(), env.log()), env.log())
+    result_option_to_json_response(base_services::get_context_raw_bytes(block_id, prefix, env.persistent_storage(), env.tezedge_context(), env.state(), env.log()), env.log())
 }
 
 pub async fn cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
     let cycle_id = params.get_str("cycle_id").unwrap();
-    result_to_json_response(base_services::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage(), env.state()), env.log())
+    result_to_json_response(base_services::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage(), env.tezedge_context(), env.state()), env.log())
 }
 
 pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
