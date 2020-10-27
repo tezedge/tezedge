@@ -35,11 +35,11 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     // commit
     let new_context_hash: ContextHash = HashType::ContextHash.string_to_bytes("CoVf53zSDGcSWS74Mxe2i2RJnVfCaMrAjxK2Xq7tgiFMtkNwUdPv")?;
 
-    context.commit(
+    let hash = context.commit(
         &block.hash,
         &None,
-        &new_context_hash,
         "Tezos".to_string(), "Genesis".to_string(), 0)?;
+    assert_eq!(hash, new_context_hash);
 
     // get key from new commit
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], new_context_hash, vec![1, 2, 3, 4, 5, 6]);
@@ -75,11 +75,11 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     // commit
     let context_hash_1: ContextHash = HashType::ContextHash.string_to_bytes("CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB")?;
 
-    context.commit(
+    let hash = context.commit(
         &block.hash,
         &None,
-        &context_hash_1,
         "Tezos".to_string(), "Genesis".to_string(), 0)?;
+    assert_eq!(hash, context_hash_1);
 
     // get key from new commit
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1.clone(), vec![1, 2, 3, 4]);
@@ -110,11 +110,11 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     // commit
     let context_hash_2: ContextHash = HashType::ContextHash.string_to_bytes("CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF")?;
 
-    context.commit(
+    let hash = context.commit(
         &block.hash,
         &Some(context_hash_1),
-        &context_hash_2,
         "Tezos".to_string(), "Genesis".to_string(), 0)?;
+    assert_eq!(hash, context_hash_2);
 
     // get key from new commit
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2.clone(), vec![1, 2, 3, 4]);
@@ -154,11 +154,11 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     // commit
     let context_hash_1: ContextHash = HashType::ContextHash.string_to_bytes("CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR")?;
 
-    context.commit(
+    let hash = context.commit(
         &block.hash,
         &None,
-        &context_hash_1,
         "Tezos".to_string(), "Genesis".to_string(), 0)?;
+    assert_eq!(hash, context_hash_1);
 
     // get key from new commit
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1.clone(), vec![1, 2, 3, 4]);
@@ -185,11 +185,11 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     // commit
     let context_hash_2: ContextHash = HashType::ContextHash.string_to_bytes("CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G")?;
 
-    context.commit(
+    let hash = context.commit(
         &block.hash,
         &Some(context_hash_1),
-        &context_hash_2,
         "Tezos".to_string(), "Genesis".to_string(), 0)?;
+    assert_eq!(hash, context_hash_2);
 
     // get key from new commit - original stays unchanged
     assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2.clone(), vec![1, 2, 3, 4]);

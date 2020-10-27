@@ -21,8 +21,7 @@ pub trait ContextApi {
     // commit current context diff to storage
     // if parent_context_hash is empty, it means that it's a commit_genesis and we don't assign context_hash to header
     fn commit(&mut self, block_hash: &BlockHash, parent_context_hash: &Option<ContextHash>,
-              new_context_hash: &ContextHash, author: String, message: String,
-              date: i64) -> Result<(), ContextError>;
+              author: String, message: String, date: i64) -> Result<ContextHash, ContextError>;
     fn delete_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_delete: &ContextKey) -> Result<(), ContextError>;
     fn remove_recursively_to_diff(&self, context_hash: &Option<ContextHash>, key_prefix_to_remove: &ContextKey) -> Result<(), ContextError>;
     // copies subtree under 'from_key' to new subtree under 'to_key'
@@ -62,25 +61,23 @@ impl ContextApi for TezedgeContext {
     }
 
     fn commit(&mut self, block_hash: &BlockHash, parent_context_hash: &Option<ContextHash>,
-              new_context_hash: &ContextHash, author: String, message: String,
-              date: i64) -> Result<(), ContextError> {
+              author: String, message: String, date: i64) -> Result<ContextHash, ContextError> {
 
         let mut merkle = self.merkle.write().expect("lock poisoning");
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
-        let new_hash_arr: EntryHash = new_context_hash.as_slice().try_into()?;
-        assert_eq!(&commit_hash, &new_hash_arr);
+        let commit_hash = &commit_hash[..].to_vec();
 
         // associate block and context_hash
-        if let Err(e) = self.block_storage.assign_to_context(block_hash, new_context_hash) {
+        if let Err(e) = self.block_storage.assign_to_context(block_hash, &commit_hash) {
             match e {
                 StorageError::MissingKey => {
                     if parent_context_hash.is_some() {
                         return Err(
                             ContextError::ContextHashAssignError {
                                 block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                                context_hash: HashType::ContextHash.bytes_to_string(new_context_hash),
+                                context_hash: HashType::ContextHash.bytes_to_string(commit_hash),
                                 error: e,
                             }
                         );
@@ -92,14 +89,14 @@ impl ContextApi for TezedgeContext {
                 _ => return Err(
                     ContextError::ContextHashAssignError {
                         block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                        context_hash: HashType::ContextHash.bytes_to_string(new_context_hash),
+                        context_hash: HashType::ContextHash.bytes_to_string(commit_hash),
                         error: e,
                     }
                 )
             };
         }
 
-        Ok(())
+        Ok(commit_hash.to_vec())
     }
 
     fn delete_to_diff(&self, _context_hash: &Option<ContextHash>, key_prefix_to_delete: &ContextKey) -> Result<(), ContextError> {
