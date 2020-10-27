@@ -162,8 +162,11 @@ impl PersistentStorage {
     }
 
     pub fn flush_dbs(&mut self) {
-        self.clog.flush().expect("Failed to flush commit logs");
-        self.kv.flush().expect("Failed to flush database");
+        let clog = self.clog.flush();
+        let kv = self.kv.flush();
+        if clog.is_err() || kv.is_err() {
+            println!("Failed to flush DBs");
+        }
     }
 }
 
