@@ -30,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [0.7.0] - 2020-10-28
+
+### Added
+
+- Added support for reorg + CI Drone test
+- Validation for new current head after apply
+- Validation for accept branch only if fitness increases
+- Operation pre-validation before added to mempool
+
+### Changed
+
+- Skip_list was changed to merkle implementation for context
+
 ## [0.6.0] - 2020-10-20
 
 ### Added
@@ -156,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/simplestaking/tezedge/releases/v0.7.0
 [0.6.0]: https://github.com/simplestaking/tezedge/releases/v0.6.0
 [0.5.0]: https://github.com/simplestaking/tezedge/releases/v0.5.0
 [0.4.0]: https://github.com/simplestaking/tezedge/releases/v0.4.0
