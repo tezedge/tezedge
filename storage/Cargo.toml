@@ -1,6 +1,6 @@
 [package]
 name = "storage"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -12,12 +12,14 @@ derive_builder = "0.9"
 failure = "0.1"
 getset = "0.1"
 hex = "0.4"
+im = { version = "15.0.0", features = ["serde"] }
 itertools = "0.9"
 lazy_static = "1.4"
 num_cpus = "1.13"
-rocksdb = "0.14"
+rocksdb = "0.15"
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = "2.5"
+sodiumoxide = "0.2.5"
 # local dependencies
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
@@ -26,7 +28,8 @@ tezos_messages = { path = "../tezos/messages" }
 
 [dev-dependencies]
 hex = "0.4"
-rand = "0.7.3"
 maplit = "1.0"
+rand = "0.7.3"
+serial_test = "0.5"
 slog-async = "2.5"
 slog-term = "2.6"

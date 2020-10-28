@@ -13,15 +13,14 @@ use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
 use storage::block_storage::BlockJsonData;
-use storage::context::{ContextApi, ContextIndex, TezedgeContext};
+use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
-use storage::persistent::{ContextMap, PersistentStorage};
-use storage::skip_list::Bucket;
+use storage::persistent::PersistentStorage;
+use storage::merkle_storage::MerkleStorageStats;
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
-use crate::ContextList;
 use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -189,13 +188,11 @@ pub(crate) fn get_block_shell_header(block_id: &str, persistent_storage: &Persis
 pub(crate) fn get_context_constants_just_for_rpc(
     block_id: &str,
     opt_level: Option<i64>,
-    list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<Option<RpcJsonMap>, failure::Error> {
     let context_proto_params = get_context_protocol_params(
         block_id,
         opt_level,
-        list,
         persistent_storage,
         state,
     )?;
@@ -203,8 +200,8 @@ pub(crate) fn get_context_constants_just_for_rpc(
     Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?)
 }
 
-pub(crate) fn get_cycle_length_for_block(block_id: &str, list: ContextList, storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> Result<i32, failure::Error> {
-    if let Ok(context_proto_params) = get_context_protocol_params(block_id, None, list, storage, state) {
+pub(crate) fn get_cycle_length_for_block(block_id: &str, storage: &PersistentStorage, state: &RpcCollectedStateRef, log: &Logger) -> Result<i32, failure::Error> {
+    if let Ok(context_proto_params) = get_context_protocol_params(block_id, None, storage, state) {
         Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
@@ -221,11 +218,11 @@ pub(crate) fn get_cycle_length_for_block(block_id: &str, list: ContextList, stor
     }
 }
 
-pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
+pub(crate) fn get_cycle_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
-    let ctxt_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
+    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
         Some(val) => val.try_into()?,
         None => bail!("Block level not found")
     };
@@ -239,18 +236,10 @@ pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persiste
     //     }
     // };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
-    let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
-    let context_data = context.get_by_key_prefix(&context_index, &vec!["data/cycle/".to_string()])?;
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+    let ctx_hash = context.level_to_hash(ctxt_level)?;
+    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/cycle".to_string()])?;
 
-    // get cylce list from context storage
-    // let cycle_lists: HashMap<String, Bucket<Vec<u8>>> = context_data.clone().into_iter()
-    //     .filter(|(k, _)| k.contains("cycle"))
-    //     .filter(|(_, v)| match v {
-    //         Bucket::Exists(_) => true,
-    //         _ => false
-    //     })
-    //     .collect();
     let cycle_lists = if let Some(ctx) = context_data {
         ctx
     } else {
@@ -261,16 +250,10 @@ pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persiste
     let mut cycles: HashMap<String, Cycle> = HashMap::new();
 
     // process every key value pair
-    for (key, bucket) in cycle_lists.iter() {
-
-        // create vector from path
-        let path: Vec<&str> = key.split('/').collect();
+    for (path, value) in cycle_lists.iter() {
 
         // convert value from bytes to hex
-        let value = match bucket {
-            Bucket::Exists(value) => hex::encode(value).to_string(),
-            _ => continue
-        };
+        let value = hex::encode(value).to_string();
 
         // create new cycle
         // TODO: !!! check path and move to match
@@ -282,6 +265,7 @@ pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persiste
         });
 
         // process cycle key value pairs
+        let path: Vec<&str> = path.iter().map(String::as_str).collect();
         match path.as_slice() {
             ["data", "cycle", cycle, "random_seed"] => {
                 cycles.entry(cycle.to_string()).and_modify(|cycle| {
@@ -322,26 +306,26 @@ pub(crate) fn get_cycle_from_context(block_id: &str, list: ContextList, persiste
     Ok(Some(cycles))
 }
 
-pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
+pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
-    let ctxt_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
+    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
         Some(val) => val.try_into()?,
         None => bail!("Block level not found")
     };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
-    let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
 
-    let random_seed = context.get_key(&context_index, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?; // list.get_key(level, &format!("data/cycle/{}/random_seed", &cycle_id));
-    let roll_snapshot = context.get_key(&context_index, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?;
+    let ctx_hash = context.level_to_hash(ctxt_level)?;
+    let random_seed = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?;
+    let roll_snapshot = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?;
 
     match (random_seed, roll_snapshot) {
         (Some(random_seed), Some(roll_snapshot)) => {
             let cycle_json = CycleJson {
-                random_seed: if let Bucket::Exists(value) = random_seed { Some(hex::encode(value).to_string()) } else { None },
-                roll_snapshot: if let Bucket::Exists(value) = roll_snapshot { Some(num_from_slice!(value, 0, i16)) } else { None },
+                random_seed: Some(hex::encode(random_seed).to_string()),
+                roll_snapshot: Some(num_from_slice!(roll_snapshot, 0, i16)),
             };
             Ok(Some(cycle_json))
         }
@@ -349,18 +333,18 @@ pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, lis
     }
 }
 
-pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, list: ContextList, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
+pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
 
     // TODO: should be replaced by context_hash
     // get block level first
-    let ctxt_level: i64 = match get_level_by_block_id(block_id, persistent_storage, state)? {
+    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
         Some(val) => val.try_into()?,
         None => bail!("Block level not found")
     };
 
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), list.clone());
-    let context_index = ContextIndex::new(Some(ctxt_level.try_into()?), None);
-    let context_data = context.get_by_key_prefix(&context_index, &vec!["data/rolls/owner/current/".to_string()])?;
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+    let ctx_hash = context.level_to_hash(ctxt_level)?;
+    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/current".to_string()])?;
 
     // create rolls list
     let mut rolls: HashMap<String, HashMap<String, HashMap<String, String>>> = HashMap::new();
@@ -371,18 +355,13 @@ pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, list: Context
         bail!("Error getting context data")
     };
     // process every key value pair
-    for (key, bucket) in rolls_lists.iter() {
-
-        // create vector from path
-        let path: Vec<&str> = key.split('/').collect();
+    for (path, value) in rolls_lists.iter() {
 
         // convert value from bytes to hex
-        let value = match bucket {
-            Bucket::Exists(value) => hex::encode(value).to_string(),
-            _ => continue
-        };
+        let value = hex::encode(value).to_string();
 
         // process roll key value pairs
+        let path: Vec<&str> = path.iter().map(String::as_str).collect();
         match path.as_slice() {
             ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
                 rolls.entry(path1.to_string())
@@ -419,10 +398,6 @@ pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, list: Context
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
     let memory = Memory::new();
     memory.get_memory_stats()
-}
-
-pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
-    crate::helpers::get_context(level, list)
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
@@ -476,6 +451,13 @@ pub(crate) fn get_block_operation_hashes(block_id: &str, persistent_storage: &Pe
 
 pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeVersion, failure::Error> {
     Ok(NodeVersion::new(network_version))
+}
+
+pub(crate) fn get_database_memstats(persistent_storage: &PersistentStorage) -> Result<MerkleStorageStats, failure::Error> {
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+    let stats = context.get_merkle_stats()?;
+
+    Ok(stats)
 }
 
 pub(crate) fn get_block_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<FullBlockInfo>, failure::Error> {

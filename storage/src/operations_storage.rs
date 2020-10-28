@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, SliceTransform};
+use rocksdb::{ColumnFamilyDescriptor, SliceTransform, Cache};
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -75,8 +75,8 @@ impl KeyValueSchema for OperationsStorage {
     type Key = OperationKey;
     type Value = OperationsForBlocksMessage;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(HashType::BlockHash.size()));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)

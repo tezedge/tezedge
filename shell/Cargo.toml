@@ -1,6 +1,6 @@
 [package]
 name = "shell"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -32,9 +32,8 @@ tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 
 [dev-dependencies]
-jsonpath = "0.1.1"
 r2d2 = "0.8.9"
-serial_test = "0.4"
+serial_test = "0.5"
 slog-async = "2.5"
 slog-term = "2.6"
 tezos_encoding = { path = "../tezos/encoding" }

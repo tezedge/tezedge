@@ -204,26 +204,26 @@ Prearranged docker-compose files
 ### light-node + tezedge-explorer
 * Run last released version:
 ```
-docker docker-compose.yml pull
-docker docker-compose.yml up
+docker-compose -f docker-compose.yml pull
+docker-compose -f docker-compose.yml up
 ```
 * Run actual development version:
 ```
-docker docker-compose.latest.yml pull
-docker docker-compose.latest.yml up
+docker-compose -f docker-compose.latest.yml pull
+docker-compose -f docker-compose.latest.yml up
 ```
 
 ### sandbox launcher + tezedge-explorer + tezedge-debugger
 * Run last released version:
 ```
-docker docker-compose.sandbox.yml pull
-docker docker-compose.sandbox.yml up
+docker-compose -f docker-compose.sandbox.yml pull
+docker-compose -f docker-compose.sandbox.yml up
 ```
 * Run actual development version:
 ```
-docker docker-compose.sandbox.latest.yml pull
-docker docker-compose.sandbox.latest.yml up
+docker-compose -f docker-compose.sandbox.latest.yml pull
+docker-compose -f docker-compose.sandbox.latest.yml up
 
 # stop and remove docker volume
-docker docker-compose.sandbox.latest.yml down -v
+docker-compose -f docker-compose.sandbox.latest.yml down -v
 ```

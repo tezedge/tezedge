@@ -83,11 +83,11 @@ impl BlockStorage {
 
     /// Stores header in key-value store and commit_log.
     /// If called multiple times for the same header, data are stored just first time.
-    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
-
+    /// Returns true, if it is a new block
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
         if self.primary_index.contains(&block_header.hash)? {
             // we assume that, if primary_index contains hash, then also commit_log contains header data, header data cannot be change, so there is nothing to do
-            return Ok(())
+            return Ok(false);
         }
 
         self.clog.append(&BlockStorageColumn::BlockHeader(block_header.clone()))
@@ -100,11 +100,11 @@ impl BlockStorage {
                 };
                 self.primary_index.put(&block_header.hash, &location)
                     .and(self.by_level_index.put(block_header.header.level(), &location))
+                    .and(Ok(true))
             })
     }
 
     pub fn put_block_json_data(&self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
-
         let updated_column_location = {
             let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;
@@ -452,15 +452,17 @@ mod tests {
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
-        use rocksdb::{Options, DB};
+        use rocksdb::{Options, DB, Cache};
 
         let path = "__block_level_index_test";
         if Path::new(path).exists() {
             std::fs::remove_dir_all(path).unwrap();
         }
 
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+
         {
-            let db = open_kv(path, vec![BlockByLevelIndex::descriptor()], &DbConfiguration::default()).unwrap();
+            let db = open_kv(path, vec![BlockByLevelIndex::descriptor(&cache)], &DbConfiguration::default()).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {

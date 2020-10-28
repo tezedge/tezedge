@@ -16,12 +16,11 @@ use crypto::hash::{BlockHash, chain_id_to_b58_string, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
 use storage::context_action_storage::ContextActionType;
-use storage::persistent::{ContextMap, PersistentStorage};
-use storage::skip_list::Bucket;
+use storage::context::{ContextApi, TezedgeContext};
+use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
-use crate::ContextList;
 use crate::encoding::base_types::{TimeStamp, UniString};
 use crate::rpc_actor::RpcCollectedStateRef;
 
@@ -521,7 +520,6 @@ pub enum ContextParamsError {
 pub(crate) fn get_context_protocol_params(
     block_id: &str,
     opt_level: Option<i64>,
-    list: ContextList,
     persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef) -> Result<ContextProtocolParam, failure::Error> {
 
@@ -537,17 +535,19 @@ pub(crate) fn get_context_protocol_params(
         }
     };
 
+    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+    let ctx_hash = context.level_to_hash(level.try_into()?)?;
+
     let protocol_hash: Vec<u8>;
     let constants: Vec<u8>;
     {
-        let reader = list.read().unwrap();
-        if let Some(Bucket::Exists(data)) = reader.get_key(level, &"protocol".to_string())? {
+        if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
             protocol_hash = data;
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(block_id.to_string()).into());
         }
 
-        if let Some(Bucket::Exists(data)) = reader.get_key(level, &"data/v1/constants".to_string())? {
+        if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["data".to_string(), "v1".to_string(), "constants".to_string()])? {
             constants = data;
         } else {
             return Err(ContextParamsError::NoConstantsForBlock(block_id.to_string()).into());
@@ -559,14 +559,6 @@ pub(crate) fn get_context_protocol_params(
         constants_data: constants,
         level: level.try_into()?,
     })
-}
-
-pub(crate) fn get_context(level: &str, list: ContextList) -> Result<Option<ContextMap>, failure::Error> {
-    let level = level.parse()?;
-    {
-        let storage = list.read().expect("poisoned storage lock");
-        storage.get(level).map_err(|e| e.into())
-    }
 }
 
 pub(crate) fn current_time_timestamp() -> TimeStamp {

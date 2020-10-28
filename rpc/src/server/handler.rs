@@ -135,23 +135,23 @@ pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Q
 pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
 
-    result_to_json_response(base_services::get_context_constants_just_for_rpc(block_id, None, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()), env.log())
+    result_to_json_response(base_services::get_context_constants_just_for_rpc(block_id, None, env.persistent_storage(), env.state()), env.log())
 }
 
 pub async fn context_cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
-    result_to_json_response(base_services::get_cycle_from_context(block_id, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()), env.log())
+    result_to_json_response(base_services::get_cycle_from_context(block_id, env.persistent_storage(), env.state()), env.log())
 }
 
 pub async fn rolls_owner_current(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
-    result_to_json_response(base_services::get_rolls_owner_current_from_context(block_id, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()), env.log())
+    result_to_json_response(base_services::get_rolls_owner_current_from_context(block_id, env.persistent_storage(), env.state()), env.log())
 }
 
 pub async fn cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
     let cycle_id = params.get_str("cycle_id").unwrap();
-    result_to_json_response(base_services::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()), env.log())
+    result_to_json_response(base_services::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage(), env.state()), env.log())
 }
 
 pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -164,7 +164,7 @@ pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: 
     let has_all = query.contains_key("all");
 
     // list -> context, persistent, state odizolovat
-    match services::protocol::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
+    match services::protocol::check_and_get_baking_rights(chain_id, block_id, level, delegate, cycle, max_priority, has_all, env.persistent_storage(), env.state()) {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
@@ -187,7 +187,7 @@ pub async fn endorsing_rights(_: Request<Body>, params: Params, query: Query, en
     let has_all = query.contains_key("all");
 
     // get RPC response and unpack it from RpcResponseData enum
-    match services::protocol::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()) {
+    match services::protocol::check_and_get_endorsing_rights(chain_id, block_id, level, delegate, cycle, has_all, env.persistent_storage(), env.state()) {
         Ok(Some(rights)) => result_to_json_response(Ok(Some(rights)), env.log()),
         Err(e) => { //pass error to response parser
             let res: Result<Option<String>, failure::Error> = Err(e);
@@ -205,7 +205,7 @@ pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: Rpc
     let chain_id = params.get_str("chain_id").unwrap();
     let block_id = params.get_str("block_id").unwrap();
 
-    result_to_json_response(services::protocol::get_votes_listings(chain_id, block_id, env.persistent_storage(), env.persistent_storage().context_storage(), env.state()), env.log())
+    result_to_json_response(services::protocol::get_votes_listings(chain_id, block_id, env.persistent_storage(), env.state()), env.log())
 }
 
 pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -213,7 +213,7 @@ pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Que
 
     if chain_id == "main" {
         result_to_json_response(
-            services::mempool_services::get_pending_operations(env.persistent_storage(), env.state(), env.log()),
+            services::mempool_services::get_pending_operations(env.state(), env.log()),
             env.log(),
         )
     } else {
@@ -228,7 +228,11 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
     let shell_channel = env.shell_channel();
 
     result_to_json_response(
-        services::mempool_services::inject_operation(&operation_data, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        services::mempool_services::inject_operation(
+            &operation_data,
+            &env,
+            shell_channel.clone()
+        ),
         env.log(),
     )
 }
@@ -282,7 +286,7 @@ pub async fn get_contract_counter(_: Request<Body>, params: Params, _: Query, en
     let pkh = params.get_str("pkh").unwrap();
 
     result_to_json_response(
-        services::protocol::proto_get_contract_counter(_chain_id, block_id, pkh, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()),
+        services::protocol::proto_get_contract_counter(_chain_id, block_id, pkh, env.persistent_storage(), env.state()),
         env.log(),
     )
 }
@@ -293,7 +297,7 @@ pub async fn get_contract_manager_key(_: Request<Body>, params: Params, _: Query
     let pkh = params.get_str("pkh").unwrap();
 
     result_to_json_response(
-        services::protocol::proto_get_contract_manager_key(_chain_id, block_id, pkh, env.persistent_storage().context_storage(), env.persistent_storage(), env.state()),
+        services::protocol::proto_get_contract_manager_key(_chain_id, block_id, pkh, env.persistent_storage(), env.state()),
         env.log(),
     )
 }

@@ -8,7 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use failure::Fail;
-use rocksdb::{ColumnFamilyDescriptor, SliceTransform};
+use rocksdb::{ColumnFamilyDescriptor, SliceTransform, Cache};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
@@ -304,8 +304,8 @@ impl KeyValueSchema for ContextActionByBlockHashIndex {
     type Key = ContextActionByBlockHashKey;
     type Value = ();
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByBlockHashKey::LEN_BLOCK_HASH));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
@@ -420,8 +420,8 @@ impl KeyValueSchema for ContextActionByContractIndex {
     type Key = ContextActionByContractIndexKey;
     type Value = ();
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(ContextActionByContractIndexKey::LEN_CONTRACT_ADDRESS));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         // cf_opts.set_comparator("reverse_id", ContextActionByContractIndexKey::reverse_id_comparator);
@@ -608,8 +608,8 @@ impl KeyValueSchema for ContextActionByTypeIndex {
     type Key = ContextActionByTypeIndexKey;
     type Value = ();
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(mem::size_of::<ContextActionType>()));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         // cf_opts.set_comparator("reverse_id", ContextActionByTypeIndexKey::reverse_id_comparator);
