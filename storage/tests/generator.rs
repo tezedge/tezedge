@@ -8,6 +8,7 @@ use failure::Error;
 
 use storage::persistent::{DbConfiguration, KeyValueSchema, open_kv};
 use storage::persistent::sequence::Sequences;
+use rocksdb::Cache;
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
@@ -19,7 +20,8 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
     }
 
     {
-        let db = open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default()).unwrap();
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let db = open_kv(path, vec![Sequences::descriptor(&cache)], &DbConfiguration::default()).unwrap();
         let sequences = Sequences::new(Arc::new(db), 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
@@ -43,7 +45,8 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
     }
 
     {
-        let db = open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default()).unwrap();
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let db = open_kv(path, vec![Sequences::descriptor(&cache)], &DbConfiguration::default()).unwrap();
         let sequences = Sequences::new(Arc::new(db), 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
@@ -69,7 +72,8 @@ fn generator_test_batch() -> Result<(), Error> {
     }
 
     {
-        let db = open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default())?;
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let db = open_kv(path, vec![Sequences::descriptor(&cache)], &DbConfiguration::default())?;
         let sequences = Sequences::new(Arc::new(db), 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
@@ -89,7 +93,8 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
     }
 
     {
-        let db = Arc::new(open_kv(path, vec![Sequences::descriptor()], &DbConfiguration::default())?);
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let db = Arc::new(open_kv(path, vec![Sequences::descriptor(&cache)], &DbConfiguration::default())?);
 
         // First run
         {

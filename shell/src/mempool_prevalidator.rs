@@ -205,10 +205,15 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
 ///     - kind of cache, contains operation data
 #[derive(Clone, Debug)]
 pub struct MempoolState {
+    /// Original tezos prevalidator has prevalidator.fitness which is used for set_head comparision
+    /// So, we keep it in-memory here
     prevalidator: Option<PrevalidatorWrapper>,
     predecessor: Option<BlockHash>,
 
+    /// Actual cumulated operation results
     validation_result: ValidateOperationResult,
+
+    /// In-memory store of actual operations
     operations: HashMap<OperationHash, Operation>,
     // TODO: pendings limit
     // TODO: pendings as vec and order
@@ -517,10 +522,10 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
 
 /// Notify other actors that mempool state changed
 fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &MempoolState) {
-    let protocol = if let Some(prevalidator) = &mempool_state.prevalidator {
-        Some(prevalidator.protocol.clone())
+    let (protocol, fitness) = if let Some(prevalidator) = &mempool_state.prevalidator {
+        (Some(prevalidator.protocol.clone()), prevalidator.context_fitness.clone())
     } else {
-        None
+        (None, None)
     };
 
     shell_channel.tell(
@@ -530,6 +535,7 @@ fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &Mempo
                 result: mempool_state.validation_result.clone(),
                 operations: mempool_state.operations.clone(),
                 protocol,
+                fitness,
                 pending: mempool_state.pending.clone(),
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),

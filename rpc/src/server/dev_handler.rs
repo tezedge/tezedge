@@ -12,7 +12,7 @@ pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServi
     warn!(env.log(), "Getting dev_blocks");
     let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), env.genesis_hash());
     let limit = query.get_usize("limit").unwrap_or(50);
-    let cycle_length = base_services::get_cycle_length_for_block(&from_block_id, env.persistent_storage().context_storage(), env.persistent_storage(), env.state(), env.log())?;
+    let cycle_length = base_services::get_cycle_length_for_block(&from_block_id, env.persistent_storage(), env.state(), env.log())?;
     let every_nth_level = match query.get_str("every_nth") {
         Some("cycle") => Some(cycle_length),
         Some("voting-period") => Some(cycle_length * 8),
@@ -48,12 +48,6 @@ pub async fn dev_action_cursor(_: Request<Body>, params: Params, query: Query, e
     }, env.log())
 }
 
-pub async fn dev_context(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    // TODO: Add parameter checks
-    let context_level = params.get_str("id").unwrap();
-    result_to_json_response(base_services::get_context(context_level, env.persistent_storage().context_storage()), env.log())
-}
-
 #[allow(dead_code)]
 pub async fn dev_stats_storage(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
@@ -72,4 +66,11 @@ pub async fn dev_stats_memory(_: Request<Body>, _: Params, _: Query, env: RpcSer
             empty()
         }
     }
+}
+
+pub async fn database_memstats(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        base_services::get_database_memstats(env.persistent_storage()),
+        env.log(),
+    )
 }

@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands};
+use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Cache};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
@@ -28,17 +28,18 @@ impl OperationsMetaStorage {
         Self { kv: persistent_storage.kv() }
     }
 
+    /// Initialize stored validation_passes metadata for block and check if is_complete
     #[inline]
-    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<(), StorageError> {
-        self.put(&block_header.hash.clone(),
-                 &Meta {
-                     validation_passes: block_header.header.validation_pass(),
-                     is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
-                     is_complete: block_header.header.validation_pass() == 0,
-                     level: block_header.header.level(),
-                     chain_id: chain_id.clone(),
-                 },
-        )
+    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId) -> Result<bool, StorageError> {
+        let meta = Meta {
+            validation_passes: block_header.header.validation_pass(),
+            is_validation_pass_present: vec![false as u8; block_header.header.validation_pass() as usize],
+            is_complete: block_header.header.validation_pass() == 0,
+            level: block_header.header.level(),
+            chain_id: chain_id.clone(),
+        };
+        self.put(&block_header.hash, &meta)
+            .and(Ok(meta.is_complete))
     }
 
     /// Stores operation validation_passes metadata and check if is_complete
@@ -98,8 +99,8 @@ impl KeyValueSchema for OperationsMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
 
-    fn descriptor() -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options();
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let mut cf_opts = default_table_options(cache);
         cf_opts.set_merge_operator("operations_meta_storage_merge_operator", merge_meta_value, None);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -328,7 +329,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() -> Result<(), Error> {
-        use rocksdb::{Options, DB};
+        use rocksdb::{Options, DB, Cache};
 
         let path = "__opmeta_storage_mergetest";
         if Path::new(path).exists() {
@@ -338,8 +339,9 @@ mod tests {
         {
             let t = true as u8;
             let f = false as u8;
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
-            let db = open_kv(path, vec![OperationsMetaStorage::descriptor()], &DbConfiguration::default())?;
+            let db = open_kv(path, vec![OperationsMetaStorage::descriptor(&cache)], &DbConfiguration::default())?;
             let k = vec![3, 1, 3, 3, 7];
             let mut v = Meta {
                 is_complete: false,

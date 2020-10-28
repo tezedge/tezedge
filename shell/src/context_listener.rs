@@ -14,7 +14,7 @@ use slog::{crit, debug, Logger, warn, info};
 
 use crypto::hash::HashType;
 use storage::{BlockStorage, ContextActionStorage};
-use storage::context::{ContextApi, ContextDiff, TezedgeContext};
+use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
@@ -45,14 +45,13 @@ impl ContextListener {
         log: Logger,
         store_context_action: bool
     ) -> Result<ContextListenerRef, CreateError> {
-        let context_storage = persistent_storage.context_storage();
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
             let listener_run = listener_run.clone();
             let persistent_storage = persistent_storage.clone();
 
             thread::spawn(move || -> Result<(), Error> {
-                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), context_storage));
+                let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle()));
                 let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
@@ -125,6 +124,7 @@ fn store_action(storage: &mut ContextActionStorage, should_store: bool, action: 
         | ContextAction::RemoveRecursively { block_hash: Some(block_hash), .. }
         | ContextAction::Mem { block_hash: Some(block_hash), .. }
         | ContextAction::DirMem { block_hash: Some(block_hash), .. }
+        | ContextAction::Commit { block_hash: Some(block_hash), .. }
         | ContextAction::Get { block_hash: Some(block_hash), .. }
         | ContextAction::Fold { block_hash: Some(block_hash), .. } => {
             storage.put_action(&block_hash.clone(), action)?;
@@ -148,8 +148,6 @@ fn listen_protocol_events(
 
     let mut event_count = 0;
 
-    let mut context_diff: ContextDiff = context.init_from_start();
-
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
             Ok(ContextAction::Shutdown) => break,
@@ -159,7 +157,7 @@ fn listen_protocol_events(
                         log,
                         "Received protocol event";
                         "count" => event_count,
-                        "context_hash" => match &context_diff.predecessor_index.context_hash {
+                        "context_hash" => match &context.get_last_commit_hash() {
                             None => "-none-".to_string(),
                             Some(c) => HashType::ContextHash.bytes_to_string(c)
                         }
@@ -170,25 +168,27 @@ fn listen_protocol_events(
                 match &msg {
                     ContextAction::Set { key, value, context_hash, ignored, .. } =>
                         if !ignored {
-                            context_diff.set(context_hash, key, value)?;
+                            context.set(context_hash, key, value)?;
                         }
                     ContextAction::Copy { to_key: key, from_key, context_hash, ignored, .. } =>
                         if !ignored {
-                            context.copy_to_diff(context_hash, from_key, key, &mut context_diff)?;
+                            context.copy_to_diff(context_hash, from_key, key)?;
                         }
                     ContextAction::Delete { key, context_hash, ignored, .. } =>
                         if !ignored {
-                            context.delete_to_diff(context_hash, key, &mut context_diff)?;
+                            context.delete_to_diff(context_hash, key)?;
                         }
                     ContextAction::RemoveRecursively { key, context_hash, ignored, .. } =>
                         if !ignored {
-                            context.remove_recursively_to_diff(context_hash, key, &mut context_diff)?;
+                            context.remove_recursively_to_diff(context_hash, key)?;
                         }
-                    ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash), .. } =>
-                        context.commit(block_hash, parent_context_hash, new_context_hash, &context_diff)?,
+                    ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash),
+                                            author, message, date, .. } =>
+                        context.commit(block_hash, parent_context_hash, new_context_hash, author.to_string(),
+                                       message.to_string(), *date)?,
                     ContextAction::Checkout { context_hash, .. } => {
                         event_count = 0;
-                        context_diff = context.checkout(context_hash)?;
+                        context.checkout(context_hash)?;
                     }
                     _ => (),
                 };

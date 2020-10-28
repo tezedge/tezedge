@@ -12,6 +12,7 @@ use ocaml_interop::OCamlError;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
+use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
 
 pub type RustBytes = Vec<u8>;
@@ -96,13 +97,18 @@ pub struct ApplyBlockResponse {
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
+    pub context_fitness: Option<Fitness>,
 }
 
 impl fmt::Debug for PrevalidatorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}]",
+        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}, context_fitness: {}]",
                HashType::ChainId.bytes_to_string(&self.chain_id),
-               HashType::ProtocolHash.bytes_to_string(&self.protocol)
+               HashType::ProtocolHash.bytes_to_string(&self.protocol),
+               match &self.context_fitness {
+                   Some(fitness) => display_fitness(fitness),
+                   None => "-none-".to_string(),
+               },
         )
     }
 }

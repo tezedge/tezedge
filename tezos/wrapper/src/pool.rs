@@ -13,8 +13,6 @@ use ipc::IpcError;
 
 use crate::service::{ProtocolController, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint, ProtocolServiceError};
 
-static CONNECTION_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
 /// Possible errors for storage
 #[derive(Debug)]
 pub enum PoolError {
@@ -73,6 +71,8 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
 /// - starts IPC accept
 pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
     pool_name: String,
+    pool_name_counter: AtomicUsize,
+
     pub endpoint_cfg: ProtocolEndpointConfiguration,
     pub log: Logger,
     _phantom: PhantomData<Runner>,
@@ -82,6 +82,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
     pub fn new(pool_name: String, endpoint_cfg: ProtocolEndpointConfiguration, log: Logger) -> Self {
         Self {
             pool_name,
+            pool_name_counter: AtomicUsize::new(1),
             endpoint_cfg,
             log,
             _phantom: PhantomData,
@@ -89,7 +90,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
     }
 
     pub fn create_connection(&self) -> Result<ProtocolRunnerConnection<Runner>, PoolError> {
-        let endpoint_name = format!("{}_{:?}", &self.pool_name, CONNECTION_COUNTER.fetch_add(1, Ordering::SeqCst));
+        let endpoint_name = format!("{}_{:?}", &self.pool_name, self.pool_name_counter.fetch_add(1, Ordering::SeqCst));
 
         // crate protocol runner endpoint
         let protocol_endpoint = ProtocolRunnerEndpoint::<Runner>::new(

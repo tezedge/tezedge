@@ -8,6 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use riker::actors::*;
+use rocksdb::Cache;
 use slog::{crit, debug, Drain, error, info, Logger};
 
 use logging::detailed_json;
@@ -22,9 +23,9 @@ use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, ChainMetaStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
+use storage::merkle_storage::MerkleStorage;
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
-use storage::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -63,8 +64,8 @@ macro_rules! create_terminal_logger {
 macro_rules! create_file_logger {
     ($type:expr, $path:expr) => {{
         let appender = FileAppenderBuilder::new($path)
-            .rotate_size(10_485_760) // 10 MB
-            .rotate_keep(4)
+            .rotate_size(10_485_760 * 10) // 100 MB
+            .rotate_keep(2)
             .rotate_compress(true)
             .build();
 
@@ -98,10 +99,43 @@ fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runti
 
 /// Create pool for ffi protocol runner connections (used just for readonly context)
 /// Connections are created on demand, but depends on [TezosApiConnectionPoolConfiguration][min_connections]
-fn create_tezos_readonly_api_pool(env: &crate::configuration::Environment, tezos_env: TezosEnvironmentConfiguration, log: Logger) -> TezosApiConnectionPool {
+fn create_tezos_readonly_api_pool(
+    pool_name: &str,
+    pool_cfg: TezosApiConnectionPoolConfiguration,
+    env: &crate::configuration::Environment,
+    tezos_env: TezosEnvironmentConfiguration,
+    log: Logger) -> TezosApiConnectionPool {
     TezosApiConnectionPool::new_with_readonly_context(
-        String::from("tezos_readonly_api_pool"),
-        env.ffi.pool.clone(),
+        String::from(pool_name),
+        pool_cfg,
+        ProtocolEndpointConfiguration::new(
+            TezosRuntimeConfiguration {
+                log_enabled: env.logging.ocaml_log_enabled,
+                no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
+                debug_mode: false,
+            },
+            tezos_env,
+            env.enable_testchain,
+            &env.storage.tezos_data_dir,
+            &env.ffi.protocol_runner,
+            env.logging.level,
+            false,
+        ),
+        log,
+    )
+}
+
+/// Create pool for ffi protocol runner connections (used just for ffi calls which does not need context)
+/// Connections are created on demand, but depends on [TezosApiConnectionPoolConfiguration][min_connections]
+fn create_tezos_without_context_api_pool(
+    pool_name: &str,
+    pool_cfg: TezosApiConnectionPoolConfiguration,
+    env: &crate::configuration::Environment,
+    tezos_env: TezosEnvironmentConfiguration,
+    log: Logger) -> TezosApiConnectionPool {
+    TezosApiConnectionPool::new_without_context(
+        String::from(pool_name),
+        pool_cfg,
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
@@ -123,13 +157,16 @@ fn create_tezos_readonly_api_pool(env: &crate::configuration::Environment, tezos
 /// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
 /// This one connection is created at startup of the pool (min_connections=1).
 #[allow(dead_code)]
-fn create_tezos_writeable_api_pool(env: &crate::configuration::Environment, tezos_env: TezosEnvironmentConfiguration, log: Logger) -> TezosApiConnectionPool {
+fn create_tezos_writeable_api_pool(
+    env: &crate::configuration::Environment,
+    tezos_env: TezosEnvironmentConfiguration,
+    log: Logger) -> TezosApiConnectionPool {
     TezosApiConnectionPool::new_without_context(
-        String::from("tezos_writeable_api_pool"),
+        String::from("tezos_write_api_pool"),
         TezosApiConnectionPoolConfiguration {
-            idle_timeout: env.ffi.pool.idle_timeout,
-            max_lifetime: env.ffi.pool.max_lifetime,
-            connection_timeout: env.ffi.pool.connection_timeout,
+            idle_timeout: Duration::from_secs(1800),
+            max_lifetime: Duration::from_secs(21600),
+            connection_timeout: Duration::from_secs(60),
             min_connections: 1,
             max_connections: 1,
         },
@@ -169,7 +206,27 @@ fn block_on_actors(
     );
 
     // create pool for ffi protocol runner connections (used just for readonly context)
-    let tezos_readonly_api = Arc::new(create_tezos_readonly_api_pool(&env, tezos_env.clone(), log.clone()));
+    let tezos_readonly_api_pool = Arc::new(create_tezos_readonly_api_pool(
+        "tezos_readonly_api_pool",
+        env.ffi.tezos_readonly_api_pool.clone(),
+        &env,
+        tezos_env.clone(),
+        log.clone(),
+    ));
+    let tezos_readonly_prevalidation_api_pool = Arc::new(create_tezos_readonly_api_pool(
+        "tezos_readonly_prevalidation_api",
+        env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
+        &env,
+        tezos_env.clone(),
+        log.clone(),
+    ));
+    let tezos_without_context_api_pool = Arc::new(create_tezos_without_context_api_pool(
+        "tezos_without_context_api_pool",
+        env.ffi.tezos_without_context_api_pool.clone(),
+        &env,
+        tezos_env.clone(),
+        log.clone(),
+    ));
 
     // tezos protocol runner endpoint for applying blocks to chain
     let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
@@ -214,15 +271,23 @@ fn block_on_actors(
         .expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &env.p2p.peer_threshold)
-        .expect("Failed to create chain manager");
+    let _ = ChainManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        shell_channel.clone(),
+        &persistent_storage,
+        tezos_readonly_prevalidation_api_pool.clone(),
+        &init_storage_data.chain_id,
+        is_sandbox,
+        &env.p2p.peer_threshold,
+    ).expect("Failed to create chain manager");
 
     let _ = MempoolPrevalidator::actor(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
         &init_storage_data,
-        tezos_readonly_api.clone(),
+        tezos_readonly_api_pool.clone(),
         log.clone(),
     ).expect("Failed to create chain feeder");
 
@@ -246,7 +311,9 @@ fn block_on_actors(
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,
-        tezos_readonly_api.clone(),
+        tezos_readonly_api_pool.clone(),
+        tezos_readonly_prevalidation_api_pool.clone(),
+        tezos_without_context_api_pool.clone(),
         tezos_env.clone(),
         network_version,
         &init_storage_data,
@@ -281,8 +348,14 @@ fn block_on_actors(
         thread::sleep(Duration::from_secs(1));
 
         info!(log, "Shutting down protocol runner pools");
-        drop(tezos_readonly_api);
+        drop(tezos_readonly_api_pool);
+        drop(tezos_readonly_prevalidation_api_pool);
+        drop(tezos_without_context_api_pool);
         debug!(log, "Shutdown tezos_readonly_api complete");
+
+        info!(log, "Flushing databases");
+        drop(persistent_storage);
+        info!(log, "Databases flushed");
 
         info!(log, "Shutdown complete");
     });
@@ -319,25 +392,28 @@ fn main() {
 
     let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
 
+    // create common RocksDB block cache to be shared among column families
+    // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
+    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
+
     let schemas = vec![
-        block_storage::BlockPrimaryIndex::descriptor(),
-        block_storage::BlockByLevelIndex::descriptor(),
-        block_storage::BlockByContextHashIndex::descriptor(),
-        BlockMetaStorage::descriptor(),
-        OperationsStorage::descriptor(),
-        OperationsMetaStorage::descriptor(),
-        context_action_storage::ContextActionByBlockHashIndex::descriptor(),
-        context_action_storage::ContextActionByContractIndex::descriptor(),
-        context_action_storage::ContextActionByTypeIndex::descriptor(),
-        ContextActionStorage::descriptor(),
-        SystemStorage::descriptor(),
-        DatabaseBackedSkipList::descriptor(),
-        Lane::descriptor(),
-        ListValue::descriptor(),
-        Sequences::descriptor(),
-        MempoolStorage::descriptor(),
-        ChainMetaStorage::descriptor(),
+        block_storage::BlockPrimaryIndex::descriptor(&cache),
+        block_storage::BlockByLevelIndex::descriptor(&cache),
+        block_storage::BlockByContextHashIndex::descriptor(&cache),
+        BlockMetaStorage::descriptor(&cache),
+        OperationsStorage::descriptor(&cache),
+        OperationsMetaStorage::descriptor(&cache),
+        context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+        context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+        context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+        ContextActionStorage::descriptor(&cache),
+        MerkleStorage::descriptor(&cache),
+        SystemStorage::descriptor(&cache),
+        Sequences::descriptor(&cache),
+        MempoolStorage::descriptor(&cache),
+        ChainMetaStorage::descriptor(&cache),
     ];
+
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
         Err(e) => shutdown_and_exit!(error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.db_path; "reason" => e), actor_system)

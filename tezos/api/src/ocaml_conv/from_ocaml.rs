@@ -57,6 +57,7 @@ impl_from_ocaml_record! {
     PrevalidatorWrapper {
         chain_id: OCamlBytes,
         protocol: OCamlProtocolHash,
+        context_fitness: Option<OCamlList<OCamlBytes>>
     }
 }
 

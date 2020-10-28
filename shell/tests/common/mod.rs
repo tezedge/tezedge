@@ -77,7 +77,7 @@ pub mod infra {
     use slog::{info, Level, Logger, warn};
     use tokio::runtime::Runtime;
 
-    use crypto::hash::{BlockHash, HashType};
+    use crypto::hash::{BlockHash, ContextHash, HashType};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
@@ -86,8 +86,9 @@ pub mod infra {
     use shell::peer_manager::{P2p, PeerManager};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::{ChainMetaStorage, resolve_storage_init_chain_data};
+    use storage::{BlockStorage, ChainMetaStorage, resolve_storage_init_chain_data};
     use storage::chain_meta_storage::ChainMetaStorageReader;
+    use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
     use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
@@ -112,7 +113,8 @@ pub mod infra {
 
     impl NodeInfrastructure {
         pub fn start(
-            test_storage_path: &str,
+            tmp_storage: TmpStorage,
+            context_db_path: &str,
             name: &str,
             tezos_env: &TezosEnvironment,
             patch_context: Option<PatchContext>,
@@ -126,14 +128,15 @@ pub mod infra {
             let p2p_threshold = PeerConnectionThreshold::new(1, 1);
 
             // storage
-            let storage_db_path = test_storage_path;
-            let context_db_path = common::prepare_empty_dir(&format!("{}_context", storage_db_path));
-            let tmp_storage = TmpStorage::create(common::prepare_empty_dir(storage_db_path))?;
             let persistent_storage = tmp_storage.storage();
+            let context_db_path = if !PathBuf::from(context_db_path).exists() {
+                common::prepare_empty_dir(context_db_path)
+            } else {
+                context_db_path.to_string()
+            };
 
-            let storage_db_path = PathBuf::from(storage_db_path);
             let context_db_path = PathBuf::from(context_db_path);
-            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &storage_db_path, &context_db_path, &patch_context, &log)
+            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &tmp_storage.path(), &context_db_path, &patch_context, &log)
                 .expect("Failed to resolve init storage chain data");
 
             // apply block protocol runner endpoint
@@ -203,7 +206,7 @@ pub mod infra {
             let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
             let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
             let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-            let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
+            let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, tezos_readonly_api.clone(), &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
             let _ = MempoolPrevalidator::actor(
                 &actor_system,
                 shell_channel.clone(),
@@ -261,7 +264,7 @@ pub mod infra {
             warn!(self.log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
         }
 
-        pub fn wait_for_new_current_head(&self, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        pub fn wait_for_new_current_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
             let tested_head = Some(tested_head).map(|th| HashType::BlockHash.bytes_to_string(&th));
 
@@ -275,7 +278,7 @@ pub mod infra {
                     .map(|ch| HashType::BlockHash.bytes_to_string(&ch));
 
                 if current_head.eq(&tested_head) {
-                    info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head);
+                    info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head, "marker" => marker);
                     break Ok(());
                 }
 
@@ -283,7 +286,36 @@ pub mod infra {
                 if start.elapsed()?.le(&timeout) {
                     thread::sleep(delay);
                 } else {
-                    break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!", tested_head, timeout, delay));
+                    break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
+                }
+            };
+            result
+        }
+
+        /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
+        pub fn wait_for_context(&self, marker: &str, context_hash: ContextHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+
+            let context = TezedgeContext::new(
+                BlockStorage::new(self.tmp_storage.storage()),
+                self.tmp_storage.storage().merkle(),
+            );
+
+            let protocol_key = vec!["protocol".to_string()];
+
+            // try checkout context
+            let result = loop {
+                // if success, than ok
+                if let Ok(Some(_)) = context.get_key_from_history(&context_hash, &protocol_key) {
+                    info!(self.log, "[NODE] Expected context found"; "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash), "marker" => marker);
+                    break Ok(());
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    thread::sleep(delay);
+                } else {
+                    break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", HashType::ContextHash.bytes_to_string(&context_hash), timeout, delay, marker));
                 }
             };
             result

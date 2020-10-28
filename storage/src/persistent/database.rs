@@ -4,10 +4,19 @@
 use std::marker::PhantomData;
 
 use failure::Fail;
-use rocksdb::{DB, DBIterator, Error, WriteOptions};
+use rocksdb::{DB, DBIterator, Error, WriteOptions, WriteBatch};
+use serde::Serialize;
 
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::KeyValueSchema;
+
+#[derive(Serialize, Debug, Clone)]
+pub struct RocksDBStats {
+    mem_table_total: u64,
+    mem_table_unflushed: u64,
+    mem_table_readers_total: u64,
+    cache_total: u64,
+}
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -90,6 +99,22 @@ pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     /// # Arguments
     /// * `key` - Key (specified by schema), to be checked for existence
     fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
+
+    /// Insert new key value pair into WriteBatch.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    /// * `value` - Value to be inserted associated with given key, specified by schema
+    fn put_batch(&self, batch: &mut WriteBatch, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
+
+    /// Write batch into DB atomically
+    ///
+    /// # Arguments
+    /// * `batch` - WriteBatch containing all batched writes to be written to DB
+    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError>;
+
+    /// Get memory usage statistics from DB
+    fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError>;
 }
 
 impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
@@ -162,6 +187,31 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
 
         let val = self.get_pinned_cf(cf, &key)?;
         Ok(val.is_some())
+    }
+
+    fn put_batch(&self, batch: &mut WriteBatch, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
+        let key = key.encode()?;
+        let value = value.encode()?;
+        let cf = self.cf_handle(S::name())
+            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
+
+        batch.put_cf(cf, &key, &value);
+
+        Ok(())
+    }
+
+    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
+        self.write_opt(batch, &default_write_options())?;
+        Ok(())
+    }
+
+    fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError> {
+        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
+
+        Ok(RocksDBStats{ mem_table_total: memory_usage_stats.mem_table_total,
+                      mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
+                      mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
+                      cache_total: memory_usage_stats.cache_total })
     }
 }
 

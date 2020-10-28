@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use failure::Fail;
+use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
@@ -23,6 +24,7 @@ pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, 
 pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage};
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
+use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
@@ -31,6 +33,7 @@ use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
 
 pub mod persistent;
+pub mod merkle_storage;
 pub mod operations_storage;
 pub mod operations_meta_storage;
 pub mod block_storage;
@@ -251,12 +254,12 @@ pub fn store_commit_genesis_result(
         Some(genesis) => {
             chain_meta_storage.set_current_head(
                 &chain_id,
-                Head::new(genesis.hash.clone(), genesis.header.level()),
+                Head::new(genesis.hash.clone(), genesis.header.level(), genesis.header.fitness().clone()),
             )?;
 
             Ok(block_json_data)
         }
-        None => return Err(StorageError::MissingKey)
+        None => Err(StorageError::MissingKey)
     }
 }
 
@@ -283,7 +286,7 @@ pub fn initialize_storage_with_genesis_block(
         hash: init_storage_data.genesis_block_header_hash.clone(),
         header: Arc::new(tezos_env.genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?),
     };
-    block_storage.put_block_header(&genesis_with_hash)?;
+    let _ = block_storage.put_block_header(&genesis_with_hash)?;
 
     // store additional data
     let genesis_additional_data = tezos_env.genesis_additional_data();
@@ -379,8 +382,7 @@ pub mod tests_common {
         pub fn create_to_out_dir(dir_name: &str) -> Result<Self, Error> {
             let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined - check build.rs");
             let path = Path::new(out_dir.as_str())
-                .join(Path::new(dir_name))
-                .to_path_buf();
+                .join(Path::new(dir_name));
             Self::create(path)
         }
 
@@ -393,24 +395,28 @@ pub mod tests_common {
 
             let cfg = DbConfiguration::default();
 
+            // create common RocksDB block cache to be shared among column families
+            let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
+
             let kv = open_kv(&path, vec![
-                block_storage::BlockPrimaryIndex::descriptor(),
-                block_storage::BlockByLevelIndex::descriptor(),
-                block_storage::BlockByContextHashIndex::descriptor(),
-                BlockMetaStorage::descriptor(),
-                OperationsStorage::descriptor(),
-                OperationsMetaStorage::descriptor(),
-                context_action_storage::ContextActionByBlockHashIndex::descriptor(),
-                context_action_storage::ContextActionByContractIndex::descriptor(),
-                context_action_storage::ContextActionByTypeIndex::descriptor(),
-                SystemStorage::descriptor(),
-                Sequences::descriptor(),
-                DatabaseBackedSkipList::descriptor(),
-                Lane::descriptor(),
-                ListValue::descriptor(),
-                MempoolStorage::descriptor(),
-                ContextActionStorage::descriptor(),
-                ChainMetaStorage::descriptor(),
+                block_storage::BlockPrimaryIndex::descriptor(&cache),
+                block_storage::BlockByLevelIndex::descriptor(&cache),
+                block_storage::BlockByContextHashIndex::descriptor(&cache),
+                BlockMetaStorage::descriptor(&cache),
+                OperationsStorage::descriptor(&cache),
+                OperationsMetaStorage::descriptor(&cache),
+                context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+                context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+                context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+                MerkleStorage::descriptor(&cache),
+                SystemStorage::descriptor(&cache),
+                Sequences::descriptor(&cache),
+                DatabaseBackedSkipList::descriptor(&cache),
+                Lane::descriptor(&cache),
+                ListValue::descriptor(&cache),
+                MempoolStorage::descriptor(&cache),
+                ContextActionStorage::descriptor(&cache),
+                ChainMetaStorage::descriptor(&cache),
             ], &cfg)?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),
@@ -424,6 +430,10 @@ pub mod tests_common {
 
         pub fn storage(&self) -> &PersistentStorage {
             &self.persistent_storage
+        }
+
+        pub fn path(&self) -> &PathBuf {
+            &self.path
         }
     }
 

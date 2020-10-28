@@ -7,16 +7,16 @@
 
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 use failure::{Error, Fail};
 use riker::actors::*;
 use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, HashType};
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -26,21 +26,25 @@ use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceEr
 use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
 
-/// This command triggers feeding of completed blocks to the tezos protocol
-#[derive(Clone, Debug)]
-pub struct FeedChainToProtocol;
-
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(FeedChainToProtocol, ShellChannelMsg)]
+#[actor(ShellChannelMsg)]
 pub struct ChainFeeder {
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
+
+    // Internal queue sender
+    block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
     /// Thread where blocks are applied will run until this is set to `false`
     block_applier_run: Arc<AtomicBool>,
     /// Block applier thread
     block_applier_thread: SharedJoinHandle,
+}
+
+enum Event {
+    ApplyBlock(BlockHash, Arc<ApplyBlockRequest>),
+    ShuttingDown,
 }
 
 /// Reference to [chain feeder](ChainFeeder) actor
@@ -63,9 +67,12 @@ impl ChainFeeder {
         tezos_env: &TezosEnvironmentConfiguration,
         ipc_server: IpcCmdServer,
         log: Logger) -> Result<ChainFeederRef, CreateError> {
-        let apply_block_run = Arc::new(AtomicBool::new(true));
+
+        // spawn thread which processes event
+        let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
+        let block_applier_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
-            let apply_block_run = apply_block_run.clone();
+            let apply_block_run = block_applier_run.clone();
             let shell_channel = shell_channel.clone();
             let persistent_storage = persistent_storage.clone();
             let init_storage_data = init_storage_data.clone();
@@ -75,7 +82,6 @@ impl ChainFeeder {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
-                let operations_storage = OperationsStorage::new(&persistent_storage);
                 let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
                 let mut ipc_server = ipc_server;
 
@@ -90,9 +96,9 @@ impl ChainFeeder {
                                 &block_storage,
                                 &block_meta_storage,
                                 &chain_meta_storage,
-                                &operations_storage,
                                 &operations_meta_storage,
                                 protocol_controller,
+                                &mut block_applier_event_receiver,
                                 &log,
                             ) {
                                 Ok(()) => debug!(log, "Feed chain to protocol finished"),
@@ -112,7 +118,7 @@ impl ChainFeeder {
 
         let myself = sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
-            Props::new_args((shell_channel, apply_block_run, Arc::new(Mutex::new(Some(block_applier_thread))))),
+            Props::new_args((shell_channel, block_applier_run, Arc::new(Mutex::new(Some(block_applier_thread))), Arc::new(Mutex::new(block_applier_event_sender)))),
         )?;
 
         Ok(myself)
@@ -126,13 +132,19 @@ impl ChainFeeder {
 
     fn process_shell_channel_message(&mut self, _ctx: &Context<ChainFeederMsg>, msg: ShellChannelMsg) -> Result<(), Error> {
         match msg {
-            ShellChannelMsg::ApplyBlock(_) => {
-                if let Some(join_handle) = self.block_applier_thread.lock().unwrap().as_ref() {
-                    join_handle.thread().unpark();
-                }
+            ShellChannelMsg::ApplyBlock(block_hash, apply_block_request) => {
+                self.block_applier_event_sender.lock().unwrap().send(
+                    Event::ApplyBlock(
+                        block_hash,
+                        apply_block_request,
+                    )
+                )?;
             }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.block_applier_run.store(false, Ordering::Release);
+                self.block_applier_event_sender.lock().unwrap().send(
+                    Event::ShuttingDown
+                )?;
             }
             _ => ()
         }
@@ -141,10 +153,11 @@ impl ChainFeeder {
     }
 }
 
-impl ActorFactoryArgs<(ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)> for ChainFeeder {
-    fn create_args((shell_channel, block_applier_run, block_applier_thread): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle)) -> Self {
+impl ActorFactoryArgs<(ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle, Arc<Mutex<QueueSender<Event>>>)> for ChainFeeder {
+    fn create_args((shell_channel, block_applier_run, block_applier_thread, block_applier_event_sender): (ShellChannelRef, Arc<AtomicBool>, SharedJoinHandle, Arc<Mutex<QueueSender<Event>>>)) -> Self {
         ChainFeeder {
             shell_channel,
+            block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
         }
@@ -156,13 +169,6 @@ impl Actor for ChainFeeder {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
-
-        ctx.schedule::<Self::Msg, _>(
-            Duration::from_secs(4),
-            Duration::from_secs(8),
-            ctx.myself(),
-            None,
-            FeedChainToProtocol.into());
     }
 
     fn post_stop(&mut self) {
@@ -188,16 +194,6 @@ impl Receive<ShellChannelMsg> for ChainFeeder {
         match self.process_shell_channel_message(ctx, msg) {
             Ok(_) => (),
             Err(e) => warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e)),
-        }
-    }
-}
-
-impl Receive<FeedChainToProtocol> for ChainFeeder {
-    type Msg = ChainFeederMsg;
-
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, _msg: FeedChainToProtocol, _sender: Sender) {
-        if let Some(join_handle) = self.block_applier_thread.lock().unwrap().as_ref() {
-            join_handle.thread().unpark();
         }
     }
 }
@@ -237,9 +233,9 @@ fn feed_chain_to_protocol(
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
-    operations_storage: &OperationsStorage,
     operations_meta_storage: &OperationsMetaStorage,
     protocol_controller: ProtocolController,
+    block_applier_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), FeedChainError> {
     let block_hash_encoding = HashType::BlockHash;
@@ -260,111 +256,79 @@ fn feed_chain_to_protocol(
 
     let chain_id = &init_storage_data.chain_id;
 
-    // now resolve where to start apply next blocks (at least genesis should be there)
-    let mut current_head_hash: BlockHash = match chain_meta_storage.get_current_head(chain_id)? {
-        Some(block) => block.into(),
-        None => {
-            // this should not happen here, we applied at least genesis before
-            return Err(FeedChainError::UnknownCurrentHeadError);
-        }
+    // now just check current head (at least genesis should be there)
+    if let None = chain_meta_storage.get_current_head(chain_id)? {
+        // this should not happen here, we applied at least genesis before
+        return Err(FeedChainError::UnknownCurrentHeadError);
     };
 
     // now we can start applying block
     while apply_block_run.load(Ordering::Acquire) {
-        match block_meta_storage.get(&current_head_hash)? {
-            Some(mut current_head_meta) => {
-                if current_head_meta.is_applied() {
-                    // Current head is already applied, so we should move to successor
-                    // or in case no successor is available do nothing.
-                    match current_head_meta.successor() {
-                        Some(successor_hash) => {
-                            current_head_hash = successor_hash.clone();
-                            continue;
-                        }
-                        None => ( /* successor is not yet available, we do nothing for now */ )
-                    }
-                } else {
-                    // Current head is not applied, so we should apply it now.
-                    // But first let's fetch current head data from block storage..
-                    match block_storage.get(&current_head_hash)? {
-                        Some(current_head) => {
-                            // Good, we have block data available, let's' look is we have all operations
-                            // available. If yes we will apply them. If not, we will do nothing.
-                            if operations_meta_storage.is_complete(&current_head.hash)? {
-                                debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash));
-                                let operations = operations_storage.get_operations(&current_head_hash)?;
+        // let's handle event, if any
+        if let Ok(event) = block_applier_event_receiver.recv() {
+            match event {
+                Event::ApplyBlock(block_hash, request) => {
+                    debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&block_hash));
 
-                                // apply block and it's operations
-                                let (predecessor, predecessor_additional_data) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
-                                    None => {
-                                        warn!(log, "No data was found in database for the predecessor, so we try to apply it first"; "predecessor_block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.header.predecessor()));
-                                        current_head_hash = current_head.header.predecessor().clone();
-                                        continue;
-                                    }
-                                    Some(predecesor_data) => predecesor_data
-                                };
-
-                                let apply_block_result = protocol_controller.apply_block(
-                                    ApplyBlockRequest {
-                                        chain_id: chain_id.clone(),
-                                        block_header: (&*current_head.header).clone(),
-                                        pred_header: (&*predecessor.header).clone(),
-                                        operations: ApplyBlockRequest::convert_operations(operations),
-                                        max_operations_ttl: predecessor_additional_data.max_operations_ttl() as i32,
-                                    }
-                                )?;
-                                debug!(
-                                    log,
-                                    "Block was applied";
-                                    "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head.hash),
-                                    "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
-                                    "validation_result_message" => &apply_block_result.validation_result_message
-                                );
-
-
-                                // store result
-                                let (block_json_data, _) = store_applied_block_result(
-                                    block_storage,
-                                    block_meta_storage,
-                                    &current_head.hash,
-                                    apply_block_result,
-                                    &mut current_head_meta,
-                                )?;
-
-                                // notify listeners
-                                if apply_block_run.load(Ordering::Acquire) {
-                                    // notify others that the block successfully applied
-                                    shell_channel.tell(
-                                        Publish {
-                                            msg: BlockApplied::new(current_head, block_json_data).into(),
-                                            topic: ShellChannelTopic::ShellEvents.into(),
-                                        }, None);
-                                }
-
-                                // Current head is already applied, so we should move to successor
-                                // or in case no successor is available do nothing.
-                                match current_head_meta.successor() {
-                                    Some(successor_hash) => {
-                                        current_head_hash = successor_hash.clone();
-                                        continue;
-                                    }
-                                    None => ( /* successor is not yet available, we do nothing for now */ )
-                                }
-                            } else {
-                                // we don't have all operations available, do nothing
+                    // check if block is already applied (not necessray here)
+                    match block_meta_storage.get(&block_hash)? {
+                        Some(meta) => {
+                            if meta.is_applied() {
+                                // block already applied - ok, doing nothing
+                                debug!(log, "Block is already applied (feeder)"; "block" => HashType::BlockHash.bytes_to_string(&block_hash));
+                                continue;
                             }
                         }
-                        None => ( /* it's possible that data was not yet written do the storage, so don't panic! */ )
+                        None => {
+                            warn!(log, "Block metadata not found (feeder)"; "block" => HashType::BlockHash.bytes_to_string(&block_hash));
+                            continue;
+                        }
+                    }
+
+                    // try apply block
+                    match protocol_controller.apply_block((&*request).clone()) {
+                        Ok(apply_block_result) => {
+                            debug!(log, "Block was applied";
+                                "block_header_hash" => block_hash_encoding.bytes_to_string(&block_hash),
+                                "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
+                                "validation_result_message" => &apply_block_result.validation_result_message);
+
+                            // Lets mark header as applied and store result
+                            let mut current_head_meta = block_meta_storage.get(&block_hash)?.unwrap();
+
+                            // store success result
+                            let (block_json_data, _) = store_applied_block_result(
+                                block_storage,
+                                block_meta_storage,
+                                &block_hash,
+                                apply_block_result,
+                                &mut current_head_meta,
+                            )?;
+
+                            // notify other actors/listeners
+                            if apply_block_run.load(Ordering::Acquire) {
+                                let current_head = block_storage.get(&block_hash)?.unwrap();
+
+                                // notify others that the block successfully applied
+                                shell_channel.tell(
+                                    Publish {
+                                        msg: BlockApplied::new(current_head, block_json_data).into(),
+                                        topic: ShellChannelTopic::ShellEvents.into(),
+                                    }, None);
+                            }
+                        }
+                        Err(err) => {
+                            warn!(log, "Failed to apply block";
+                                       "block" => HashType::BlockHash.bytes_to_string(&block_hash),
+                                       "reason" => format!("{:?}", err));
+                        }
                     }
                 }
+                Event::ShuttingDown => {
+                    apply_block_run.store(false, Ordering::Release);
+                }
             }
-            None => warn!(log, "No meta info record was found in database for the current head"; "block_header_hash" => block_hash_encoding.bytes_to_string(&current_head_hash))
         }
-
-        // This should be hit only in case that the current branch is applied
-        // and no successor was available to continue the apply cycle. In that case
-        // this thread will be stopped and will wait until it's waked again.
-        thread::park();
     }
 
     Ok(())

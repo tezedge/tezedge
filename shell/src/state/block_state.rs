@@ -1,22 +1,27 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use core::fmt;
 use std::cmp;
 use std::cmp::Ordering;
+use std::sync::{Arc, RwLock};
 
+use failure::_core::fmt::Formatter;
 use rand::prelude::ThreadRng;
 use rand::Rng;
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError};
+use storage::block_meta_storage::Meta;
 use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
-use tezos_messages::p2p::encoding::block_header::Level;
-use tezos_messages::p2p::encoding::current_branch::HISTORY_MAX_SIZE;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
 
 use crate::collections::{BlockData, UniqueBlockData};
-use crate::shell_channel::BlockApplied;
+use crate::shell_channel::{BlockApplied, CurrentMempoolState};
+use crate::validation;
 
 /// Holds state of all known blocks
 pub struct BlockchainState {
@@ -47,22 +52,138 @@ impl BlockchainState {
         }
     }
 
+    /// Validate if we can accept branch
+    pub fn can_accept_branch(&self, branch: &CurrentBranchMessage, current_head: &Option<Head>) -> bool {
+        if branch.current_branch().current_head().level() <= 0 {
+            return false;
+        }
+
+        if let Some(current_head) = current_head.as_ref() {
+            // we can accept branch if increases fitness
+            if validation::is_fitness_increases(current_head, branch.current_branch().current_head().fitness()) {
+                return true;
+            }
+
+
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Returns true, if [block] can be applied
+    pub fn can_apply_block<'b, OP>(&self, (block, block_metadata): (&'b BlockHash, &'b Meta), operations_complete: OP) -> Result<bool, StorageError>
+        where OP: Fn(&'b BlockHash) -> Result<bool, StorageError> /* func returns true, if operations are completed */
+    {
+        let block_predecessor = block_metadata.predecessor();
+
+        // check if block is already applied, dont need to apply second time
+        if block_metadata.is_applied() {
+            return Ok(false);
+        }
+
+        // we need to have predecessor (every block has)
+        if block_predecessor.is_none() {
+            return Ok(false);
+        }
+
+        // if operations are not complete, we cannot apply block
+        if !operations_complete(block)? {
+            return Ok(false);
+        }
+
+        // check if predecesor is applied
+        if let Some(predecessor) = block_predecessor {
+            if let Some(predecessor_meta) = self.block_meta_storage.get(predecessor)? {
+                return Ok(predecessor_meta.is_applied());
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Resolves missing blocks and schedules them for download from network
+    pub fn schedule_branch_bootstrap(&mut self, block_hash: &BlockHash, block_header: &BlockHeader, history: &Vec<BlockHash>) -> Result<(), StorageError> {
+        let block_level = block_header.level();
+
+        // at first schedule history - we try to prioritize download from the beginning, so the history is reversed here
+        self.push_missing_history(
+            history.iter().cloned().rev().collect(),
+            block_level,
+        )?;
+
+        // schedule predecessor (if not present in history)
+        if !history.contains(block_header.predecessor()) {
+            self.push_missing_block(
+                MissingBlock::with_level_guess(
+                    block_header.predecessor().clone(),
+                    std::cmp::max(1, block_level - 1),
+                )
+            )?;
+        }
+
+        // schedule also current_head
+        self.push_missing_block(
+            MissingBlock::with_level(
+                block_hash.clone(),
+                block_level,
+            )
+        )?;
+
+        Ok(())
+    }
+
     /// Resolve if new applied block can be set as new current head.
     /// Original algorithm is in [chain_validator][on_request], where just fitness is checked.
     /// Returns:
-    /// - None, if head was not updated
-    /// - Some(head), if head was updated
-    pub fn try_set_new_current_head(&self, block: &BlockApplied) -> Result<Option<Head>, StorageError> {
+    /// - None, if head was not updated, means was ignored
+    /// - Some(new_head, head_result)
+    pub fn try_set_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>) -> Result<Option<(Head, HeadResult)>, StorageError> {
+        if let Some(current_head) = current_head {
+            // get fitness from mempool, if not, than use current_head.fitness
+            let current_context_fitness = match mempool_state {
+                Some(state) => {
+                    let mempool_state = state.read().unwrap();
+                    match mempool_state.fitness.as_ref() {
+                        Some(fitness) => fitness.clone(),
+                        None => current_head.fitness().to_vec()
+                    }
+                }
+                None => current_head.fitness().to_vec()
+            };
 
-        let head = Head::new(block.header().hash.clone(), block.header().header.level());
+            // need to check against current_head, if not accepted, just ignore potential head
+            if !validation::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
+                // just ignore
+                return Ok(None);
+            }
+        }
 
-        // set head to db
+        // we need to check, if previous head is predecessor of new_head (for later use)
+        let head_result = match &current_head {
+            Some(previos_head) => if previos_head.hash().eq(potential_new_head.header().header.predecessor()) {
+                HeadResult::HeadIncrement
+            } else {
+                // if previous head is not predecesor of new head, means it could be new branch
+                HeadResult::BranchSwitch
+            }
+            None => HeadResult::HeadIncrement,
+        };
+
+        // this will be new head
+        let head = Head::new(
+            potential_new_head.header().hash.clone(),
+            potential_new_head.header().header.level(),
+            potential_new_head.header().header.fitness().clone(),
+        );
+
+        // set new head to db
         self.chain_meta_storage.set_current_head(&self.chain_id, head.clone())?;
 
-        Ok(Some(head))
+        Ok(Some((head, head_result)))
     }
 
-    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(), StorageError> {
+    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(Meta, bool), StorageError> {
         // check if we already have seen predecessor
         self.push_missing_block(
             MissingBlock::with_level_guess(
@@ -72,11 +193,11 @@ impl BlockchainState {
         )?;
 
         // store block
-        self.block_storage.put_block_header(block_header)?;
+        let is_new_block = self.block_storage.put_block_header(block_header)?;
         // update meta
-        self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)?;
+        let metadata = self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)?;
 
-        Ok(())
+        Ok((metadata, is_new_block))
     }
 
     #[inline]
@@ -101,7 +222,7 @@ impl BlockchainState {
     }
 
     #[inline]
-    pub fn push_missing_history(&mut self, history: Vec<BlockHash>, level: Level) -> Result<(), StorageError> {
+    fn push_missing_history(&mut self, history: Vec<BlockHash>, level: Level) -> Result<(), StorageError> {
         let mut rng = rand::thread_rng();
         let history_max_parts = if history.len() < usize::from(HISTORY_MAX_SIZE) {
             history.len() as u8
@@ -279,6 +400,20 @@ impl Ord for MissingBlock {
 
         // reverse, because we want lower level at begining
         self_potential_level.cmp(&other_potential_level).reverse()
+    }
+}
+
+pub enum HeadResult {
+    BranchSwitch,
+    HeadIncrement,
+}
+
+impl fmt::Display for HeadResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match *self {
+            HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
+            HeadResult::HeadIncrement => write!(f, "HeadIncrement"),
+        }
     }
 }
 

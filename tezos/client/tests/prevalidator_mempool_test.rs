@@ -54,7 +54,7 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
 
 #[test]
 #[serial]
-fn test_begin_construction_and_validate_operation() {
+fn test_begin_construction_and_validate_operation() -> Result<(), failure::Error> {
     init_test_runtime();
 
     // init empty context for test
@@ -65,16 +65,15 @@ fn test_begin_construction_and_validate_operation() {
     assert!(true);
 
     // let's initialize prevalidator for current head
-    let result = client::begin_construction(
+    let prevalidator = client::begin_construction(
         BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: last_block,
             protocol_data: None,
         }
-    );
-    assert!(result.is_ok());
-    let prevalidator = result.unwrap();
+    )?;
     assert_eq!(prevalidator.chain_id, chain_id);
+    assert_eq!(prevalidator.context_fitness, Some(vec![vec![0], vec![0, 0, 0, 0, 0, 0, 0, 3]]));
 
     let operation = test_data::operation_from_hex(test_data::OPERATION_LEVEL_3);
 
@@ -83,11 +82,12 @@ fn test_begin_construction_and_validate_operation() {
             prevalidator,
             operation,
         }
-    );
-    assert!(result.is_ok());
-    let result = result.unwrap();
+    )?;
     assert_eq!(result.prevalidator.chain_id, chain_id);
     assert_eq!(result.result.applied.len(), 1);
+    assert_eq!(result.prevalidator.context_fitness, Some(vec![vec![0], vec![0, 0, 0, 0, 0, 0, 0, 5]]));
+
+    Ok(())
 }
 
 fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> BlockHeader {

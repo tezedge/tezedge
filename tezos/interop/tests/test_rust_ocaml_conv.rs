@@ -3,8 +3,14 @@
 #![feature(test)]
 extern crate test;
 
+use ocaml_interop::{
+    IntoRust, OCaml, ocaml_call, ocaml_frame, OCamlBytes, OCamlInt, OCamlList, OCamlRef, to_ocaml,
+    ToOCaml,
+};
 use serial_test::serial;
+
 use tezos_api::{
+    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder},
     ffi::BeginConstructionRequest,
     ffi::FfiRpcService,
     ffi::JsonRpcRequest,
@@ -12,22 +18,16 @@ use tezos_api::{
     ffi::ProtocolJsonRpcRequest,
     ffi::RustBytes,
     ffi::ValidateOperationRequest,
-    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder},
     ocaml_conv::FfiBlockHeader,
     ocaml_conv::FfiOperation,
     ocaml_conv::OCamlOperationHash,
 };
 use tezos_interop::runtime;
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage, encoding::operation::Operation,
+    binary_message::BinaryMessage, encoding::block_header::BlockHeader, encoding::operation::Operation,
     encoding::operations_for_blocks::OperationsForBlock,
     encoding::operations_for_blocks::OperationsForBlocksMessage,
     encoding::operations_for_blocks::Path,
-};
-use ocaml_interop::{
-    ocaml_call, ocaml_frame, to_ocaml, IntoRust, OCaml, OCamlBytes, OCamlInt, OCamlList, OCamlRef,
-    ToOCaml,
 };
 
 const CHAIN_ID: &str = "8eceda2f";
@@ -38,6 +38,8 @@ const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b685
 const MAX_OPERATIONS_TTL: i32 = 5;
 
 mod tezos_ffi {
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
+
     use tezos_api::{
         ffi::ApplyBlockRequest, ffi::BeginConstructionRequest, ffi::FfiRpcService,
         ffi::JsonRpcRequest, ffi::PrevalidatorWrapper, ffi::ProtocolJsonRpcRequest,
@@ -45,7 +47,6 @@ mod tezos_ffi {
         ocaml_conv::OCamlOperationHash, ocaml_conv::OCamlProtocolHash,
     };
     use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
 
     ocaml! {
         pub fn construct_and_compare_hash(operation_hash: OCamlOperationHash, hash_bytes: OCamlBytes) -> bool;
@@ -104,6 +105,7 @@ mod tezos_ffi {
             prevalidator_wrapper: PrevalidatorWrapper,
             chain_id: OCamlBytes,
             protocol: OCamlProtocolHash,
+            context_fitness: Option<OCamlList<OCamlBytes>>,
         ) -> bool;
     }
 }
@@ -155,8 +157,7 @@ fn test_hash_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "OperationHash conversion failed")
 }
@@ -196,8 +197,7 @@ fn test_block_header_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "BlockHeader conversion failed")
 }
@@ -245,8 +245,7 @@ fn test_apply_block_request_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "ApplyBlockRequest conversion failed")
 }
@@ -281,8 +280,7 @@ fn test_begin_construction_request_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "BeginConstructionRequest conversion failed")
 }
@@ -293,6 +291,7 @@ fn test_validate_operation_request_conv() {
     let prevalidator = PrevalidatorWrapper {
         chain_id: hex::decode(CHAIN_ID).unwrap(),
         protocol: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+        context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
     let operations = ApplyBlockRequest::convert_operations(block_operations_from_hex(
         HEADER_HASH,
@@ -322,8 +321,7 @@ fn test_validate_operation_request_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "ValidateOperationRequest conversion failed")
 }
@@ -349,8 +347,7 @@ fn test_validate_json_rpc_request_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "JsonRpcRequest conversion failed")
 }
@@ -393,8 +390,7 @@ fn test_validate_protocol_json_rpc_request_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "ProtocolJsonRpcRequest conversion failed")
 }
@@ -422,8 +418,7 @@ fn test_validate_operation_conv() {
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "Operation conversion failed")
 }
@@ -434,24 +429,26 @@ fn test_validate_prevalidator_wrapper_conv() {
     let prevalidator_wrapper = PrevalidatorWrapper {
         chain_id: hex::decode(CHAIN_ID).unwrap(),
         protocol: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+        context_fitness: Some(vec![vec![0, 0], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
 
     let result: bool = runtime::execute(move || {
         ocaml_frame!(gc, {
             let ref chain_id = to_ocaml!(gc, prevalidator_wrapper.chain_id).keep(gc);
             let ref protocol = to_ocaml!(gc, prevalidator_wrapper.protocol).keep(gc);
+            let ref context_fitness = to_ocaml!(gc, prevalidator_wrapper.context_fitness).keep(gc);
             let prevalidator_wrapper = to_ocaml!(gc, prevalidator_wrapper);
             ocaml_call!(tezos_ffi::construct_and_compare_prevalidator_wrapper(
                 gc,
                 prevalidator_wrapper,
                 gc.get(chain_id),
                 gc.get(protocol),
+                gc.get(context_fitness),
             ))
             .unwrap()
             .into_rust()
         })
-    })
-    .unwrap();
+    }).unwrap();
 
     assert!(result, "PrevalidatorWrapper conversion failed")
 }
