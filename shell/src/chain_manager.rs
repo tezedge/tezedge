@@ -33,8 +33,9 @@ use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::PeerConnectionThreshold;
+use crate::{PeerConnectionThreshold, validation};
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, CurrentMempoolState, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockchainState, HeadResult, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
@@ -178,6 +179,9 @@ pub struct ChainManager {
     is_bootstrapped: bool,
     /// Indicates threshold for minimal count of bootstrapped peers to mark chain_manager as bootstrapped
     num_of_peers_for_bootstrap_threshold: usize,
+
+    /// Protocol runner pool dedicated to prevalidation
+    tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -190,12 +194,21 @@ impl ChainManager {
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
+        tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         chain_id: &ChainId,
         is_sandbox: bool,
         peers_threshold: &PeerConnectionThreshold) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
-            Props::new_args((network_channel, shell_channel, persistent_storage.clone(), chain_id.clone(), is_sandbox, peers_threshold.num_of_peers_for_bootstrap_threshold())),
+            Props::new_args((
+                network_channel,
+                shell_channel,
+                persistent_storage.clone(),
+                tezos_readonly_prevalidation_api,
+                chain_id.clone(),
+                is_sandbox,
+                peers_threshold.num_of_peers_for_bootstrap_threshold()
+            )),
         )
     }
 
@@ -579,11 +592,32 @@ impl ChainManager {
                                 }
                                 PeerMessage::Operation(message) => {
                                     debug!(log, "Received mempool message");
-                                    match peer.queued_mempool_operations.remove(&message.operation().message_hash()?) {
-                                        Some((op_type, op_ttl)) => {
+
+                                    // parse operation data
+                                    let operation = message.operation();
+                                    let operation_hash = operation.message_hash()?;
+
+                                    match peer.queued_mempool_operations.remove(&operation_hash) {
+                                        Some((operation_type, op_ttl)) => {
+
+                                            // do prevalidation before add the operation to mempool
+                                            let result = validation::prevalidate_operation(
+                                                chain_state.get_chain_id(),
+                                                &operation_hash,
+                                                &operation,
+                                                &self.current_mempool_state,
+                                                &self.tezos_readonly_prevalidation_api.pool.get()?.api,
+                                                block_storage,
+                                            )?;
+
+                                            // can accpect operation ?
+                                            if !validation::can_accept_operation_from_p2p(&operation_hash, &result) {
+                                                return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), result));
+                                            }
+
                                             // store mempool operation
                                             peer.mempool_operations_response_last = Instant::now();
-                                            mempool_storage.put(op_type.clone(), message.clone(), op_ttl)?;
+                                            mempool_storage.put(operation_type.clone(), message.clone(), op_ttl)?;
 
                                             // trigger CheckMempoolCompleteness
                                             ctx.myself().tell(CheckMempoolCompleteness, None);
@@ -592,8 +626,8 @@ impl ChainManager {
                                             shell_channel.tell(
                                                 Publish {
                                                     msg: MempoolOperationReceived {
-                                                        operation_hash: message.operation().message_hash()?.clone(),
-                                                        operation_type: op_type.clone(),
+                                                        operation_hash,
+                                                        operation_type,
                                                     }.into(),
                                                     topic: ShellChannelTopic::ShellEvents.into(),
                                                 }, Some(ctx.myself().into()));
@@ -958,8 +992,8 @@ impl ChainManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, bool, usize)> for ChainManager {
-    fn create_args((network_channel, shell_channel, persistent_storage, chain_id, is_sandbox, num_of_peers_for_bootstrap_threshold): (NetworkChannelRef, ShellChannelRef, PersistentStorage, ChainId, bool, usize)) -> Self {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize)> for ChainManager {
+    fn create_args((network_channel, shell_channel, persistent_storage, tezos_readonly_prevalidation_api, chain_id, is_sandbox, num_of_peers_for_bootstrap_threshold): (NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
@@ -988,6 +1022,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ch
             is_sandbox,
             is_bootstrapped: false,
             num_of_peers_for_bootstrap_threshold,
+            tezos_readonly_prevalidation_api,
         }
     }
 }
@@ -1354,6 +1389,10 @@ pub mod tests {
     use networking::p2p::network_channel::NetworkChannel;
     use networking::p2p::peer::Peer;
     use storage::tests_common::TmpStorage;
+    use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
+    use tezos_api::ffi::TezosRuntimeConfiguration;
+    use tezos_wrapper::service::ProtocolEndpointConfiguration;
+    use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
     use crate::shell_channel::{ShellChannel, ShuttingDown};
 
@@ -1410,12 +1449,41 @@ pub mod tests {
         let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&TezosEnvironment::Sandbox).expect("no environment configuration");
+
+        let pool = Arc::new(
+            TezosApiConnectionPool::new_without_context(
+                String::from("test_pool"),
+                TezosApiConnectionPoolConfiguration {
+                    connection_timeout: Duration::from_secs(1),
+                    idle_timeout: Duration::from_secs(1),
+                    max_lifetime: Duration::from_secs(1),
+                    min_connections: 0,
+                    max_connections: 1,
+                },
+                ProtocolEndpointConfiguration::new(
+                    TezosRuntimeConfiguration {
+                        log_enabled: false,
+                        no_of_ffi_calls_treshold_for_gc: 0,
+                        debug_mode: false,
+                    },
+                    tezos_env.clone(),
+                    false,
+                    "__test_resolve_is_bootstrapped/context",
+                    "--no-executable-needed-here--",
+                    Level::Debug,
+                    false,
+                ),
+                log.clone(),
+            )
+        );
 
         // direct instance of ChainManager (not throught actor_system)
         let mut chain_manager = ChainManager::create_args((
             network_channel.clone(),
             shell_channel.clone(),
             storage.storage().clone(),
+            pool,
             chain_id,
             false,
             1,

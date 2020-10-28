@@ -3190,7 +3190,6 @@ dependencies = [
  "lazy_static",
  "ocaml-interop",
  "serde 1.0.114",
- "serde_json",
  "slog",
  "tezos_messages",
 ]

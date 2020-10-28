@@ -117,10 +117,11 @@ pub async fn stop_node(
     peers.lock().unwrap().remove(&node_ref);
 
     if errors.is_empty() {
-        info!(log, "Sandbox launcher stopped!");
+        info!(log, "Sandbox node stopped!"; "node_ref" => format!("{}", &node_ref));
         Ok(warp::reply::with_status(warp::reply::json(&""), StatusCode::OK))
     } else {
-        error!(log, "Sandbox launcher stopped!";
+        error!(log, "Sandbox node stopped!";
+                    "node_ref" => format!("{}", &node_ref),
                     "errors" => errors.join(", "));
         Ok(warp::reply::with_status(warp::reply::json(&errors), StatusCode::OK))
     }

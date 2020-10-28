@@ -21,7 +21,7 @@ use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTOR
 
 use crate::collections::{BlockData, UniqueBlockData};
 use crate::shell_channel::{BlockApplied, CurrentMempoolState};
-use crate::state::validator;
+use crate::validation;
 
 /// Holds state of all known blocks
 pub struct BlockchainState {
@@ -57,7 +57,18 @@ impl BlockchainState {
         if branch.current_branch().current_head().level() <= 0 {
             return false;
         }
-        true
+
+        if let Some(current_head) = current_head.as_ref() {
+            // we can accept branch if increases fitness
+            if validation::is_fitness_increases(current_head, branch.current_branch().current_head().fitness()) {
+                return true;
+            }
+
+
+            false
+        } else {
+            true
+        }
     }
 
     /// Returns true, if [block] can be applied
@@ -137,12 +148,12 @@ impl BlockchainState {
                         Some(fitness) => fitness.clone(),
                         None => current_head.fitness().to_vec()
                     }
-                },
+                }
                 None => current_head.fitness().to_vec()
             };
 
             // need to check against current_head, if not accepted, just ignore potential head
-            if !validator::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
+            if !validation::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
                 // just ignore
                 return Ok(None);
             }
