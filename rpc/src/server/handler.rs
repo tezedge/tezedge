@@ -213,7 +213,7 @@ pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Que
 
     if chain_id == "main" {
         result_to_json_response(
-            services::mempool_services::get_pending_operations(env.persistent_storage(), env.state(), env.log()),
+            services::mempool_services::get_pending_operations(env.state(), env.log()),
             env.log(),
         )
     } else {
@@ -228,7 +228,11 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
     let shell_channel = env.shell_channel();
 
     result_to_json_response(
-        services::mempool_services::inject_operation(&operation_data, env.persistent_storage(), env.state(), shell_channel.clone(), env.log()),
+        services::mempool_services::inject_operation(
+            &operation_data,
+            &env,
+            shell_channel.clone()
+        ),
         env.log(),
     )
 }

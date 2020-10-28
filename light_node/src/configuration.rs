@@ -53,7 +53,15 @@ pub struct Identity {
 pub struct Ffi {
     pub protocol_runner: PathBuf,
     pub no_of_ffi_calls_threshold_for_gc: i32,
-    pub pool: TezosApiConnectionPoolConfiguration,
+    pub tezos_readonly_api_pool: TezosApiConnectionPoolConfiguration,
+    pub tezos_readonly_prevalidation_api_pool: TezosApiConnectionPoolConfiguration,
+    pub tezos_without_context_api_pool: TezosApiConnectionPoolConfiguration,
+}
+
+impl Ffi {
+    const TEZOS_READONLY_API_POOL_DISCRIMINATOR: &'static str = "";
+    const TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR: &'static str = "trpap";
+    const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap";
 }
 
 #[derive(Debug, Clone)]
@@ -279,30 +287,87 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of ffi calls, after which will be Ocaml garbage collector called")
             .validator(parse_validator_fn!(i32, "Value must be a valid number")))
-        .arg(Arg::with_name("ffi-pool-max-connections")
-            .long("ffi-pool-max-connections")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of max ffi pool connections, default: 10")
-            .validator(parse_validator_fn!(u8, "Value must be a valid number")))
-        .arg(Arg::with_name("ffi-pool-connection-timeout-in-secs")
-            .long("ffi-pool-connection-timeout-in-secs")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of seconds to wait for connection, default: 60")
-            .validator(parse_validator_fn!(u16, "Value must be a valid number")))
-        .arg(Arg::with_name("ffi-pool-max-lifetime-in-secs")
-            .long("ffi-pool-max-lifetime-in-secs")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number")))
-        .arg(Arg::with_name("ffi-pool-idle-timeout-in-secs")
-            .long("ffi-pool-idle-timeout-in-secs")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
-            .validator(parse_validator_fn!(u64, "Value must be a valid number")))
+        .args(
+            &[
+                Arg::with_name("ffi-pool-max-connections")
+                    .long("ffi-pool-max-connections")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of max ffi pool connections, default: 10")
+                    .validator(parse_validator_fn!(u8, "Value must be a valid number")),
+                Arg::with_name("ffi-pool-connection-timeout-in-secs")
+                    .long("ffi-pool-connection-timeout-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to wait for connection, default: 60")
+                    .validator(parse_validator_fn!(u16, "Value must be a valid number")),
+                Arg::with_name("ffi-pool-max-lifetime-in-secs")
+                    .long("ffi-pool-max-lifetime-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
+                    .validator(parse_validator_fn!(u64, "Value must be a valid number")),
+                Arg::with_name("ffi-pool-idle-timeout-in-secs")
+                    .long("ffi-pool-idle-timeout-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
+                    .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+            ])
+        .args(
+            &[
+                Arg::with_name("ffi-trpap-pool-max-connections")
+                    .long("ffi-trpap-pool-max-connections")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of max ffi pool connections, default: 10")
+                    .validator(parse_validator_fn!(u8, "Value must be a valid number")),
+                Arg::with_name("ffi-trpap-pool-connection-timeout-in-secs")
+                    .long("ffi-trpap-pool-connection-timeout-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to wait for connection, default: 60")
+                    .validator(parse_validator_fn!(u16, "Value must be a valid number")),
+                Arg::with_name("ffi-trpap-pool-max-lifetime-in-secs")
+                    .long("ffi-trpap-pool-max-lifetime-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
+                    .validator(parse_validator_fn!(u64, "Value must be a valid number")),
+                Arg::with_name("ffi-trpap-pool-idle-timeout-in-secs")
+                    .long("ffi-trpap-pool-idle-timeout-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
+                    .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+            ])
+        .args(
+            &[
+                Arg::with_name("ffi-twcap-pool-max-connections")
+                    .long("ffi-twcap-pool-max-connections")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of max ffi pool connections, default: 10")
+                    .validator(parse_validator_fn!(u8, "Value must be a valid number")),
+                Arg::with_name("ffi-twcap-pool-connection-timeout-in-secs")
+                    .long("ffi-twcap-pool-connection-timeout-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to wait for connection, default: 60")
+                    .validator(parse_validator_fn!(u16, "Value must be a valid number")),
+                Arg::with_name("ffi-twcap-pool-max-lifetime-in-secs")
+                    .long("ffi-twcap-pool-max-lifetime-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
+                    .validator(parse_validator_fn!(u64, "Value must be a valid number")),
+                Arg::with_name("ffi-twcap-pool-idle-timeout-in-secs")
+                    .long("ffi-twcap-pool-idle-timeout-in-secs")
+                    .takes_value(true)
+                    .value_name("NUM")
+                    .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
+                    .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+            ])
         .arg(Arg::with_name("tokio-threads")
             .long("tokio-threads")
             .takes_value(true)
@@ -324,12 +389,38 @@ pub fn tezos_app() -> App<'static, 'static> {
     app
 }
 
+fn pool_cfg(args: &clap::ArgMatches, pool_name_discriminator: &str) -> TezosApiConnectionPoolConfiguration {
+    TezosApiConnectionPoolConfiguration {
+        min_connections: 0,
+        /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
+        max_connections: args.value_of(&format!("ffi-{}-pool-max-connections", pool_name_discriminator))
+            .unwrap_or("10")
+            .parse::<u8>()
+            .expect("Provided value cannot be converted to number"),
+        connection_timeout: args.value_of(&format!("ffi-{}-pool-connection-timeout-in-secs", pool_name_discriminator))
+            .unwrap_or("60")
+            .parse::<u16>()
+            .map(|seconds| Duration::from_secs(seconds as u64))
+            .expect("Provided value cannot be converted to number"),
+        max_lifetime: args.value_of(&format!("ffi-{}-pool-max-lifetime-in-secs", pool_name_discriminator))
+            .unwrap_or("21600")
+            .parse::<u16>()
+            .map(|seconds| Duration::from_secs(seconds as u64))
+            .expect("Provided value cannot be converted to number"),
+        idle_timeout: args.value_of(&format!("ffi-{}-pool-idle-timeout-in-secs", pool_name_discriminator))
+            .unwrap_or("1800")
+            .parse::<u16>()
+            .map(|seconds| Duration::from_secs(seconds as u64))
+            .expect("Provided value cannot be converted to number"),
+    }
+}
+
 // Explicitly validates all required parameters
 // Flag Required=true must be handled separately as we parse args twice,
 // once to see only if config-file arg is present and second time to parse all args
 // In case some args are required=true and user provides only config-file,
 // first round of parsing would always fail then
-pub fn validate_required_args(args: &clap::ArgMatches) {
+fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "tezos-data-dir");
     validate_required_arg(args, "network");
     validate_required_arg(args, "bootstrap-db-path");
@@ -610,29 +701,9 @@ impl Environment {
                     .unwrap_or("50")
                     .parse::<i32>()
                     .expect("Provided value cannot be converted to number"),
-                pool: TezosApiConnectionPoolConfiguration {
-                    min_connections: 0,
-                    /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
-                    max_connections: args.value_of("ffi-pool-max-connections")
-                        .unwrap_or("10")
-                        .parse::<u8>()
-                        .expect("Provided value cannot be converted to number"),
-                    connection_timeout: args.value_of("ffi-pool-connection-timeout-in-secs")
-                        .unwrap_or("60")
-                        .parse::<u16>()
-                        .map(|seconds| Duration::from_secs(seconds as u64))
-                        .expect("Provided value cannot be converted to number"),
-                    max_lifetime: args.value_of("ffi-pool-max-lifetime-in-secs")
-                        .unwrap_or("21600")
-                        .parse::<u16>()
-                        .map(|seconds| Duration::from_secs(seconds as u64))
-                        .expect("Provided value cannot be converted to number"),
-                    idle_timeout: args.value_of("ffi-pool-idle-timeout-in-secs")
-                        .unwrap_or("1800")
-                        .parse::<u16>()
-                        .map(|seconds| Duration::from_secs(seconds as u64))
-                        .expect("Provided value cannot be converted to number"),
-                },
+                tezos_readonly_api_pool: pool_cfg(&args, Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR),
+                tezos_readonly_prevalidation_api_pool: pool_cfg(&args, Ffi::TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR),
+                tezos_without_context_api_pool: pool_cfg(&args, Ffi::TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR),
             },
             tokio_threads: args.value_of("tokio-threads")
                 .unwrap_or("0")

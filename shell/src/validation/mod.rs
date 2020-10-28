@@ -1,11 +1,20 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use storage::BlockHeaderWithHash;
+use std::sync::{Arc, RwLock};
+
+use failure::Fail;
+
+use crypto::hash::{ChainId, HashType, OperationHash};
+use storage::{BlockHeaderWithHash, BlockStorageReader, StorageError};
+use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::block_header::Fitness;
+use tezos_messages::p2p::encoding::prelude::Operation;
+use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
-use crate::state::validator::fitness_comparator::FitnessWrapper;
+use crate::shell_channel::CurrentMempoolState;
+use crate::validation::fitness_comparator::FitnessWrapper;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
 pub fn can_accept_new_head(new_head: &BlockHeaderWithHash, current_head: &Head, current_context_fitness: &Fitness) -> bool {
@@ -21,6 +30,150 @@ pub fn can_accept_new_head(new_head: &BlockHeaderWithHash, current_head: &Head, 
     };
 
     accepted_head
+}
+
+/// Returns only true, if new_fitness is greater than head's fitness
+pub fn is_fitness_increases(head: &Head, new_fitness: &Fitness) -> bool {
+    new_fitness.gt(head.fitness())
+}
+
+/// Returns true, if we can accept injected operation from rpc
+pub fn can_accept_operation_from_rpc(operation_hash: &OperationHash, result: &ValidateOperationResult) -> bool {
+    // we can accept from rpc, only if it is [applied]
+    result.applied
+        .iter()
+        .find(|operation_result| operation_result.hash.eq(operation_hash))
+        .is_some()
+}
+
+/// Returns true, if we can accept received operation from p2p
+pub fn can_accept_operation_from_p2p(operation_hash: &OperationHash, result: &ValidateOperationResult) -> bool {
+    // we can accept from p2p, only if it is [not refused]
+    if result.refused
+        .iter()
+        .find(|operation_result| operation_result.hash.eq(operation_hash))
+        .is_some() {
+        return false;
+    }
+
+    // true, if contained in applied
+    if result.applied
+        .iter()
+        .find(|operation_result| operation_result.hash.eq(operation_hash))
+        .is_some() {
+        return true;
+    }
+
+    // true, if contained in branch_refused
+    if result.branch_refused
+        .iter()
+        .find(|operation_result| operation_result.hash.eq(operation_hash))
+        .is_some() {
+        return true;
+    }
+
+    // true, if contained in branch_refused
+    if result.branch_delayed
+        .iter()
+        .find(|operation_result| operation_result.hash.eq(operation_hash))
+        .is_some() {
+        return true;
+    }
+
+    // any just false
+    false
+}
+
+/// Error produced by a [prevalidate_operation].
+#[derive(Debug, Fail)]
+pub enum PrevalidateOperationError {
+    #[fail(display = "Unknown branch ({}), cannot inject the operation.", branch)]
+    UnknownBranch {
+        branch: String,
+    },
+    #[fail(display = "Prevalidator is not running ({}), cannot inject the operation.", reason)]
+    PrevalidatorNotInitialized {
+        reason: String
+    },
+    #[fail(display = "Storage read error! Reason: {:?}", error)]
+    StorageError {
+        error: StorageError
+    },
+    #[fail(display = "Failed to validate operation: {}! Reason: {:?}", operation_hash, reason)]
+    ValidationError {
+        operation_hash: String,
+        reason: ProtocolServiceError,
+    },
+}
+
+impl From<StorageError> for PrevalidateOperationError {
+    fn from(error: StorageError) -> Self {
+        PrevalidateOperationError::StorageError {
+            error
+        }
+    }
+}
+
+/// Validates operation before added to mempool
+/// Operation is decoded and applied to context according to current head in mempool
+pub fn prevalidate_operation(
+    chain_id: &ChainId,
+    operation_hash: &OperationHash,
+    operation: &Operation,
+    current_mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>,
+    api: &ProtocolController,
+    block_storage: &Box<dyn BlockStorageReader>) -> Result<ValidateOperationResult, PrevalidateOperationError> {
+
+    // just check if we know block from operation
+    let operation_branch = operation.branch();
+    if !block_storage.contains(operation_branch)? {
+        return Err(PrevalidateOperationError::UnknownBranch {
+            branch: HashType::BlockHash.bytes_to_string(&operation_branch)
+        });
+    }
+
+    // get actual known state of mempool, we need the same head as used actualy be mempool
+    let mempool_head = if let Some(mempool_state) = current_mempool_state {
+        let mempool = mempool_state.read().unwrap();
+        match mempool.head.as_ref() {
+            Some(head) => match block_storage.get(head)? {
+                Some(head) => head,
+                None => return Err(PrevalidateOperationError::UnknownBranch {
+                    branch: HashType::BlockHash.bytes_to_string(&head)
+                })
+            },
+            None => {
+                return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
+                    reason: "no head in mempool".to_string(),
+                });
+            }
+        }
+    } else {
+        return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
+            reason: "no mempool state".to_string(),
+        });
+    };
+
+    // TODO: possible to add ffi to pre_filter
+    // TODO: possible to add ffi to decode_operation_data
+
+    // begin construction of a new empty block
+    let prevalidator = api.begin_construction(BeginConstructionRequest {
+        chain_id: chain_id.clone(),
+        predecessor: (&*mempool_head.header).clone(),
+        protocol_data: None,
+    }).map_err(|e| PrevalidateOperationError::ValidationError {
+        operation_hash: HashType::OperationHash.bytes_to_string(operation_hash),
+        reason: e,
+    })?;
+
+    // validate operation to new empty/dummpy block
+    api.validate_operation(ValidateOperationRequest { prevalidator, operation: operation.clone() })
+        .map(|r| r.result)
+        .map_err(|e| PrevalidateOperationError::ValidationError {
+            operation_hash: HashType::OperationHash.bytes_to_string(operation_hash),
+            reason: e,
+        })
 }
 
 /// Fitness comparison:

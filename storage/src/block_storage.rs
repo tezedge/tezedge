@@ -85,10 +85,9 @@ impl BlockStorage {
     /// If called multiple times for the same header, data are stored just first time.
     /// Returns true, if it is a new block
     pub fn put_block_header(&self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
-
         if self.primary_index.contains(&block_header.hash)? {
             // we assume that, if primary_index contains hash, then also commit_log contains header data, header data cannot be change, so there is nothing to do
-            return Ok(false)
+            return Ok(false);
         }
 
         self.clog.append(&BlockStorageColumn::BlockHeader(block_header.clone()))
@@ -106,7 +105,6 @@ impl BlockStorage {
     }
 
     pub fn put_block_json_data(&self, block_hash: &BlockHash, json_data: BlockJsonData) -> Result<(), StorageError> {
-
         let updated_column_location = {
             let block_json_data_location = self.clog.append(&BlockStorageColumn::BlockJsonData(json_data))?;
             let mut column_location = self.primary_index.get(block_hash)?.ok_or(StorageError::MissingKey)?;

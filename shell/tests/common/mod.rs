@@ -206,7 +206,7 @@ pub mod infra {
             let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
             let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
             let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-            let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
+            let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, tezos_readonly_api.clone(), &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
             let _ = MempoolPrevalidator::actor(
                 &actor_system,
                 shell_channel.clone(),

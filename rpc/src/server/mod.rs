@@ -48,8 +48,13 @@ pub struct RpcServiceEnvironment {
     network_version: NetworkVersion,
     #[get = "pub(crate)"]
     log: Logger,
+
     #[get = "pub(crate)"]
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
+    #[get = "pub(crate)"]
+    tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+    #[get = "pub(crate)"]
+    tezos_without_context_api: Arc<TezosApiConnectionPool>,
 }
 
 impl RpcServiceEnvironment {
@@ -61,6 +66,8 @@ impl RpcServiceEnvironment {
         network_version: NetworkVersion,
         persistent_storage: &PersistentStorage,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
+        tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
+        tezos_without_context_api: Arc<TezosApiConnectionPool>,
         genesis_hash: &BlockHash,
         state: RpcCollectedStateRef,
         log: &Logger) -> Self {
@@ -75,6 +82,8 @@ impl RpcServiceEnvironment {
             state,
             log: log.clone(),
             tezos_readonly_api,
+            tezos_readonly_prevalidation_api,
+            tezos_without_context_api,
         }
     }
 }
