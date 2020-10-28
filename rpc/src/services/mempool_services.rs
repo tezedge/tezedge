@@ -10,9 +10,9 @@ use slog::Logger;
 
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
 use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use shell::validation;
+use storage::{BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
-use storage::MempoolStorage;
-use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{Applied, ComputePathRequest, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
@@ -38,7 +38,6 @@ pub struct InjectedBlockWithOperations {
 }
 
 pub fn get_pending_operations(
-    _persistent_storage: &PersistentStorage,
     state: &RpcCollectedStateRef,
     _log: &Logger) -> Result<MempoolOperations, failure::Error> {
 
@@ -131,28 +130,49 @@ fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, O
 
 pub fn inject_operation(
     operation_data: &str,
-    persistent_storage: &PersistentStorage,
-    _state: &RpcCollectedStateRef,
-    shell_channel: ShellChannelRef,
-    _log: &Logger) -> Result<String, failure::Error> {
-    let mut mempool_storage = MempoolStorage::new(persistent_storage);
+    env: &RpcServiceEnvironment,
+    shell_channel: ShellChannelRef) -> Result<String, failure::Error> {
+    let persistent_storage = env.persistent_storage();
+    let block_storage: Box<dyn BlockStorageReader> = Box::new(BlockStorage::new(persistent_storage));
+    let state = env.state();
 
+    // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
     let operation_hash = operation.message_hash()?;
-    let ttl = SystemTime::now() + Duration::from_secs(60);
+    let state = state.read().unwrap();
 
+    // do prevalidation before add the operation to mempool
+    let result = validation::prevalidate_operation(
+        state.chain_id(),
+        &operation_hash,
+        &operation,
+        state.current_mempool_state(),
+        &env.tezos_readonly_prevalidation_api().pool.get()?.api,
+        &block_storage,
+    )?;
+
+    // can accpect operation ?
+    if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
+        return Err(format_err!("Operation from rpc ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), result))
+    }
+
+    // store operation in mempool storage
+    let mut mempool_storage = MempoolStorage::new(persistent_storage);
+    let operation_hash_as_string = HashType::OperationHash.bytes_to_string(&operation_hash);
+    let ttl = SystemTime::now() + Duration::from_secs(60);
     mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
 
+    // ping mempool with new operation for mempool validation
     shell_channel.tell(
         Publish {
             msg: MempoolOperationReceived {
-                operation_hash: operation_hash.clone(),
+                operation_hash,
                 operation_type: MempoolOperationType::Pending,
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
 
-    Ok(HashType::OperationHash.bytes_to_string(&operation_hash))
+    Ok(operation_hash_as_string)
 }
 
 pub fn inject_block(
@@ -215,7 +235,7 @@ pub fn inject_block(
             operations: vps.clone().iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
         };
 
-        let response = env.tezos_readonly_api().pool.get()?.api.compute_path(request)?;
+        let response = env.tezos_without_context_api().pool.get()?.api.compute_path(request)?;
         Some(response.operations_hashes_path)
     } else {
         None

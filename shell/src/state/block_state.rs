@@ -21,7 +21,7 @@ use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTOR
 
 use crate::collections::{BlockData, UniqueBlockData};
 use crate::shell_channel::{BlockApplied, CurrentMempoolState};
-use crate::state::validator;
+use crate::validation;
 
 /// Holds state of all known blocks
 pub struct BlockchainState {
@@ -137,12 +137,12 @@ impl BlockchainState {
                         Some(fitness) => fitness.clone(),
                         None => current_head.fitness().to_vec()
                     }
-                },
+                }
                 None => current_head.fitness().to_vec()
             };
 
             // need to check against current_head, if not accepted, just ignore potential head
-            if !validator::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
+            if !validation::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
                 // just ignore
                 return Ok(None);
             }

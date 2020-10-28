@@ -171,6 +171,8 @@ fn block_on_actors(
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api = Arc::new(create_tezos_readonly_api_pool(&env, tezos_env.clone(), log.clone()));
+    let tezos_readonly_prevalidation_api = Arc::new(create_tezos_readonly_api_pool(&env, tezos_env.clone(), log.clone()));
+    let tezos_without_context_api = Arc::new(create_tezos_without_context_api_pool(&env, tezos_env.clone(), log.clone()));
 
     // tezos protocol runner endpoint for applying blocks to chain
     let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
@@ -215,8 +217,16 @@ fn block_on_actors(
         .expect("Failed to create context event listener");
     let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, &init_storage_data.chain_id, is_sandbox, &env.p2p.peer_threshold)
-        .expect("Failed to create chain manager");
+    let _ = ChainManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        shell_channel.clone(),
+        &persistent_storage,
+        tezos_readonly_prevalidation_api.clone(),
+        &init_storage_data.chain_id,
+        is_sandbox,
+        &env.p2p.peer_threshold
+    ).expect("Failed to create chain manager");
 
     let _ = MempoolPrevalidator::actor(
         &actor_system,
@@ -248,6 +258,8 @@ fn block_on_actors(
         &tokio_runtime.handle(),
         &persistent_storage,
         tezos_readonly_api.clone(),
+        tezos_readonly_prevalidation_api.clone(),
+        tezos_without_context_api.clone(),
         tezos_env.clone(),
         network_version,
         &init_storage_data,
@@ -283,6 +295,8 @@ fn block_on_actors(
 
         info!(log, "Shutting down protocol runner pools");
         drop(tezos_readonly_api);
+        drop(tezos_readonly_prevalidation_api);
+        drop(tezos_without_context_api);
         debug!(log, "Shutdown tezos_readonly_api complete");
 
         info!(log, "Flushing databases");
