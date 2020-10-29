@@ -644,7 +644,7 @@ trigger:
     - develop
 
 depends_on:
-  - sandbox-carthage-node-tests
+  - build-and-tests
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node with carthagenet configuration,
@@ -952,14 +952,14 @@ trigger:
     - develop
 
 depends_on:
-  - connect-from-different-network-test
+  - build-and-tests
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
 ##############################################################################################################
 ---
 kind: pipeline
-name: deploy-develop
+name: docker-deploy-develop
 
 steps:
 - name: build-light-node-image  
@@ -995,6 +995,9 @@ trigger:
   event: push
 
 depends_on:
+  - sandbox-launcher-test
+  - sandbox-carthage-node-tests
+  - connect-from-different-network-test
   - integration-offline-tests
 
 ##############################################################################################################
@@ -1002,7 +1005,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: deploy-release-tag-version
+name: docker-deploy-release-tag-version
 
 steps:
   - name: build-light-node-image
@@ -1038,4 +1041,7 @@ trigger:
   event: tag
 
 depends_on:
+  - sandbox-launcher-test
+  - sandbox-carthage-node-tests
+  - connect-from-different-network-test
   - integration-offline-tests

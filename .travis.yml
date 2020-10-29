@@ -1,6 +1,6 @@
 language: rust
 rust:
-  - nightly-2020-07-12
+  - nightly-2020-10-24
 
 jobs:
   include:
