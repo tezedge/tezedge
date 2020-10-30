@@ -165,7 +165,7 @@ impl PersistentStorage {
         let clog = self.clog.flush();
         let kv = self.kv.flush();
         if clog.is_err() || kv.is_err() {
-            println!("Failed to flush DBs");
+            println!("Failed to flush DBs. clog_err: {:?}, kv_err: {:?}", clog, kv);
         }
     }
 }

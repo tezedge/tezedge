@@ -34,3 +34,5 @@ tezos_wrapper = { path = "../tezos/wrapper" }
 
 [dev-dependencies]
 assert-json-diff = "1.0.0"
+enum-iterator = "0.6"
+rand = "0.7.3"
