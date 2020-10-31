@@ -4,15 +4,15 @@
 use bytes::buf::BufExt;
 use chrono::prelude::*;
 use hyper::{Body, Request};
-use slog::warn;
 use serde::Serialize;
+use slog::warn;
 
 use crypto::hash::HashType;
 use shell::shell_channel::BlockApplied;
-use tezos_api::ffi::{JsonRpcRequest};
-use tezos_messages::ts_to_rfc3339;
-use tezos_wrapper::service::{ProtocolServiceError, ProtocolError};
+use tezos_api::ffi::JsonRpcRequest;
 use tezos_api::ffi::ProtocolRpcError;
+use tezos_messages::ts_to_rfc3339;
+use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
 
 use crate::{
     empty,
@@ -147,7 +147,7 @@ pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: 
 pub async fn cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let block_id = params.get_str("block_id").unwrap();
     let cycle_id = params.get_str("cycle_id").unwrap();
-    result_to_json_response(base_services::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage(), env.tezedge_context(), env.state()), env.log())
+    result_to_json_response(services::protocol::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage(), env.tezedge_context(), env.state()), env.log())
 }
 
 pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -227,7 +227,7 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
         services::mempool_services::inject_operation(
             &operation_data,
             &env,
-            shell_channel.clone()
+            shell_channel.clone(),
         ),
         env.log(),
     )
@@ -374,7 +374,7 @@ pub async fn live_blocks(_: Request<Body>, params: Params, _: Query, env: RpcSer
     let block_param = params.get_str("block_id").unwrap();
 
     result_to_json_response(
-        services::protocol::live_blocks(chain_param, block_param, &env),
+        services::base_services::live_blocks(chain_param, block_param, &env),
         env.log(),
     )
 }
@@ -402,11 +402,11 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
         Ok(resp) => result_to_json_response(Ok(resp), env.log()),
         Err(e) => {
             if let Some(err) = e.as_fail().downcast_ref::<ProtocolServiceError>() {
-                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc { message } }  } = err {
-                    return make_json_response(&ErrorMessage{
+                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc { message } } } = err {
+                    return make_json_response(&ErrorMessage {
                         error_type: "ocaml".to_string(),
                         message: message.to_string(),
-                    })
+                    });
                 }
             }
             empty()

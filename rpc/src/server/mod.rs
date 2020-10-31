@@ -13,7 +13,7 @@ use hyper::service::{make_service_fn, service_fn};
 use riker::actors::ActorSystem;
 use slog::Logger;
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::BlockHash;
 use shell::shell_channel::ShellChannelRef;
 use storage::persistent::PersistentStorage;
 use storage::context::TezedgeContext;
@@ -40,7 +40,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
-    genesis_hash: String,
+    genesis_hash: BlockHash,
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
@@ -72,7 +72,7 @@ impl RpcServiceEnvironment {
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
-        genesis_hash: &BlockHash,
+        genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         log: &Logger) -> Self {
         Self {
@@ -83,7 +83,7 @@ impl RpcServiceEnvironment {
             network_version,
             persistent_storage: persistent_storage.clone(),
             tezedge_context: tezedge_context.clone(),
-            genesis_hash: HashType::BlockHash.bytes_to_string(genesis_hash),
+            genesis_hash,
             state,
             log: log.clone(),
             tezos_readonly_api,

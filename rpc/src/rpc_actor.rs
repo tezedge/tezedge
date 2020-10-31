@@ -94,7 +94,7 @@ impl RpcServer {
                 tezos_readonly_api,
                 tezos_readonly_prevalidation_api,
                 tezos_without_context_api,
-                &init_storage_data.genesis_block_header_hash,
+                init_storage_data.genesis_block_header_hash.clone(),
                 shared_state,
                 &sys.log(),
             );

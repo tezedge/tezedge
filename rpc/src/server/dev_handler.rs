@@ -4,13 +4,14 @@
 use hyper::{Body, Request};
 use slog::warn;
 
+use crypto::hash::HashType;
+
 use crate::{empty, make_json_response, result_to_json_response, ServiceResult, unwrap_block_hash};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
 pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    warn!(env.log(), "Getting dev_blocks");
-    let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), env.genesis_hash());
+    let from_block_id = unwrap_block_hash(query.get_str("from_block_id"), env.state(), &HashType::BlockHash.bytes_to_string(env.genesis_hash()));
     let limit = query.get_usize("limit").unwrap_or(50);
     let cycle_length = base_services::get_cycle_length_for_block(&from_block_id, env.persistent_storage(), env.state(), env.log())?;
     let every_nth_level = match query.get_str("every_nth") {

@@ -48,8 +48,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/rolls/owner/current")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/contracts")).await;
-        // TODO: this compare as unordered
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "live_blocks")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "live_blocks")).await;
 
         // --------------------------- Tests for each block_id - protocol rpcs ---------------------------
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
@@ -123,6 +122,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             // tests for cycles from protocol/context
             for cycle in cycles {
                 let cycle = cycle.as_u64().expect(&format!("Invalid cycle: {}", cycle));
+                test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle", cycle)).await;
                 test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", level, "context/raw/json/cycle", cycle)).await;
             }
 
@@ -155,10 +155,16 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) -> (Value, Value) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     println!("Checking: {}", rpc_path);
-    let node1_json = get_rpc_as_json(NodeType::Node1, rpc_path).await.unwrap();
-    let node2_json = get_rpc_as_json(NodeType::Node2, rpc_path).await.unwrap();
+    let node1_json = match get_rpc_as_json(NodeType::Node1, rpc_path).await {
+        Ok(json) => json,
+        Err(e) => panic!("Failed to call rpc on Node1: '{}', Reason: {}", node_rpc_url(NodeType::Node1, rpc_path), e)
+    };
+    let node2_json = match get_rpc_as_json(NodeType::Node2, rpc_path).await {
+        Ok(json) => json,
+        Err(e) => panic!("Failed to call rpc on Node2: '{}', Reason: {}", node_rpc_url(NodeType::Node2, rpc_path), e)
+    };
     if let Err(error) = assert_json_eq_no_panic(&node2_json, &node1_json) {
-        panic!("\n\n{}\n\nnode2_json:\n{}\n\nnode1_json:\n{}", error, node2_json, node1_json);
+        panic!("\n\nError: \n{}\n\nnode2_json:\n{}\n\nnode1_json:\n{}", error, node2_json, node1_json);
     } else {
         (node1_json, node2_json)
     }

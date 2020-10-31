@@ -4,30 +4,24 @@
 use std::convert::TryInto;
 
 use failure::bail;
-use serde::{Deserialize, Serialize};
 use slog::Logger;
 
 use crypto::hash::{chain_id_to_b58_string, HashType};
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
 use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
-use storage::persistent::PersistentStorage;
 use storage::merkle_storage::{MerkleStorageStats, StringTree};
+use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct CycleJson {
-    roll_snapshot: Option<i16>,
-    random_seed: Option<String>,
-}
+use crate::server::RpcServiceEnvironment;
 
 pub type BlockOperations = Vec<String>;
 
@@ -161,6 +155,27 @@ pub(crate) fn get_block_shell_header(block_id: &str, persistent_storage: &Persis
     Ok(block)
 }
 
+pub(crate) fn live_blocks(_chain_param: &str, block_param: &str, env: &RpcServiceEnvironment) -> Result<Option<Vec<String>>, failure::Error> {
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let current_block = block_storage.get_with_additional_data(&block_hash)?;
+    let max_ttl: usize = match current_block {
+        Some((_, json_data)) => {
+            json_data.max_operations_ttl().into()
+        }
+        None => bail!("Block not found for block id: {}", block_param)
+    };
+    let block_level = get_block_level_by_block_id(block_param, 0, persistent_storage, state)?;
+
+    let live_blocks: Option<Vec<String>> = block_storage.get_live_blocks(block_level.try_into()?, max_ttl)?
+        .map(|blocks| blocks.iter().map(|b| HashType::BlockHash.bytes_to_string(&b)).collect());
+
+    Ok(live_blocks)
+}
+
 /// Get protocol context constants from context list
 /// (just for RPC render use-case, do not use in processing or algorithms)
 ///
@@ -230,31 +245,6 @@ pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persis
     match context.get_context_tree_by_prefix(&ctx_hash.unwrap(), &prefix) {
         Ok(tree) => Ok(Some(tree)),
         Err(_) => Ok(None), // return None to avoid a panic
-    }
-}
-
-pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, context: &TezedgeContext, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
-
-    // TODO: should be replaced by context_hash
-    // get block level first
-    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
-        Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
-    };
-
-    let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let random_seed = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?;
-    let roll_snapshot = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?;
-
-    match (random_seed, roll_snapshot) {
-        (Some(random_seed), Some(roll_snapshot)) => {
-            let cycle_json = CycleJson {
-                random_seed: Some(hex::encode(random_seed).to_string()),
-                roll_snapshot: Some(num_from_slice!(roll_snapshot, 0, i16)),
-            };
-            Ok(Some(cycle_json))
-        }
-        _ => bail!("Context data not found")
     }
 }
 
