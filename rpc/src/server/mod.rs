@@ -15,8 +15,8 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use shell::shell_channel::ShellChannelRef;
-use storage::persistent::PersistentStorage;
 use storage::context::TezedgeContext;
+use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
@@ -24,8 +24,9 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::{not_found, options};
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
 
-mod handler;
 mod dev_handler;
+mod shell_handler;
+mod protocol_handler;
 mod router;
 
 /// Server environment parameters
