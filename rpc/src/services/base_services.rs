@@ -239,10 +239,20 @@ pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persis
 
     let ctx_hash = context.level_to_hash(ctxt_level);
     if ctx_hash.is_err() {
-        slog::warn!(log, "Block level not found");
+        slog::warn!(log, "Block level not found"; "ctxt_level" => ctxt_level);
         return Ok(None);
     }
-    match context.get_context_tree_by_prefix(&ctx_hash.unwrap(), &prefix) {
+
+    // we assume that root is at "/data"
+    let mut key_prefix = vec!["data".to_string()];
+
+    // clients may pass in a prefix (without /data) with elements containing slashes (expecting us to split)
+    // we need to join with '/' and split again
+    if let Some(prefix) = prefix {
+        key_prefix.extend(prefix.split('/').map(|s| s.to_string()));
+    };
+
+    match context.get_context_tree_by_prefix(&ctx_hash.unwrap(), &key_prefix) {
         Ok(tree) => Ok(Some(tree)),
         Err(_) => Ok(None), // return None to avoid a panic
     }

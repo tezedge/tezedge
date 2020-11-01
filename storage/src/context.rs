@@ -35,7 +35,7 @@ pub trait ContextApi {
     // get a list of all key-values under a certain key prefix
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError>;
     // get entire context tree in string form for JSON RPC
-    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &Option<&str>) -> Result<StringTree, MerkleError>;
+    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError>;
     // convert level number to hash (uses block_storage get_by_block_Level)
     fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError>;
     // get currently checked out hash
@@ -157,18 +157,10 @@ impl ContextApi for TezedgeContext {
         merkle.get_key_values_by_prefix(&context_hash_arr, &prefix)
     }
 
-    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &Option<&str>) -> Result<StringTree, MerkleError> {
+    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError> {
         let merkle = self.merkle.read().expect("lock poisoning");
-        // clients may pass in a prefix with elements containing slashes (expecting us to split)
-        // we need to join with '/' and split again
-        let mut prefix: ContextKey = match prefix {
-            Some(prefix) => prefix.split('/').map(|s| s.to_string()).collect(),
-            None => vec![],
-        };
-        // clients assume that root is at /data
-        prefix.insert(0, "data".to_string());
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        merkle.get_context_tree_by_prefix(&context_hash_arr, &prefix)
+        merkle.get_context_tree_by_prefix(&context_hash_arr, prefix)
     }
 
     fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError> {
