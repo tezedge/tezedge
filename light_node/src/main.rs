@@ -23,6 +23,7 @@ use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, ChainMetaStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
+use storage::context::TezedgeContext;
 use storage::merkle_storage::MerkleStorage;
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
@@ -194,6 +195,7 @@ fn block_on_actors(
     identity: Identity,
     actor_system: ActorSystem,
     persistent_storage: PersistentStorage,
+    tezedge_context: TezedgeContext,
     log: Logger) {
 
     // if feeding is started, than run chain manager
@@ -311,6 +313,7 @@ fn block_on_actors(
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,
+        &tezedge_context,
         tezos_readonly_api_pool.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
@@ -437,13 +440,15 @@ fn main() {
         };
 
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
+        let tezedge_context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
         match resolve_storage_init_chain_data(
             &tezos_env,
             &env.storage.db_path,
             &env.storage.tezos_data_dir,
             &env.storage.patch_context,
             &log) {
-            Ok(init_data) => block_on_actors(env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
+            Ok(init_data) => block_on_actors(env, tezos_env, init_data, tezos_identity, actor_system,
+                                             persistent_storage, tezedge_context, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data."; "reason" => e), actor_system),
         }
     }

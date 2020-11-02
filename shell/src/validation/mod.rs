@@ -257,7 +257,6 @@ mod tests {
 
     use super::*;
 
-    #[macro_export]
     macro_rules! fitness {
         ( $($x:expr),* ) => {{
             let fitness: Fitness = vec![

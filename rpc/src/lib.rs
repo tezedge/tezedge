@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 
 use hyper::{Body, Response, StatusCode};
-use slog::{Logger, warn};
+use slog::{error, Logger};
 
 use crypto::hash::HashType;
 pub use services::mempool_services::MempoolOperations;
@@ -59,7 +59,7 @@ pub(crate) fn result_to_json_response<T: serde::Serialize>(res: Result<T, failur
     match res {
         Ok(t) => make_json_response(&t),
         Err(err) => {
-            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
+            error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
             error(err)
         }
     }
@@ -73,7 +73,7 @@ pub(crate) fn result_option_to_json_response<T: serde::Serialize>(res: Result<Op
             None => not_found()
         }
         Err(err) => {
-            warn!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
+            error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
             error(err)
         }
     }

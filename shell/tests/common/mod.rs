@@ -86,7 +86,7 @@ pub mod infra {
     use shell::peer_manager::{P2p, PeerManager};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::{BlockStorage, ChainMetaStorage, resolve_storage_init_chain_data};
+    use storage::{BlockStorage, ChainMetaStorage, context_key, resolve_storage_init_chain_data};
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
@@ -301,7 +301,7 @@ pub mod infra {
                 self.tmp_storage.storage().merkle(),
             );
 
-            let protocol_key = vec!["protocol".to_string()];
+            let protocol_key = context_key!("protocol");
 
             // try checkout context
             let result = loop {

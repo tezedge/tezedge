@@ -12,6 +12,7 @@ use tokio::runtime::Handle;
 use crypto::hash::ChainId;
 use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::persistent::PersistentStorage;
+use storage::context::TezedgeContext;
 use storage::StorageInitInfo;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
@@ -20,6 +21,7 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::encoding::base_types::TimeStamp;
 use crate::helpers::current_time_timestamp;
 use crate::server::{RpcServiceEnvironment, spawn_server};
+
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -59,6 +61,7 @@ impl RpcServer {
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
+        tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
@@ -87,10 +90,11 @@ impl RpcServer {
                 tezos_env,
                 network_version,
                 persistent_storage,
+                tezedge_context,
                 tezos_readonly_api,
                 tezos_readonly_prevalidation_api,
                 tezos_without_context_api,
-                &init_storage_data.genesis_block_header_hash,
+                init_storage_data.genesis_block_header_hash.clone(),
                 shared_state,
                 &sys.log(),
             );
