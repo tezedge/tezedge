@@ -514,7 +514,7 @@ fn create_protocol_json_rpc_request(chain_param: &str, block_param: &str, json_r
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CycleJson {
-    // TODO: needed for rpc compare test - implement
+    // TODO: TE-226 - needed for rpc compare test - implement
     last_roll: Vec<i32>,
     nonces: Vec<String>,
 

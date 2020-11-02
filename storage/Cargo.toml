@@ -31,6 +31,5 @@ tezos_messages = { path = "../tezos/messages" }
 hex = "0.4"
 maplit = "1.0"
 rand = "0.7.3"
-serial_test = "0.5"
 slog-async = "2.5"
 slog-term = "2.6"
