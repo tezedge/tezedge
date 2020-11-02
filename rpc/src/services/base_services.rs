@@ -9,7 +9,7 @@ use slog::Logger;
 use crypto::hash::{chain_id_to_b58_string, HashType};
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage};
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, context_key, ContextActionRecordValue, ContextActionStorage};
 use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
@@ -219,32 +219,17 @@ pub(crate) fn get_cycle_length_for_block(block_id: &str, storage: &PersistentSto
     }
 }
 
-pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persistent_storage: &PersistentStorage, context: &TezedgeContext, state: &RpcCollectedStateRef, log: &Logger) -> Result<Option<StringTree>, failure::Error> {
+pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persistent_storage: &PersistentStorage, context: &TezedgeContext, state: &RpcCollectedStateRef) -> Result<StringTree, failure::Error> {
     // TODO: should be replaced by context_hash
     // get block level first
-    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state) {
-        Ok(Some(val)) => {
-            let rv = val.try_into();
-            if rv.is_err() {
-                slog::warn!(log, "Block level not found");
-                return Ok(None);
-            }
-            rv.unwrap()
-        }
-        _ => {
-            slog::warn!(log, "Block level not found");
-            return Ok(None);
-        }
+    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
+        Some(val) => val.try_into()?,
+        None => bail!("Block level {} not found", block_id)
     };
-
-    let ctx_hash = context.level_to_hash(ctxt_level);
-    if ctx_hash.is_err() {
-        slog::warn!(log, "Block level not found"; "ctxt_level" => ctxt_level);
-        return Ok(None);
-    }
+    let ctx_hash = context.level_to_hash(ctxt_level)?;
 
     // we assume that root is at "/data"
-    let mut key_prefix = vec!["data".to_string()];
+    let mut key_prefix = context_key!("data");
 
     // clients may pass in a prefix (without /data) with elements containing slashes (expecting us to split)
     // we need to join with '/' and split again
@@ -252,10 +237,7 @@ pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persis
         key_prefix.extend(prefix.split('/').map(|s| s.to_string()));
     };
 
-    match context.get_context_tree_by_prefix(&ctx_hash.unwrap(), &key_prefix) {
-        Ok(tree) => Ok(Some(tree)),
-        Err(_) => Ok(None), // return None to avoid a panic
-    }
+    Ok(context.get_context_tree_by_prefix(&ctx_hash, &key_prefix)?)
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {

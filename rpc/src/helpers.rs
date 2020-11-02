@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crypto::hash::{BlockHash, chain_id_to_b58_string, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, context_key};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::ContextActionType;
 use storage::persistent::PersistentStorage;
@@ -543,13 +543,13 @@ pub(crate) fn get_context_protocol_params(
     let protocol_hash: Vec<u8>;
     let constants: Vec<u8>;
     {
-        if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
+        if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("protocol"))? {
             protocol_hash = data;
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(block_id.to_string()).into());
         }
 
-        if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["data".to_string(), "v1".to_string(), "constants".to_string()])? {
+        if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/v1/constants"))? {
             constants = data;
         } else {
             return Err(ContextParamsError::NoConstantsForBlock(block_id.to_string()).into());

@@ -1,16 +1,17 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::{Arc, RwLock};
+use std::array::TryFromSliceError;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
-use std::array::TryFromSliceError;
+use std::sync::{Arc, RwLock};
 
 use failure::Fail;
 
-use crate::merkle_storage::{MerkleStorage, MerkleError, ContextKey, ContextValue, MerkleStorageStats, EntryHash, StringTree};
 use crypto::hash::{BlockHash, ContextHash, HashType};
+
 use crate::{BlockStorage, BlockStorageReader, StorageError};
+use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTree};
 
 /// Abstraction on context manipulation
 pub trait ContextApi {
@@ -28,14 +29,14 @@ pub trait ContextApi {
     fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), ContextError>;
     // get value for key
     fn get_key(&self, key: &ContextKey) -> Result<ContextValue, ContextError>;
-    // get values by key prefix
-    fn get_by_key_prefix(&self, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError>;
+
     // get value for key from a point in history indicated by context hash
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
     // get a list of all key-values under a certain key prefix
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError>;
     // get entire context tree in string form for JSON RPC
     fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError>;
+
     // convert level number to hash (uses block_storage get_by_block_Level)
     fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError>;
     // get currently checked out hash
@@ -53,8 +54,8 @@ impl ContextApi for TezedgeContext {
     }
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
+        let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.checkout(&context_hash_arr)?;
 
         Ok(())
@@ -62,7 +63,6 @@ impl ContextApi for TezedgeContext {
 
     fn commit(&mut self, block_hash: &BlockHash, parent_context_hash: &Option<ContextHash>,
               author: String, message: String, date: i64) -> Result<ContextHash, ContextError> {
-
         let mut merkle = self.merkle.write().expect("lock poisoning");
 
         let date: u64 = date.try_into()?;
@@ -123,43 +123,30 @@ impl ContextApi for TezedgeContext {
         Ok(val)
     }
 
-    fn get_by_key_prefix(&self, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
-        let val = merkle.get_by_prefix(prefix)?;
-        Ok(val)
-    }
-
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
-        let merkle = self.merkle.read().expect("lock poisoning");
-        // clients may pass in a prefix with elements containing slashes (expecting us to split)
-        // we need to join with '/' and split again
-        let key = to_key(key).split('/').map(|s| s.to_string()).collect();
-
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        match merkle.get_history(&context_hash_arr, &key) {
-            Err(MerkleError::ValueNotFound{key: _}) => Ok(None),
-            Err(MerkleError::EntryNotFound{hash: _}) =>  {
+        let merkle = self.merkle.read().expect("lock poisoning");
+        match merkle.get_history(&context_hash_arr, key) {
+            Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
+            Err(MerkleError::EntryNotFound { hash: _ }) => {
                 Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.bytes_to_string(context_hash) })
-            },
+            }
             Err(err) => {
                 Err(ContextError::MerkleStorageError { error: err })
-            },
+            }
             Ok(val) => Ok(Some(val))
         }
     }
 
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let merkle = self.merkle.read().expect("lock poisoning");
-        // clients may pass in a prefix with elements containing slashes (expecting us to split)
-        // we need to join with '/' and split again
-        let prefix = to_key(prefix).split('/').map(|s| s.to_string()).collect();
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        merkle.get_key_values_by_prefix(&context_hash_arr, &prefix)
+        let merkle = self.merkle.read().expect("lock poisoning");
+        merkle.get_key_values_by_prefix(&context_hash_arr, prefix)
     }
 
     fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError> {
-        let merkle = self.merkle.read().expect("lock poisoning");
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
+        let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_context_tree_by_prefix(&context_hash_arr, prefix)
     }
 
@@ -167,8 +154,8 @@ impl ContextApi for TezedgeContext {
         match self.block_storage.get_by_block_level(level) {
             Ok(Some(hash)) => {
                 Ok(hash.header.context().to_vec())
-            },
-            _ => Err(ContextError::UnknownLevelError{level: level.to_string()})
+            }
+            _ => Err(ContextError::UnknownLevelError { level: level.to_string() })
         }
     }
 
@@ -183,10 +170,6 @@ impl ContextApi for TezedgeContext {
 
         Ok(stats)
     }
-}
-
-fn to_key(key: &ContextKey) -> String {
-    key.join("/")
 }
 
 // context implementation using merkle-tree-like storage
@@ -238,13 +221,65 @@ impl From<MerkleError> for ContextError {
         ContextError::MerkleStorageError { error }
     }
 }
+
 impl From<TryFromIntError> for ContextError {
     fn from(error: TryFromIntError) -> Self {
         ContextError::InvalidCommitDate { error }
     }
 }
+
 impl From<TryFromSliceError> for ContextError {
     fn from(error: TryFromSliceError) -> Self {
         ContextError::HashConversionError { error }
+    }
+}
+
+/// Marco that simplifies and unificates ContextKey creation
+///
+/// Common usage:
+///
+/// `context_key!("protocol")`
+/// `context_key!("data/votes/listings")`
+/// `context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot)`
+/// `context_key!("{}/{}/{}", "data", "votes", "listings")`
+///
+#[macro_export]
+macro_rules! context_key {
+    ($key:expr) => {{
+        $key.split('/').map(str::to_string).collect::<Vec<String>>()
+    }};
+    ($($arg:tt)*) => {{
+        context_key!(format!($($arg)*))
+    }};
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::context_key;
+
+    #[test]
+    fn test_context_key_simple() {
+        assert_eq!(
+            context_key!("protocol"),
+            vec!["protocol".to_string()],
+        );
+    }
+
+    #[test]
+    fn test_context_key_mutliple() {
+        assert_eq!(
+            context_key!("data/votes/listings"),
+            vec!["data".to_string(), "votes".to_string(), "listings".to_string()],
+        );
+    }
+
+    #[test]
+    fn test_context_key_format() {
+        let cycle: i64 = 5;
+        let snapshot: i16 = 9;
+        assert_eq!(
+            context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
+            vec!["data".to_string(), "rolls".to_string(), "owner".to_string(), "snapshot".to_string(), "5".to_string(), "9".to_string()],
+        );
     }
 }

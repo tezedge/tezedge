@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crypto::hash::{ContextHash, HashType};
-use storage::{BlockHeaderWithHash, BlockStorage};
+use storage::{BlockHeaderWithHash, BlockStorage, context_key};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::tests_common::TmpStorage;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
@@ -29,8 +29,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     );
 
     // add to context
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "index", "123"].to_vec()),
-                &vec![1, 2, 3, 4, 5, 6])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/index/123"), &vec![1, 2, 3, 4, 5, 6])?;
 
     // commit
     let new_context_hash: ContextHash = HashType::ContextHash.string_to_bytes("CoVf53zSDGcSWS74Mxe2i2RJnVfCaMrAjxK2Xq7tgiFMtkNwUdPv")?;
@@ -42,7 +41,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     assert_eq!(hash, new_context_hash);
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], new_context_hash, vec![1, 2, 3, 4, 5, 6]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/index/123"), new_context_hash, vec![1, 2, 3, 4, 5, 6]);
 
     Ok(())
 }
@@ -65,12 +64,12 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     );
 
     // add to context
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "0"].to_vec()), &vec![1, 2, 3, 4])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "1", "a"].to_vec()), &vec![1, 2, 3, 4, 5])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "1", "b"].to_vec()), &vec![1, 2, 3, 4, 5])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "a"].to_vec()), &vec![1, 2, 3, 4, 5, 61])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "b"].to_vec()), &vec![1, 2, 3, 4, 5, 62])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "index", "123"].to_vec()), &vec![1, 2, 3, 4, 5, 6, 7])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/0"), &vec![1, 2, 3, 4])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/1/a"), &vec![1, 2, 3, 4, 5])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/1/b"), &vec![1, 2, 3, 4, 5])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/2/a"), &vec![1, 2, 3, 4, 5, 61])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/2/b"), &vec![1, 2, 3, 4, 5, 62])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/index/123"), &vec![1, 2, 3, 4, 5, 6, 7])?;
 
     // commit
     let context_hash_1: ContextHash = HashType::ContextHash.string_to_bytes("CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB")?;
@@ -82,12 +81,12 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     assert_eq!(hash, context_hash_1);
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1.clone(), vec![1, 2, 3, 4]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "a"], context_hash_1.clone(), vec![1, 2, 3, 4, 5]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "b"], context_hash_1.clone(), vec![1, 2, 3, 4, 5]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1.clone(), vec![1, 2, 3, 4, 5, 61]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1.clone(), vec![1, 2, 3, 4, 5, 62]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/0"), context_hash_1.clone(), vec![1, 2, 3, 4]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/1/a"), context_hash_1.clone(), vec![1, 2, 3, 4, 5]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/1/b"), context_hash_1.clone(), vec![1, 2, 3, 4, 5]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/2/a"), context_hash_1.clone(), vec![1, 2, 3, 4, 5, 61]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/2/b"), context_hash_1.clone(), vec![1, 2, 3, 4, 5, 62]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/index/123"), context_hash_1.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
@@ -100,11 +99,11 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     // 1. remove rec
     context.remove_recursively_to_diff(
         &Some(context_hash_1.clone()),
-        &to_key(["data", "rolls", "owner", "current", "cpu", "2"].to_vec()),
+        &context_key!("data/rolls/owner/current/cpu/2"),
     )?;
     context.delete_to_diff(
         &Some(context_hash_1.clone()),
-        &to_key(["data", "rolls", "owner", "current", "cpu", "1", "b"].to_vec()),
+        &context_key!("data/rolls/owner/current/cpu/1/b"),
     )?;
 
     // commit
@@ -117,12 +116,12 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     assert_eq!(hash, context_hash_2);
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2.clone(), vec![1, 2, 3, 4]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1", "a"], context_hash_2.clone(), vec![1, 2, 3, 4, 5]);
-    assert_data_deleted!(context, ["data", "rolls", "owner", "current", "cpu", "1", "b"], context_hash_2.clone());
-    assert_data_deleted!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_2.clone());
-    assert_data_deleted!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_2.clone());
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_2.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/0"), context_hash_2.clone(), vec![1, 2, 3, 4]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/1/a"), context_hash_2.clone(), vec![1, 2, 3, 4, 5]);
+    assert_data_deleted!(context, context_key!("data/rolls/owner/current/cpu/1/b"), context_hash_2.clone());
+    assert_data_deleted!(context, context_key!("data/rolls/owner/current/cpu/2/a"), context_hash_2.clone());
+    assert_data_deleted!(context, context_key!("data/rolls/owner/current/cpu/2/b"), context_hash_2.clone());
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/index/123"), context_hash_2.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
 
     Ok(())
 }
@@ -145,11 +144,11 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     );
 
     // add to context
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "0"].to_vec()), &vec![1, 2, 3, 4])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "1"].to_vec()), &vec![1, 2, 3, 4, 5])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "a"].to_vec()), &vec![1, 2, 3, 4, 5, 61])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "cpu", "2", "b"].to_vec()), &vec![1, 2, 3, 4, 5, 62])?;
-    context.set(&None, &to_key(["data", "rolls", "owner", "current", "index", "123"].to_vec()), &vec![1, 2, 3, 4, 5, 6, 7])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/0"), &vec![1, 2, 3, 4])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/1"), &vec![1, 2, 3, 4, 5])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/2/a"), &vec![1, 2, 3, 4, 5, 61])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/cpu/2/b"), &vec![1, 2, 3, 4, 5, 62])?;
+    context.set(&None, &context_key!("data/rolls/owner/current/index/123"), &vec![1, 2, 3, 4, 5, 6, 7])?;
 
     // commit
     let context_hash_1: ContextHash = HashType::ContextHash.string_to_bytes("CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR")?;
@@ -161,11 +160,11 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     assert_eq!(hash, context_hash_1);
 
     // get key from new commit
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_1.clone(), vec![1, 2, 3, 4]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_1.clone(), vec![1, 2, 3, 4, 5]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_1.clone(), vec![1, 2, 3, 4, 5, 61]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_1.clone(), vec![1, 2, 3, 4, 5, 62]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_1.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/0"), context_hash_1.clone(), vec![1, 2, 3, 4]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/1"), context_hash_1.clone(), vec![1, 2, 3, 4, 5]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/2/a"), context_hash_1.clone(), vec![1, 2, 3, 4, 5, 61]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/2/b"), context_hash_1.clone(), vec![1, 2, 3, 4, 5, 62]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/index/123"), context_hash_1.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
@@ -178,8 +177,8 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     // 1. copy
     context.copy_to_diff(
         &Some(context_hash_1.clone()),
-        &to_key(["data", "rolls", "owner", "current"].to_vec()),
-        &to_key(["data", "rolls", "owner", "snapshot", "01", "02"].to_vec()),
+        &context_key!("data/rolls/owner/current"),
+        &context_key!("data/rolls/owner/snapshot/01/02"),
     )?;
 
     // commit
@@ -192,27 +191,20 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     assert_eq!(hash, context_hash_2);
 
     // get key from new commit - original stays unchanged
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "0"], context_hash_2.clone(), vec![1, 2, 3, 4]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "1"], context_hash_2.clone(), vec![1, 2, 3, 4, 5]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "a"], context_hash_2.clone(), vec![1, 2, 3, 4, 5, 61]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "cpu", "2", "b"], context_hash_2.clone(), vec![1, 2, 3, 4, 5, 62]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "current", "index", "123"], context_hash_2.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/0"), context_hash_2.clone(), vec![1, 2, 3, 4]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/1"), context_hash_2.clone(), vec![1, 2, 3, 4, 5]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/2/a"), context_hash_2.clone(), vec![1, 2, 3, 4, 5, 61]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/cpu/2/b"), context_hash_2.clone(), vec![1, 2, 3, 4, 5, 62]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/current/index/123"), context_hash_2.clone(), vec![1, 2, 3, 4, 5, 6, 7]);
 
     // get key from new commit - original stays unchanged
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "0"], context_hash_2.clone(), vec![1, 2, 3, 4]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "1"], context_hash_2.clone(), vec![1, 2, 3, 4, 5]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2", "a"], context_hash_2.clone(), vec![1, 2, 3, 4, 5, 61]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "cpu", "2", "b"], context_hash_2.clone(), vec![1, 2, 3, 4, 5, 62]);
-    assert_data_eq!(context, ["data", "rolls", "owner", "snapshot", "01", "02", "index", "123"], context_hash_2, vec![1, 2, 3, 4, 5, 6, 7]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/snapshot/01/02/cpu/0"), context_hash_2.clone(), vec![1, 2, 3, 4]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/snapshot/01/02/cpu/1"), context_hash_2.clone(), vec![1, 2, 3, 4, 5]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/snapshot/01/02/cpu/2/a"), context_hash_2.clone(), vec![1, 2, 3, 4, 5, 61]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/snapshot/01/02/cpu/2/b"), context_hash_2.clone(), vec![1, 2, 3, 4, 5, 62]);
+    assert_data_eq!(context, context_key!("data/rolls/owner/snapshot/01/02/index/123"), context_hash_2, vec![1, 2, 3, 4, 5, 6, 7]);
 
     Ok(())
-}
-
-fn to_key(key: Vec<&str>) -> Vec<String> {
-    key
-        .into_iter()
-        .map(|k| k.to_string())
-        .collect()
 }
 
 fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, failure::Error> {
@@ -239,7 +231,7 @@ fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, fail
 #[macro_export]
 macro_rules! assert_data_eq {
     ($ctx:expr, $key:expr, $context_hash:expr, $data:expr) => {{
-        let data = $ctx.get_key_from_history(&$context_hash, &to_key($key.to_vec()))?;
+        let data = $ctx.get_key_from_history(&$context_hash, &$key)?;
         assert!(data.is_some());
         assert_eq!(data.unwrap(), $data);
     }}
@@ -248,7 +240,7 @@ macro_rules! assert_data_eq {
 #[macro_export]
 macro_rules! assert_data_deleted {
     ($ctx:expr, $key:expr, $context_hash:expr) => {{
-        let data = $ctx.get_key_from_history(&$context_hash, &to_key($key.to_vec()));
+        let data = $ctx.get_key_from_history(&$context_hash, &$key);
         assert!(data.is_ok());
         assert!(data.unwrap().is_none());
     }}

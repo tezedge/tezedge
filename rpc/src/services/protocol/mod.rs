@@ -18,7 +18,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::HashType;
-use storage::{BlockStorage, BlockStorageReader, num_from_slice};
+use storage::{BlockStorage, BlockStorageReader, context_key, num_from_slice};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{FfiRpcService, JsonRpcRequest, ProtocolJsonRpcRequest};
@@ -297,7 +297,7 @@ pub(crate) fn get_votes_listings(_chain_id: &str, block_id: &str, persistent_sto
     let ctx_hash = context.level_to_hash(block_level.try_into()?)?;
 
     // filter out the listings data
-    let listings_data = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/votes/listings".to_string()])? {
+    let listings_data = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &context_key!("data/votes/listings"))? {
         val
     } else {
         bail!("No listings found in context")
@@ -534,9 +534,9 @@ pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, per
 
     let ctx_hash = context.level_to_hash(ctxt_level)?;
 
-    let random_seed = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?
+    let random_seed = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/random_seed", cycle_id))?
         .map(|data| hex::encode(data).to_string());
-    let roll_snapshot = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?
+    let roll_snapshot = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/roll_snapshot", cycle_id))?
         .map(|data| num_from_slice!(data, 0, i16));
 
     Ok(Some(

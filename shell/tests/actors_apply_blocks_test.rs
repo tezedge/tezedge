@@ -17,7 +17,7 @@ use slog::{info, Logger};
 
 use crypto::hash::{BlockHash, HashType, OperationHash};
 use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, context_key, MempoolStorage, OperationsMetaStorage, OperationsStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
@@ -99,7 +99,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
 
     // check level 0
     let ctx_hash = context.level_to_hash(0)?;
-    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
+    if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("protocol"))? {
         assert_eq!("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 0));
@@ -107,7 +107,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
 
     // check level 1
     let ctx_hash = context.level_to_hash(1)?;
-    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
+    if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("protocol"))? {
         assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 1));
@@ -115,7 +115,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
 
     // check level 2
     let ctx_hash = context.level_to_hash(2)?;
-    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
+    if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("protocol"))? {
         assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
