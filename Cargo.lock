@@ -1576,11 +1576,8 @@ name = "light-node"
 version = "0.8.0"
 dependencies = [
  "clap",
- "crypto",
  "failure",
  "futures",
- "hex",
- "lazy_static",
  "logging",
  "monitoring",
  "networking",
@@ -1794,14 +1791,12 @@ dependencies = [
 name = "monitoring"
 version = "0.8.0"
 dependencies = [
- "chrono",
  "crypto",
  "erased-serde",
  "failure",
  "networking",
  "rand 0.7.3",
  "riker",
- "rocksdb",
  "serde 1.0.117",
  "serde_json",
  "shell",
@@ -1809,7 +1804,6 @@ dependencies = [
  "slog_derive",
  "storage",
  "tezos_messages",
- "tokio",
  "ws",
 ]
 
@@ -2569,12 +2563,10 @@ dependencies = [
  "hex",
  "hyper",
  "itertools",
- "lazy_static",
  "path-tree",
  "rand 0.7.3",
  "rayon",
  "riker",
- "rocksdb",
  "serde 1.0.117",
  "serde_json",
  "shell",
@@ -2651,14 +2643,11 @@ dependencies = [
 name = "sandbox"
 version = "0.8.0"
 dependencies = [
- "chrono",
  "clap",
  "colored",
  "failure",
- "futures",
  "hex",
  "itertools",
- "lazy_static",
  "nix 0.17.0",
  "os_type",
  "rand 0.7.3",
@@ -3047,7 +3036,6 @@ dependencies = [
  "hex",
  "im",
  "itertools",
- "lazy_static",
  "maplit",
  "num_cpus",
  "rand 0.7.3",
@@ -3187,7 +3175,6 @@ dependencies = [
  "lazy_static",
  "ocaml-interop",
  "serde 1.0.117",
- "slog",
  "tezos_messages",
 ]
 
