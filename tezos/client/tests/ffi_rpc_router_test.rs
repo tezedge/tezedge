@@ -83,8 +83,8 @@ fn test_run_operations() -> Result<(), failure::Error> {
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(&test_data::RUN_OPERTION_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::RUN_OPERTION_RESPONSE)?
     );
 
     Ok(())
@@ -129,9 +129,7 @@ fn test_forge_operations() -> Result<(), failure::Error> {
         }
     "#;
 
-    let expected_response = r#"
-        "97f9d91bdcf9ba544fcd84fb525409cab4c16be8eea29788a499e060d4a84a366b00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e01d086038102005e108e1c9b4fb5c95d47ad49d55fe988c8d77d617c27cbbcd99f97cca0cd3ab96c00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e02d08603810280b1b5cc040000124410d330e6c21d604aae39e3c156eb6b241c2500"
-    "#;
+    let expected_response = r#""97f9d91bdcf9ba544fcd84fb525409cab4c16be8eea29788a499e060d4a84a366b00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e01d086038102005e108e1c9b4fb5c95d47ad49d55fe988c8d77d617c27cbbcd99f97cca0cd3ab96c00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e02d08603810280b1b5cc040000124410d330e6c21d604aae39e3c156eb6b241c2500""#;
 
     // FFI call for run_operation
     let request = ProtocolJsonRpcRequest {
@@ -148,8 +146,8 @@ fn test_forge_operations() -> Result<(), failure::Error> {
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(expected_response)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(expected_response)?
     );
 
     Ok(())
@@ -191,8 +189,8 @@ fn test_context_contract() -> Result<(), failure::Error> {
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(expected_response)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(expected_response)?
     );
 
     Ok(())
@@ -227,8 +225,8 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(&test_data::PREAPPLY_OPERTIONS_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::PREAPPLY_OPERTIONS_RESPONSE)?
     );
 
     Ok(())
@@ -257,8 +255,8 @@ fn test_current_level_call() -> Result<(), failure::Error> {
     let response = client::call_protocol_json_rpc(request)?;
 
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(&test_data::CURRENT_LEVEL_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::CURRENT_LEVEL_RESPONSE)?
     );
 
     Ok(())
@@ -287,8 +285,8 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
     let response = client::call_protocol_json_rpc(request)?;
 
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(&test_data::MINIMAL_VALID_TIME_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::MINIMAL_VALID_TIME_RESPONSE)?
     );
 
     Ok(())
@@ -352,8 +350,8 @@ fn test_preapply_block() -> Result<(), failure::Error> {
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str(&response.body)?,
-        serde_json::from_str(&test_data::PREAPPLY_BLOCK_1_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(&response.body)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::PREAPPLY_BLOCK_1_RESPONSE)?,
     );
 
     Ok(())
