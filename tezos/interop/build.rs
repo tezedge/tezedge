@@ -85,14 +85,14 @@ fn get_remote_lib() -> RemoteLib {
                         lib_url: artifact.url.to_string(),
                         sha256_checksum_url: artifact_sha256.url.to_string(),
                     }
-                },
+                }
                 None => {
                     println!("cargo:warning=No precompiled library found for '{:?}'.", platform);
                     println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
                     panic!("No precompiled library");
                 }
             }
-        },
+        }
         None => {
             println!("cargo:warning=Not yet supported platform: '{:?}', requested artifact_for_platform: {:?}!", platform, artifact_for_platform);
             println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
@@ -232,7 +232,7 @@ fn main() {
         .map(|dir_entry| dir_entry.path())
         .filter(|path| path.is_file())
         .collect::<Vec<PathBuf>>();
-    let artifacts_dir_items = artifacts_dir_items.iter().map(|p| p.as_path()).collect();
+    let artifacts_dir_items: Vec<&Path> = artifacts_dir_items.iter().map(|p| p.as_path()).collect();
     let mut copy_options = fs_extra::dir::CopyOptions::new();
     copy_options.overwrite = true;
     let bytes_copied = fs_extra::copy_items(&artifacts_dir_items, &out_dir, &copy_options).expect("Failed to copy artifacts to build output directory.");
