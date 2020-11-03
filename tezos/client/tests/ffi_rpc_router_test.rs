@@ -5,8 +5,8 @@ use assert_json_diff::assert_json_eq;
 use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
-use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockRequest, ComputePathRequest, ComputePathResponse, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
+use tezos_api::{environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration}, ffi::{RpcMethod, ProtocolRpcResponse}};
+use tezos_api::ffi::{ApplyBlockRequest, ComputePathRequest, ComputePathResponse, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
@@ -54,6 +54,13 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
     )
 }
 
+fn extract_body(r: ProtocolRpcResponse) -> Result<String, failure::Error> {
+    match r {
+        ProtocolRpcResponse::RPCOk(body) => Ok(body),
+        other => Err(failure::err_msg(format!("Expecter RPCOk, instead got {:?}", other))),
+    }
+}
+
 #[test]
 #[serial]
 fn test_run_operations() -> Result<(), failure::Error> {
@@ -76,15 +83,17 @@ fn test_run_operations() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/head/helpers/scripts/run_operation".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::POST,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersRunOperation,
     };
     let response = client::call_protocol_json_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::RUN_OPERTION_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::RUN_OPERTION_RESPONSE)?,
     );
 
     Ok(())
@@ -139,15 +148,17 @@ fn test_forge_operations() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/head/helpers/forge/operations".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::POST,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersForgeOperations,
     };
     let response = client::call_protocol_json_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(expected_response)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(expected_response)?,
     );
 
     Ok(())
@@ -182,15 +193,17 @@ fn test_context_contract() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::ContextContract,
     };
     let response = client::call_protocol_json_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(expected_response)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(expected_response)?,
     );
 
     Ok(())
@@ -218,8 +231,10 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/head/helpers/preapply/operations".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersPreapplyOperations,
     };
     let response = client::helpers_preapply_operations(request)?;
 
@@ -248,15 +263,17 @@ fn test_current_level_call() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/head/helpers/current_level?offset=1".to_string(),
             body: "".to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersCurrentLevel,
     };
 
     let response = client::call_protocol_json_rpc(request)?;
 
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::CURRENT_LEVEL_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::CURRENT_LEVEL_RESPONSE)?,
     );
 
     Ok(())
@@ -278,15 +295,17 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/head/minimal_valid_time?priority=4&endorsing_power=0".to_string(),
             body: "".to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::DelegatesMinimalValidTime,
     };
 
     let response = client::call_protocol_json_rpc(request)?;
 
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::MINIMAL_VALID_TIME_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::MINIMAL_VALID_TIME_RESPONSE)?,
     );
 
     Ok(())
@@ -343,8 +362,10 @@ fn test_preapply_block() -> Result<(), failure::Error> {
         request: JsonRpcRequest {
             context_path: "/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1592985768".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersPreapplyBlock,
     };
     let response = client::helpers_preapply_block(request)?;
 

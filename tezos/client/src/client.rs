@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest, ComputePathResponse, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
+use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest, ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, ProtocolRpcResponse, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
 use tezos_interop::ffi;
 
 /// Override runtime configuration for OCaml runtime
@@ -104,13 +104,11 @@ pub fn validate_operation(request: ValidateOperationRequest) -> Result<ValidateO
 }
 
 /// Call protocol json rpc - general service
-pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
-    match ffi::call_protocol_json_rpc(request) {
-        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<ProtocolRpcResponse, ProtocolRpcError> {
+    match ffi::call_protocol_rpc(request) {
+        Ok(result) => result,
         Err(e) => {
-            Err(ProtocolRpcError::FailedToCallProtocolRpc {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
+            Err(ProtocolRpcError::FailedToCallProtocolRpc(format!("Unknown OcamlError: {:?}", e)))
         }
     }
 }
@@ -128,13 +126,12 @@ pub fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, 
     }
 }
 
-
 /// Call helpers_preapply_operations shell service
-pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_operations(request) {
-        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Ok(result) => result.map_err(|e| HelpersPreapplyError::from(e)),
         Err(e) => {
-            Err(ProtocolRpcError::FailedToCallProtocolRpc {
+            Err(HelpersPreapplyError::FailedToCallProtocolRpc {
                 message: format!("Unknown OcamlError: {:?}", e)
             })
         }
@@ -142,11 +139,11 @@ pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<Js
 }
 
 /// Call helpers_preapply_block shell service
-pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_block(request) {
-        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
+        Ok(result) => result.map_err(|e| HelpersPreapplyError::from(e)),
         Err(e) => {
-            Err(ProtocolRpcError::FailedToCallProtocolRpc {
+            Err(HelpersPreapplyError::FailedToCallProtocolRpc {
                 message: format!("Unknown OcamlError: {:?}", e)
             })
         }

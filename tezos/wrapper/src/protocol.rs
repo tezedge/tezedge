@@ -16,13 +16,13 @@ pub trait ProtocolApi {
     fn validate_operation(request: ValidateOperationRequest) -> Result<ValidateOperationResponse, ValidateOperationError>;
 
     /// Call protocol json rpc
-    fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError>;
+    fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<ProtocolRpcResponse, ProtocolRpcError>;
 
     /// Call helpers_preapply_operations shell service
-    fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError>;
+    fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<HelpersPreapplyResponse, HelpersPreapplyError>;
 
     /// Call helpers_preapply_block shell service
-    fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError>;
+    fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<HelpersPreapplyResponse, HelpersPreapplyError>;
 
     /// Change tezos runtime configuration
     fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError>;

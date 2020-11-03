@@ -73,7 +73,7 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     if chain_id == "main" {
         make_json_stream_response(base_services::get_current_head_monitor_header(env.state())?.unwrap())
     } else {
-        // TODO: implement... 
+        // TODO: implement...
         empty()
     }
 }
@@ -246,7 +246,7 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
         Ok(resp) => result_to_json_response(Ok(resp), env.log()),
         Err(e) => {
             if let Some(err) = e.as_fail().downcast_ref::<ProtocolServiceError>() {
-                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc { message } } } = err {
+                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc(message) } } = err {
                     return make_json_response(&ErrorMessage {
                         error_type: "ocaml".to_string(),
                         message: message.to_string(),
