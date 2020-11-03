@@ -12,7 +12,7 @@ use crate::ffi::{
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 use ocaml_interop::{
-    impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, IntoRust, OCaml, OCamlBytes,
+    impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, ToRust, OCaml, OCamlBytes,
     OCamlInt, OCamlInt32, OCamlList,
 };
 
@@ -20,7 +20,7 @@ macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
         unsafe impl FromOCaml<$ocaml_name> for $rust_name {
             fn from_ocaml(v: OCaml<$ocaml_name>) -> Self {
-                unsafe { v.field::<OCamlBytes>(0).into_rust() }
+                unsafe { v.field::<OCamlBytes>(0).to_rust() }
             }
         }
     };

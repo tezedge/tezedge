@@ -6,7 +6,7 @@ extern crate test;
 use std::{env, thread};
 
 use serial_test::serial;
-use ocaml_interop::{FromOCaml, OCaml, ocaml_alloc, ocaml_call, ocaml_frame, OCamlBytes, OCamlList, to_ocaml, ToOCaml};
+use ocaml_interop::{FromOCaml, OCaml, OCamlBytes, OCamlList, ToOCaml, ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml};
 
 use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId};
 use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
@@ -158,15 +158,14 @@ fn test_block_header_with_hash_roundtrip(iteration: i32) -> Result<(), failure::
     let header: RustBytes = hex::decode(HEADER).unwrap();
 
     let result = runtime::execute(move || {
-        ocaml_frame!(gc, {
+        ocaml_frame!(gc(header_hash_root), {
             // sent bytes to ocaml
-            let header_hash: OCaml<OCamlBytes> = ocaml_alloc!(header_hash.to_ocaml(gc));
-            let ref header_hash_ref = gc.keep(header_hash);
-            let header: OCaml<OCamlBytes> = ocaml_alloc!(header.to_ocaml(gc));
+            let header_hash = to_ocaml!(gc, header_hash, header_hash_root);
+            let header = to_ocaml!(gc, header);
 
             let result = ocaml_call!(tezos_ffi::block_header_with_hash_roundtrip(
                 gc,
-                gc.get(header_hash_ref),
+                gc.get(&header_hash),
                 header
             ));
             let result = <(String, String)>::from_ocaml(result.unwrap());
@@ -329,26 +328,22 @@ fn call_to_send_context_events(
     key: Vec<String>,
     data: RustBytes) {
     runtime::execute(move || {
-        ocaml_frame!(gc, {
+        ocaml_frame!(gc(context_hash_root, block_header_hash_root, operation_hash_root, key_root), {
             // sent bytes to ocaml
             let count = OCaml::of_i32(count);
-            let context_hash: OCaml<OCamlBytes> = ocaml_alloc!(context_hash.to_ocaml(gc));
-            let ref context_hash_ref = gc.keep(context_hash);
-            let block_header_hash: OCaml<OCamlBytes> = ocaml_alloc!(block_header_hash.to_ocaml(gc));
-            let ref block_header_hash_ref = gc.keep(block_header_hash);
-            let operation_hash: OCaml<OCamlBytes> = ocaml_alloc!(operation_hash.to_ocaml(gc));
-            let ref operation_hash_ref = gc.keep(operation_hash);
-            let key: OCaml<OCamlList<OCamlBytes>> = ocaml_alloc!(key.to_ocaml(gc));
-            let ref key_ref = gc.keep(key);
-            let data: OCaml<OCamlBytes> = ocaml_alloc!(data.to_ocaml(gc));
+            let context_hash = to_ocaml!(gc, context_hash, context_hash_root);
+            let block_header_hash = to_ocaml!(gc, block_header_hash, block_header_hash_root);
+            let operation_hash = to_ocaml!(gc, operation_hash, operation_hash_root);
+            let key = to_ocaml!(gc, key, key_root);
+            let data = to_ocaml!(gc, data);
 
             let result = ocaml_call!(tezos_ffi::context_callback_roundtrip(
                 gc,
                 count,
-                gc.get(context_hash_ref),
-                gc.get(block_header_hash_ref),
-                gc.get(operation_hash_ref),
-                gc.get(key_ref),
+                gc.get(&context_hash),
+                gc.get(&block_header_hash),
+                gc.get(&operation_hash),
+                gc.get(&key),
                 data));
 
             // check

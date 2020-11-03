@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use ocaml_interop::{ocaml_export, IntoRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
+use ocaml_interop::{ocaml_export, ToRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
 
 use tezos_context::channel::*;
 
@@ -56,10 +56,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (key, value, json_val, ignored) = keyval_and_json.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (key, value, json_val, ignored) = keyval_and_json.to_rust();
 
         context_set(context_hash, block_hash, operation_hash, key, value, json_val, ignored, start_time, end_time);
         OCaml::unit()
@@ -74,10 +74,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (key, ignored) = keyval.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (key, ignored) = keyval.to_rust();
 
         context_delete(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
         OCaml::unit()
@@ -92,10 +92,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (key, ignored) = keyval.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (key, ignored) = keyval.to_rust();
 
         context_remove_rec(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
         OCaml::unit()
@@ -110,10 +110,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (from_key, to_key, ignored) = from_to_key.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (from_key, to_key, ignored) = from_to_key.to_rust();
 
         context_copy(context_hash, block_hash, operation_hash, from_key, to_key, ignored, start_time, end_time);
         OCaml::unit()
@@ -125,7 +125,7 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
+        let context_hash = context_hash.to_rust();
 
         context_checkout(context_hash, start_time, end_time);
         OCaml::unit()
@@ -140,11 +140,11 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let parent_context_hash = parent_context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let new_context_hash = new_context_hash.into_rust();
+        let parent_context_hash = parent_context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let new_context_hash = new_context_hash.to_rust();
 
-        let (date, author, message, parents) = info.into_rust();
+        let (date, author, message, parents) = info.to_rust();
 
         context_commit(parent_context_hash, block_hash, new_context_hash, date, author, message, parents, start_time, end_time);
         OCaml::unit()
@@ -159,10 +159,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (key, value) = keyval.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (key, value) = keyval.to_rust();
 
         context_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
         OCaml::unit()
@@ -177,10 +177,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (key, value) = keyval.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (key, value) = keyval.to_rust();
 
         context_dir_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
         OCaml::unit()
@@ -195,10 +195,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let (key, value, json_val) =  keyval_and_json.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let (key, value, json_val) =  keyval_and_json.to_rust();
 
         context_raw_get(context_hash, block_hash, operation_hash, key, value, json_val, start_time, end_time);
         OCaml::unit()
@@ -213,10 +213,10 @@ ocaml_export! {
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.into_rust();
-        let block_hash = block_hash.into_rust();
-        let operation_hash = operation_hash.into_rust();
-        let key = key.into_rust();
+        let context_hash = context_hash.to_rust();
+        let block_hash = block_hash.to_rust();
+        let operation_hash = operation_hash.to_rust();
+        let key = key.to_rust();
 
         context_fold(context_hash, block_hash, operation_hash, key, start_time, end_time);
         OCaml::unit()

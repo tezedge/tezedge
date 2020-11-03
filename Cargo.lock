@@ -690,6 +690,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cty"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7313c0d620d0cb4dbd9d019e461a4beb501071ff46ec0ab933efb4daa76d73e3"
+
+[[package]]
 name = "darling"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1947,9 +1953,21 @@ checksum = "8d3b63360ec3cb337817c2dbd47ab4a0f170d285d8e5a2064600f3def1402397"
 
 [[package]]
 name = "ocaml-interop"
-version = "0.2.4"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c17addbe120afdcf0bf4b4f679b25ab7cd3817af327b07cbdbee88b3b240b39"
+checksum = "73f6eb1378c49deceaf7fec407633c1f9ca8317ec58992da8a91e2c2164cc628"
+dependencies = [
+ "ocaml-sys",
+]
+
+[[package]]
+name = "ocaml-sys"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69b089ec551535569cbcf41bf8ada032ce80cee4cfaf6fab95da0b01e83aab31"
+dependencies = [
+ "cty",
+]
 
 [[package]]
 name = "once_cell"

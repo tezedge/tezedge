@@ -4,17 +4,17 @@
 use std::sync::Once;
 
 use ocaml_interop::{
-    ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, FromOCaml, IntoRust, OCaml, OCamlBytes,
-    OCamlFn1, OCamlInt32, OCamlList, ToOCaml,
+    ocaml_call, ocaml_frame, to_ocaml, FromOCaml, OCaml, OCamlFn1, ToOCaml, ToRust,
 };
 
 use tezos_api::ffi::*;
-use tezos_api::{ocaml_conv::FfiPath};
+use tezos_api::ocaml_conv::FfiPath;
 
 use crate::runtime;
 use crate::runtime::OcamlError;
 
 mod tezos_ffi {
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
     use tezos_api::{
         ffi::{
             ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, JsonRpcResponse,
@@ -24,7 +24,6 @@ mod tezos_ffi {
         ocaml_conv::OCamlOperationHash,
     };
     use tezos_messages::p2p::encoding::operations_for_blocks::Path;
-    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
 
     ocaml! {
         pub fn apply_block(apply_block_request: ApplyBlockRequest) -> ApplyBlockResponse;
@@ -107,41 +106,46 @@ pub fn init_protocol_context(
     patch_context: Option<PatchContext>,
 ) -> Result<Result<InitProtocolContextResult, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
-        ocaml_frame!(gc, {
+        ocaml_frame!(gc(genesis_tuple, protocol_overrides_tuple, configuration, patch_context_tuple), {
             // genesis configuration
-            let genesis_tuple = (genesis.time, genesis.block, genesis.protocol);
-            let genesis_tuple = ocaml_alloc!(genesis_tuple.to_ocaml(gc));
-            let ref genesis_tuple_ref = gc.keep(genesis_tuple);
+            let genesis_tuple = to_ocaml!(
+                gc,
+                (genesis.time, genesis.block, genesis.protocol),
+                genesis_tuple
+            );
 
             // protocol overrides
-            let protocol_overrides_tuple = (
-                protocol_overrides.forced_protocol_upgrades,
-                protocol_overrides.voted_protocol_overrides,
+            let protocol_overrides_tuple = to_ocaml!(
+                gc,
+                (
+                    protocol_overrides.forced_protocol_upgrades,
+                    protocol_overrides.voted_protocol_overrides,
+                ),
+                protocol_overrides_tuple
             );
-            let protocol_overrides_tuple: OCaml<(
-                OCamlList<(OCamlInt32, OCamlBytes)>,
-                OCamlList<(OCamlBytes, OCamlBytes)>,
-            )> = ocaml_alloc!(protocol_overrides_tuple.to_ocaml(gc));
-            let ref protocol_overrides_tuple_ref = gc.keep(protocol_overrides_tuple);
 
             // configuration
-            let configuration = (commit_genesis, enable_testchain, readonly);
-            let configuration = ocaml_alloc!(configuration.to_ocaml(gc));
-            let ref configuration_ref = gc.keep(configuration);
+            let configuration = to_ocaml!(
+                gc,
+                (commit_genesis, enable_testchain, readonly),
+                configuration
+            );
 
             // patch context
-            let patch_context_tuple = patch_context.map(|pc| (pc.key, pc.json));
-            let patch_context_tuple = ocaml_alloc!(patch_context_tuple.to_ocaml(gc));
-            let ref patch_context_tuple_ref = gc.keep(patch_context_tuple);
+            let patch_context_tuple = to_ocaml!(
+                gc,
+                patch_context.map(|pc| (pc.key, pc.json)),
+                patch_context_tuple
+            );
 
-            let storage_data_dir = ocaml_alloc!(storage_data_dir.to_ocaml(gc));
+            let storage_data_dir = to_ocaml!(gc, storage_data_dir);
             let result = ocaml_call!(tezos_ffi::init_protocol_context(
                 gc,
                 storage_data_dir,
-                gc.get(genesis_tuple_ref),
-                gc.get(protocol_overrides_tuple_ref),
-                gc.get(configuration_ref),
-                gc.get(patch_context_tuple_ref)
+                gc.get(&genesis_tuple),
+                gc.get(&protocol_overrides_tuple),
+                gc.get(&configuration),
+                gc.get(&patch_context_tuple)
             ));
 
             match result {
@@ -149,7 +153,7 @@ pub fn init_protocol_context(
                     let (supported_protocol_hashes, genesis_commit_hash): (
                         Vec<RustBytes>,
                         Option<RustBytes>,
-                    ) = result.into_rust();
+                    ) = result.to_rust();
 
                     Ok(InitProtocolContextResult {
                         supported_protocol_hashes,
@@ -158,7 +162,8 @@ pub fn init_protocol_context(
                 }
                 Err(e) => Err(TezosStorageInitError::from(e)),
             }
-        })
+            }
+        )
     })
 }
 
@@ -169,16 +174,16 @@ pub fn genesis_result_data(
     genesis_max_operations_ttl: u16,
 ) -> Result<Result<CommitGenesisResult, GetDataError>, OcamlError> {
     runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ref context_hash = to_ocaml!(gc, context_hash).keep(gc);
-            let ref chain_id = to_ocaml!(gc, chain_id).keep(gc);
-            let protocol_hash = ocaml_alloc!(protocol_hash.to_ocaml(gc));
+        ocaml_frame!(gc(context_hash_ref, chain_id_ref), {
+            let context_hash = to_ocaml!(gc, context_hash, context_hash_ref);
+            let chain_id = to_ocaml!(gc, chain_id, chain_id_ref);
+            let protocol_hash = to_ocaml!(gc, protocol_hash);
             let genesis_max_operations_ttl = OCaml::of_i32(genesis_max_operations_ttl as i32);
 
             let result = ocaml_call!(tezos_ffi::genesis_result_data(
                 gc,
-                gc.get(context_hash),
-                gc.get(chain_id),
+                gc.get(&context_hash),
+                gc.get(&chain_id),
                 protocol_hash,
                 genesis_max_operations_ttl
             ));
@@ -188,7 +193,7 @@ pub fn genesis_result_data(
                         block_header_proto_json,
                         block_header_proto_metadata_json,
                         operations_proto_metadata_json,
-                    ) = result.into_rust();
+                    ) = result.to_rust();
                     Ok(CommitGenesisResult {
                         block_header_proto_json,
                         block_header_proto_metadata_json,
@@ -217,7 +222,7 @@ where
             let ocaml_request = to_ocaml!(gc, request);
             let result = ocaml_call!(ocaml_function(gc, ocaml_request));
             match result {
-                Ok(response) => Ok(response.into_rust()),
+                Ok(response) => Ok(response.to_rust()),
                 Err(e) => Err(CallError::from(e)),
             }
         })
@@ -276,7 +281,7 @@ pub fn compute_path(
             let result = ocaml_call!(tezos_ffi::compute_path(gc, ocaml_request));
             match result {
                 Ok(response) => {
-                    let operations_hashes_path: Vec<FfiPath> = response.into_rust();
+                    let operations_hashes_path: Vec<FfiPath> = response.to_rust();
                     let operations_hashes_path = operations_hashes_path
                         .into_iter()
                         .map(|path| path.0)
@@ -297,23 +302,21 @@ pub fn decode_context_data(
     data: RustBytes,
 ) -> Result<Result<Option<String>, ContextDataError>, OcamlError> {
     runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let protocol_hash = ocaml_alloc!(protocol_hash.to_ocaml(gc));
-            let ref protocol_hash_ref = gc.keep(protocol_hash);
-            let key_list: OCaml<OCamlList<OCamlBytes>> = ocaml_alloc!(key.to_ocaml(gc));
-            let ref key_list_ref = gc.keep(key_list);
-            let data = ocaml_alloc!(data.to_ocaml(gc));
+        ocaml_frame!(gc(protocol_hash_ref, key_list_ref), {
+            let protocol_hash = to_ocaml!(gc, protocol_hash, protocol_hash_ref);
+            let key_list = to_ocaml!(gc, key, key_list_ref);
+            let data = to_ocaml!(gc, data);
 
             let result = ocaml_call!(tezos_ffi::decode_context_data(
                 gc,
-                gc.get(protocol_hash_ref),
-                gc.get(key_list_ref),
+                gc.get(&protocol_hash),
+                gc.get(&key_list),
                 data
             ));
 
             match result {
                 Ok(decoded_data) => {
-                    let decoded_data = decoded_data.into_rust();
+                    let decoded_data = decoded_data.to_rust();
                     Ok(decoded_data)
                 }
                 Err(e) => Err(ContextDataError::from(e)),
