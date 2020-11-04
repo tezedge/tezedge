@@ -362,7 +362,6 @@ impl ChainManager {
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
-                                    debug!(log, "Received current branch");
                                     // at first, check if we can accept branch or just ignore it
                                     if !chain_state.can_accept_branch(&message, &current_head.local) {
                                         let head = message.current_branch().current_head();
@@ -411,7 +410,6 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetCurrentBranch(message) => {
-                                    debug!(log, "Current branch requested by a peer");
                                     if chain_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head_local) = &current_head.local {
                                             if let Some(current_head) = block_storage.get(current_head_local.hash())? {
@@ -426,7 +424,6 @@ impl ChainManager {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(_) => {
-                                            trace!(log, "Received block header");
                                             peer.block_response_last = Instant::now();
 
                                             let (block_metadata, is_new_block, are_operations_complete) =
@@ -480,7 +477,6 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetCurrentHead(message) => {
-                                    debug!(log, "Current head requested");
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         if let Some(current_head_local) = &current_head.local {
                                             if let Some(current_head) = block_storage.get(current_head_local.hash())? {
@@ -560,7 +556,6 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::CurrentHead(message) => {
-                                    debug!(log, "Current head received");
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         let peer_current_mempool = message.current_mempool();
 
@@ -580,7 +575,6 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetOperations(message) => {
-                                    debug!(log, "Get operations received (mempool)");
                                     let requested_operations: &Vec<OperationHash> = message.get_operations();
                                     for operation_hash in requested_operations {
                                         // TODO: where to look for operations for advertised mempool?
@@ -591,8 +585,6 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::Operation(message) => {
-                                    debug!(log, "Received mempool message");
-
                                     // parse operation data
                                     let operation = message.operation();
                                     let operation_hash = operation.message_hash()?;
@@ -601,14 +593,28 @@ impl ChainManager {
                                         Some((operation_type, op_ttl)) => {
 
                                             // do prevalidation before add the operation to mempool
-                                            let result = validation::prevalidate_operation(
+                                            let result = match validation::prevalidate_operation(
                                                 chain_state.get_chain_id(),
                                                 &operation_hash,
                                                 &operation,
                                                 &self.current_mempool_state,
                                                 &self.tezos_readonly_prevalidation_api.pool.get()?.api,
                                                 block_storage,
-                                            )?;
+                                                block_meta_storage,
+                                            ) {
+                                                Ok(result) => result,
+                                                Err(e) => match e {
+                                                    validation::PrevalidateOperationError::UnknownBranch { .. }
+                                                    | validation::PrevalidateOperationError::BranchNotAppliedYet { .. } => {
+                                                        // here we just ignore UnknownBranch
+                                                        return Ok(());
+                                                    },
+                                                    poe => {
+                                                        // other error just propagate
+                                                        return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), poe));
+                                                    }
+                                                }
+                                            };
 
                                             // can accpect operation ?
                                             if !validation::can_accept_operation_from_p2p(&operation_hash, &result) {

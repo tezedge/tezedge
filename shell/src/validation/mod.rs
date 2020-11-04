@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use failure::Fail;
 
 use crypto::hash::{ChainId, HashType, OperationHash};
-use storage::{BlockHeaderWithHash, BlockStorageReader, StorageError};
+use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::block_header::Fitness;
@@ -91,6 +91,10 @@ pub enum PrevalidateOperationError {
     UnknownBranch {
         branch: String,
     },
+    #[fail(display = "Branch is not applied yet ({}), cannot inject the operation.", branch)]
+    BranchNotAppliedYet {
+        branch: String,
+    },
     #[fail(display = "Prevalidator is not running ({}), cannot inject the operation.", reason)]
     PrevalidatorNotInitialized {
         reason: String
@@ -122,14 +126,28 @@ pub fn prevalidate_operation(
     operation: &Operation,
     current_mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>,
     api: &ProtocolController,
-    block_storage: &Box<dyn BlockStorageReader>) -> Result<ValidateOperationResult, PrevalidateOperationError> {
+    block_storage: &Box<dyn BlockStorageReader>,
+    block_meta_storage: &Box<dyn BlockMetaStorageReader>,
+) -> Result<ValidateOperationResult, PrevalidateOperationError> {
 
-    // just check if we know block from operation
+    // just check if we know block from operation (and is applied)
     let operation_branch = operation.branch();
-    if !block_storage.contains(operation_branch)? {
-        return Err(PrevalidateOperationError::UnknownBranch {
+    match block_storage.contains(operation_branch)? {
+        true => {
+            let is_applied = match block_meta_storage.get(operation_branch)? {
+                Some(metadata) => metadata.is_applied(),
+                None => false,
+            };
+
+            if !is_applied {
+                return Err(PrevalidateOperationError::BranchNotAppliedYet {
+                    branch: HashType::BlockHash.bytes_to_string(&operation_branch)
+                });
+            }
+        }
+        false => return Err(PrevalidateOperationError::UnknownBranch {
             branch: HashType::BlockHash.bytes_to_string(&operation_branch)
-        });
+        })
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
