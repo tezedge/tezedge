@@ -11,7 +11,7 @@ use slog::Logger;
 use crypto::hash::{HashType, OperationHash, ProtocolHash};
 use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use shell::validation;
-use storage::{BlockStorage, BlockStorageReader, MempoolStorage};
+use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
 use tezos_api::ffi::{Applied, ComputePathRequest, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
@@ -134,6 +134,7 @@ pub fn inject_operation(
     shell_channel: ShellChannelRef) -> Result<String, failure::Error> {
     let persistent_storage = env.persistent_storage();
     let block_storage: Box<dyn BlockStorageReader> = Box::new(BlockStorage::new(persistent_storage));
+    let block_meta_storage: Box<dyn BlockMetaStorageReader> = Box::new(BlockMetaStorage::new(persistent_storage));
     let state = env.state();
 
     // parse operation data
@@ -149,6 +150,7 @@ pub fn inject_operation(
         state.current_mempool_state(),
         &env.tezos_readonly_prevalidation_api().pool.get()?.api,
         &block_storage,
+        &block_meta_storage,
     )?;
 
     // can accpect operation ?

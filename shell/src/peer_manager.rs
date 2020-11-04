@@ -15,7 +15,7 @@ use dns_lookup::LookupError;
 use futures::lock::Mutex;
 use rand::seq::SliceRandom;
 use riker::actors::*;
-use slog::{debug, info, Logger, warn};
+use slog::{debug, info, Logger, trace, warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
 use tokio::time::timeout;
@@ -407,7 +407,7 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                         }
                         PeerMessage::Bootstrap => {
                             // to a bootstrap message we will respond with list of potential peers
-                            info!(ctx.system.log(), "Received bootstrap message"; "peer" => received.peer.name());
+                            trace!(ctx.system.log(), "Received bootstrap message"; "peer" => received.peer.name());
                             let addresses = self.peers.values()
                                 .filter(|peer_state| peer_state.peer_ref != received.peer)
                                 .map(|peer_state| peer_state.address)

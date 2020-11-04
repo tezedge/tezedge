@@ -1,13 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fmt;
+use std::{error, fmt};
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use failure::_core::marker::PhantomData;
-use r2d2::{CustomizeConnection, ManageConnection};
-use slog::{debug, error, info, Logger};
+use r2d2::{CustomizeConnection, HandleError, ManageConnection};
+use slog::{error, info, Logger};
 
 use ipc::IpcError;
 
@@ -162,7 +162,7 @@ impl<Runner: ProtocolRunner + 'static> CustomizeConnection<ProtocolRunnerConnect
     fn on_acquire(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
         match conn.api.init_protocol_for_read() {
             Ok(_) => {
-                debug!(conn.log, "Connection for protocol runner was successfully initialized with readonly context"; "name" => conn.name.clone());
+                info!(conn.log, "Connection for protocol runner was successfully initialized with readonly context"; "name" => conn.name.clone());
                 Ok(())
             }
             Err(e) => {
@@ -194,5 +194,25 @@ impl<Runner: ProtocolRunner + 'static> CustomizeConnection<ProtocolRunnerConnect
     fn on_release(&self, mut conn: ProtocolRunnerConnection<Runner>) {
         info!(conn.log, "Closing connection for protocol runner (so terminate sub-process)"; "name" => conn.name.clone());
         conn.terminate_subprocess();
+    }
+}
+
+/// Custom error logging handler, which logs errors with slog logger
+#[derive(Clone, Debug)]
+pub struct SlogErrorHandler(Logger, String);
+
+impl SlogErrorHandler {
+    pub fn new(logger: Logger, pool_name: String) -> Self {
+        Self(logger, pool_name)
+    }
+}
+
+impl<E> HandleError<E> for SlogErrorHandler
+    where E: error::Error
+{
+    fn handle_error(&self, error: E) {
+        error!(self.0, "Connection pool error";
+                       "error" => format!("{}", error),
+                       "pool_name" => self.1.clone());
     }
 }
