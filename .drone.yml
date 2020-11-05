@@ -644,7 +644,7 @@ trigger:
     - develop
 
 depends_on:
-  - sandbox-carthage-node-tests
+  - build-and-tests
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node with carthagenet configuration,
@@ -670,7 +670,7 @@ clone:
 environment:
   NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 500 # also check parameter --stop=
+  TO_BLOCK_HEADER: 520 # also check parameter --stop=
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
@@ -858,7 +858,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=501"]
+  command: ["tzindex", "run", "--stop=521"]
 
 - name: tz-indexer-ocaml
   image: blockwatch/tzindex:latest
@@ -875,7 +875,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=501"]
+  command: ["tzindex", "run", "--stop=521"]
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
@@ -952,14 +952,14 @@ trigger:
     - develop
 
 depends_on:
-  - connect-from-different-network-test
+  - build-and-tests
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
 ##############################################################################################################
 ---
 kind: pipeline
-name: deploy-develop
+name: docker-deploy-develop
 
 steps:
 - name: build-light-node-image  
@@ -995,6 +995,9 @@ trigger:
   event: push
 
 depends_on:
+  - sandbox-launcher-test
+  - sandbox-carthage-node-tests
+  - connect-from-different-network-test
   - integration-offline-tests
 
 ##############################################################################################################
@@ -1002,7 +1005,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: deploy-release-tag-version
+name: docker-deploy-release-tag-version
 
 steps:
   - name: build-light-node-image
@@ -1038,4 +1041,7 @@ trigger:
   event: tag
 
 depends_on:
+  - sandbox-launcher-test
+  - sandbox-carthage-node-tests
+  - connect-from-different-network-test
   - integration-offline-tests

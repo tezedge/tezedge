@@ -9,15 +9,17 @@ use chrono::Utc;
 use failure::{bail, Fail};
 use futures::Stream;
 use futures::task::{Context, Poll};
+use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crypto::hash::{BlockHash, chain_id_to_b58_string, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader};
-use storage::context_action_storage::ContextActionType;
+use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, context_key};
 use storage::context::{ContextApi, TezedgeContext};
+use storage::context_action_storage::ContextActionType;
 use storage::persistent::PersistentStorage;
+use tezos_api::ffi::JsonRpcRequest;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
@@ -541,13 +543,13 @@ pub(crate) fn get_context_protocol_params(
     let protocol_hash: Vec<u8>;
     let constants: Vec<u8>;
     {
-        if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
+        if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("protocol"))? {
             protocol_hash = data;
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(block_id.to_string()).into());
         }
 
-        if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["data".to_string(), "v1".to_string(), "constants".to_string()])? {
+        if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/v1/constants"))? {
             constants = data;
         } else {
             return Err(ContextParamsError::NoConstantsForBlock(block_id.to_string()).into());
@@ -563,4 +565,15 @@ pub(crate) fn get_context_protocol_params(
 
 pub(crate) fn current_time_timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
+}
+
+pub(crate) async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRpcRequest, failure::Error> {
+    let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let body = hyper::body::to_bytes(req.into_body()).await?;
+    let body = String::from_utf8(body.to_vec())?;
+
+    Ok(JsonRpcRequest {
+        body,
+        context_path: String::from(context_path.trim_end_matches("/")),
+    })
 }

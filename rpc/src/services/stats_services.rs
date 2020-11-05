@@ -8,7 +8,7 @@ use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::HashType;
+use crypto::hash::BlockHash;
 use storage::{BlockStorage, BlockStorageReader, ContextActionStorage};
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
@@ -152,7 +152,7 @@ fn fat_tail_vec(fat_tail: TopN<ContextAction>) -> Vec<ContextAction> {
 
 pub(crate) fn compute_storage_stats<'a>(
     _state: &RpcCollectedStateRef,
-    from_block: &str,
+    from_block: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<StatsResponse<'a>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
@@ -160,8 +160,7 @@ pub(crate) fn compute_storage_stats<'a>(
     let stats: Mutex<HashMap<&str, ActionStats>> = Mutex::new(HashMap::new());
     let fat_tail: TopN<ContextAction> = TopN::new(100);
 
-    let blocks = block_storage.get_multiple_without_json(
-        &HashType::BlockHash.string_to_bytes(from_block).unwrap(), std::usize::MAX)?;
+    let blocks = block_storage.get_multiple_without_json(from_block, std::usize::MAX)?;
     blocks.par_iter().for_each(|block| {
         let actions = get_block_actions_by_hash(&context_action_storage, &block.hash).expect("Failed to extract actions from a block!");
         {

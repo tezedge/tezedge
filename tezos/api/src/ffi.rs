@@ -353,12 +353,6 @@ impl From<OCamlError> for TezosStorageInitError {
     }
 }
 
-impl slog::Value for TezosStorageInitError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum GetDataError {
     #[fail(display = "Ocaml failed to get data, message: {}!", message)]

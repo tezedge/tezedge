@@ -9,7 +9,7 @@ use failure::{bail, Fail, format_err};
 use getset::Getters;
 
 use crypto::blake2b;
-use storage::num_from_slice;
+use storage::{context_key, num_from_slice};
 use storage::persistent::PersistentStorage;
 use storage::context::{TezedgeContext, ContextApi};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
@@ -139,17 +139,15 @@ impl RightsContextData {
 
         // get index of roll snapshot
         let roll_snapshot: i16 = {
-            let snapshot_key = format!("data/cycle/{}/roll_snapshot", requested_cycle);
-            if let Some(data) = context.get_key_from_history(&ctx_hash, &vec![snapshot_key])? {
+            if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/roll_snapshot", requested_cycle))? {
                 num_from_slice!(data, 0, i16)
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("roll_snapshot"));
             }
         };
 
-        let random_seed_key = format!("data/cycle/{}/random_seed", requested_cycle);
         let random_seed = {
-            if let Some(data) = context.get_key_from_history(&ctx_hash, &vec![random_seed_key])? {
+            if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/random_seed", requested_cycle))? {
                 data
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("random_seed"));
@@ -157,9 +155,8 @@ impl RightsContextData {
         };
 
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
-        let last_roll_key = format!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot);
         let last_roll = {
-            if let Some(data) = context.get_key_from_history(&ctx_hash, &vec![last_roll_key])? {
+            if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot))? {
                 num_from_slice!(data, 0, i32)
             } else { // key not found - prepare error for later processing
                 return Err(format_err!("last_roll"));
@@ -191,7 +188,7 @@ impl RightsContextData {
 
         let ctx_hash = context.level_to_hash(requested_level.try_into()?)?;
 
-        let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/snapshot".to_string(), cycle.to_string(), snapshot.to_string()])? {
+        let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot))? {
             val
         } else {
             bail!("No rolls found in context")

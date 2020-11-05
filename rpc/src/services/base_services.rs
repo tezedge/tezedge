@@ -1,47 +1,27 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::convert::TryInto;
 
 use failure::bail;
-use serde::{Deserialize, Serialize};
 use slog::Logger;
 
 use crypto::hash::{chain_id_to_b58_string, HashType};
 use shell::shell_channel::BlockApplied;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, ContextActionRecordValue, ContextActionStorage, num_from_slice};
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, context_key, ContextActionRecordValue, ContextActionStorage};
 use storage::block_storage::BlockJsonData;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{ContextActionFilters, ContextActionJson, contract_id_to_contract_address_for_index};
+use storage::merkle_storage::{MerkleStorageStats, StringTree};
 use storage::persistent::PersistentStorage;
-use storage::merkle_storage::MerkleStorageStats;
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_messages::protocol::{RpcJsonMap, UniversalValue};
 
 use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, FullBlockInfo, get_action_types, get_block_hash_by_block_id, get_context_protocol_params, get_level_by_block_id, MonitorHeadStream, NodeVersion, PagedResult, Protocols};
 use crate::rpc_actor::RpcCollectedStateRef;
-
-// Serialize, Deserialize,
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Cycle {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    last_roll: Option<HashMap<String, String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    nonces: Option<HashMap<String, String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    random_seed: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    roll_snapshot: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct CycleJson {
-    roll_snapshot: Option<i16>,
-    random_seed: Option<String>,
-}
+use crate::server::RpcServiceEnvironment;
 
 pub type BlockOperations = Vec<String>;
 
@@ -175,6 +155,27 @@ pub(crate) fn get_block_shell_header(block_id: &str, persistent_storage: &Persis
     Ok(block)
 }
 
+pub(crate) fn live_blocks(_chain_param: &str, block_param: &str, env: &RpcServiceEnvironment) -> Result<Option<Vec<String>>, failure::Error> {
+    let persistent_storage = env.persistent_storage();
+    let state = env.state();
+
+    let block_storage = BlockStorage::new(persistent_storage);
+    let block_hash = get_block_hash_by_block_id(block_param, persistent_storage, state)?;
+    let current_block = block_storage.get_with_additional_data(&block_hash)?;
+    let max_ttl: usize = match current_block {
+        Some((_, json_data)) => {
+            json_data.max_operations_ttl().into()
+        }
+        None => bail!("Block not found for block id: {}", block_param)
+    };
+    let block_level = get_block_level_by_block_id(block_param, 0, persistent_storage, state)?;
+
+    let live_blocks: Option<Vec<String>> = block_storage.get_live_blocks(block_level.try_into()?, max_ttl)?
+        .map(|blocks| blocks.iter().map(|b| HashType::BlockHash.bytes_to_string(&b)).collect());
+
+    Ok(live_blocks)
+}
+
 /// Get protocol context constants from context list
 /// (just for RPC render use-case, do not use in processing or algorithms)
 ///
@@ -218,181 +219,25 @@ pub(crate) fn get_cycle_length_for_block(block_id: &str, storage: &PersistentSto
     }
 }
 
-pub(crate) fn get_cycle_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, Cycle>>, failure::Error> {
-
+pub(crate) fn get_context_raw_bytes(block_id: &str, prefix: Option<&str>, persistent_storage: &PersistentStorage, context: &TezedgeContext, state: &RpcCollectedStateRef) -> Result<StringTree, failure::Error> {
     // TODO: should be replaced by context_hash
     // get block level first
     let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
         Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
+        None => bail!("Block level {} not found", block_id)
     };
-
-    // let context_data = {
-    //     let reader = list.read().expect("mutex poisoning");
-    //     if let Ok(Some(c)) = reader.get(ctxt_level) {
-    //         c
-    //     } else {
-    //         bail!("Context data not found")
-    //     }
-    // };
-
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
     let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/cycle".to_string()])?;
 
-    let cycle_lists = if let Some(ctx) = context_data {
-        ctx
-    } else {
-        bail!("Error getting context data")
+    // we assume that root is at "/data"
+    let mut key_prefix = context_key!("data");
+
+    // clients may pass in a prefix (without /data) with elements containing slashes (expecting us to split)
+    // we need to join with '/' and split again
+    if let Some(prefix) = prefix {
+        key_prefix.extend(prefix.split('/').map(|s| s.to_string()));
     };
 
-    // transform cycle list
-    let mut cycles: HashMap<String, Cycle> = HashMap::new();
-
-    // process every key value pair
-    for (path, value) in cycle_lists.iter() {
-
-        // convert value from bytes to hex
-        let value = hex::encode(value).to_string();
-
-        // create new cycle
-        // TODO: !!! check path and move to match
-        cycles.entry(path[2].to_string()).or_insert(Cycle {
-            last_roll: None,
-            nonces: None,
-            random_seed: None,
-            roll_snapshot: None,
-        });
-
-        // process cycle key value pairs
-        let path: Vec<&str> = path.iter().map(String::as_str).collect();
-        match path.as_slice() {
-            ["data", "cycle", cycle, "random_seed"] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    cycle.random_seed = Some(value);
-                });
-            }
-            ["data", "cycle", cycle, "roll_snapshot"] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    cycle.roll_snapshot = Some(value);
-                });
-            }
-            ["data", "cycle", cycle, "nonces", nonces] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    match cycle.nonces.as_mut() {
-                        Some(entry) => entry.insert(nonces.to_string(), value),
-                        None => {
-                            cycle.nonces = Some(HashMap::new());
-                            cycle.nonces.as_mut().unwrap().insert(nonces.to_string(), value)
-                        }
-                    };
-                });
-            }
-            ["data", "cycle", cycle, "last_roll", last_roll] => {
-                cycles.entry(cycle.to_string()).and_modify(|cycle| {
-                    match cycle.last_roll.as_mut() {
-                        Some(entry) => entry.insert(last_roll.to_string(), value),
-                        None => {
-                            cycle.last_roll = Some(HashMap::new());
-                            cycle.last_roll.as_mut().unwrap().insert(last_roll.to_string(), value)
-                        }
-                    };
-                });
-            }
-            _ => ()
-        };
-    }
-
-    Ok(Some(cycles))
-}
-
-pub(crate) fn get_cycle_from_context_as_json(block_id: &str, cycle_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<CycleJson>, failure::Error> {
-
-    // TODO: should be replaced by context_hash
-    // get block level first
-    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
-        Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
-    };
-
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
-
-    let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let random_seed = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/random_seed", &cycle_id)])?;
-    let roll_snapshot = context.get_key_from_history(&ctx_hash, &vec![format!("data/cycle/{}/roll_snapshot", &cycle_id)])?;
-
-    match (random_seed, roll_snapshot) {
-        (Some(random_seed), Some(roll_snapshot)) => {
-            let cycle_json = CycleJson {
-                random_seed: Some(hex::encode(random_seed).to_string()),
-                roll_snapshot: Some(num_from_slice!(roll_snapshot, 0, i16)),
-            };
-            Ok(Some(cycle_json))
-        }
-        _ => bail!("Context data not found")
-    }
-}
-
-pub(crate) fn get_rolls_owner_current_from_context(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<HashMap<String, HashMap<String, HashMap<String, String>>>>, failure::Error> {
-
-    // TODO: should be replaced by context_hash
-    // get block level first
-    let ctxt_level: i32 = match get_level_by_block_id(block_id, persistent_storage, state)? {
-        Some(val) => val.try_into()?,
-        None => bail!("Block level not found")
-    };
-
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
-    let ctx_hash = context.level_to_hash(ctxt_level)?;
-    let context_data = context.get_key_values_by_prefix(&ctx_hash, &vec!["data/rolls/owner/current".to_string()])?;
-
-    // create rolls list
-    let mut rolls: HashMap<String, HashMap<String, HashMap<String, String>>> = HashMap::new();
-
-    let rolls_lists = if let Some(ctx) = context_data {
-        ctx
-    } else {
-        bail!("Error getting context data")
-    };
-    // process every key value pair
-    for (path, value) in rolls_lists.iter() {
-
-        // convert value from bytes to hex
-        let value = hex::encode(value).to_string();
-
-        // process roll key value pairs
-        let path: Vec<&str> = path.iter().map(String::as_str).collect();
-        match path.as_slice() {
-            ["data", "rolls", "owner", "current", path1, path2, path3 ] => {
-                rolls.entry(path1.to_string())
-                    .and_modify(|roll| {
-                        roll.entry(path2.to_string())
-                            .and_modify(|index2| {
-                                index2.insert(path3.to_string(), value.to_string());
-                            })
-                            .or_insert({
-                                let mut index3 = HashMap::new();
-                                index3.insert(path3.to_string(), value.to_string());
-                                index3
-                            });
-                    })
-                    .or_insert({
-                        let mut index2 = HashMap::new();
-                        index2.entry(path2.to_string())
-                            .or_insert({
-                                let mut index3 = HashMap::new();
-                                index3.insert(path3.to_string(), value.to_string());
-                                index3
-                            });
-                        index2
-                    });
-            }
-            _ => ()
-        }
-    }
-
-
-    Ok(Some(rolls))
+    Ok(context.get_context_tree_by_prefix(&ctx_hash, &key_prefix)?)
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
@@ -453,8 +298,7 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeV
     Ok(NodeVersion::new(network_version))
 }
 
-pub(crate) fn get_database_memstats(persistent_storage: &PersistentStorage) -> Result<MerkleStorageStats, failure::Error> {
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
+pub(crate) fn get_database_memstats(context: &TezedgeContext) -> Result<MerkleStorageStats, failure::Error> {
     let stats = context.get_merkle_stats()?;
 
     Ok(stats)

@@ -3,12 +3,16 @@
 
 use std::env;
 
-use assert_json_diff::assert_json_eq;
+use assert_json_diff::assert_json_eq_no_panic;
 use bytes::buf::BufExt;
+use enum_iterator::IntoEnumIterator;
+use failure::format_err;
 use hyper::Client;
+use itertools::Itertools;
+use rand::prelude::SliceRandom;
 use serde_json::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, IntoEnumIterator)]
 pub enum NodeType {
     Node1,
     Node2,
@@ -25,9 +29,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     const MAX_CYCLE_LOOPS: i64 = 4;
 
     for level in from_block..to_block + 1 {
-        let block_json = get_rpc_as_json(NodeType::Node1, &format!("{}/{}", "chains/main/blocks", level)).await
-            .expect("Failed to get block from ocaml");
-
         if level <= 0 {
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
             println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
@@ -46,8 +47,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "operation_hashes")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/rolls/owner/current")).await;
-        // TODO: this compare as unordered
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "live_blocks")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/contracts")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "live_blocks")).await;
 
         // --------------------------- Tests for each block_id - protocol rpcs ---------------------------
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await;
@@ -59,25 +60,16 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "minimal_valid_time")).await;
         // --------------------------------- End of tests --------------------------------
 
-        // we need some constants for
-        let constants_json = get_rpc_as_json(NodeType::Node2, &format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await
-            .expect("Failed to get constants from tezedge");
-
+        // we need some constants
+        let constants_json = try_get_data_as_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await.expect("Failed to get constants");
         let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
         let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
         let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
 
-        // block on level 1
-        let cycle: i64 = if level == 1 {
-            0
-        } else {
-            block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
-        };
-
         // test last level of snapshot
         if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
             // --------------------- Tests for each snapshot of the cycle ---------------------
-            println!("run snapshot tests: {}, level: {:?}", cycle, level);
+            println!("run snapshot tests: level: {:?}, blocks_per_roll_snapshot: {}", level, blocks_per_roll_snapshot);
 
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level - 1))).await;
             test_rpc_compare_json(&format!("{}/{}/{}?level={}", "chains/main/blocks", level, "helpers/endorsing_rights", std::cmp::max(0, level - 10))).await;
@@ -99,11 +91,21 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 
             // ----------------- End of tests for each snapshot of the cycle ------------------
         }
+
         // test first and last level of cycle
         if level == 1 || (level >= blocks_per_cycle && ((level - 1) % blocks_per_cycle == 0 || level % blocks_per_cycle == 0)) {
 
+            // get block cycle
+            let cycle: i64 = if level == 1 {
+                // block level 1 does not have metadata/level/cycle, so we use 0 instead
+                0
+            } else {
+                let block_json = try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", level)).await.expect("Failed to get block metadata");
+                block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
+            };
+
             // ----------------------- Tests for each cycle of the cycle -----------------------
-            println!("run cycle tests: {}, level: {:?}", cycle, level);
+            println!("run cycle tests: {}, level: {}, blocks_per_cycle: {}", cycle, level, blocks_per_cycle);
 
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", cycle)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?cycle={}", "chains/main/blocks", level, "helpers/endorsing_rights", cycle + preserved_cycles)).await;
@@ -112,7 +114,17 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", cycle + preserved_cycles)).await;
             test_rpc_compare_json(&format!("{}/{}/{}?all=true&cycle={}", "chains/main/blocks", level, "helpers/baking_rights", std::cmp::max(0, cycle - 2))).await;
-            //test_rpc_compare_json(&format!("{}/{}/{}?cycle={}&delegate={}", "chains/main/blocks", &prev_block, "helpers/endorsing_rights", cycle, "tz1YH2LE6p7Sj16vF6irfHX92QV45XAZYHnX")).await;
+
+            // get all cycles - it is like json: [0,1,2,3,4,5,7,8]
+            let cycles = try_get_data_as_json(&format!("chains/main/blocks/{}/context/raw/json/cycle", level)).await.expect("Failed to get cycle data");
+            let cycles = cycles.as_array().expect("No cycles data");
+
+            // tests for cycles from protocol/context
+            for cycle in cycles {
+                let cycle = cycle.as_u64().expect(&format!("Invalid cycle: {}", cycle));
+                test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle", cycle)).await;
+                test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", level, "context/raw/json/cycle", cycle)).await;
+            }
 
             // known ocaml node bugs
             // - endorsing rights: for cycle 0, when requested cycle 4 there should be cycle check error:
@@ -143,10 +155,36 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) -> (Value, Value) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     println!("Checking: {}", rpc_path);
-    let ocaml_json = get_rpc_as_json(NodeType::Node1, rpc_path).await.unwrap();
-    let tezedge_json = get_rpc_as_json(NodeType::Node2, rpc_path).await.unwrap();
-    assert_json_eq!(tezedge_json.clone(), ocaml_json.clone());
-    (ocaml_json, tezedge_json)
+    let node1_json = match get_rpc_as_json(NodeType::Node1, rpc_path).await {
+        Ok(json) => json,
+        Err(e) => panic!("Failed to call rpc on Node1: '{}', Reason: {}", node_rpc_url(NodeType::Node1, rpc_path), e)
+    };
+    let node2_json = match get_rpc_as_json(NodeType::Node2, rpc_path).await {
+        Ok(json) => json,
+        Err(e) => panic!("Failed to call rpc on Node2: '{}', Reason: {}", node_rpc_url(NodeType::Node2, rpc_path), e)
+    };
+    if let Err(error) = assert_json_eq_no_panic(&node2_json, &node1_json) {
+        panic!("\n\nError: \n{}\n\nnode2_json:\n{}\n\nnode1_json:\n{}", error, node2_json, node1_json);
+    } else {
+        (node1_json, node2_json)
+    }
+}
+
+/// Returns json data from any/random node (if fails, tries other)
+async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value, failure::Error> {
+    let mut nodes: Vec<NodeType> = NodeType::into_enum_iter().collect_vec();
+    nodes.shuffle(&mut rand::thread_rng());
+
+    for node in nodes {
+        match get_rpc_as_json(node.clone(), rpc_path).await {
+            Ok(data) => return Ok(data),
+            Err(e) => {
+                println!("WARN: failed for (node: {:?}) to get data for rpc '{}'. Reason: {}", node.clone(), node_rpc_url(node, rpc_path), e);
+            }
+        }
+    }
+
+    Err(format_err!("No more nodes to choose for rpc call: {}", rpc_path))
 }
 
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
@@ -168,7 +206,7 @@ fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
             "{}/{}",
             &node_rpc_context_root_1(),
             rpc_path
-        ), // reference Ocaml node
+        ),
         NodeType::Node2 => format!(
             "{}/{}",
             &node_rpc_context_root_2(),
