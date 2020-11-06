@@ -73,6 +73,7 @@ impl ContextApi for TezedgeContext {
         if let Err(e) = self.block_storage.assign_to_context(block_hash, &commit_hash) {
             match e {
                 StorageError::MissingKey => {
+                    // TODO: is this needed? check it when removing assign_to_context
                     if parent_context_hash.is_some() {
                         return Err(
                             ContextError::ContextHashAssignError {

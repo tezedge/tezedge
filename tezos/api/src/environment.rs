@@ -8,14 +8,14 @@ use chrono::ParseError;
 use chrono::prelude::*;
 use enum_iterator::IntoEnumIterator;
 use failure::Fail;
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crypto::base58::FromBase58CheckError;
 use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId, ContextHash, HashType, OperationListListHash, ProtocolHash};
-use lazy_static::lazy_static;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
-use crate::ffi::{GenesisChain, ProtocolOverrides};
+use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
@@ -29,6 +29,7 @@ pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
     Carthagenet,
+    Delphinet,
     Mainnet,
     Zeronet,
     Sandbox,
@@ -45,6 +46,7 @@ impl FromStr for TezosEnvironment {
             "alphanet" => Ok(TezosEnvironment::Alphanet),
             "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
             "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
+            "delphinet" | "delphi" => Ok(TezosEnvironment::Delphinet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
             "sandbox" => Ok(TezosEnvironment::Sandbox),
@@ -73,6 +75,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: false,
+        patch_context_genesis_parameters: None,
     });
 
     env.insert(TezosEnvironment::Babylonnet, TezosEnvironmentConfiguration {
@@ -92,6 +95,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: true,
+        patch_context_genesis_parameters: None,
     });
 
     env.insert(TezosEnvironment::Carthagenet, TezosEnvironmentConfiguration {
@@ -112,6 +116,31 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: true,
+        patch_context_genesis_parameters: None,
+    });
+
+    env.insert(TezosEnvironment::Delphinet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2020-09-04T07:08:53Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "delphinet.tezos.co.il".to_string(),
+            "delphinet.smartpy.io".to_string(),
+            "delphinet.kaml.fr".to_string(),
+            "13.53.41.201".to_string(),
+        ],
+        version: "TEZOS_DELPHINET_2020-09-04T07:08:53Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            forced_protocol_upgrades: vec![],
+            voted_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+        }),
     });
 
     env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
@@ -134,6 +163,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             ],
         },
         enable_testchain: false,
+        patch_context_genesis_parameters: None,
     });
 
     env.insert(TezosEnvironment::Zeronet, TezosEnvironmentConfiguration {
@@ -152,6 +182,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: true,
+        patch_context_genesis_parameters: None,
     });
 
     env.insert(TezosEnvironment::Sandbox, TezosEnvironmentConfiguration {
@@ -167,6 +198,10 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: false,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuSLWfVU1Vq7Jg9FucPyKmma6otcMHac9zG4oU1KMHSTBpJuGQ2" }"#.to_string(),
+        }),
     });
 
     env
@@ -212,6 +247,9 @@ pub struct TezosEnvironmentConfiguration {
     pub protocol_overrides: ProtocolOverrides,
     /// if network has enabled switching test chains by default
     pub enable_testchain: bool,
+    /// some networks could require patching context for genesis - like to change genesis key...
+    /// (also this can be overriden on startup with cmd args)
+    pub patch_context_genesis_parameters: Option<PatchContext>,
 }
 
 impl TezosEnvironmentConfiguration {

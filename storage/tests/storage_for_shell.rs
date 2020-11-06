@@ -48,6 +48,7 @@ fn test_storage() -> Result<(), Error> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: true,
+        patch_context_genesis_parameters: None,
     };
 
     // initialize empty storage

@@ -187,17 +187,17 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
     Err(format_err!("No more nodes to choose for rpc call: {}", rpc_path))
 }
 
-async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, serde_json::error::Error> {
+async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, failure::Error> {
     let url_as_string = node_rpc_url(node, rpc_path);
-    let url = url_as_string.parse().expect("Invalid URL");
+    let url = url_as_string.parse().expect(&format!("Invalid URL: {}", &url_as_string));
 
     let client = Client::new();
     let body = match client.get(url).await {
         Ok(res) => hyper::body::aggregate(res.into_body()).await.expect("Failed to read response body"),
-        Err(e) => panic!("Request url: {:?} for getting block failed: {}, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e),
+        Err(e) => return Err(format_err!("Request url: {:?} for getting block failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
 
-    serde_json::from_reader(&mut body.reader())
+    Ok(serde_json::from_reader(&mut body.reader())?)
 }
 
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {

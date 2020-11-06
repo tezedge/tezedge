@@ -222,7 +222,7 @@ pub fn tezos_app() -> App<'static, 'static> {
         .arg(Arg::with_name("network")
             .long("network")
             .takes_value(true)
-            .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "sandbox"])
+            .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "delphinet", "delphi", "sandbox"])
             .help("Choose the Tezos environment"))
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
@@ -674,7 +674,13 @@ impl Environment {
                                 | Err(e) => panic!("Cannot read file, reason: {}", e)
                             }
                         }
-                        None => None
+                        None => {
+                            // check default configuration, if any
+                            match environment::TEZOS_ENV.get(&tezos_network) {
+                                None => panic!("No tezos environment configured for: {:?}", tezos_network),
+                                Some(cfg) => cfg.patch_context_genesis_parameters.clone(),
+                            }
+                        }
                     }
                 },
             },
