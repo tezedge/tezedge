@@ -20,6 +20,7 @@ pub mod proto_004;
 pub mod proto_005;
 pub mod proto_005_2;
 pub mod proto_006;
+pub mod proto_007;
 
 #[derive(Debug, Clone)]
 pub enum UniversalValue {
@@ -176,6 +177,12 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         }
         proto_006::PROTOCOL_HASH => {
             use crate::protocol::proto_006::constants::{ParametricConstants, FIXED};
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
+            param.extend(FIXED.clone().as_map());
+            Ok(Some(param))
+        }
+        proto_007::PROTOCOL_HASH => {
+            use crate::protocol::proto_007::constants::{ParametricConstants, FIXED};
             let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))

@@ -31,6 +31,7 @@ use tezos_messages::protocol::{
     proto_005 as proto_005_constants,
     proto_005_2 as proto_005_2_constants,
     proto_006 as proto_006_constants,
+    proto_007 as proto_007_constants,
     RpcJsonMap,
 };
 
@@ -44,6 +45,7 @@ mod proto_003;
 mod proto_004;
 mod proto_005_2;
 mod proto_006;
+mod proto_007;
 
 /// Return generated baking rights.
 ///
@@ -153,6 +155,19 @@ pub(crate) fn check_and_get_baking_rights(
         }
         proto_006_constants::PROTOCOL_HASH => {
             proto_006::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
+        proto_007_constants::PROTOCOL_HASH => {
+            proto_007::rights_service::check_and_get_baking_rights(
                 context_proto_params,
                 chain_id,
                 level,
@@ -279,6 +294,18 @@ pub(crate) fn check_and_get_endorsing_rights(
                 persistent_storage,
             )
         }
+        proto_007_constants::PROTOCOL_HASH => {
+            proto_007::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                chain_id,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                context,
+                persistent_storage,
+            )
+        }
         _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
 }
@@ -379,6 +406,12 @@ pub(crate) fn proto_get_contract_counter(
                 pkh,
                 context)
         }
+        proto_007_constants::PROTOCOL_HASH => {
+            proto_007::contract_service::get_contract_counter(
+                context_proto_params,
+                pkh,
+                context)
+        }
         _ => panic!("Missing contract counter implemetation for protocol: {}, protocol is not yet supported!", hash)
     }
 }
@@ -416,6 +449,12 @@ pub(crate) fn proto_get_contract_manager_key(
         }
         proto_006_constants::PROTOCOL_HASH => {
             proto_006::contract_service::get_contract_manager_key(
+                context_proto_params,
+                pkh,
+                context)
+        }
+        proto_007_constants::PROTOCOL_HASH => {
+            proto_007::contract_service::get_contract_manager_key(
                 context_proto_params,
                 pkh,
                 context)

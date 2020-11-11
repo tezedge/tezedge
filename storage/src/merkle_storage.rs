@@ -407,13 +407,13 @@ impl MerkleStorage {
         };
         let entry = Entry::Commit(new_commit.clone());
 
-        self.put_to_staging_area(&self.hash_commit(&new_commit)?, entry.clone());
+        let new_commit_hash = self.hash_commit(&new_commit)?;
+        self.put_to_staging_area(&new_commit_hash, entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = HashMap::new();
         self.map_stats.staged_area_elems = 0;
-        let last_commit_hash = self.hash_commit(&new_commit)?;
-        self.last_commit_hash = Some(last_commit_hash);
-        Ok(last_commit_hash)
+        self.last_commit_hash = Some(new_commit_hash);
+        Ok(new_commit_hash)
     }
 
     /// Set key/val to the staging area.
