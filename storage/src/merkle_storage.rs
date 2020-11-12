@@ -591,7 +591,30 @@ impl MerkleStorage {
                     println!("do_the_thing(), blob_hash={}", blob_hash[0]);
                     self.staged.push((blob_hash, Entry::Blob(set.value.clone())));
                     let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
+
+
+                    //dump staging
+                    println!("dumping staging");
+                    for (_, staged_entry) in self.staged.iter().enumerate() {
+                        let (hash, entry) = staged_entry;
+                        println!("{}", hash[0]);
+                    }
+                    println!("end of dump");
+
+                    //TODO inefficient - instead of pushing here just don't remove this entry on
+                    //commit() (where we set self.staged to Vec::new())
+                    self.staged.push((root_hash, self.get_entry(&root_hash)?));
                     let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node))?;
+
+                    //dump staging
+                    println!("dumping staging");
+                    for (_, staged_entry) in self.staged.iter().enumerate() {
+                        let (hash, entry) = staged_entry;
+                        println!("{}", hash[0]);
+                    }
+                    println!("end of dump");
+
+
                     // now put Tree of hash rv into current_staging_tree
                     // TODO: can be optimized (unfortunately get_tree() currently clones tree)
                     // e.g. make current_stage_tree an index into staged Vec
@@ -623,7 +646,6 @@ impl MerkleStorage {
                                     new_node: Option<Node>,
     ) -> Result<EntryHash, MerkleError> {
         let root_idx = self.staged_get_idx(&root_hash).unwrap();
-        let (_, ref mut root) = self.staged[root_idx];
 
         println!("compute_alt with keylen={}, and node hash={}", key.len(),
                     new_node.clone().unwrap().entry_hash[0]);
@@ -642,16 +664,9 @@ impl MerkleStorage {
 
         let last = key.last().unwrap();
         let path = &key[..key.len() - 1];
+
         // find tree by path and get new copy of it
-        let idx = match root {
-                Entry::Tree(root) => {
-                    self.find_tree_staging(root, root_hash, path)?
-                },
-                _ => {
-                    println!("ERROR: root is not tree!");
-                    None
-                }
-        };
+        let idx = self.find_tree_staging(root_idx, root_hash, path)?;
         let idx = idx.or_else(|| { 
             // node doesn't exist or is Blob, create empty tree
             let tree = Tree::new();
@@ -659,6 +674,7 @@ impl MerkleStorage {
             self.put_to_staging_area(&hash, Entry::Tree(tree.clone()));
             return self.staged_get_idx(&hash);
         });
+
         println!("modifying tree in place");
         match idx {
             Some(idx) => {
@@ -666,7 +682,7 @@ impl MerkleStorage {
                 if let Entry::Tree(tree) = tree {
                     // make the modification of tree at key, in place
                     match new_node {
-                        None => (*tree).remove(last),
+                        None => (tree).remove(last),
                         Some(new_node) => {
                             tree.insert(last.clone(), new_node)
                         }
@@ -677,13 +693,16 @@ impl MerkleStorage {
                     // tree was modified in place so just update its hash in staged
                     // note: old tree is gone, will need to be recreated for backtracking
                     //self.update_hash_in_staged(&tree_hash, &new_tree_hash);
-                    let mut root_hash = root_hash;
-                    if tree_hash == root_hash {
+
+                    let mut root_hash = *root_hash;
+                    if *tree_hash == root_hash {
+                        assert_eq!(path.is_empty(), true);
                         // tree we just modified was root - need to update root_hash to pass it to
                         // compute_new_root below
-                        root_hash = &new_tree_hash;
+                        root_hash = new_tree_hash;
                     }
                     println!("changing hash={} to new tree hash={} in staging", tree_hash[0], new_tree_hash[0]);
+                    //*tree_hash = new_tree_hash;
                     *tree_hash = new_tree_hash;
 
                     if tree.is_empty() {
@@ -692,16 +711,16 @@ impl MerkleStorage {
                         println!("Tree is empty");
                         if path.is_empty() {
                             println!("Also path is empty - returning root hash");
-                            return Ok(*root_hash);
+                            return Ok(root_hash);
                         }
-                        self.compute_new_root_with_change_alt(root_hash, path, None)
+                        self.compute_new_root_with_change_alt(&root_hash, path, None)
                     } else {
                         if path.is_empty() {
                             println!("path is empty - returning new_tree_hash");
                             return Ok(new_tree_hash);
                         }
                         self.compute_new_root_with_change_alt(
-                            root_hash, path, Some(self.get_non_leaf(new_tree_hash)))
+                            &root_hash, path, Some(self.get_non_leaf(new_tree_hash)))
                     }
                 } else {
                     panic!("compute_alt: Entry is not a Tree");
@@ -737,19 +756,27 @@ impl MerkleStorage {
     }
 
     // returns index to self.staged with found subtree and its hash
-    fn find_tree_staging(&self, root: &Tree, root_hash: &EntryHash, key: &[String]) -> Result<Option<usize>, MerkleError> {
+    fn find_tree_staging(&self, root_idx: usize, root_hash: &EntryHash, key: &[String]) -> Result<Option<usize>, MerkleError> {
         println!("find_tree_staging() with keylen={}", key.len());
         if key.is_empty() {
-            let entry_idx = self.staged_get_idx(root_hash).unwrap();
-            return Ok(Some(entry_idx));
+            return Ok(Some(root_idx));
         }
-        
-        let child_node = match root.get(key.first().unwrap()) {
-            Some(hash) => hash,
-            None =>  {
-                println!("no node at key={}, returning None", key.first().unwrap());
-                return Ok(None);
-            }
+
+        let (_, ref root) = self.staged[root_idx];
+        let child_node = match root {
+                Entry::Tree(root) => {
+                    match root.get(key.first().unwrap()) {
+                        Some(node) => node,
+                        None =>  {
+                            println!("no node at key={}, returning None", key.first().unwrap());
+                            return Ok(None);
+                        }
+                    }
+                },
+                _ => {
+                    println!("ERROR: root is not tree!");
+                    return Ok(None); //TO DO revise this branch
+                }
         };
 
         let entry_idx = self.staged_get_idx(&child_node.entry_hash).unwrap();
@@ -762,7 +789,7 @@ impl MerkleStorage {
                 } else {
                     println!("entry with hash={} is tree, calling find_tree with keylen={}",
                         &child_node.entry_hash[0], &key[1..].len());
-                    self.find_tree_staging(&tree, &entry_hash, &key[1..])
+                    self.find_tree_staging(entry_idx, &entry_hash, &key[1..])
                 }
             }
             Entry::Blob(_) => Ok(None),
