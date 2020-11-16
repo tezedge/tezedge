@@ -120,6 +120,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
     }
+    println!("GOT TO THIS POINT");
 
     // check level 1324 with merkle storage
     let m = persistent_storage.merkle();
