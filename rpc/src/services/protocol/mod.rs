@@ -471,7 +471,7 @@ fn handle_rpc_response(response: &ProtocolRpcResponse) -> Result<serde_json::val
     }
 }
 
-pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+pub(crate) fn call_protocol_rpc(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
     let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
 
     // TODO: retry?
@@ -480,44 +480,8 @@ pub(crate) fn run_operation(chain_param: &str, block_param: &str, json_request: 
     handle_rpc_response(&response)
 }
 
-pub(crate) fn forge_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
-
-    // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
-
-    handle_rpc_response(&response)
-}
-
-pub(crate) fn context_contract(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
-
-    // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
-
-    handle_rpc_response(&response)
-}
-
-pub(crate) fn current_level(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
-
-    // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
-
-    handle_rpc_response(&response)
-}
-
-pub(crate) fn minimal_valid_time(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
-
-    // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
-
-    handle_rpc_response(&response)
-}
-
-pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
+pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_rpc_request(chain_param, block_param, rpc_request, &env)?;
 
     // TODO: retry?
     let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_operations(request)?;
