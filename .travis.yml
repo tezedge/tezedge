@@ -2,14 +2,18 @@ language: rust
 rust:
   - nightly-2020-10-24
 
+cache:
+  directories:
+  - $HOME/.opam
+
 jobs:
   include:
   - os: linux
     dist: focal
     name: Ubuntu Focal (20.04)
-  - os: osx
-    name: macOS Catalina (10.15)
-    osx_image: xcode12
+  #- os: osx
+  #  name: macOS Catalina (10.15)
+  #  osx_image: xcode12
 
 sudo: false
 
@@ -17,6 +21,11 @@ env:
   global:
     - RUST_BACKTRACE=1
     - SODIUM_USE_PKG_CONFIG=1
+    - OCAML_VERSION=4.09
+
+install:
+  - test -e .travis-ocaml.sh || wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-ocaml.sh
+  - bash -ex .travis-ocaml.sh
 
 addons:
   apt:
