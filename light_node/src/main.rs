@@ -41,7 +41,7 @@ mod configuration;
 mod identity;
 mod system;
 
-const DATABASE_VERSION: i64 = 15;
+const DATABASE_VERSION: i64 = 16;
 const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
 const SUPPORTED_P2P_VERSION: u16 = 1;
 
@@ -192,7 +192,7 @@ fn block_on_actors(
     env: crate::configuration::Environment,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: StorageInitInfo,
-    identity: Identity,
+    identity: Arc<Identity>,
     actor_system: ActorSystem,
     persistent_storage: PersistentStorage,
     tezedge_context: TezedgeContext,
@@ -282,6 +282,7 @@ fn block_on_actors(
         &init_storage_data.chain_id,
         is_sandbox,
         &env.p2p.peer_threshold,
+        identity.clone(),
     ).expect("Failed to create chain manager");
 
     let _ = MempoolPrevalidator::actor(
@@ -447,7 +448,7 @@ fn main() {
             &env.storage.tezos_data_dir,
             &env.storage.patch_context,
             &log) {
-            Ok(init_data) => block_on_actors(env, tezos_env, init_data, tezos_identity, actor_system,
+            Ok(init_data) => block_on_actors(env, tezos_env, init_data, Arc::new(tezos_identity), actor_system,
                                              persistent_storage, tezedge_context, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data."; "reason" => e), actor_system),
         }

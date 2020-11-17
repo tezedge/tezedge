@@ -7,22 +7,19 @@ use std::convert::TryInto;
 use failure::format_err;
 use itertools::Itertools;
 
-use storage::persistent::PersistentStorage;
 use storage::context::TezedgeContext;
+use storage::context_action_storage::contract_id_to_contract_address_for_index;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::protocol::proto_006::rights::{BakingRights, EndorsingRight};
 
-use crate::helpers::ContextProtocolParam;
+use crate::services::protocol::ContextProtocolParam;
 use crate::services::protocol::proto_006::helpers::{EndorserSlots, get_prng_number, init_prng, RightsConstants, RightsContextData, RightsParams};
-use storage::context_action_storage::contract_id_to_contract_address_for_index;
 
 /// Return generated baking rights.
 ///
 /// # Arguments
 ///
-/// * `chain_id` - Url path parameter 'chain_id'.
-/// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
 /// * `level` - Url query parameter 'level'.
 /// * `delegate` - Url query parameter 'delegate'.
 /// * `cycle` - Url query parameter 'cycle'.
@@ -35,23 +32,31 @@ use storage::context_action_storage::contract_id_to_contract_address_for_index;
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
 pub(crate) fn check_and_get_baking_rights(
     context_proto_params: ContextProtocolParam,
-    chain_id: &str,
     level: Option<&str>,
     delegate: Option<&str>,
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    context: TezedgeContext,
-    persistent_storage: &PersistentStorage) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
+    context: &TezedgeContext,
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
+    let constants: RightsConstants = RightsConstants::parse_rights_constants(&context_proto_params)?;
 
-    // get block level first
-    let block_level: i64 = context_proto_params.level.try_into()?;
+    let params: RightsParams = RightsParams::parse_rights_parameters(
+        level,
+        delegate,
+        cycle,
+        max_priority,
+        has_all,
+        &constants,
+        &context_proto_params.block_header,
+        true,
+    )?;
 
-    let constants: RightsConstants = RightsConstants::parse_rights_constants(context_proto_params)?;
-
-    let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, max_priority, has_all, block_level, &constants, persistent_storage, true)?;
-
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context)?;
+    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(
+        params.clone(),
+        constants.clone(),
+        context,
+    )?;
 
     get_baking_rights(&context_data, &params, &constants)
 }
@@ -199,8 +204,6 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
 ///
 /// # Arguments
 ///
-/// * `chain_id` - Url path parameter 'chain_id'.
-/// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
 /// * `level` - Url query parameter 'level'.
 /// * `delegate` - Url query parameter 'delegate'.
 /// * `cycle` - Url query parameter 'cycle'.
@@ -212,22 +215,29 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
 pub(crate) fn check_and_get_endorsing_rights(
     context_proto_params: ContextProtocolParam,
-    chain_id: &str,
     level: Option<&str>,
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    context: TezedgeContext,
-    persistent_storage: &PersistentStorage) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
+    context: &TezedgeContext,
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
+    let constants: RightsConstants = RightsConstants::parse_rights_constants(&context_proto_params)?;
 
-    // get block level from block_id and from now get all nessesary data by block level
-    let block_level: i64 = context_proto_params.level.try_into()?;
+    let params: RightsParams = RightsParams::parse_rights_parameters(
+        level,
+        delegate,
+        cycle,
+        None,
+        has_all,
+        &constants, &context_proto_params.block_header,
+        false,
+    )?;
 
-    let constants: RightsConstants = RightsConstants::parse_rights_constants(context_proto_params)?;
-
-    let params: RightsParams = RightsParams::parse_rights_parameters(chain_id, level, delegate, cycle, None, has_all, block_level, &constants, persistent_storage, false)?;
-
-    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(params.clone(), constants.clone(), context)?;
+    let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(
+        params.clone(),
+        constants.clone(),
+        context,
+    )?;
 
     get_endorsing_rights(&context_data, &params, &constants)
 }

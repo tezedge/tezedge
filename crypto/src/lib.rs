@@ -9,5 +9,6 @@ pub mod base58;
 pub mod nonce;
 pub mod crypto_box;
 pub mod proof_of_work;
+pub mod seeded_step;
 #[macro_use]
 pub mod hash;

@@ -9,6 +9,7 @@ use lazy_static::lazy_static;
 
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
+use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use storage::tests_common::TmpStorage;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
@@ -19,8 +20,7 @@ mod samples;
 lazy_static! {
     pub static ref NETWORK_VERSION: NetworkVersion = NetworkVersion::new("TEST_CHAIN".to_string(), 0, 0);
     pub static ref NODE_P2P_PORT: u16 = 1234; // TODO: maybe some logic to verify and get free port
-    pub static ref NODE_P2P_CFG: (Identity, P2p, NetworkVersion) = (
-        tezos_identity::Identity::generate(0f64),
+    pub static ref NODE_P2P_CFG: (P2p, NetworkVersion) = (
         P2p {
             listener_port: NODE_P2P_PORT.clone(),
             bootstrap_lookup_addresses: vec![],
@@ -32,6 +32,7 @@ lazy_static! {
         },
         NETWORK_VERSION.clone(),
     );
+    pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64);
 }
 
 #[ignore]
@@ -51,6 +52,7 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
         &db.tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
+        NODE_IDENTITY.clone(),
         (log, log_level),
     )?;
 
@@ -61,8 +63,8 @@ fn test_process_current_branch_on_level3_with_empty_storage() -> Result<(), fail
     let clocks = Instant::now();
     let mocked_peer_node = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE",
-        NODE_P2P_CFG.1.listener_port,
-        NODE_P2P_CFG.2.clone(),
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64),
         node.log.clone(),
         &node.tokio_runtime,
@@ -106,6 +108,7 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
         &tezos_env,
         patch_context,
         Some(NODE_P2P_CFG.clone()),
+        NODE_IDENTITY.clone(),
         (log, log_level),
     )?;
 
@@ -117,8 +120,8 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
     let clocks = Instant::now();
     let mocked_peer_node_branch_1 = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE_BRANCH_1",
-        NODE_P2P_CFG.1.listener_port,
-        NODE_P2P_CFG.2.clone(),
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64),
         node.log.clone(),
         &node.tokio_runtime,
@@ -136,8 +139,8 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
     let (db_branch_2, ..) = test_cases_data::sandbox_branch_2_level4::init_data(&node.log);
     let mocked_peer_node_branch_2 = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE_BRANCH_2",
-        NODE_P2P_CFG.1.listener_port,
-        NODE_P2P_CFG.2.clone(),
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64),
         node.log.clone(),
         &node.tokio_runtime,
@@ -149,7 +152,8 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
     println!("\nProcessed [branch2-4] in {:?}!\n", clocks.elapsed());
 
 
-    // check context stored for all branches
+    ////////////////////////////////////////////
+    // 1. CONTEXT - check context stored for all branches
     node.wait_for_context("db_branch_1_ctx_1", db_branch_1.context_hash(1)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
     node.wait_for_context("db_branch_1_ctx_2", db_branch_1.context_hash(2)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
     node.wait_for_context("db_branch_1_ctx_3", db_branch_1.context_hash(3)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
@@ -158,6 +162,26 @@ fn test_process_reorg_with_different_current_branches_with_empty_storage() -> Re
     node.wait_for_context("db_branch_2_ctx_2", db_branch_2.context_hash(2)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
     node.wait_for_context("db_branch_2_ctx_3", db_branch_2.context_hash(3)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
     node.wait_for_context("db_branch_2_ctx_4", db_branch_2.context_hash(4)?, (Duration::from_secs(5), Duration::from_millis(150)))?;
+
+    ////////////////////////////////////////////
+    // 2. HISTORY of blocks - check live_blocks for both branches (kind of check by chain traversal throught predecessors)
+    let genesis_block_hash = node.tezos_env.genesis_header_hash()?;
+    let block_meta_storage = BlockMetaStorage::new(node.tmp_storage.storage());
+
+    let live_blocks_branch_1 = block_meta_storage.get_live_blocks(db_branch_1.block_hash(3)?, 10)?;
+    assert_eq!(4, live_blocks_branch_1.len());
+    assert!(live_blocks_branch_1.contains(&genesis_block_hash));
+    assert!(live_blocks_branch_1.contains(&db_branch_1.block_hash(1)?));
+    assert!(live_blocks_branch_1.contains(&db_branch_1.block_hash(2)?));
+    assert!(live_blocks_branch_1.contains(&db_branch_1.block_hash(3)?));
+
+    let live_blocks_branch_2 = block_meta_storage.get_live_blocks(db_branch_2.block_hash(4)?, 10)?;
+    assert_eq!(5, live_blocks_branch_2.len());
+    assert!(live_blocks_branch_2.contains(&genesis_block_hash));
+    assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(1)?));
+    assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(2)?));
+    assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(3)?));
+    assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(4)?));
 
     // stop nodes
     drop(node);

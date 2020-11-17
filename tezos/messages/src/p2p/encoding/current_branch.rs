@@ -14,7 +14,7 @@ use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::block_header::BlockHeader;
 
-pub const HISTORY_MAX_SIZE: u8 = u8::MAX;
+pub const HISTORY_MAX_SIZE: u8 = 200;
 
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranchMessage {

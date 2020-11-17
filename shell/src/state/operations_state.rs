@@ -21,12 +21,12 @@ pub struct OperationsState {
 }
 
 impl OperationsState {
-    pub fn new(persistent_storage: &PersistentStorage, chain_id: &ChainId) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: ChainId) -> Self {
         OperationsState {
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
             missing_operations_for_blocks: UniqueBlockData::new(),
-            chain_id: chain_id.clone(),
+            chain_id,
         }
     }
 

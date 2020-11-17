@@ -5,10 +5,7 @@
 use hyper::{Body, Response, StatusCode};
 use slog::{error, Logger};
 
-use crypto::hash::HashType;
 pub use services::mempool_services::MempoolOperations;
-
-use crate::rpc_actor::RpcCollectedStateRef;
 
 pub mod encoding;
 mod helpers;
@@ -84,17 +81,6 @@ pub(crate) fn empty() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(204)?)
         .body(Body::empty())?)
-}
-
-/// Unwraps a block hash or provides alternative block hash.
-/// Alternatives are: genesis block or current head
-pub(crate) fn unwrap_block_hash(block_id: Option<&str>, state: &RpcCollectedStateRef, genesis_hash: &str) -> String {
-    block_id.map(String::from).unwrap_or_else(|| {
-        let state = state.read().unwrap();
-        state.current_head().as_ref()
-            .map(|current_head| HashType::BlockHash.bytes_to_string(&current_head.header().hash))
-            .unwrap_or(genesis_hash.to_string())
-    })
 }
 
 /// Generate 404 response

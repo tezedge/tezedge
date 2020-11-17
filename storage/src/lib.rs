@@ -252,10 +252,16 @@ pub fn store_commit_genesis_result(
     // set genesis as current head - it is empty storage
     match block_storage.get(&genesis_block_hash)? {
         Some(genesis) => {
-            chain_meta_storage.set_current_head(
-                &chain_id,
-                Head::new(genesis.hash.clone(), genesis.header.level(), genesis.header.fitness().clone()),
-            )?;
+            let head = Head::new(
+                genesis.hash,
+                genesis.header.level(),
+                genesis.header.fitness().clone(),
+            );
+
+            // init chain data
+            chain_meta_storage.set_genesis(&chain_id, head.clone())?;
+            chain_meta_storage.set_caboose(&chain_id, head.clone())?;
+            chain_meta_storage.set_current_head(&chain_id, head)?;
 
             Ok(block_json_data)
         }

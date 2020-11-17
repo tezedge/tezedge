@@ -11,6 +11,8 @@ use riker::actors::*;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
+use crate::p2p::peer::PublicKey;
+
 use super::peer::PeerRef;
 
 pub const DEFAULT_TOPIC: &str = "network";
@@ -29,7 +31,7 @@ pub struct PeerCreated {
 pub enum PeerBootstrapped {
     Success {
         peer: PeerRef,
-        peer_id: String,
+        peer_public_key: Arc<PublicKey>,
         peer_metadata: MetadataMessage,
     },
     Failure {

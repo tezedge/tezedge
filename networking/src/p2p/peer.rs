@@ -15,7 +15,7 @@ use tokio::runtime::Handle;
 use tokio::time::timeout;
 
 use crypto::crypto_box::precompute;
-use crypto::hash::HashType;
+use crypto::hash::{CryptoboxPublicKeyHash, HashType};
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
@@ -31,7 +31,7 @@ const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
 pub type PeerId = String;
-pub type PublicKey = Vec<u8>;
+pub type PublicKey = CryptoboxPublicKeyHash;
 
 #[derive(Debug, Fail)]
 pub enum PeerError {
@@ -278,7 +278,7 @@ impl Receive<Bootstrap> for Peer {
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Success {
                             peer: myself.clone(),
-                            peer_id: peer_id.clone(),
+                            peer_public_key: Arc::new(public_key),
                             peer_metadata: metadata,
                         }.into(),
                         topic: NetworkChannelTopic::NetworkEvents.into(),

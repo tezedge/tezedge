@@ -116,7 +116,8 @@ pub mod infra {
             name: &str,
             tezos_env: &TezosEnvironment,
             patch_context: Option<PatchContext>,
-            p2p: Option<(Identity, P2p, NetworkVersion)>,
+            p2p: Option<(P2p, NetworkVersion)>,
+            identity: Identity,
             (log, log_level): (Logger, Level)) -> Result<Self, failure::Error> {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -124,6 +125,7 @@ pub mod infra {
             let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&tezos_env).expect("no environment configuration");
             let is_sandbox = false;
             let p2p_threshold = PeerConnectionThreshold::new(1, 1);
+            let identity = Arc::new(identity);
 
             // storage
             let persistent_storage = tmp_storage.storage();
@@ -204,7 +206,16 @@ pub mod infra {
             let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
             let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
             let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-            let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, tezos_readonly_api.clone(), &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
+            let _ = ChainManager::actor(
+                &actor_system,
+                network_channel.clone(), shell_channel.clone(),
+                &persistent_storage,
+                tezos_readonly_api.clone(),
+                &init_storage_data.chain_id,
+                is_sandbox,
+                &p2p_threshold,
+                identity.clone(),
+            ).expect("Failed to create chain manager");
             let _ = MempoolPrevalidator::actor(
                 &actor_system,
                 shell_channel.clone(),
@@ -215,7 +226,7 @@ pub mod infra {
             ).expect("Failed to create chain feeder");
 
             // and than open p2p and others - if configured
-            if let Some((identity, p2p_config, network_version)) = p2p {
+            if let Some((p2p_config, network_version)) = p2p {
                 let _ = PeerManager::actor(
                     &actor_system,
                     network_channel.clone(),

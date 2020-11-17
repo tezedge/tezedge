@@ -39,6 +39,7 @@ pub trait ContextApi {
 
     // convert level number to hash (uses block_storage get_by_block_Level)
     fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError>;
+
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
@@ -202,6 +203,10 @@ pub enum ContextError {
     #[fail(display = "Unknown level: {}", level)]
     UnknownLevelError {
         level: String,
+    },
+    #[fail(display = "Unknown block_hash: {}", block_hash)]
+    UnknownBlockHashError {
+        block_hash: String,
     },
     #[fail(display = "Failed operation on Merkle storage: {}", error)]
     MerkleStorageError {

@@ -66,8 +66,6 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn get_by_block_level_with_json_data(&self, level: BlockLevel) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
 
-    fn get_live_blocks(&self, level: i32, max_ttl: usize) -> Result<Option<Vec<BlockHash>>, StorageError>;
-
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 }
 
@@ -261,23 +259,6 @@ impl BlockStorageReader for BlockStorage {
                 .transpose(),
             None => Ok(None)
         }
-    }
-
-    #[inline]
-    fn get_live_blocks(&self, block_level: i32, max_ttl: usize) -> Result<Option<Vec<BlockHash>>, StorageError> {
-        // TODO: reimplement for reorg, and change level to block_hash
-        // tezos ocaml for max_ttl=60 returns 61 blocks
-        let limit = max_ttl + 1;
-        let mut live_blocks: Option<Vec<BlockHash>> = self.by_level_index.get_blocks(block_level, limit)?.iter()
-            .map(|location| self.get_block_header_by_location(&location).map(|block_header| block_header.hash).ok())
-            .collect();
-
-        // sort by bytes
-        if let Some(live_blocks) = &mut live_blocks {
-            live_blocks.sort_by(|left, right| Ord::cmp(left, right));
-        }
-
-        Ok(live_blocks)
     }
 
     #[inline]

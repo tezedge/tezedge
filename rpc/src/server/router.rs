@@ -44,8 +44,6 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
 
     // Protocol rpcs - implemented
     routes.handle("/chains/:chain_id/blocks/:block_id/context/constants", protocol_handler::context_constants);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/counter", protocol_handler::get_contract_counter);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/manager_key", protocol_handler::get_contract_manager_key);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", protocol_handler::baking_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", protocol_handler::endorsing_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", protocol_handler::votes_listings);

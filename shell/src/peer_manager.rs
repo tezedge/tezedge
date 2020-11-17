@@ -102,7 +102,7 @@ pub struct PeerManager {
     /// We will listen for incoming connection at this port
     listener_port: u16,
     /// Tezos identity
-    identity: Identity,
+    identity: Arc<Identity>,
     /// Network/protocol version
     network_version: NetworkVersion,
     /// Message receiver boolean indicating whether
@@ -126,7 +126,7 @@ impl PeerManager {
                  network_channel: NetworkChannelRef,
                  shell_channel: ShellChannelRef,
                  tokio_executor: Handle,
-                 identity: Identity,
+                 identity: Arc<Identity>,
                  network_version: NetworkVersion,
                  p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
@@ -241,9 +241,9 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)> for PeerManager {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)> for PeerManager {
     fn create_args((network_channel, shell_channel, tokio_executor, identity, network_version, p2p_config):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)) -> Self
+                   (NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)) -> Self
     {
         PeerManager {
             network_channel,

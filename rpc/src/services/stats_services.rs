@@ -15,7 +15,7 @@ use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 
 use crate::rpc_actor::RpcCollectedStateRef;
-use crate::services::base_services::get_block_actions_by_hash;
+use crate::services::dev_services::get_block_actions_by_hash;
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionTypeStats {

@@ -51,6 +51,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
         &tezos_env,
         None,
         None,
+        tezos_identity::Identity::generate(0f64),
         (log, log_level),
     )?;
 
@@ -201,7 +202,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
             None => (),
             Some(head) => {
                 if head.level() >= &apply_to_level {
-                    let header = block_storage.get(head.hash()).expect("failed to read current head").expect("current head not found");
+                    let header = block_storage.get(head.block_hash()).expect("failed to read current head").expect("current head not found");
                     // TE-168: check if context is also asynchronously stored
                     let context_hash = header.header.context();
                     let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");

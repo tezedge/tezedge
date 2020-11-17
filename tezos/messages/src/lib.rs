@@ -29,7 +29,7 @@ pub fn ts_to_rfc3339(ts: i64) -> String {
 pub struct Head {
     /// BlockHash of head.
     #[get = "pub"]
-    hash: BlockHash,
+    block_hash: BlockHash,
     /// Level of the head.
     #[get = "pub"]
     level: Level,
@@ -39,9 +39,9 @@ pub struct Head {
 }
 
 impl Head {
-    pub fn new(hash: BlockHash, level: Level, fitness: Fitness) -> Self {
+    pub fn new(block_hash: BlockHash, level: Level, fitness: Fitness) -> Self {
         Self {
-            hash,
+            block_hash,
             level,
             fitness,
         }
@@ -49,7 +49,7 @@ impl Head {
 
     pub fn to_debug_info(&self) -> (String, Level, String) {
         (
-            HashType::BlockHash.bytes_to_string(&self.hash),
+            HashType::BlockHash.bytes_to_string(&self.block_hash),
             self.level,
             display_fitness(&self.fitness),
         )
@@ -58,7 +58,7 @@ impl Head {
 
 impl From<Head> for BlockHash {
     fn from(h: Head) -> Self {
-        h.hash
+        h.block_hash
     }
 }
 

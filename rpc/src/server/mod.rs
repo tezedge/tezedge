@@ -13,7 +13,7 @@ use hyper::service::{make_service_fn, service_fn};
 use riker::actors::ActorSystem;
 use slog::Logger;
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, ChainId};
 use shell::shell_channel::ShellChannelRef;
 use storage::context::TezedgeContext;
 use storage::persistent::PersistentStorage;
@@ -41,8 +41,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
-    genesis_hash: BlockHash,
-    #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
     shell_channel: ShellChannelRef,
@@ -52,6 +50,11 @@ pub struct RpcServiceEnvironment {
     network_version: NetworkVersion,
     #[get = "pub(crate)"]
     log: Logger,
+
+    #[get = "pub(crate)"]
+    main_chain_genesis_hash: BlockHash,
+    #[get = "pub(crate)"]
+    main_chain_id: ChainId,
 
     #[get = "pub(crate)"]
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
@@ -73,7 +76,8 @@ impl RpcServiceEnvironment {
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
-        genesis_hash: BlockHash,
+        main_chain_id: ChainId,
+        main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         log: &Logger) -> Self {
         Self {
@@ -84,7 +88,8 @@ impl RpcServiceEnvironment {
             network_version,
             persistent_storage: persistent_storage.clone(),
             tezedge_context: tezedge_context.clone(),
-            genesis_hash,
+            main_chain_id,
+            main_chain_genesis_hash,
             state,
             log: log.clone(),
             tezos_readonly_api,

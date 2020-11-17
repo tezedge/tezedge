@@ -25,12 +25,16 @@ async fn test_rpc_compare() {
 }
 
 async fn integration_tests_rpc(from_block: i64, to_block: i64) {
+    assert!(from_block < to_block, "from_block({}) should be smaller then to_block({})", from_block, to_block);
+
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
+    // lets iterate whole rps'c
     for level in from_block..to_block + 1 {
         if level <= 0 {
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
+            test_rpc_compare_json(&format!("{}", "chains/main/blocks/genesis/header")).await;
             println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
             continue;
         }
@@ -145,6 +149,19 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             cycle_loop_counter += 1;
         }
     }
+
+    // simple test for walking on headers (-, ~)
+    let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
+    for i in 0..max_offset {
+        test_rpc_compare_json(&format!("{}/{}~{}/{}", "chains/main/blocks", to_block, i, "header")).await;
+        test_rpc_compare_json(&format!("{}/{}-{}/{}", "chains/main/blocks", to_block, i, "header")).await;
+    }
+
+    // TODO: TE-238 - simple test for walking on headers (+)
+    // let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
+    // for i in 0..max_offset {
+    //     test_rpc_compare_json(&format!("{}/{}+{}/{}", "chains/main/blocks", from_block, i, "header")).await;
+    // }
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
