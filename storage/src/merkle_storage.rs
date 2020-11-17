@@ -574,7 +574,7 @@ impl MerkleStorage {
 
         let actions = self.actions.clone();
         //println!("do_the_thing: len(actions)={}", actions.len());
-        for action in actions.iter() {
+        for (i, action) in actions.iter().enumerate() {
             match action {
                 Action::Set(set) =>  {
        // let blob_hash = self.hash_blob(&value)?;
@@ -584,7 +584,7 @@ impl MerkleStorage {
         //
                     //TODO DONT CLONE let root = &self.current_stage_tree.as_ref().unwrap(); 
                     //let root = self.current_stage_tree.clone().unwrap();
-                    //println!("Action::Set");
+                    println!("Action::Set {}", i);
                     let root_hash = self.current_stage_tree_hash.unwrap();
                     //println!("do_the_thing(), root_hash={}", root_hash[0]);
                     let key = &set.key;
