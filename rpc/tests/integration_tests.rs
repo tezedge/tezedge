@@ -55,9 +55,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/endorsing_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/baking_rights")).await;
         test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "votes/listings")).await;
-        // TODO: TE-226 - uncomment after protocol rpc router is done
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/current_level")).await;
-        // test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "minimal_valid_time")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "helpers/current_level")).await;
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "minimal_valid_time")).await;
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants
@@ -129,7 +128,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             // known ocaml node bugs
             // - endorsing rights: for cycle 0, when requested cycle 4 there should be cycle check error:
             //  [{"kind":"permanent","id":"proto.005-PsBabyM1.seed.unknown_seed","oldest":0,"requested":4,"latest":3}]
-            //  instead there is panic on 
+            //  instead there is panic on
             //  [{"kind":"permanent","id":"proto.005-PsBabyM1.context.storage_error","missing_key":["cycle","4","last_roll","1"],"function":"get"}]
             // if cycle==0 {
             //     let block_level_1000 = "BM9xFVaVv6mi7ckPbTgxEe7TStcfFmteJCpafUZcn75qi2wAHrC";
