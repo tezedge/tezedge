@@ -19,7 +19,7 @@ use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, context_key};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::ContextActionType;
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{JsonRpcRequest, RpcMethod};
+use tezos_api::ffi::{RpcRequest, RpcMethod};
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
@@ -567,7 +567,7 @@ pub(crate) fn current_time_timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
 }
 
-pub(crate) async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRpcRequest, failure::Error> {
+pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest, failure::Error> {
     let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
     let meth = RpcMethod::try_from(req.method().to_string().as_str()).unwrap(); // TODO: handle correctly
     let content_type = match req.headers().get(hyper::header::CONTENT_TYPE) {
@@ -581,7 +581,7 @@ pub(crate) async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRp
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
 
-    Ok(JsonRpcRequest {
+    Ok(RpcRequest {
         body,
         context_path: String::from(context_path.trim_end_matches("/")),
         meth,

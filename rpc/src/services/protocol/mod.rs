@@ -21,7 +21,7 @@ use crypto::hash::HashType;
 use storage::{BlockStorage, BlockStorageReader, context_key, num_from_slice};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{JsonRpcRequest, ProtocolJsonRpcRequest, ProtocolRpcResponse};
+use tezos_api::ffi::{RpcRequest, ProtocolRpcRequest, ProtocolRpcResponse};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
     proto_001 as proto_001_constants,
@@ -471,11 +471,11 @@ fn handle_rpc_response(response: &ProtocolRpcResponse) -> Result<serde_json::val
     }
 }
 
-pub(crate) fn call_protocol_rpc(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
+pub(crate) fn call_protocol_rpc(chain_param: &str, block_param: &str, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let request = create_protocol_rpc_request(chain_param, block_param, rpc_request, &env)?;
 
     // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_json_rpc(request)?;
+    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_rpc(request)?;
 
     handle_rpc_response(&response)
 }
@@ -489,9 +489,9 @@ pub(crate) fn preapply_operations(chain_param: &str, block_param: &str, rpc_requ
     Ok(serde_json::from_str(&response.body)?)
 }
 
-pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+pub(crate) fn preapply_block(chain_param: &str, block_param: &str, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
     // create request to ffi
-    let request = create_protocol_json_rpc_request(chain_param, block_param, json_request, &env)?;
+    let request = create_protocol_rpc_request(chain_param, block_param, rpc_request, &env)?;
 
     // TODO: TE-192 - refactor to protocol runner call
     let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_block(request)?;
@@ -499,7 +499,7 @@ pub(crate) fn preapply_block(chain_param: &str, block_param: &str, json_request:
     Ok(serde_json::from_str(&response.body)?)
 }
 
-fn create_protocol_json_rpc_request(chain_param: &str, block_param: &str, json_request: JsonRpcRequest, env: &RpcServiceEnvironment) -> Result<ProtocolJsonRpcRequest, failure::Error> {
+fn create_protocol_rpc_request(chain_param: &str, block_param: &str, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<ProtocolRpcRequest, failure::Error> {
     let persistent_storage = env.persistent_storage();
     let state = env.state();
 
@@ -514,10 +514,10 @@ fn create_protocol_json_rpc_request(chain_param: &str, block_param: &str, json_r
     let chain_id = state.chain_id().clone();
 
     // create request to ffi
-    Ok(ProtocolJsonRpcRequest {
+    Ok(ProtocolRpcRequest {
         chain_arg: chain_param.to_string(),
         block_header,
-        request: json_request,
+        request: rpc_request,
         chain_id,
     })
 }

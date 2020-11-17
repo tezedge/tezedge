@@ -6,7 +6,7 @@ use super::{
     OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationListListHash,
     OCamlProtocolHash, TaggedHash,
 };
-use crate::ffi::{ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ForkingTestchainData, JsonRpcRequest, PrevalidatorWrapper, ProtocolJsonRpcRequest, RpcMethod, ValidateOperationRequest};
+use crate::ffi::{ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ForkingTestchainData, RpcRequest, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, ValidateOperationRequest};
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use ocaml_interop::{OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, ToOCaml, impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant};
@@ -159,7 +159,7 @@ impl_to_ocaml_record! {
 }
 
 impl_to_ocaml_record! {
-    JsonRpcRequest {
+    RpcRequest {
         body: OCamlBytes,
         context_path: OCamlBytes,
         meth: RpcMethod,
@@ -179,11 +179,11 @@ impl_to_ocaml_variant!{
 }
 
 impl_to_ocaml_record! {
-    ProtocolJsonRpcRequest {
+    ProtocolRpcRequest {
         block_header: BlockHeader => FfiBlockHeader::from(block_header),
         chain_id: OCamlBytes,
         chain_arg: OCamlBytes,
-        request: JsonRpcRequest,
+        request: RpcRequest,
     }
 }
 

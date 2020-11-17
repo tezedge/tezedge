@@ -46,9 +46,9 @@ enum ProtocolMessage {
     ApplyBlockCall(ApplyBlockRequest),
     BeginConstructionCall(BeginConstructionRequest),
     ValidateOperationCall(ValidateOperationRequest),
-    ProtocolJsonRpcCall(ProtocolJsonRpcRequest),
-    HelpersPreapplyOperationsCall(ProtocolJsonRpcRequest),
-    HelpersPreapplyBlockCall(ProtocolJsonRpcRequest),
+    ProtocolRpcCall(ProtocolRpcRequest),
+    HelpersPreapplyOperationsCall(ProtocolRpcRequest),
+    HelpersPreapplyBlockCall(ProtocolRpcRequest),
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
@@ -82,7 +82,7 @@ enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
     BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
     ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
-    JsonRpcResponse(Result<ProtocolRpcResponse, ProtocolRpcError>),
+    RpcResponse(Result<ProtocolRpcResponse, ProtocolRpcError>),
     HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
@@ -127,9 +127,9 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                 let res = Proto::validate_operation(request);
                 tx.send(&NodeMessage::ValidateOperationResponse(res))?;
             }
-            ProtocolMessage::ProtocolJsonRpcCall(request) => {
-                let res = Proto::call_protocol_json_rpc(request);
-                tx.send(&NodeMessage::JsonRpcResponse(res))?;
+            ProtocolMessage::ProtocolRpcCall(request) => {
+                let res = Proto::call_protocol_rpc(request);
+                tx.send(&NodeMessage::RpcResponse(res))?;
             }
             ProtocolMessage::HelpersPreapplyOperationsCall(request) => {
                 let res = Proto::helpers_preapply_operations(request);
@@ -443,8 +443,8 @@ impl ProtocolController {
         }
     }
 
-    /// Call protocol json rpc - internal
-    fn call_protocol_json_rpc_internal(&self, msg: ProtocolMessage) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
+    /// Call protocol  rpc - internal
+    fn call_protocol_rpc_internal(&self, msg: ProtocolMessage) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&msg)?;
         // this might take a while, so we will use unusually long timeout
@@ -453,14 +453,14 @@ impl ProtocolController {
         // restore default timeout setting
         io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
-            NodeMessage::JsonRpcResponse(result) => result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into()),
+            NodeMessage::RpcResponse(result) => result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into()),
             message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
         }
     }
 
-    /// Call protocol json rpc
-    pub fn call_protocol_json_rpc(&self, request: ProtocolJsonRpcRequest) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
-        self.call_protocol_json_rpc_internal(ProtocolMessage::ProtocolJsonRpcCall(request))
+    /// Call protocol rpc
+    pub fn call_protocol_rpc(&self, request: ProtocolRpcRequest) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
+        self.call_protocol_rpc_internal(ProtocolMessage::ProtocolRpcCall(request))
     }
 
     /// Call helpers_preapply_* shell service - internal
@@ -479,12 +479,12 @@ impl ProtocolController {
     }
 
     /// Call helpers_preapply_operations shell service
-    pub fn helpers_preapply_operations(&self, request: ProtocolJsonRpcRequest) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
+    pub fn helpers_preapply_operations(&self, request: ProtocolRpcRequest) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyOperationsCall(request))
     }
 
     /// Call helpers_preapply_block shell service
-    pub fn helpers_preapply_block(&self, request: ProtocolJsonRpcRequest) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
+    pub fn helpers_preapply_block(&self, request: ProtocolRpcRequest) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
     }
 

@@ -559,7 +559,7 @@ impl From<OCamlError> for ContextDataError {
 pub type Json = String;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JsonRpcRequest {
+pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
     pub meth: RpcMethod,
@@ -635,12 +635,12 @@ pub enum ProtocolRpcError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
-pub struct ProtocolJsonRpcRequest {
+pub struct ProtocolRpcRequest {
     pub block_header: BlockHeader,
     pub chain_arg: String,
     pub chain_id: ChainId,
 
-    pub request: JsonRpcRequest,
+    pub request: RpcRequest,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]

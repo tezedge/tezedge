@@ -18,7 +18,7 @@ mod tezos_ffi {
     use tezos_api::{
         ffi::{
             ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ProtocolRpcResponse,
-            PrevalidatorWrapper, ProtocolJsonRpcRequest, ValidateOperationRequest,
+            PrevalidatorWrapper, ProtocolRpcRequest, ValidateOperationRequest,
             ValidateOperationResponse, HelpersPreapplyResponse, ProtocolRpcError
         },
         ocaml_conv::OCamlOperationHash,
@@ -29,9 +29,9 @@ mod tezos_ffi {
         pub fn apply_block(apply_block_request: ApplyBlockRequest) -> ApplyBlockResponse;
         pub fn begin_construction(begin_construction_request: BeginConstructionRequest) -> PrevalidatorWrapper;
         pub fn validate_operation(validate_operation_request: ValidateOperationRequest) -> ValidateOperationResponse;
-        pub fn call_protocol_rpc(request: ProtocolJsonRpcRequest) -> Result<ProtocolRpcResponse, ProtocolRpcError>;
-        pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> HelpersPreapplyResponse;
-        pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> HelpersPreapplyResponse;
+        pub fn call_protocol_rpc(request: ProtocolRpcRequest) -> Result<ProtocolRpcResponse, ProtocolRpcError>;
+        pub fn helpers_preapply_operations(request: ProtocolRpcRequest) -> HelpersPreapplyResponse;
+        pub fn helpers_preapply_block(request: ProtocolRpcRequest) -> HelpersPreapplyResponse;
         pub fn change_runtime_configuration(
             log_enabled: bool,
             no_of_ffi_calls_treshold_for_gc: OCamlInt,
@@ -251,7 +251,7 @@ pub fn validate_operation(
 }
 
 pub fn call_protocol_rpc(
-    request: ProtocolJsonRpcRequest,
+    request: ProtocolRpcRequest,
 ) -> Result<Result<ProtocolRpcResponse, ProtocolRpcError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
@@ -264,14 +264,14 @@ pub fn call_protocol_rpc(
 
 /// Call helpers_preapply_operations shell service
 pub fn helpers_preapply_operations(
-    request: ProtocolJsonRpcRequest,
+    request: ProtocolRpcRequest,
 ) -> Result<Result<HelpersPreapplyResponse, CallError>, OcamlError> {
     call(tezos_ffi::helpers_preapply_operations, request)
 }
 
 /// Call helpers_preapply_block shell service
 pub fn helpers_preapply_block(
-    request: ProtocolJsonRpcRequest,
+    request: ProtocolRpcRequest,
 ) -> Result<Result<HelpersPreapplyResponse, CallError>, OcamlError> {
     call(tezos_ffi::helpers_preapply_block, request)
 }

@@ -9,7 +9,7 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::create_ffi_json_request;
+use crate::helpers::create_rpc_request;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
@@ -105,7 +105,7 @@ pub async fn call_protocol_rpc(req: Request<Body>, params: Params, _: Query, env
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let json_request = create_ffi_json_request(req).await?;
+    let json_request = create_rpc_request(req).await?;
 
     result_to_json_response(
         services::protocol::call_protocol_rpc(chain_param, block_param, json_request, &env),
