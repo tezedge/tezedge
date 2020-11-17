@@ -1,0 +1,46 @@
+name: build
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-10-24
+          default: true
+      - name: Settings for cargo in OSX
+        if: runner.os == 'macOS'
+        run: |
+            echo '[build]' >> ~/.cargo/config
+            echo 'rustflags = ["-C", "link-args=-Wl,-undefined,dynamic_lookup"]' >> ~/.cargo/config
+      - name: APT dependencies
+        run: |
+            wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+            sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+            sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty main"
+            sudo apt-get update -y
+            sudo apt-get install libhidapi-dev libsodium-dev libev4 clang libclang-dev llvm-dev g++
+        if: runner.os == 'Linux'
+      - name: OSX dependencies
+        run: brew install hidapi
+        if: runner.os == 'macOS'
+      - name: cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
