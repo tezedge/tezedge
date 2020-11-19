@@ -135,6 +135,8 @@ pub struct MerkleStorage {
     db: Arc<MerkleStorageKV>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, Entry)>,
+    /// HashMap for looking up entry index in self.staged by hash
+    staged_indices: HashMap<EntryHash, usize>,
     last_commit_hash: Option<EntryHash>,
     map_stats: MerkleMapStats,
     /// divide this by the next field to get avg time spent in _set
@@ -261,6 +263,7 @@ impl MerkleStorage {
         MerkleStorage {
             db,
             staged: Vec::new(),
+            staged_indices: HashMap::new(),
             current_stage_tree: None,
             current_stage_tree_hash: None,
             last_commit_hash: None,
@@ -435,6 +438,7 @@ impl MerkleStorage {
         self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         self.last_commit_hash = Some(*context_hash);
         self.staged = Vec::new();
+        self.staged_indices = HashMap::new();
         self.map_stats.staged_area_elems = 0;
         Ok(())
     }
@@ -447,7 +451,7 @@ impl MerkleStorage {
                   author: String,
                   message: String,
     ) -> Result<EntryHash, MerkleError> {
-        //println!("commit()");
+        println!("commit()");
         self.do_the_thing()?;
 
         let staged_root = self.get_staged_root()?;
@@ -467,6 +471,7 @@ impl MerkleStorage {
         self.put_to_staging_area(&self.hash_commit(&new_commit)?, entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = Vec::new();
+        self.staged_indices = HashMap::new();
         self.map_stats.staged_area_elems = 0;
         let last_commit_hash = self.hash_commit(&new_commit)?;
         self.last_commit_hash = Some(last_commit_hash);
@@ -477,7 +482,7 @@ impl MerkleStorage {
     pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
         //let root = self.get_staged_root()?;
         // store action
-        //println!("set()");
+        println!("set()");
         let act = Arc::make_mut(&mut self.actions);
         act.push(Action::Set( SetAction{ key: key.to_vec(), value: value.to_vec() } ));
         //let new_root_hash = &self._set(&root, key, value)?;
@@ -492,7 +497,7 @@ impl MerkleStorage {
     fn _set(&mut self, root: &Tree, key: &ContextKey, value: &ContextValue) -> Result<EntryHash, MerkleError> {
         let blob_hash = self.hash_blob(&value)?;
         self.put_to_staging_area(&blob_hash, Entry::Blob(value.clone()));
-        //println!("put blobhash={} in staging", blob_hash[0]);
+        println!("put blobhash={} in staging", blob_hash[0]);
         let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
         let instant = Instant::now();
         let rv = self.compute_new_root_with_change(root, &key, Some(new_node));
@@ -573,7 +578,7 @@ impl MerkleStorage {
 
 
         let actions = self.actions.clone();
-        //println!("do_the_thing: len(actions)={}", actions.len());
+        println!("do_the_thing: len(actions)={}", actions.len());
         for (i, action) in actions.iter().enumerate() {
             match action {
                 Action::Set(set) =>  {
@@ -586,34 +591,45 @@ impl MerkleStorage {
                     //let root = self.current_stage_tree.clone().unwrap();
                     println!("Action::Set {}", i);
                     let root_hash = self.current_stage_tree_hash.unwrap();
-                    //println!("do_the_thing(), root_hash={}", root_hash[0]);
+                    println!("do_the_thing(), root_hash={}", root_hash[0]);
                     let key = &set.key;
                     let blob_hash = self.hash_blob(&set.value)?;
-                    //println!("do_the_thing(), blob_hash={}", blob_hash[0]);
-                    self.staged.push((blob_hash, Entry::Blob(set.value.clone())));
+                    println!("do_the_thing(), blob_hash={}", blob_hash[0]);
+                    //self.staged.push((blob_hash, Entry::Blob(set.value.clone())));
+                    self.put_to_staging_area(&blob_hash, Entry::Blob(set.value.clone()));
                     let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
 
 
-                    ////dump staging
-                    //println!("dumping staging");
-                    //for (_, staged_entry) in self.staged.iter().enumerate() {
-                    //    let (hash, entry) = staged_entry;
-                    //    println!("{}", hash[0]);
-                    //}
-                    //println!("end of dump");
+                    //dump staging
+                    println!("dumping staging");
+                    for (_, staged_entry) in self.staged.iter().enumerate() {
+                        let (hash, entry) = staged_entry;
+                        println!("{}", hash[0]);
+                    }
+                    println!("end of dump");
+                    println!("dumping staging_indices");
+                    for (key, val) in self.staged_indices.iter() {
+                        println!("{}: {}", key[0], val);
+                    }
+                    println!("end of dump");
 
-                    //TODO inefficient - instead of pushing here just don't remove this entry on
-                    //commit() (where we set self.staged to Vec::new())
-                    self.staged.push((root_hash, self.get_entry(&root_hash)?));
+                    //TODO inefficient - instead of pushing here just don't remove this entry on commit() (where we set self.staged to Vec::new())
+                    //self.staged.push((root_hash, self.get_entry(&root_hash)?));
+                    self.put_to_staging_area(&root_hash, self.get_entry(&root_hash)?);
                     let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node))?;
 
-                    ////dump staging
-                    //println!("dumping staging");
-                    //for (_, staged_entry) in self.staged.iter().enumerate() {
-                    //    let (hash, entry) = staged_entry;
-                    //    println!("{}", hash[0]);
-                    //}
-                    //println!("end of dump");
+                    //dump staging
+                    println!("dumping staging");
+                    for (_, staged_entry) in self.staged.iter().enumerate() {
+                        let (hash, entry) = staged_entry;
+                        println!("{}", hash[0]);
+                    }
+                    println!("end of dump");
+                    println!("dumping staging_indices");
+                    for (key, val) in self.staged_indices.iter() {
+                        println!("{}: {}", key[0], val);
+                    }
+                    println!("end of dump");
 
 
                     // now put Tree of hash rv into current_staging_tree
@@ -687,15 +703,14 @@ impl MerkleStorage {
                                     key: &[String],
                                     new_node: Option<Node>,
     ) -> Result<EntryHash, MerkleError> {
+        println!("compute_alt with keylen={}, and node hash={}", key.len(),
+                    new_node.clone().unwrap().entry_hash[0]);
         let root_idx = self.staged_get_idx(&root_hash).unwrap();
-
-        //println!("compute_alt with keylen={}, and node hash={}", key.len(),
-         //           new_node.clone().unwrap().entry_hash[0]);
         assert_eq!(key.is_empty(), false);
         if key.is_empty() {
             match new_node {
                 Some(n) =>  {
-                    //println!("returning hash={}", n.clone().entry_hash[0]);
+                    println!("returning hash={}", n.clone().entry_hash[0]);
                     return Ok(n.entry_hash);
                 }
                 None => {
@@ -717,7 +732,7 @@ impl MerkleStorage {
             return self.staged_get_idx(&hash);
         });
 
-        //println!("modifying tree in place");
+        println!("modifying tree in place");
         match idx {
             Some(idx) => {
                 let (ref mut tree_hash, ref mut tree) = self.staged[idx];
@@ -743,22 +758,30 @@ impl MerkleStorage {
 //                        // compute_new_root below
 //                        root_hash = new_tree_hash;
 //                    }
-                    //println!("changing hash={} to new tree hash={} in staging", tree_hash[0], new_tree_hash[0]);
+                    println!("changing hash={} to new tree hash={} in staging", tree_hash[0], new_tree_hash[0]);
                     //*tree_hash = new_tree_hash;
+                    //
+                    // Remove hash from staged_indices as it no longer exists
+                    self.staged_indices.remove(tree_hash);
+                    // Entry was modified, so its hash must be updated
                     *tree_hash = new_tree_hash;
+                    // Add mapping from hash to index
+                    // Now we can quickly lookup idx by hash, where idx points to Entry in
+                    // self.staged Vec
+                    self.staged_indices.insert(*tree_hash, idx);
 
                     if tree.is_empty() {
                         // CHECK THIS BRANCH LATER
                         // last element was removed, delete this node
-                        //println!("Tree is empty");
+                        println!("Tree is empty");
                         if path.is_empty() {
-                            //println!("Also path is empty - returning root hash");
+                            println!("Also path is empty - returning root hash");
                             return Ok(*root_hash);
                         }
                         self.compute_new_root_with_change_alt(&root_hash, path, None)
                     } else {
                         if path.is_empty() {
-                            //println!("path is empty - returning new_tree_hash");
+                            println!("path is empty - returning new_tree_hash");
                             return Ok(new_tree_hash);
                         }
                         self.compute_new_root_with_change_alt(
@@ -799,7 +822,7 @@ impl MerkleStorage {
 
     // returns index to self.staged with found subtree and its hash
     fn find_tree_staging(&mut self, root_idx: usize, root_hash: &EntryHash, key: &[String]) -> Result<Option<usize>, MerkleError> {
-        //println!("find_tree_staging() with keylen={}", key.len());
+        println!("find_tree_staging() with keylen={}", key.len());
         if key.is_empty() {
             return Ok(Some(root_idx));
         }
@@ -810,13 +833,13 @@ impl MerkleStorage {
                     match root.get(key.first().unwrap()) {
                         Some(node) => node,
                         None =>  {
-                            //println!("no node at key={}, returning None", key.first().unwrap());
+                            println!("no node at key={}, returning None", key.first().unwrap());
                             return Ok(None);
                         }
                     }
                 },
                 _ => {
-                    //println!("ERROR: root is not tree!");
+                    println!("ERROR: root is not tree!");
                     return Ok(None); //TO DO revise this branch
                 }
         };
@@ -838,11 +861,10 @@ impl MerkleStorage {
         match entry {
             Entry::Tree(tree) => {
                 if key.len() == 1 {
-                    //println!("keylen=1, returning entry_idx");
+                    println!("keylen=1, returning entry_idx");
                     return Ok(Some(entry_idx));
                 } else {
-                    //println!("entry with hash={} is tree, calling find_tree with keylen={}",
-                     //   &ehash[0], &key[1..].len());
+                    println!("entry with hash={} is tree, calling find_tree with keylen={}", &ehash[0], &key[1..].len());
                     self.find_tree_staging(entry_idx, &entry_hash, &key[1..])
                 }
             }
@@ -855,29 +877,43 @@ impl MerkleStorage {
     }
 
     fn staged_get(&self, hash: &EntryHash) -> Option<&Entry> {
-        for entry in self.staged.iter() {
-            if entry.0 == *hash {
-                return Some(&entry.1);
-            }
+       // for entry in self.staged.iter() {
+       //     if entry.0 == *hash {
+       //         return Some(&entry.1);
+       //     }
+       // }
+       // return None;
+        match self.staged_get_idx(hash) {
+            Some(idx) => return Some(&self.staged[idx].1),
+            None => return None,
         }
-        return None;
     }
     // returns index to self.staged with found entry
     fn staged_get_idx(&self, hash: &EntryHash) -> Option<usize> {
-        for (idx, entry) in self.staged.iter().enumerate() {
-            if entry.0 == *hash {
-                return Some(idx);
+//        for (idx, entry) in self.staged.iter().enumerate() {
+//            if entry.0 == *hash {
+//                return Some(idx);
+//            }
+//        }
+        println!("staged_get_idx({})", hash[0]);
+        match self.staged_indices.get(hash) {
+            Some(idx) => {
+                // ensure staged_indices and staged are sync'd
+                assert_eq!(self.staged[*idx].0, *hash);
+                println!("returning {}", idx);
+                return Some(*idx);
             }
+            None => return None,
         }
-        return None;
+//        return None;
     }
-    fn update_hash_in_staged(&mut self, from_hash: &EntryHash, to_hash: &EntryHash) {
-        for entry in self.staged.iter_mut() {
-            if entry.0 == *from_hash {
-                entry.0 = *to_hash;
-            }
-        }
-    }
+//    fn update_hash_in_staged(&mut self, from_hash: &EntryHash, to_hash: &EntryHash) {
+//        for entry in self.staged.iter_mut() {
+//            if entry.0 == *from_hash {
+//                entry.0 = *to_hash;
+//            }
+//        }
+//    }
 
 
 
@@ -1001,7 +1037,15 @@ impl MerkleStorage {
 
     fn put_to_staging_area(&mut self, key: &EntryHash, value: Entry) {
         //TODO: check if exists already, otherwise we have duplicates
+        //
+        if self.staged_get_idx(key).is_some() {
+            return;
+        }
+
+        let idx = self.staged.len();
         self.staged.push((*key, value));
+        self.staged_indices.insert(*key, idx);
+        println!("put_to_staging: key={}, idx={}", key[0], idx);
         self.map_stats.staged_area_elems = self.staged.len() as u64;
     }
 
