@@ -9,7 +9,7 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::create_ffi_json_request;
+use crate::helpers::create_rpc_request;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
@@ -17,12 +17,6 @@ pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: 
     let block_id = params.get_str("block_id").unwrap();
 
     result_to_json_response(base_services::get_context_constants_just_for_rpc(block_id, None, env.persistent_storage(), env.state()), env.log())
-}
-
-pub async fn cycle(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let block_id = params.get_str("block_id").unwrap();
-    let cycle_id = params.get_str("cycle_id").unwrap();
-    result_to_json_response(services::protocol::get_cycle_from_context_as_json(block_id, cycle_id, env.persistent_storage(), env.tezedge_context(), env.state()), env.log())
 }
 
 pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -101,62 +95,14 @@ pub async fn get_contract_manager_key(_: Request<Body>, params: Params, _: Query
     )
 }
 
-pub async fn run_operation(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn call_protocol_rpc(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let json_request = create_ffi_json_request(req).await?;
+    let json_request = create_rpc_request(req).await?;
 
     result_to_json_response(
-        services::protocol::run_operation(chain_param, block_param, json_request, &env),
-        env.log(),
-    )
-}
-
-pub async fn forge_operations(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
-
-    let json_request = create_ffi_json_request(req).await?;
-
-    result_to_json_response(
-        services::protocol::forge_operations(chain_param, block_param, json_request, &env),
-        env.log(),
-    )
-}
-
-pub async fn context_contract(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
-
-    let json_request = create_ffi_json_request(req).await?;
-
-    result_to_json_response(
-        services::protocol::context_contract(chain_param, block_param, json_request, &env),
-        env.log(),
-    )
-}
-
-pub async fn current_level(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
-
-    let json_request = create_ffi_json_request(req).await?;
-
-    result_to_json_response(
-        services::protocol::current_level(chain_param, block_param, json_request, &env),
-        env.log(),
-    )
-}
-
-pub async fn minimal_valid_time(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
-
-    let json_request = create_ffi_json_request(req).await?;
-
-    result_to_json_response(
-        services::protocol::minimal_valid_time(chain_param, block_param, json_request, &env),
+        services::protocol::call_protocol_rpc(chain_param, block_param, json_request, &env),
         env.log(),
     )
 }

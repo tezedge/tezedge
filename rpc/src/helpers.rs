@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 use std::convert::TryInto;
 use std::pin::Pin;
 
@@ -19,7 +19,7 @@ use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, context_key};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::ContextActionType;
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::JsonRpcRequest;
+use tezos_api::ffi::{RpcRequest, RpcMethod};
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
@@ -398,13 +398,13 @@ impl NodeVersion {
 }
 
 /// Return block level based on block_id url parameter
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `block_id` - Url parameter block_id.
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
-/// 
+///
 /// If block_id is head return current head level
 /// If block_id is level then return level as i64
 /// if block_id is block hash string return level from BlockMetaStorage by block hash string
@@ -431,11 +431,11 @@ pub(crate) fn get_level_by_block_id(block_id: &str, persistent_storage: &Persist
 
 /// Get block has bytes from block hash or block level
 /// # Arguments
-/// 
+///
 /// * `block_id` - Url parameter block_id.
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
-/// 
+///
 /// If block_id is head return block hash byte string from current RpcCollectedStateRef
 /// If block_id is level then return block hash byte string from BlockStorage by level
 /// if block_id is block hash string return block hash byte string from BlockStorage by block hash string
@@ -480,9 +480,9 @@ pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
 }
 
 /// Return block timestamp in epoch time format by block level
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `level` - Level of block.
 /// * `state` - Current RPC state (head).
 pub(crate) fn get_block_timestamp_by_level(level: i32, persistent_storage: &PersistentStorage) -> Result<i64, failure::Error> {
@@ -567,13 +567,45 @@ pub(crate) fn current_time_timestamp() -> TimeStamp {
     TimeStamp::Integral(Utc::now().timestamp())
 }
 
-pub(crate) async fn create_ffi_json_request(req: Request<Body>) -> Result<JsonRpcRequest, failure::Error> {
+pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest, failure::Error> {
     let context_path = req.uri().path_and_query().unwrap().as_str().to_string();
+    let meth = RpcMethod::try_from(req.method().to_string().as_str()).unwrap(); // TODO: handle correctly
+    let content_type = match req.headers().get(hyper::header::CONTENT_TYPE) {
+        None => None,
+        Some(hv) => Some(String::from_utf8(hv.as_bytes().into())?),
+    };
+    let accept = match req.headers().get(hyper::header::ACCEPT) {
+        None => None,
+        Some(hv) => Some(String::from_utf8(hv.as_bytes().into())?),
+    };
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
 
-    Ok(JsonRpcRequest {
+    Ok(RpcRequest {
         body,
         context_path: String::from(context_path.trim_end_matches("/")),
+        meth,
+        content_type,
+        accept,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // NOTE: safe-guard in case `http` changes to decoding percent-encoding parts of the URI.
+    // If that happens, update or remove this test and update the RPC-router in the OCaml
+    // code so that it doesn't call `Uri.pct_decode` on the URI fragments. Code using the
+    // query part of the URI may have to be updated too.
+    #[test]
+    fn test_pct_not_decoded()  {
+        let req = Request::builder()
+            .uri("http://www.example.com/percent%20encoded?query=percent%20encoded")
+            .body(())
+            .unwrap();
+        let path = req.uri().path_and_query().unwrap().as_str().to_string();
+        let expected = "/percent%20encoded?query=percent%20encoded";
+        assert_eq!(expected, &path);
+    }
 }

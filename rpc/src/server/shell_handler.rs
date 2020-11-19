@@ -24,7 +24,7 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::create_ffi_json_request;
+use crate::helpers::create_rpc_request;
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
@@ -73,7 +73,7 @@ pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServ
     if chain_id == "main" {
         make_json_stream_response(base_services::get_current_head_monitor_header(env.state())?.unwrap())
     } else {
-        // TODO: implement... 
+        // TODO: implement...
         empty()
     }
 }
@@ -227,10 +227,10 @@ pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, e
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let json_request = create_ffi_json_request(req).await?;
+    let rpc_request = create_rpc_request(req).await?;
 
     result_to_json_response(
-        services::protocol::preapply_operations(chain_param, block_param, json_request, &env),
+        services::protocol::preapply_operations(chain_param, block_param, rpc_request, &env),
         env.log(),
     )
 }
@@ -239,14 +239,14 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
     let chain_param = params.get_str("chain_id").unwrap();
     let block_param = params.get_str("block_id").unwrap();
 
-    let json_request = create_ffi_json_request(req).await?;
+    let rpc_request = create_rpc_request(req).await?;
 
     // launcher - we need the error from preapply
-    match services::protocol::preapply_block(chain_param, block_param, json_request, &env) {
+    match services::protocol::preapply_block(chain_param, block_param, rpc_request, &env) {
         Ok(resp) => result_to_json_response(Ok(resp), env.log()),
         Err(e) => {
             if let Some(err) = e.as_fail().downcast_ref::<ProtocolServiceError>() {
-                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc { message } } } = err {
+                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc(message) } } = err {
                     return make_json_response(&ErrorMessage {
                         error_type: "ocaml".to_string(),
                         message: message.to_string(),

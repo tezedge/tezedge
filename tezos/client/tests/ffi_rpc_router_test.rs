@@ -5,8 +5,8 @@ use assert_json_diff::assert_json_eq;
 use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
-use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration};
-use tezos_api::ffi::{ApplyBlockRequest, ComputePathRequest, ComputePathResponse, FfiRpcService, InitProtocolContextResult, JsonRpcRequest, ProtocolJsonRpcRequest, TezosRuntimeConfiguration};
+use tezos_api::{environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration}, ffi::{RpcMethod, ProtocolRpcResponse}};
+use tezos_api::ffi::{ApplyBlockRequest, ComputePathRequest, ComputePathResponse, InitProtocolContextResult, RpcRequest, ProtocolRpcRequest, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
@@ -54,6 +54,13 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
     )
 }
 
+fn extract_body(r: ProtocolRpcResponse) -> Result<String, failure::Error> {
+    match r {
+        ProtocolRpcResponse::RPCOk(body) => Ok(body),
+        other => Err(failure::err_msg(format!("Expecter RPCOk, instead got {:?}", other))),
+    }
+}
+
 #[test]
 #[serial]
 fn test_run_operations() -> Result<(), failure::Error> {
@@ -69,22 +76,24 @@ fn test_run_operations() -> Result<(), failure::Error> {
     let request = test_data::OPERATION_JSON_RPC_REQUEST_LEVEL_2;
 
     // FFI call for run_operation
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/scripts/run_operation".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::POST,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersRunOperation,
     };
-    let response = client::call_protocol_json_rpc(request)?;
+    let response = client::call_protocol_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::RUN_OPERTION_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::RUN_OPERTION_RESPONSE)?,
     );
 
     Ok(())
@@ -132,22 +141,24 @@ fn test_forge_operations() -> Result<(), failure::Error> {
     let expected_response = r#""97f9d91bdcf9ba544fcd84fb525409cab4c16be8eea29788a499e060d4a84a366b00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e01d086038102005e108e1c9b4fb5c95d47ad49d55fe988c8d77d617c27cbbcd99f97cca0cd3ab96c00e8794fc74ab9afa4ac7af5b2b6e52e3fe5ecb9de904e02d08603810280b1b5cc040000124410d330e6c21d604aae39e3c156eb6b241c2500""#;
 
     // FFI call for run_operation
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/forge/operations".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::POST,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersForgeOperations,
     };
-    let response = client::call_protocol_json_rpc(request)?;
+    let response = client::call_protocol_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(expected_response)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(expected_response)?,
     );
 
     Ok(())
@@ -175,22 +186,24 @@ fn test_context_contract() -> Result<(), failure::Error> {
     "#;
 
     // FFI call for run_operation
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::ContextContract,
     };
-    let response = client::call_protocol_json_rpc(request)?;
+    let response = client::call_protocol_rpc(request)?;
 
     // assert result json
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(expected_response)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(expected_response)?,
     );
 
     Ok(())
@@ -211,15 +224,17 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
     let request = test_data::NEXT_OPERATION_JSON_RPC_REQUEST_LEVEL_2;
 
     // FFI call for run_operation
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/preapply/operations".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersPreapplyOperations,
     };
     let response = client::helpers_preapply_operations(request)?;
 
@@ -241,22 +256,24 @@ fn test_current_level_call() -> Result<(), failure::Error> {
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
 
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/current_level?offset=1".to_string(),
             body: "".to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersCurrentLevel,
     };
 
-    let response = client::call_protocol_json_rpc(request)?;
+    let response = client::call_protocol_rpc(request)?;
 
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::CURRENT_LEVEL_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::CURRENT_LEVEL_RESPONSE)?,
     );
 
     Ok(())
@@ -271,22 +288,24 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
 
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/head/minimal_valid_time?priority=4&endorsing_power=0".to_string(),
             body: "".to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::DelegatesMinimalValidTime,
     };
 
-    let response = client::call_protocol_json_rpc(request)?;
+    let response = client::call_protocol_rpc(request)?;
 
     assert_json_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::MINIMAL_VALID_TIME_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
+        serde_json::from_str::<serde_json::Value>(&test_data::MINIMAL_VALID_TIME_RESPONSE)?,
     );
 
     Ok(())
@@ -336,15 +355,17 @@ fn test_preapply_block() -> Result<(), failure::Error> {
     let request = test_data::PREAPPLY_BLOCK_1_REQUEST;
 
     // FFI call for run_operation
-    let request = ProtocolJsonRpcRequest {
+    let request = ProtocolRpcRequest {
         block_header: genesis_block_header,
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
-        request: JsonRpcRequest {
+        request: RpcRequest {
             context_path: "/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1592985768".to_string(),
             body: request.to_string(),
+            meth: RpcMethod::GET,
+            content_type: None,
+            accept: None,
         },
-        ffi_service: FfiRpcService::HelpersPreapplyBlock,
     };
     let response = client::helpers_preapply_block(request)?;
 

@@ -44,19 +44,14 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
 
     // Protocol rpcs - implemented
     routes.handle("/chains/:chain_id/blocks/:block_id/context/constants", protocol_handler::context_constants);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/raw/json/cycle/:cycle_id", protocol_handler::cycle);
-    routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh", protocol_handler::context_contract);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/counter", protocol_handler::get_contract_counter);
     routes.handle("/chains/:chain_id/blocks/:block_id/context/contracts/:pkh/manager_key", protocol_handler::get_contract_manager_key);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/baking_rights", protocol_handler::baking_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights", protocol_handler::endorsing_rights);
     routes.handle("/chains/:chain_id/blocks/:block_id/votes/listings", protocol_handler::votes_listings);
 
-    // Protocol rpcs - routed through ffi calls
-    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/scripts/run_operation", protocol_handler::run_operation);
-    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/forge/operations", protocol_handler::forge_operations);
-    routes.handle("/chains/:chain_id/blocks/:block_id/helpers/current_level", protocol_handler::current_level);
-    routes.handle("/chains/:chain_id/blocks/:block_id/minimal_valid_time", protocol_handler::minimal_valid_time);
+    // Other Protocol rpcs - routed through ffi calls
+    routes.handle("/chains/:chain_id/blocks/:block_id/*any", protocol_handler::call_protocol_rpc);
 
     // Tezedge dev and support rpcs
     routes.handle("/dev/chains/main/blocks", dev_handler::dev_blocks);
