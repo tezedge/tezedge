@@ -547,6 +547,13 @@ impl MerkleStorage {
             &root, &to_key, Some(self.get_non_leaf(source_tree_hash)))?)
     }
 
+    fn add_empty_tree_to_staging(&mut self) -> Result<EntryHash, MerkleError> {
+        let tree = Tree::new();
+        let hash = self.hash_tree(&tree)?;
+        self.put_to_staging_area(&hash, Entry::Tree(tree.clone()));
+        Ok(hash)
+    }
+
     fn ensure_stage_tree_exists(&mut self) -> Result<(), MerkleError> {
         match &self.current_stage_tree {
             None => {
@@ -616,7 +623,7 @@ impl MerkleStorage {
                     //TODO inefficient - instead of pushing here just don't remove this entry on commit() (where we set self.staged to Vec::new())
                     //self.staged.push((root_hash, self.get_entry(&root_hash)?));
                     self.put_to_staging_area(&root_hash, self.get_entry(&root_hash)?);
-                    let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node))?;
+                    let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node), false)?;
 
                     //dump staging
                     println!("dumping staging");
@@ -702,10 +709,10 @@ impl MerkleStorage {
                                     root_hash: &EntryHash,
                                     key: &[String],
                                     new_node: Option<Node>,
+                                    add_empty_tree: bool,
     ) -> Result<EntryHash, MerkleError> {
         println!("compute_alt with keylen={}, and node hash={}", key.len(),
                     new_node.clone().unwrap().entry_hash[0]);
-        let root_idx = self.staged_get_idx(&root_hash).unwrap();
         assert_eq!(key.is_empty(), false);
         if key.is_empty() {
             match new_node {
@@ -718,17 +725,22 @@ impl MerkleStorage {
                 }
             }
         }
+        let mut add_empty_tree = add_empty_tree;
+        if add_empty_tree == true {
+            self.add_empty_tree_to_staging();
+            add_empty_tree = false;
+        }
+        let root_idx = self.staged_get_idx(&root_hash).unwrap();
 
         let last = key.last().unwrap();
         let path = &key[..key.len() - 1];
 
+        let modifying_empty_tree = false;
         // find tree by path and get new copy of it
         let idx = self.find_tree_staging(root_idx, root_hash, path)?;
         let idx = idx.or_else(|| { 
             // node doesn't exist or is Blob, create empty tree
-            let tree = Tree::new();
-            let hash = self.hash_tree(&tree).unwrap();
-            self.put_to_staging_area(&hash, Entry::Tree(tree.clone()));
+            let hash = self.add_empty_tree_to_staging().unwrap();
             return self.staged_get_idx(&hash);
         });
 
@@ -746,6 +758,7 @@ impl MerkleStorage {
                     };
                     // calculate hash of modified tree
                     let new_tree_hash = hash_tree2(&tree)?;
+                    let old_hash = *tree_hash;
 
                     // tree was modified in place so just update its hash in staged
                     // note: old tree is gone, will need to be recreated for backtracking
@@ -758,6 +771,8 @@ impl MerkleStorage {
 //                        // compute_new_root below
 //                        root_hash = new_tree_hash;
 //                    }
+//
+//
                     println!("changing hash={} to new tree hash={} in staging", tree_hash[0], new_tree_hash[0]);
                     //*tree_hash = new_tree_hash;
                     //
@@ -770,22 +785,33 @@ impl MerkleStorage {
                     // self.staged Vec
                     self.staged_indices.insert(*tree_hash, idx);
 
+
+                    // edge case
+                    // TODO: maybe this would be more legible if we just stored hash of empty Tree
+                    // as const and refer to it - do special cases in code for empty Tree
+                    // as a bonus we won't have to recalculate hash of empty Tree over and over
+                    // again
+                    if old_hash == *root_hash && !path.is_empty() {//modifying_empty_tree == true {
+                        add_empty_tree = true;
+                    }
+
                     if tree.is_empty() {
-                        // CHECK THIS BRANCH LATER
+                        // TODO CHECK THIS BRANCH LATER
+                        // I think we need to return new_tree_hash as well?
                         // last element was removed, delete this node
                         println!("Tree is empty");
                         if path.is_empty() {
                             println!("Also path is empty - returning root hash");
                             return Ok(*root_hash);
                         }
-                        self.compute_new_root_with_change_alt(&root_hash, path, None)
+                        self.compute_new_root_with_change_alt(&root_hash, path, None, add_empty_tree)
                     } else {
                         if path.is_empty() {
                             println!("path is empty - returning new_tree_hash");
                             return Ok(new_tree_hash);
                         }
                         self.compute_new_root_with_change_alt(
-                            &root_hash, path, Some(self.get_non_leaf(new_tree_hash)))
+                            &root_hash, path, Some(self.get_non_leaf(new_tree_hash)), add_empty_tree)
                     }
                 } else {
                     panic!("compute_alt: Entry is not a Tree");
