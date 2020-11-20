@@ -30,14 +30,18 @@ impl MetadataMessage {
 
 impl fmt::Debug for MetadataMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[disable_mempool: {}, private_node: {:?}]", self.disable_mempool, self.private_node)
+        write!(
+            f,
+            "[disable_mempool: {}, private_node: {:?}]",
+            self.disable_mempool, self.private_node
+        )
     }
 }
 
 non_cached_data!(MetadataMessage);
 has_encoding!(MetadataMessage, METADATA_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("disable_mempool", Encoding::Bool),
-            Field::new("private_node", Encoding::Bool)
-        ])
+    Encoding::Obj(vec![
+        Field::new("disable_mempool", Encoding::Bool),
+        Field::new("private_node", Encoding::Bool),
+    ])
 });

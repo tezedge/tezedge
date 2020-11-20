@@ -39,8 +39,10 @@ fn can_deserialize_nack() -> Result<(), Error> {
 
 #[test]
 fn can_serialize_nack_with_list() -> Result<(), Error> {
-    let message = AckMessage::Nack(
-        NackInfo::new(NackMotive::DeprecatedP2pVersion, &vec![String::from("127.0.0.1:9832")]));
+    let message = AckMessage::Nack(NackInfo::new(
+        NackMotive::DeprecatedP2pVersion,
+        &vec![String::from("127.0.0.1:9832")],
+    ));
     let serialized = hex::encode(message.as_bytes()?);
     let expected = "010003000000120000000e3132372e302e302e313a39383332";
     Ok(assert_eq!(expected, &serialized))
@@ -50,11 +52,11 @@ fn can_serialize_nack_with_list() -> Result<(), Error> {
 fn can_deserialize_nack_with_list() -> Result<(), Error> {
     let message_bytes = hex::decode("010002000000120000000e3132372e302e302e313a39383332")?;
     let message = AckMessage::from_bytes(message_bytes)?;
-    Ok(
-        assert_eq!(
-            AckMessage::Nack(
-                NackInfo::new(NackMotive::UnknownChainName, &vec![String::from("127.0.0.1:9832")])),
-            message,
-        )
-    )
+    Ok(assert_eq!(
+        AckMessage::Nack(NackInfo::new(
+            NackMotive::UnknownChainName,
+            &vec![String::from("127.0.0.1:9832")]
+        )),
+        message,
+    ))
 }

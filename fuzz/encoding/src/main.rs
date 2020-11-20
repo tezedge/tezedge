@@ -2,15 +2,10 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use rand::{distributions::Alphanumeric, prelude::*, seq::SliceRandom};
 use std::iter;
 use tezos_encoding::binary_reader::BinaryReader;
 use tezos_encoding::encoding::{Encoding, Field};
-use rand::{
-    prelude::*,
-    seq::SliceRandom,
-    distributions::Alphanumeric,
-};
-
 
 use honggfuzz::fuzz;
 use log::debug;
@@ -22,7 +17,10 @@ fn main() {
             let encoding = generate_random_encoding();
             fuzz!(|data: &[u8]| {
                 if let Err(e) = BinaryReader::new().read(data, &encoding) {
-                    debug!("BinaryReader produced error for input: {:?}\nError:\n{:?}", data, e);
+                    debug!(
+                        "BinaryReader produced error for input: {:?}\nError:\n{:?}",
+                        data, e
+                    );
                 }
             });
         }

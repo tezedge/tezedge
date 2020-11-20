@@ -37,7 +37,6 @@ pub enum PeerMessage {
     OperationsForBlocks(OperationsForBlocksMessage),
 }
 
-
 #[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct PeerMessageResponse {
     #[get = "pub"]
@@ -48,40 +47,82 @@ pub struct PeerMessageResponse {
 
 cached_data!(PeerMessageResponse, body);
 has_encoding!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("messages", Encoding::dynamic(Encoding::list(
-            Encoding::Tags(
-                size_of::<u16>(),
-                TagMap::new(vec![
-                    Tag::new(0x01, "Disconnect", Encoding::Unit),
-                    Tag::new(0x02, "Bootstrap", Encoding::Unit),
-                    Tag::new(0x03, "Advertise", AdvertiseMessage::encoding().clone()),
-                    Tag::new(0x04, "SwapRequest", SwapMessage::encoding().clone()),
-                    Tag::new(0x05, "SwapAck", SwapMessage::encoding().clone()),
-                    Tag::new(0x10, "GetCurrentBranch", GetCurrentBranchMessage::encoding().clone()),
-                    Tag::new(0x11, "CurrentBranch", CurrentBranchMessage::encoding().clone()),
-                    Tag::new(0x12, "Deactivate", DeactivateMessage::encoding().clone()),
-                    Tag::new(0x13, "GetCurrentHead", GetCurrentHeadMessage::encoding().clone()),
-                    Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding().clone()),
-                    Tag::new(0x20, "GetBlockHeaders", GetBlockHeadersMessage::encoding().clone()),
-                    Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding().clone()),
-                    Tag::new(0x30, "GetOperations", GetOperationsMessage::encoding().clone()),
-                    Tag::new(0x31, "Operation", OperationMessage::encoding().clone()),
-                    Tag::new(0x40, "GetProtocols", GetProtocolsMessage::encoding().clone()),
-                    Tag::new(0x41, "Protocol", ProtocolMessage::encoding().clone()),
-                    Tag::new(0x50, "GetOperationHashesForBlocks", GetOperationHashesForBlocksMessage::encoding().clone()),
-                    Tag::new(0x51, "OperationHashesForBlocks", OperationHashesForBlocksMessage::encoding().clone()),
-                    Tag::new(0x60, "GetOperationsForBlocks", GetOperationsForBlocksMessage::encoding().clone()),
-                    Tag::new(0x61, "OperationsForBlocks", OperationsForBlocksMessage::encoding().clone()),
-                ])
-            )
-        )))
-    ])
+    Encoding::Obj(vec![Field::new(
+        "messages",
+        Encoding::dynamic(Encoding::list(Encoding::Tags(
+            size_of::<u16>(),
+            TagMap::new(vec![
+                Tag::new(0x01, "Disconnect", Encoding::Unit),
+                Tag::new(0x02, "Bootstrap", Encoding::Unit),
+                Tag::new(0x03, "Advertise", AdvertiseMessage::encoding().clone()),
+                Tag::new(0x04, "SwapRequest", SwapMessage::encoding().clone()),
+                Tag::new(0x05, "SwapAck", SwapMessage::encoding().clone()),
+                Tag::new(
+                    0x10,
+                    "GetCurrentBranch",
+                    GetCurrentBranchMessage::encoding().clone(),
+                ),
+                Tag::new(
+                    0x11,
+                    "CurrentBranch",
+                    CurrentBranchMessage::encoding().clone(),
+                ),
+                Tag::new(0x12, "Deactivate", DeactivateMessage::encoding().clone()),
+                Tag::new(
+                    0x13,
+                    "GetCurrentHead",
+                    GetCurrentHeadMessage::encoding().clone(),
+                ),
+                Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding().clone()),
+                Tag::new(
+                    0x20,
+                    "GetBlockHeaders",
+                    GetBlockHeadersMessage::encoding().clone(),
+                ),
+                Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding().clone()),
+                Tag::new(
+                    0x30,
+                    "GetOperations",
+                    GetOperationsMessage::encoding().clone(),
+                ),
+                Tag::new(0x31, "Operation", OperationMessage::encoding().clone()),
+                Tag::new(
+                    0x40,
+                    "GetProtocols",
+                    GetProtocolsMessage::encoding().clone(),
+                ),
+                Tag::new(0x41, "Protocol", ProtocolMessage::encoding().clone()),
+                Tag::new(
+                    0x50,
+                    "GetOperationHashesForBlocks",
+                    GetOperationHashesForBlocksMessage::encoding().clone(),
+                ),
+                Tag::new(
+                    0x51,
+                    "OperationHashesForBlocks",
+                    OperationHashesForBlocksMessage::encoding().clone(),
+                ),
+                Tag::new(
+                    0x60,
+                    "GetOperationsForBlocks",
+                    GetOperationsForBlocksMessage::encoding().clone(),
+                ),
+                Tag::new(
+                    0x61,
+                    "OperationsForBlocks",
+                    OperationsForBlocksMessage::encoding().clone(),
+                ),
+            ]),
+        ))),
+    )])
 });
 
 impl From<PeerMessage> for PeerMessageResponse {
     fn from(peer_message: PeerMessage) -> Self {
-        PeerMessageResponse { messages: vec![peer_message], body: Default::default() }
+        PeerMessageResponse {
+            messages: vec![peer_message],
+            body: Default::default(),
+        }
     }
 }
 
@@ -98,7 +139,7 @@ macro_rules! into_peer_message {
                 PeerMessage::$v(msg)
             }
         }
-    }
+    };
 }
 
 into_peer_message!(AdvertiseMessage, Advertise);

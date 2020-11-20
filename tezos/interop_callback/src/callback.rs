@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use ocaml_interop::{ocaml_export, ToRust, OCaml, OCamlInt64, OCamlList, RawOCaml};
+use ocaml_interop::{ocaml_export, OCaml, OCamlInt64, OCamlList, RawOCaml, ToRust};
 
 use tezos_context::channel::*;
 
@@ -16,16 +16,79 @@ type ContextValue = Vec<u8>;
 
 extern "C" {
     fn initialize_ml_context_functions(
-        ml_context_set: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_delete: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_remove_rec: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_copy: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_set: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_delete: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_remove_rec: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_copy: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
         ml_context_checkout: unsafe extern "C" fn(RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_commit: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_mem: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_dir_mem: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_raw_get: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
-        ml_context_fold: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml, RawOCaml, f64, f64) -> RawOCaml,
+        ml_context_commit: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_mem: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_dir_mem: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_raw_get: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
+        ml_context_fold: unsafe extern "C" fn(
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            RawOCaml,
+            f64,
+            f64,
+        ) -> RawOCaml,
     );
 }
 
@@ -41,7 +104,8 @@ pub fn initialize_callbacks() {
             real_ml_context_mem,
             real_ml_context_dir_mem,
             real_ml_context_raw_get,
-            real_ml_context_fold)
+            real_ml_context_fold,
+        )
     }
 }
 
@@ -331,8 +395,8 @@ fn context_commit(
     message: String,
     parents: Vec<Vec<u8>>,
     start_time: f64,
-    end_time: f64)
-{
+    end_time: f64,
+) {
     context_send(ContextAction::Commit {
         parent_context_hash,
         block_hash,
@@ -343,7 +407,8 @@ fn context_commit(
         parents,
         start_time,
         end_time,
-    }).expect("context_commit error");
+    })
+    .expect("context_commit error");
 }
 
 fn context_mem(

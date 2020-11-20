@@ -158,7 +158,9 @@ fn run_builder(build_chain: &BuildChain) {
                 );
 
                 println!();
-                println!("Please build libtezos-ffi before continuing (see: ./tezos/interop/README.md).");
+                println!(
+                    "Please build libtezos-ffi before continuing (see: ./tezos/interop/README.md)."
+                );
                 panic!();
             }
 

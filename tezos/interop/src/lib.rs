@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+pub mod ffi;
 /// This modules will allow you to call OCaml code:
 ///
 /// ```ocaml
@@ -36,4 +37,3 @@
 /// assert_eq!("Hello world!", &result);
 /// ```
 pub mod runtime;
-pub mod ffi;

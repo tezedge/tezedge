@@ -101,8 +101,7 @@ pub trait BitReverse {
     fn reverse(&self) -> Self;
 }
 
-impl BitReverse for BitVec
-{
+impl BitReverse for BitVec {
     #[inline]
     fn reverse(&self) -> BitVec {
         let mut reversed = BitVec::new();
@@ -113,13 +112,11 @@ impl BitReverse for BitVec
     }
 }
 
-
 pub trait BitTrim {
     fn trim_left(&self) -> Self;
 }
 
-impl BitTrim for BitVec
-{
+impl BitTrim for BitVec {
     fn trim_left(&self) -> BitVec {
         let mut trimmed: BitVec = BitVec::new();
 
@@ -140,8 +137,7 @@ pub trait ToBytes {
     fn to_byte_vec(&self) -> Vec<u8>;
 }
 
-impl ToBytes for BitVec
-{
+impl ToBytes for BitVec {
     fn to_byte_vec(&self) -> Vec<u8> {
         let mut bytes = vec![];
         let mut byte = 0;
@@ -170,46 +166,46 @@ mod tests {
     #[test]
     fn reverse() {
         let mut bits = BitVec::new();
-        bits.push(false);   // 0
-        bits.push(false);   // 1
-        bits.push(false);   // 2
-        bits.push(true);    // 3
-        bits.push(true);    // 4
-        bits.push(true);    // 5
-        bits.push(false);   // 6
-        bits.push(true);    // 7
-        bits.push(false);   // 8
+        bits.push(false); // 0
+        bits.push(false); // 1
+        bits.push(false); // 2
+        bits.push(true); // 3
+        bits.push(true); // 4
+        bits.push(true); // 5
+        bits.push(false); // 6
+        bits.push(true); // 7
+        bits.push(false); // 8
         assert_eq!(vec![0, 184], bits.reverse().to_byte_vec());
     }
 
     #[test]
     fn trim_left() {
         let mut bits = BitVec::new();
-        bits.push(false);   // 0
-        bits.push(false);   // 1
-        bits.push(false);   // 2
-        bits.push(true);    // 3
-        bits.push(true);    // 4
-        bits.push(true);    // 5
-        bits.push(false);   // 6
-        bits.push(true);    // 7
+        bits.push(false); // 0
+        bits.push(false); // 1
+        bits.push(false); // 2
+        bits.push(true); // 3
+        bits.push(true); // 4
+        bits.push(true); // 5
+        bits.push(false); // 6
+        bits.push(true); // 7
         assert_eq!(vec![29], bits.trim_left().to_byte_vec());
     }
 
     #[test]
     fn to_byte_vec() {
         let mut bits = BitVec::new();
-        bits.push(true);    // 0
-        bits.push(false);   // 1
-        bits.push(false);   // 2
-        bits.push(true);    // 3
-        bits.push(true);    // 4
-        bits.push(true);    // 5
-        bits.push(false);   // 6
-        bits.push(true);    // 7
+        bits.push(true); // 0
+        bits.push(false); // 1
+        bits.push(false); // 2
+        bits.push(true); // 3
+        bits.push(true); // 4
+        bits.push(true); // 5
+        bits.push(false); // 6
+        bits.push(true); // 7
         assert_eq!(vec![157], bits.to_byte_vec());
 
-        bits.push(false);   // 8
+        bits.push(false); // 8
         assert_eq!(vec![1, 58], bits.to_byte_vec());
     }
 }

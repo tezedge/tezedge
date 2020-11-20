@@ -12,7 +12,10 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Err(e) = MetadataMessage::from_bytes(data) {
-                debug!("MetadataMessage::from_bytes produced error for input: {:?}\nError:\n{:?}", data, e);
+                debug!(
+                    "MetadataMessage::from_bytes produced error for input: {:?}\nError:\n{:?}",
+                    data, e
+                );
             }
         });
     }

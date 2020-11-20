@@ -6,10 +6,17 @@ use super::{
     OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationListListHash,
     OCamlProtocolHash, TaggedHash,
 };
-use crate::ffi::{ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ForkingTestchainData, RpcRequest, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, ValidateOperationRequest};
+use crate::ffi::{
+    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ForkingTestchainData,
+    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, ValidateOperationRequest,
+};
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
+use ocaml_interop::{
+    impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant,
+    OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
+    ToOCaml,
+};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-use ocaml_interop::{OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList, ToOCaml, impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant};
 
 // OCaml type tags
 
@@ -168,7 +175,7 @@ impl_to_ocaml_record! {
     }
 }
 
-impl_to_ocaml_variant!{
+impl_to_ocaml_variant! {
     RpcMethod {
         RpcMethod::DELETE,
         RpcMethod::GET,

@@ -27,7 +27,11 @@ pub struct CurrentHeadMessage {
 }
 
 impl CurrentHeadMessage {
-    pub fn new(chain_id: ChainId, current_block_header: BlockHeader, current_mempool: Mempool) -> Self {
+    pub fn new(
+        chain_id: ChainId,
+        current_block_header: BlockHeader,
+        current_mempool: Mempool,
+    ) -> Self {
         CurrentHeadMessage {
             chain_id,
             current_block_header,
@@ -39,11 +43,14 @@ impl CurrentHeadMessage {
 
 cached_data!(CurrentHeadMessage, body);
 has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("current_block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("current_mempool", Mempool::encoding().clone())
-        ])
+    Encoding::Obj(vec![
+        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+        Field::new(
+            "current_block_header",
+            Encoding::dynamic(BlockHeader::encoding().clone()),
+        ),
+        Field::new("current_mempool", Mempool::encoding().clone()),
+    ])
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -67,7 +74,8 @@ impl GetCurrentHeadMessage {
 
 cached_data!(GetCurrentHeadMessage, body);
 has_encoding!(GetCurrentHeadMessage, GET_CURRENT_HEAD_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId))
-        ])
+    Encoding::Obj(vec![Field::new(
+        "chain_id",
+        Encoding::Hash(HashType::ChainId),
+    )])
 });

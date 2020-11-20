@@ -12,7 +12,7 @@ use test::Bencher;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use ipc::{IpcClient, IpcServer, temp_sock};
+use ipc::{temp_sock, IpcClient, IpcServer};
 
 #[derive(Serialize, Deserialize)]
 struct BenchData {
@@ -28,7 +28,7 @@ fn fork<F: FnOnce()>(child_func: F) -> libc::pid_t {
                 child_func();
                 libc::exit(0);
             }
-            pid => pid
+            pid => pid,
         }
     }
 }
@@ -76,14 +76,11 @@ fn bench_shm(b: &mut Bencher) {
     });
 }
 
-
 #[bench]
 fn bench_uds(b: &mut Bencher) {
-
     let sock_path = temp_sock();
 
     let child_pid = fork(|| {
-
         // wait for parent to be ready
         let sock_path = sock_path.as_path();
         while !sock_path.exists() {

@@ -17,7 +17,10 @@ pub struct Field {
 
 impl Field {
     pub fn new(name: &str, encoding: Encoding) -> Field {
-        Field { name: String::from(name), encoding }
+        Field {
+            name: String::from(name),
+            encoding,
+        }
     }
 
     pub fn get_name(&self) -> &String {
@@ -40,7 +43,11 @@ pub struct Tag {
 
 impl Tag {
     pub fn new(id: u16, variant: &str, encoding: Encoding) -> Tag {
-        Tag { id, variant: String::from(variant), encoding }
+        Tag {
+            id,
+            variant: String::from(variant),
+            encoding,
+        }
     }
 
     pub fn get_id(&self) -> u16 {
@@ -71,11 +78,18 @@ impl TagMap {
             let tag_id = tag.get_id();
             let variant = tag.get_variant().to_string();
             let prev_item = id_to_tag.insert(tag_id, tag);
-            assert!(prev_item.is_none(), "Tag id: 0x{:X} is already present in TagMap", tag_id);
+            assert!(
+                prev_item.is_none(),
+                "Tag id: 0x{:X} is already present in TagMap",
+                tag_id
+            );
             variant_to_id.insert(variant, tag_id);
         }
 
-        TagMap { id_to_tag, variant_to_id }
+        TagMap {
+            id_to_tag,
+            variant_to_id,
+        }
     }
 
     pub fn find_by_id(&self, id: u16) -> Option<&Tag> {
@@ -83,7 +97,8 @@ impl TagMap {
     }
 
     pub fn find_by_variant(&self, variant: &str) -> Option<&Tag> {
-        self.variant_to_id.get(variant)
+        self.variant_to_id
+            .get(variant)
             .and_then(|tag_id| self.id_to_tag.get(tag_id))
     }
 }
@@ -97,18 +112,17 @@ pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding + Send + Sync {}
 
 impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding + Send + Sync {}
 
-impl fmt::Debug for dyn SplitEncodingFn<Output=Encoding> + Send + Sync {
+impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> + Send + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn(SchemaType) -> Encoding")
     }
 }
 
-
 pub trait RecursiveEncodingFn: Fn() -> Encoding + Send + Sync {}
 
 impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding + Send + Sync {}
 
-impl fmt::Debug for dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync {
+impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Fn() -> Encoding")
     }
@@ -206,14 +220,14 @@ pub enum Encoding {
     /// This is controller by a hash implementation.
     Hash(HashType),
     /// Provides different encoding based on target data type.
-    Split(Arc<dyn SplitEncodingFn<Output=Encoding> + Send + Sync>),
+    Split(Arc<dyn SplitEncodingFn<Output = Encoding> + Send + Sync>),
     /// Timestamp encoding.
     /// - encoded as RFC 3339 in json
     /// - encoded as [Encoding::Int64] in binary
     Timestamp,
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
-    Lazy(Arc<dyn RecursiveEncodingFn<Output=Encoding> + Send + Sync>),
+    Lazy(Arc<dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync>),
 }
 
 impl Encoding {
@@ -289,7 +303,7 @@ macro_rules! has_encoding {
                 &$enc_ref_name
             }
         }
-    }
+    };
 }
 
 #[cfg(test)]
@@ -298,21 +312,19 @@ mod tests {
 
     #[test]
     fn schema_split() {
-        let split_encoding = Encoding::Split(Arc::new(|schema_type| {
-            match schema_type {
-                SchemaType::Json => Encoding::Uint16,
-                SchemaType::Binary => Encoding::Float
-            }
+        let split_encoding = Encoding::Split(Arc::new(|schema_type| match schema_type {
+            SchemaType::Json => Encoding::Uint16,
+            SchemaType::Binary => Encoding::Float,
         }));
 
         if let Encoding::Split(inner_encoding) = split_encoding {
             match inner_encoding(SchemaType::Json) {
                 Encoding::Uint16 => {}
-                _ => panic!("Was expecting Encoding::Uint16")
+                _ => panic!("Was expecting Encoding::Uint16"),
             }
             match inner_encoding(SchemaType::Binary) {
                 Encoding::Float => {}
-                _ => panic!("Was expecting Encoding::Float")
+                _ => panic!("Was expecting Encoding::Float"),
             }
         } else {
             panic!("Was expecting Encoding::Split");

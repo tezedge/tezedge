@@ -27,7 +27,13 @@ pub struct ConnectionMessage {
 }
 
 impl ConnectionMessage {
-    pub fn new(port: u16, public_key: &str, proof_of_work_stamp: &str, message_nonce: &[u8], versions: Vec<NetworkVersion>) -> Self {
+    pub fn new(
+        port: u16,
+        public_key: &str,
+        proof_of_work_stamp: &str,
+        message_nonce: &[u8],
+        versions: Vec<NetworkVersion>,
+    ) -> Self {
         ConnectionMessage {
             port,
             versions,
@@ -53,11 +59,14 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 
 non_cached_data!(ConnectionMessage);
 has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("port", Encoding::Uint16),
-            Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
-            Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(NetworkVersion::encoding().clone()))
-        ])
+    Encoding::Obj(vec![
+        Field::new("port", Encoding::Uint16),
+        Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
+        Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
+        Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
+        Field::new(
+            "versions",
+            Encoding::list(NetworkVersion::encoding().clone()),
+        ),
+    ])
 });

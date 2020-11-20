@@ -12,7 +12,10 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Err(e) = CurrentBranchMessage::from_bytes(data) {
-                debug!("CurrentBranchMessage::from_bytes produced error for input: {:?}\nError:\n{:?}", data, e);
+                debug!(
+                    "CurrentBranchMessage::from_bytes produced error for input: {:?}\nError:\n{:?}",
+                    data, e
+                );
             }
         });
     }

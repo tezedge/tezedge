@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{error, fmt};
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{error, fmt};
 
 use failure::_core::marker::PhantomData;
 use r2d2::{CustomizeConnection, HandleError, ManageConnection};
@@ -11,7 +11,10 @@ use slog::{error, info, Logger};
 
 use ipc::IpcError;
 
-use crate::service::{ProtocolController, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint, ProtocolServiceError};
+use crate::service::{
+    ProtocolController, ProtocolEndpointConfiguration, ProtocolRunner, ProtocolRunnerEndpoint,
+    ProtocolServiceError,
+};
 
 /// Possible errors for storage
 #[derive(Debug)]
@@ -79,7 +82,11 @@ pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
-    pub fn new(pool_name: String, endpoint_cfg: ProtocolEndpointConfiguration, log: Logger) -> Self {
+    pub fn new(
+        pool_name: String,
+        endpoint_cfg: ProtocolEndpointConfiguration,
+        log: Logger,
+    ) -> Self {
         Self {
             pool_name,
             pool_name_counter: AtomicUsize::new(1),
@@ -90,7 +97,11 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
     }
 
     pub fn create_connection(&self) -> Result<ProtocolRunnerConnection<Runner>, PoolError> {
-        let endpoint_name = format!("{}_{:?}", &self.pool_name, self.pool_name_counter.fetch_add(1, Ordering::SeqCst));
+        let endpoint_name = format!(
+            "{}_{:?}",
+            &self.pool_name,
+            self.pool_name_counter.fetch_add(1, Ordering::SeqCst)
+        );
 
         // crate protocol runner endpoint
         let protocol_endpoint = ProtocolRunnerEndpoint::<Runner>::new(
@@ -107,9 +118,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             }
             Err(e) => {
                 error!(self.log, "Failed to spawn protocol runner process"; "name" => endpoint_name, "reason" => &e);
-                return Err(PoolError::SpawnRunnerError {
-                    error: e
-                });
+                return Err(PoolError::SpawnRunnerError { error: e });
             }
         };
 
@@ -119,21 +128,17 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             Err(e) => {
                 error!(self.log, "Failed to accept IPC connection on sub-process (so terminate sub-process)"; "name" => endpoint_name, "reason" => format!("{:?}", &e));
                 Runner::terminate(subprocess);
-                return Err(PoolError::IpcAcceptError {
-                    error: e
-                });
+                return Err(PoolError::IpcAcceptError { error: e });
             }
         };
 
         info!(self.log, "Connection for protocol runner was created successfully"; "name" => endpoint_name.clone());
-        Ok(
-            ProtocolRunnerConnection {
-                api,
-                subprocess,
-                log: self.log.clone(),
-                name: endpoint_name,
-            }
-        )
+        Ok(ProtocolRunnerConnection {
+            api,
+            subprocess,
+            log: self.log.clone(),
+            name: endpoint_name,
+        })
     }
 }
 
@@ -158,7 +163,10 @@ impl<Runner: ProtocolRunner + 'static> ManageConnection for ProtocolRunnerManage
 #[derive(Debug)]
 pub struct InitReadonlyContextProtocolRunnerConnectionCustomizer;
 
-impl<Runner: ProtocolRunner + 'static> CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError> for InitReadonlyContextProtocolRunnerConnectionCustomizer {
+impl<Runner: ProtocolRunner + 'static>
+    CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError>
+    for InitReadonlyContextProtocolRunnerConnectionCustomizer
+{
     fn on_acquire(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
         match conn.api.init_protocol_for_read() {
             Ok(_) => {
@@ -186,7 +194,10 @@ impl<Runner: ProtocolRunner + 'static> CustomizeConnection<ProtocolRunnerConnect
 #[derive(Debug)]
 pub struct NoopProtocolRunnerConnectionCustomizer;
 
-impl<Runner: ProtocolRunner + 'static> CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError> for NoopProtocolRunnerConnectionCustomizer {
+impl<Runner: ProtocolRunner + 'static>
+    CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError>
+    for NoopProtocolRunnerConnectionCustomizer
+{
     fn on_acquire(&self, _: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
         Ok(())
     }
@@ -208,7 +219,8 @@ impl SlogErrorHandler {
 }
 
 impl<E> HandleError<E> for SlogErrorHandler
-    where E: error::Error
+where
+    E: error::Error,
 {
     fn handle_error(&self, error: E) {
         error!(self.0, "Connection pool error";

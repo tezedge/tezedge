@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use bytes::{Buf, BufMut};
-use failure::_core::convert::TryFrom;
 use failure::Fail;
+use failure::_core::convert::TryFrom;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -56,7 +56,7 @@ pub mod cache {
 
     #[derive(Clone, Default)]
     pub struct BinaryDataCache {
-        data: Option<Vec<u8>>
+        data: Option<Vec<u8>>,
     }
 
     impl CacheReader for BinaryDataCache {
@@ -84,8 +84,8 @@ pub mod cache {
 
     impl<'de> Deserialize<'de> for BinaryDataCache {
         fn deserialize<D>(_: D) -> Result<Self, D::Error>
-            where
-                D: Deserializer<'de>
+        where
+            D: Deserializer<'de>,
         {
             Ok(BinaryDataCache::default())
         }
@@ -94,7 +94,11 @@ pub mod cache {
     impl fmt::Debug for BinaryDataCache {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self.get() {
-                Some(data) => write!(f, "BinaryDataCache {{ has_value: true, len: {} }}", data.len()),
+                Some(data) => write!(
+                    f,
+                    "BinaryDataCache {{ has_value: true, len: {} }}",
+                    data.len()
+                ),
                 None => write!(f, "BinaryDataCache {{ has_value: false }}"),
             }
         }
@@ -105,8 +109,8 @@ pub mod cache {
 
     impl<'de> Deserialize<'de> for NeverCache {
         fn deserialize<D>(_: D) -> Result<Self, D::Error>
-            where
-                D: Deserializer<'de>
+        where
+            D: Deserializer<'de>,
         {
             Ok(NeverCache::default())
         }
@@ -140,12 +144,16 @@ pub mod cache {
         ($struct_name:ident, $property_cache_name:ident) => {
             impl $crate::p2p::binary_message::cache::CachedData for $struct_name {
                 #[inline]
-                fn cache_reader(&self) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
+                fn cache_reader(
+                    &self,
+                ) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
                     Some(&self.$property_cache_name)
                 }
 
                 #[inline]
-                fn cache_writer(&mut self) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
+                fn cache_writer(
+                    &mut self,
+                ) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
                     Some(&mut self.$property_cache_name)
                 }
             }
@@ -158,12 +166,16 @@ pub mod cache {
         ($struct_name:ident) => {
             impl $crate::p2p::binary_message::cache::CachedData for $struct_name {
                 #[inline]
-                fn cache_reader(&self) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
+                fn cache_reader(
+                    &self,
+                ) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
                     None
                 }
 
                 #[inline]
-                fn cache_writer(&mut self) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
+                fn cache_writer(
+                    &mut self,
+                ) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
                     None
                 }
             }
@@ -184,7 +196,9 @@ pub trait BinaryMessage: Sized {
 }
 
 impl<T> BinaryMessage for T
-    where T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized {
+where
+    T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized,
+{
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, ser::Error> {
         // check cache at first
@@ -210,7 +224,6 @@ impl<T> BinaryMessage for T
         Ok(myself)
     }
 }
-
 
 /// Represents binary raw encoding received from peer node.
 ///
@@ -255,11 +268,11 @@ pub enum BinaryChunkError {
     OverflowError,
     #[fail(display = "Missing size information")]
     MissingSizeInformation,
-    #[fail(display = "Incorrect content size information. expected={}, actual={}", expected, actual)]
-    IncorrectSizeInformation {
-        expected: usize,
-        actual: usize,
-    },
+    #[fail(
+        display = "Incorrect content size information. expected={}, actual={}",
+        expected, actual
+    )]
+    IncorrectSizeInformation { expected: usize, actual: usize },
 }
 
 /// Convert `Vec<u8>` into `BinaryChunk`. It is required that input `Vec<u8>`
@@ -271,11 +284,15 @@ impl TryFrom<Vec<u8>> for BinaryChunk {
         if value.len() < CONTENT_LENGTH_FIELD_BYTES {
             Err(BinaryChunkError::MissingSizeInformation)
         } else if value.len() <= (CONTENT_LENGTH_MAX + CONTENT_LENGTH_FIELD_BYTES) {
-            let expected_content_length = (&value[0..CONTENT_LENGTH_FIELD_BYTES]).get_u16() as usize;
+            let expected_content_length =
+                (&value[0..CONTENT_LENGTH_FIELD_BYTES]).get_u16() as usize;
             if (expected_content_length + CONTENT_LENGTH_FIELD_BYTES) == value.len() {
                 Ok(BinaryChunk(value))
             } else {
-                Err(BinaryChunkError::IncorrectSizeInformation { expected: expected_content_length, actual: value.len() })
+                Err(BinaryChunkError::IncorrectSizeInformation {
+                    expected: expected_content_length,
+                    actual: value.len(),
+                })
             }
         } else {
             Err(BinaryChunkError::OverflowError)
@@ -290,7 +307,9 @@ pub trait JsonMessage {
 }
 
 impl<T> JsonMessage for T
-    where T: HasEncoding + Serialize + Sized {
+where
+    T: HasEncoding + Serialize + Sized,
+{
     #[inline]
     fn as_json(&self) -> Result<String, ser::Error> {
         let mut writer = JsonWriter::new();
@@ -302,9 +321,7 @@ impl<T> JsonMessage for T
 #[derive(Debug, Fail)]
 pub enum MessageHashError {
     #[fail(display = "Message serialization error")]
-    SerializationError {
-        error: ser::Error
-    },
+    SerializationError { error: ser::Error },
 }
 
 impl From<ser::Error> for MessageHashError {
@@ -340,13 +357,17 @@ mod test {
         assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 1, chunk.len());
         assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 1, chunk.capacity());
 
-        let chunk = BinaryChunk::from_content(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])?.0;
+        let chunk =
+            BinaryChunk::from_content(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])?.0;
         assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 15, chunk.len());
         assert_eq!(CONTENT_LENGTH_FIELD_BYTES + 15, chunk.capacity());
 
         let chunk = BinaryChunk::from_content(&[1; CONTENT_LENGTH_MAX])?.0;
         assert_eq!(CONTENT_LENGTH_FIELD_BYTES + CONTENT_LENGTH_MAX, chunk.len());
-        assert_eq!(CONTENT_LENGTH_FIELD_BYTES + CONTENT_LENGTH_MAX, chunk.capacity());
+        assert_eq!(
+            CONTENT_LENGTH_FIELD_BYTES + CONTENT_LENGTH_MAX,
+            chunk.capacity()
+        );
         Ok(())
     }
 }
