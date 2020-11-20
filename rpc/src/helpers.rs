@@ -559,7 +559,7 @@ pub(crate) fn get_context_protocol_params(
     Ok(ContextProtocolParam {
         protocol_hash,
         constants_data: constants,
-        level: level.try_into()?,
+        level,
     })
 }
 

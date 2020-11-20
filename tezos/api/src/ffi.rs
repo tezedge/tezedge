@@ -680,9 +680,7 @@ impl From<CallError> for ComputePathError {
                 None => ComputePathError::PathError {
                     message: "unknown".to_string(),
                 },
-                Some(message) => ComputePathError::PathError {
-                    message: message.to_string(),
-                },
+                Some(message) => ComputePathError::PathError { message },
             },
             CallError::InvalidRequestData { message } => {
                 ComputePathError::InvalidRequestResponseData { message }

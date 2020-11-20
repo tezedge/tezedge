@@ -794,7 +794,7 @@ impl ChainManager {
                     if !are_operations_complete {
                         // safe unwrap after above first block
                         let operations = inject_data.operations.clone().unwrap();
-                        let op_paths = inject_data.operation_paths.clone().unwrap();
+                        let op_paths = inject_data.operation_paths.unwrap();
 
                         // iterate through all validation passes 
                         for (idx, ops) in operations.iter().enumerate() {
@@ -1503,10 +1503,10 @@ pub mod tests {
         let mut peer_state = peer(&actor_system, network_channel.clone(), &tokio_runtime);
         peer_state.current_head_level = Some(0);
         let peer_key = peer_state.peer_ref.uri().clone();
-        chain_manager.peers.insert(peer_key.clone(), peer_state);
+        chain_manager.peers.insert(peer_key, peer_state);
 
         // add one not bootstrapped peer with level 5
-        let mut peer_state = peer(&actor_system, network_channel.clone(), &tokio_runtime);
+        let mut peer_state = peer(&actor_system, network_channel, &tokio_runtime);
         peer_state.current_head_level = Some(5);
         let peer_key = peer_state.peer_ref.uri().clone();
         chain_manager.peers.insert(peer_key.clone(), peer_state);

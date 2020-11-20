@@ -166,7 +166,7 @@ mod tests {
             173, 127, 97, 192, 177, 142, 31, 107, 197, 219, 246, 111, 155, 121,
         ];
 
-        let decoded = SignaturePublicKeyHash::from_tagged_bytes(valid_pk.clone())?;
+        let decoded = SignaturePublicKeyHash::from_tagged_bytes(valid_pk)?;
         let decoded = match decoded {
             SignaturePublicKeyHash::Ed25519(hash) => Some(hash),
             _ => None,

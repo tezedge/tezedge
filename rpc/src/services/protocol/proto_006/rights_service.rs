@@ -150,7 +150,7 @@ fn baking_rights_assign_rolls(parameters: &RightsParams, constants: &RightsConst
         // draw the rolls for the requested parameters
         let delegate_to_assign;
         // TODO: priority can overflow in the ocaml code, do a priority % i32::max_value()
-        let mut state = init_prng(&context_data, &constants, BAKING_USE_STRING, level.try_into()?, priority.try_into()?)?;
+        let mut state = init_prng(&context_data, &constants, BAKING_USE_STRING, level, priority.try_into()?)?;
 
         loop {
             let (random_num, sequence) = get_prng_number(state, last_roll)?;

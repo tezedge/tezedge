@@ -79,7 +79,7 @@ impl RpcServiceEnvironment {
         Self {
             sys,
             actor,
-            shell_channel: shell_channel.clone(),
+            shell_channel,
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),

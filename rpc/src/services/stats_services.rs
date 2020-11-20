@@ -36,7 +36,7 @@ pub struct ActionStats {
 
 fn compute_key_length(key: Option<&Vec<String>>) -> usize {
     match key {
-        Some(key) => key.into_iter().fold(0, |acc, item| acc + item.len()),
+        Some(key) => key.iter().fold(0, |acc, item| acc + item.len()),
         None => 0,
     }
 }
