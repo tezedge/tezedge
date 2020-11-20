@@ -10,9 +10,7 @@ use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
 
 fn protocol(hash: &str) -> ProtocolHash {
-    HashType::ProtocolHash
-        .string_to_bytes(hash)
-        .unwrap()
+    HashType::ProtocolHash.string_to_bytes(hash).unwrap()
 }
 
 fn data(data_as_hex: &str) -> Vec<u8> {
@@ -21,22 +19,18 @@ fn data(data_as_hex: &str) -> Vec<u8> {
 
 fn key(key_as_string: &str) -> Vec<String> {
     let key: Vec<&str> = key_as_string.split(", ").collect();
-    key
-        .iter()
-        .map(|k| k.to_string())
-        .collect()
+    key.iter().map(|k| k.to_string()).collect()
 }
 
 #[test]
 #[serial]
 fn test_fn_decode_context_data() {
-    client::change_runtime_configuration(
-        TezosRuntimeConfiguration {
-            debug_mode: false,
-            log_enabled: is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc(),
-        }
-    ).unwrap();
+    client::change_runtime_configuration(TezosRuntimeConfiguration {
+        debug_mode: false,
+        log_enabled: is_ocaml_log_enabled(),
+        no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc(),
+    })
+    .unwrap();
 
     assert_eq!(
         "\"Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H\"".to_string(),
@@ -44,7 +38,9 @@ fn test_fn_decode_context_data() {
             protocol("Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H"),
             key("protocol"),
             data("32227de5351803223564d2f40dbda7fa0fd20682ddfe743d51af3d08f8114273"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -53,7 +49,9 @@ fn test_fn_decode_context_data() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, version"),
             data("67656e65736973"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -62,9 +60,10 @@ fn test_fn_decode_context_data() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("test_chain"),
             data("00"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
-
 
     assert_eq!(
         "1".to_string(),
@@ -72,7 +71,9 @@ fn test_fn_decode_context_data() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, v1, first_level"),
             data("00000001"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -81,7 +82,9 @@ fn test_fn_decode_context_data() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, commitments, 6c, 00, 4d, 09, b8, 9efefb1abbc3555781ffa2ffa57e29"),
             data("f48abfda9c01"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -94,13 +97,13 @@ fn test_fn_decode_context_data() {
     );
 
     // should fail, som return None
-    assert!(
-        client::decode_context_data(
-            protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
-            key("data, v1, constants"),
-            data("f48abfda9c01"),
-        ).unwrap().is_none()
-    );
+    assert!(client::decode_context_data(
+        protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
+        key("data, v1, constants"),
+        data("f48abfda9c01"),
+    )
+    .unwrap()
+    .is_none());
 
     assert_eq!(
         "12".to_string(),
@@ -108,7 +111,9 @@ fn test_fn_decode_context_data() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, last_block_priority"),
             data("000c"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -117,7 +122,9 @@ fn test_fn_decode_context_data() {
             protocol("PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU"),
             key("data, block_priority"),
             data("0000"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -135,7 +142,9 @@ fn test_fn_decode_context_data() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, delegates, p256, 6f, de, 46, af, 03, 56a0476dae4e4600172dc9309b3aa4"),
             data("696e69746564"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -157,7 +166,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, rolls, next"),
             data("00000000"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -166,7 +177,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, rolls, limbo"),
             data("00000000"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -175,7 +188,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, rolls, owner, current, 2, 0, 2"),
             data("0202db58471f14e5286a13a30b29c6c685649bfd312e8b80b100a7f1307cabd4ca86"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -184,7 +199,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, rolls, index, 30, 3, 798, successor"),
             data("0000031d"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -193,7 +210,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, cycle, 0, random_seed"),
             data("0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -202,7 +221,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, cycle, 0, roll_snapshot"),
             data("0001"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -211,7 +232,9 @@ fn test_fn_decode_context_data_rolls_and_cycles() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, cycle, 0, last_roll, 0"),
             data("00000a8c"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -233,7 +256,9 @@ fn test_fn_decode_context_data_ramp_up() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, ramp_up, rewards, 5"),
             data("80c8d00780897a"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -242,7 +267,9 @@ fn test_fn_decode_context_data_ramp_up() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, ramp_up, deposits, 16"),
             data("808092f40180a0c21e"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 }
 
@@ -255,7 +282,9 @@ fn test_fn_decode_context_data_votes() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, votes, current_period_kind"),
             data("00"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -264,7 +293,9 @@ fn test_fn_decode_context_data_votes() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, votes, current_quorum"),
             data("00001f40"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -282,7 +313,9 @@ fn test_fn_decode_context_data_votes() {
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, votes, listings_size"),
             data("0000064d"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -291,16 +324,22 @@ fn test_fn_decode_context_data_votes() {
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, votes, participation_ema"),
             data("00001755"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
         "\"yay\"".to_string(),
         client::decode_context_data(
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
-            key("data, votes, ballots, ed25519, a3, 1e, 81, ac, 34, 25310e3274a4698a793b2839dc0afa"),
+            key(
+                "data, votes, ballots, ed25519, a3, 1e, 81, ac, 34, 25310e3274a4698a793b2839dc0afa"
+            ),
             data("00"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -309,7 +348,9 @@ fn test_fn_decode_context_data_votes() {
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, votes, current_proposal"),
             data("3e5e3a606afab74a59ca09e333633e2770b6492c5e594455b71e9a2f0ea92afb"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -340,7 +381,9 @@ fn test_fn_decode_context_data_contracts() {
             protocol("PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"),
             key("data, contracts, global_counter"),
             data("00"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -515,7 +558,9 @@ fn test_fn_decode_context_data_big_maps() {
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, big_maps, next"),
             data("0e"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -524,7 +569,9 @@ fn test_fn_decode_context_data_big_maps() {
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, big_maps, index, f5, c8, 90, 54, 17, 93, 9, total_bytes"),
             data("a403"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -533,7 +580,9 @@ fn test_fn_decode_context_data_big_maps() {
             protocol("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"),
             key("data, big_maps, index, f5, c8, 90, 54, 17, 93, 9, key_type"),
             data("036e"),
-        ).unwrap().unwrap()
+        )
+        .unwrap()
+        .unwrap()
     );
 
     assert_eq!(
@@ -567,11 +616,13 @@ fn test_fn_decode_context_data_big_maps() {
 fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
         .unwrap_or("false".to_string())
-        .parse::<bool>().unwrap()
+        .parse::<bool>()
+        .unwrap()
 }
 
 fn no_of_ffi_calls_treshold_for_gc() -> i32 {
     env::var("OCAML_CALLS_GC")
         .unwrap_or("2000".to_string())
-        .parse::<i32>().unwrap()
+        .parse::<i32>()
+        .unwrap()
 }

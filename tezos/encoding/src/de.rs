@@ -23,12 +23,12 @@ pub struct Error {
 impl Error {
     pub fn encoding_mismatch(encoding: &Encoding, value: &Value) -> Self {
         Error {
-            message: format!("Unsupported encoding {:?} for value: {:?}", encoding, value)
+            message: format!("Unsupported encoding {:?} for value: {:?}", encoding, value),
         }
     }
     pub fn unsupported_value<T: fmt::Display>(value: &T) -> Self {
         Error {
-            message: format!("Unsupported value: {}", value)
+            message: format!("Unsupported value: {}", value),
         }
     }
 }
@@ -56,7 +56,7 @@ impl StdError for Error {
 impl From<io::Error> for Error {
     fn from(from: io::Error) -> Self {
         Error {
-            message: format!("I/O error. Reason: {:?}", from)
+            message: format!("I/O error. Reason: {:?}", from),
         }
     }
 }
@@ -112,8 +112,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // deserialize as. Not all data formats are able to support this operation.
     // Formats that support `deserialize_any` are known as self-describing.
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::Unit => visitor.visit_unit(),
@@ -125,7 +125,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             Value::Int31(i) | Value::Int32(i) | Value::RangedInt(i) => visitor.visit_i32(i),
             Value::Int64(x) => visitor.visit_i64(x),
             Value::Float(x) => visitor.visit_f64(x),
-            _ => Err(Error::custom(format!("Unsupported value of type {:?} in deserialize_any.", self.input))),
+            _ => Err(Error::custom(format!(
+                "Unsupported value of type {:?} in deserialize_any.",
+                self.input
+            ))),
         }
     }
 
@@ -136,8 +139,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // The `Serializer` implementation on the previous page serialized chars as
     // single-character strings so handle that representation here.
     fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(Error::custom("tezos protocol does not support char"))
     }
@@ -145,55 +148,60 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // Refer to the "Understanding deserializer lifetimes" page for information
     // about the three deserialization flavors of strings in Serde.
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::String(ref s) => visitor.visit_str(s),
             Value::Bytes(ref bytes) => ::std::str::from_utf8(bytes)
                 .map_err(|e| Error::custom(e.to_string()))
                 .and_then(|s| visitor.visit_str(s)),
-            _ => Err(Error::custom(format!("not a string|bytes|fixed but a {:?}", self.input))),
+            _ => Err(Error::custom(format!(
+                "not a string|bytes|fixed but a {:?}",
+                self.input
+            ))),
         }
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::String(ref s) => visitor.visit_string(s.to_owned()),
-            Value::Bytes(ref bytes) => {
-                String::from_utf8(bytes.to_owned())
-                    .map_err(|e| Error::custom(e.to_string()))
-                    .and_then(|s| visitor.visit_string(s))
-            },
-            _ => Err(Error::custom(format!("not a string|bytes|fixed but a {:?}", self.input))),
+            Value::Bytes(ref bytes) => String::from_utf8(bytes.to_owned())
+                .map_err(|e| Error::custom(e.to_string()))
+                .and_then(|s| visitor.visit_string(s)),
+            _ => Err(Error::custom(format!(
+                "not a string|bytes|fixed but a {:?}",
+                self.input
+            ))),
         }
     }
 
     // The `Serializer` implementation on the previous page serialized byte
     // arrays as JSON arrays of bytes. Handle that representation here.
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::String(ref s) => visitor.visit_bytes(s.as_bytes()),
             Value::Bytes(ref bytes) => visitor.visit_bytes(bytes),
-            _ => Err(Error::custom(format!("not a string|bytes|fixed but a {:?}", self.input))),
+            _ => Err(Error::custom(format!(
+                "not a string|bytes|fixed but a {:?}",
+                self.input
+            ))),
         }
     }
 
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::String(ref s) => visitor.visit_byte_buf(s.clone().into_bytes()),
-            Value::Bytes(ref bytes) => {
-                visitor.visit_byte_buf(bytes.to_owned())
-            },
+            Value::Bytes(ref bytes) => visitor.visit_byte_buf(bytes.to_owned()),
             _ => Err(Error::custom("not a string|bytes|fixed")),
         }
     }
@@ -207,16 +215,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // expect when working with JSON. Other formats are encouraged to behave
     // more intelligently if possible.
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
-            Value::Option(ref inner) => {
-                match inner {
-                    Some(ref v) => visitor.visit_some(&mut Deserializer::new(v)),
-                    None => visitor.visit_none()
-                }
-
+            Value::Option(ref inner) => match inner {
+                Some(ref v) => visitor.visit_some(&mut Deserializer::new(v)),
+                None => visitor.visit_none(),
             },
             _ => Err(Error::custom("not a union")),
         }
@@ -224,8 +229,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 
     // In Serde, unit means an anonymous value containing no data.
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::Unit => visitor.visit_unit(),
@@ -239,8 +244,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         _: &'static str,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_unit(visitor)
     }
@@ -253,8 +258,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         _: &'static str,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         visitor.visit_newtype_struct(self)
     }
@@ -263,8 +268,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // passing the visitor an "Access" object that gives it the ability to
     // iterate through the data contained in the sequence.
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::List(ref items) => visitor.visit_seq(SeqDeserializer::new(items)),
@@ -279,8 +284,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // for a tuple in the Serde data model is required to know the length of the
     // tuple before even looking at the input data.
     fn deserialize_tuple<V>(self, _: usize, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_seq(visitor)
     }
@@ -292,8 +297,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         _: usize,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_seq(visitor)
     }
@@ -302,8 +307,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // with a `MapAccess` implementation, rather than the visitor's `visit_seq`
     // method with a `SeqAccess` implementation.
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         unimplemented!("Map type is not supported")
     }
@@ -320,12 +325,15 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         _: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         match *self.input {
             Value::Record(ref fields) => visitor.visit_map(StructDeserializer::new(fields)),
-            _ => Err(Error::custom(format!("not a record but a {:?}", self.input))),
+            _ => Err(Error::custom(format!(
+                "not a record but a {:?}",
+                self.input
+            ))),
         }
     }
 
@@ -335,8 +343,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         visitor.visit_enum(EnumDeserializer::new(self))
     }
@@ -346,8 +354,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // represented as strings. In other formats they may be represented as
     // numeric indices.
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         self.deserialize_str(visitor)
     }
@@ -364,8 +372,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     // implement `deserialize_any` and `deserialize_ignored_any` are known as
     // self-describing.
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         visitor.visit_unit()
     }
@@ -375,8 +383,8 @@ impl<'de> de::SeqAccess<'de> for SeqDeserializer<'de> {
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
-        where
-            T: DeserializeSeed<'de>,
+    where
+        T: DeserializeSeed<'de>,
     {
         match self.input.next() {
             Some(item) => seed.deserialize(&mut Deserializer::new(&item)).map(Some),
@@ -389,8 +397,8 @@ impl<'de> de::MapAccess<'de> for StructDeserializer<'de> {
     type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
-        where
-            K: DeserializeSeed<'de>,
+    where
+        K: DeserializeSeed<'de>,
     {
         match self.input.next() {
             Some(item) => {
@@ -398,15 +406,16 @@ impl<'de> de::MapAccess<'de> for StructDeserializer<'de> {
                 self.value = Some(value);
                 seed.deserialize(StringDeserializer {
                     input: field.clone(),
-                }).map(Some)
-            },
+                })
+                .map(Some)
+            }
             None => Ok(None),
         }
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
-        where
-            V: DeserializeSeed<'de>,
+    where
+        V: DeserializeSeed<'de>,
     {
         match self.value.take() {
             Some(value) => seed.deserialize(&mut Deserializer::new(value)),
@@ -423,8 +432,8 @@ impl<'de> de::Deserializer<'de> for StringDeserializer {
     type Error = Error;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         visitor.visit_string(self.input)
     }
@@ -435,7 +444,6 @@ impl<'de> de::Deserializer<'de> for StringDeserializer {
         tuple_struct struct tuple enum identifier ignored_any
     }
 }
-
 
 struct EnumDeserializer<'a, 'de: 'a> {
     de: &'a mut Deserializer<'de>,
@@ -452,15 +460,18 @@ impl<'de, 'a> de::EnumAccess<'de> for EnumDeserializer<'a, 'de> {
     type Variant = Self;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error>
-        where
-            V: DeserializeSeed<'de>,
+    where
+        V: DeserializeSeed<'de>,
     {
         match self.de.input {
             Value::Tag(variant, _) => {
                 let val = variant.as_str().into_deserializer();
                 seed.deserialize(val).map(|s| (s, self))
-            },
-            _ => Err(Error::custom(format!("variant_seed: not an enum but a {:?}", self.de.input))),
+            }
+            _ => Err(Error::custom(format!(
+                "variant_seed: not an enum but a {:?}",
+                self.de.input
+            ))),
         }
     }
 }
@@ -473,33 +484,36 @@ impl<'de, 'a> de::VariantAccess<'de> for EnumDeserializer<'a, 'de> {
     }
 
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
-        where
-            T: DeserializeSeed<'de>,
+    where
+        T: DeserializeSeed<'de>,
     {
         match self.de.input {
-            Value::Tag(_, tag_value) => {
-                seed.deserialize(&mut Deserializer::new(tag_value))
-            }
-            _ => Err(Error::custom(format!("not an enum but a {:?}", self.de.input))),
+            Value::Tag(_, tag_value) => seed.deserialize(&mut Deserializer::new(tag_value)),
+            _ => Err(Error::custom(format!(
+                "not an enum but a {:?}",
+                self.de.input
+            ))),
         }
     }
 
     fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    where
+        V: Visitor<'de>,
     {
         Err(Error::custom("tuple_variant not supported"))
     }
 
-    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
+    fn struct_variant<V>(
+        self,
+        _fields: &'static [&'static str],
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
     {
         Err(Error::custom("struct_variant not supported"))
     }
 }
-
-
 
 /// Interpret a `Value` as an instance of type `D`.
 ///
@@ -509,7 +523,6 @@ pub fn from_value<'de, D: Deserialize<'de>>(value: &'de Value) -> Result<D, Bina
     let mut de = Deserializer::new(value);
     Ok(D::deserialize(&mut de)?)
 }
-
 
 /*
  * -----------------------------------------------------------------------------
@@ -526,32 +539,34 @@ impl<'de> Visitor<'de> for BigIntVisitor {
     }
 
     fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
+    where
+        E: de::Error,
     {
-        let bigint: BigInt = num_bigint::BigInt::parse_bytes(value.as_bytes(), 16).unwrap().into();
+        let bigint: BigInt = num_bigint::BigInt::parse_bytes(value.as_bytes(), 16)
+            .unwrap()
+            .into();
         Ok(bigint)
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
+    where
+        E: de::Error,
     {
-        let bigint: BigInt = num_bigint::BigInt::parse_bytes(value.as_bytes(), 16).unwrap().into();
+        let bigint: BigInt = num_bigint::BigInt::parse_bytes(value.as_bytes(), 16)
+            .unwrap()
+            .into();
         Ok(bigint)
     }
-
 }
 
 impl<'de> Deserialize<'de> for BigInt {
     fn deserialize<D>(deserializer: D) -> Result<BigInt, D::Error>
-        where
-            D: de::Deserializer<'de>,
+    where
+        D: de::Deserializer<'de>,
     {
         deserializer.deserialize_string(BigIntVisitor)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -564,7 +579,7 @@ mod tests {
         a: i32,
         b: Option<bool>,
         c: Option<u64>,
-        d: f64
+        d: f64,
     }
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -575,15 +590,23 @@ mod tests {
 
     #[test]
     fn can_deserialize() {
-
         let serialized = Value::Record(vec![
             ("a".to_string(), Value::Int32(23)),
-            ("p".to_string(), Value::Record(vec![
-                ("a".to_string(), Value::Int32(6)),
-                ("b".to_string(), Value::Option(Some(Box::new(Value::Bool(false))))),
-                ("c".to_string(), Value::Option(Some(Box::new(Value::Int64(4_752_163_899))))),
-                ("d".to_string(), Value::Float(123.4))
-            ]))
+            (
+                "p".to_string(),
+                Value::Record(vec![
+                    ("a".to_string(), Value::Int32(6)),
+                    (
+                        "b".to_string(),
+                        Value::Option(Some(Box::new(Value::Bool(false)))),
+                    ),
+                    (
+                        "c".to_string(),
+                        Value::Option(Some(Box::new(Value::Int64(4_752_163_899)))),
+                    ),
+                    ("d".to_string(), Value::Float(123.4)),
+                ]),
+            ),
         ]);
         let deserialized = from_value(&serialized).unwrap();
         let expected = Message {
@@ -592,8 +615,8 @@ mod tests {
                 a: 6,
                 b: Some(false),
                 c: Some(4_752_163_899),
-                d: 123.4
-            }
+                d: 123.4,
+            },
         };
         assert_eq!(expected, deserialized);
     }

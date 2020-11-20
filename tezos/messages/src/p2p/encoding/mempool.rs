@@ -37,8 +37,16 @@ impl Mempool {
 
 cached_data!(Mempool, body);
 has_encoding!(Mempool, MEMPOOL_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("known_valid", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
-            Field::new("pending", Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))))),
-        ])
+    Encoding::Obj(vec![
+        Field::new(
+            "known_valid",
+            Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))),
+        ),
+        Field::new(
+            "pending",
+            Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(
+                HashType::OperationHash,
+            )))),
+        ),
+    ])
 });

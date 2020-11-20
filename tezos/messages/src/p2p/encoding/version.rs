@@ -32,7 +32,12 @@ impl fmt::Debug for NetworkVersion {
 
 impl NetworkVersion {
     pub fn new(chain_name: String, distributed_db_version: u16, p2p_version: u16) -> Self {
-        NetworkVersion { chain_name, distributed_db_version, p2p_version, body: Default::default() }
+        NetworkVersion {
+            chain_name,
+            distributed_db_version,
+            p2p_version,
+            body: Default::default(),
+        }
     }
 
     /// Returns true if version is compatibile.
@@ -40,17 +45,18 @@ impl NetworkVersion {
     /// The version is compatible in case the `chain_name` and `distributed_db_version` version are the same.
     /// p2p_version is ignored.
     pub fn supports(&self, other: &NetworkVersion) -> bool {
-        self.chain_name == other.chain_name && self.distributed_db_version == other.distributed_db_version
+        self.chain_name == other.chain_name
+            && self.distributed_db_version == other.distributed_db_version
     }
 }
 
 cached_data!(NetworkVersion, body);
 has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("chain_name", Encoding::String),
-            Field::new("distributed_db_version", Encoding::Uint16),
-            Field::new("p2p_version", Encoding::Uint16)
-        ])
+    Encoding::Obj(vec![
+        Field::new("chain_name", Encoding::String),
+        Field::new("distributed_db_version", Encoding::Uint16),
+        Field::new("p2p_version", Encoding::Uint16),
+    ])
 });
 
 impl Eq for NetworkVersion {}

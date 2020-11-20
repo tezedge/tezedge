@@ -25,6 +25,7 @@ members = [
     "fuzz/current_branch_message",
     "fuzz/current_head_message",
     "fuzz/connection_message",
+    "fuzz/encoding",
     "fuzz/metadata_message",
     "fuzz/operation_message",
     "fuzz/operations_for_blocks_message",

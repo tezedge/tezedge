@@ -12,7 +12,10 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Err(e) = AckMessage::from_bytes(data) {
-                debug!("AckMessage::from_bytes produced error for input: {:?}\nError:\n{:?}", data, e);
+                debug!(
+                    "AckMessage::from_bytes produced error for input: {:?}\nError:\n{:?}",
+                    data, e
+                );
             }
         });
     }

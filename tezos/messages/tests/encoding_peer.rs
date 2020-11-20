@@ -14,7 +14,7 @@ fn can_deserialize_bootstrap() -> Result<(), Error> {
     let message = messages.messages().get(0).unwrap();
     match message {
         PeerMessage::Bootstrap => Ok(()),
-        _ => panic!("Unsupported encoding: {:?}", message)
+        _ => panic!("Unsupported encoding: {:?}", message),
     }
 }
 
@@ -25,4 +25,3 @@ fn can_serialize_bootstrap() -> Result<(), Error> {
     let expected = "000000020002";
     Ok(assert_eq!(expected, &serialized))
 }
-

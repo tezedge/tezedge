@@ -22,7 +22,12 @@ fn can_deserialize_advertise() -> Result<(), Error> {
 fn can_format_ip_address() {
     let addresses = vec![
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(123, 123, 124, 21)), 9876),
-        SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xfe80, 0xe828, 0x209d, 0x20e, 0xc0ae, 0, 0, 0)), 375)
+        SocketAddr::new(
+            IpAddr::V6(Ipv6Addr::new(
+                0xfe80, 0xe828, 0x209d, 0x20e, 0xc0ae, 0, 0, 0,
+            )),
+            375,
+        ),
     ];
     let message = AdvertiseMessage::new(&addresses);
     assert_eq!("123.123.124.21:9876", &message.id()[0]);

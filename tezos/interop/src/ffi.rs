@@ -17,9 +17,9 @@ mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
     use tezos_api::{
         ffi::{
-            ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ProtocolRpcResponse,
-            PrevalidatorWrapper, ProtocolRpcRequest, ValidateOperationRequest,
-            ValidateOperationResponse, HelpersPreapplyResponse, ProtocolRpcError
+            ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest,
+            HelpersPreapplyResponse, PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcRequest,
+            ProtocolRpcResponse, ValidateOperationRequest, ValidateOperationResponse,
         },
         ocaml_conv::OCamlOperationHash,
     };
@@ -106,62 +106,69 @@ pub fn init_protocol_context(
     patch_context: Option<PatchContext>,
 ) -> Result<Result<InitProtocolContextResult, TezosStorageInitError>, OcamlError> {
     runtime::execute(move || {
-        ocaml_frame!(gc(genesis_tuple, protocol_overrides_tuple, configuration, patch_context_tuple), {
-            // genesis configuration
-            let genesis_tuple = to_ocaml!(
-                gc,
-                (genesis.time, genesis.block, genesis.protocol),
-                genesis_tuple
-            );
-
-            // protocol overrides
-            let protocol_overrides_tuple = to_ocaml!(
-                gc,
-                (
-                    protocol_overrides.forced_protocol_upgrades,
-                    protocol_overrides.voted_protocol_overrides,
-                ),
-                protocol_overrides_tuple
-            );
-
-            // configuration
-            let configuration = to_ocaml!(
-                gc,
-                (commit_genesis, enable_testchain, readonly),
-                configuration
-            );
-
-            // patch context
-            let patch_context_tuple = to_ocaml!(
-                gc,
-                patch_context.map(|pc| (pc.key, pc.json)),
+        ocaml_frame!(
+            gc(
+                genesis_tuple,
+                protocol_overrides_tuple,
+                configuration,
                 patch_context_tuple
-            );
+            ),
+            {
+                // genesis configuration
+                let genesis_tuple = to_ocaml!(
+                    gc,
+                    (genesis.time, genesis.block, genesis.protocol),
+                    genesis_tuple
+                );
 
-            let storage_data_dir = to_ocaml!(gc, storage_data_dir);
-            let result = ocaml_call!(tezos_ffi::init_protocol_context(
-                gc,
-                storage_data_dir,
-                gc.get(&genesis_tuple),
-                gc.get(&protocol_overrides_tuple),
-                gc.get(&configuration),
-                gc.get(&patch_context_tuple)
-            ));
+                // protocol overrides
+                let protocol_overrides_tuple = to_ocaml!(
+                    gc,
+                    (
+                        protocol_overrides.forced_protocol_upgrades,
+                        protocol_overrides.voted_protocol_overrides,
+                    ),
+                    protocol_overrides_tuple
+                );
 
-            match result {
-                Ok(result) => {
-                    let (supported_protocol_hashes, genesis_commit_hash): (
-                        Vec<RustBytes>,
-                        Option<RustBytes>,
-                    ) = result.to_rust();
+                // configuration
+                let configuration = to_ocaml!(
+                    gc,
+                    (commit_genesis, enable_testchain, readonly),
+                    configuration
+                );
 
-                    Ok(InitProtocolContextResult {
-                        supported_protocol_hashes,
-                        genesis_commit_hash,
-                    })
+                // patch context
+                let patch_context_tuple = to_ocaml!(
+                    gc,
+                    patch_context.map(|pc| (pc.key, pc.json)),
+                    patch_context_tuple
+                );
+
+                let storage_data_dir = to_ocaml!(gc, storage_data_dir);
+                let result = ocaml_call!(tezos_ffi::init_protocol_context(
+                    gc,
+                    storage_data_dir,
+                    gc.get(&genesis_tuple),
+                    gc.get(&protocol_overrides_tuple),
+                    gc.get(&configuration),
+                    gc.get(&patch_context_tuple)
+                ));
+
+                match result {
+                    Ok(result) => {
+                        let (supported_protocol_hashes, genesis_commit_hash): (
+                            Vec<RustBytes>,
+                            Option<RustBytes>,
+                        ) = result.to_rust();
+
+                        Ok(InitProtocolContextResult {
+                            supported_protocol_hashes,
+                            genesis_commit_hash,
+                        })
+                    }
+                    Err(e) => Err(TezosStorageInitError::from(e)),
                 }
-                Err(e) => Err(TezosStorageInitError::from(e)),
-            }
             }
         )
     })

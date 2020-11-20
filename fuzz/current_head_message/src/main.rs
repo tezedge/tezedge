@@ -12,7 +12,10 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Err(e) = CurrentHeadMessage::from_bytes(data) {
-                debug!("CurrentHeadMessage::from_bytes produced error for input: {:?}\nError:\n{:?}", data, e);
+                debug!(
+                    "CurrentHeadMessage::from_bytes produced error for input: {:?}\nError:\n{:?}",
+                    data, e
+                );
             }
         });
     }

@@ -48,7 +48,11 @@ impl Head {
     }
 
     pub fn to_debug_info(&self) -> (String, Level, String) {
-        (HashType::BlockHash.bytes_to_string(&self.hash), self.level, display_fitness(&self.fitness))
+        (
+            HashType::BlockHash.bytes_to_string(&self.hash),
+            self.level,
+            display_fitness(&self.fitness),
+        )
     }
 }
 

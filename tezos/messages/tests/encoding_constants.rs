@@ -19,7 +19,8 @@ fn can_deserialize_constants_005_2() -> Result<(), Error> {
     let expected_fixed_constants = proto_005_2::constants::FIXED.as_map();
 
     assert_constants_eq(
-        HashType::ProtocolHash.string_to_bytes("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS")?,
+        HashType::ProtocolHash
+            .string_to_bytes("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS")?,
         expected_dynamic_constants_json,
         expected_fixed_constants,
         protocol_hash,
@@ -36,7 +37,8 @@ fn can_deserialize_constants_006() -> Result<(), Error> {
     let expected_fixed_constants = proto_006::constants::FIXED.as_map();
 
     assert_constants_eq(
-        HashType::ProtocolHash.string_to_bytes("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?,
+        HashType::ProtocolHash
+            .string_to_bytes("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?,
         expected_dynamic_constants_json,
         expected_fixed_constants,
         protocol_hash,
@@ -53,7 +55,8 @@ fn can_deserialize_constants_007() -> Result<(), Error> {
     let expected_fixed_constants = proto_007::constants::FIXED.as_map();
 
     assert_constants_eq(
-        HashType::ProtocolHash.string_to_bytes("PsDELPH1Kxsxt8f9eWbxQeRxkjfbxoqM52jvs5Y5fBxWWh4ifpo")?,
+        HashType::ProtocolHash
+            .string_to_bytes("PsDELPH1Kxsxt8f9eWbxQeRxkjfbxoqM52jvs5Y5fBxWWh4ifpo")?,
         expected_dynamic_constants_json,
         expected_fixed_constants,
         protocol_hash,
@@ -66,8 +69,8 @@ fn assert_constants_eq(
     expected_dynamic_constants_json: Value,
     expected_fixed_constants: HashMap<&str, UniversalValue>,
     protocol_hash: ProtocolHash,
-    just_dynamic_constants_bytes: &Vec<u8>) -> Result<(), Error> {
-
+    just_dynamic_constants_bytes: &Vec<u8>,
+) -> Result<(), Error> {
     // check protocol hash
     assert_eq!(expected_protocol_hash, protocol_hash);
 

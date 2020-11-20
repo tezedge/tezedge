@@ -24,7 +24,10 @@ pub struct AdvertiseMessage {
 impl AdvertiseMessage {
     pub fn new(addresses: &[SocketAddr]) -> Self {
         Self {
-            id: addresses.iter().map(|address| format!("{}", address)).collect(),
+            id: addresses
+                .iter()
+                .map(|address| format!("{}", address))
+                .collect(),
             body: Default::default(),
         }
     }
@@ -32,7 +35,5 @@ impl AdvertiseMessage {
 
 cached_data!(AdvertiseMessage, body);
 has_encoding!(AdvertiseMessage, ADVERTISE_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("id", Encoding::list(Encoding::String)),
-    ])
+    Encoding::Obj(vec![Field::new("id", Encoding::list(Encoding::String))])
 });

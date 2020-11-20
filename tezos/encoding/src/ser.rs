@@ -21,13 +21,16 @@ pub struct Error {
 impl Error {
     pub fn encoding_mismatch(encoding: &Encoding, value: &Value) -> Self {
         Error {
-            message: format!("Unsupported encoding {:?} for value: {:?}", encoding, value)
+            message: format!("Unsupported encoding {:?} for value: {:?}", encoding, value),
         }
     }
 
     pub fn unsupported_operation(encoding: &Encoding, value: &Value) -> Self {
         Error {
-            message: format!("Unsupported encoding operation {:?} for value: {:?}", encoding, value)
+            message: format!(
+                "Unsupported encoding operation {:?} for value: {:?}",
+                encoding, value
+            ),
         }
     }
 }
@@ -55,7 +58,7 @@ impl error::Error for Error {
 impl From<io::Error> for Error {
     fn from(from: io::Error) -> Self {
         Error {
-            message: format!("I/O error. Reason: {:?}", from)
+            message: format!("I/O error. Reason: {:?}", from),
         }
     }
 }
@@ -67,7 +70,6 @@ impl From<hex::FromHexError> for Error {
         }
     }
 }
-
 
 #[derive(Clone, Default)]
 pub struct Serializer {}
@@ -106,7 +108,6 @@ impl StructSerializer {
         }
     }
 }
-
 
 impl<'b> ser::Serializer for &'b mut Serializer {
     type Ok = Value;
@@ -188,8 +189,8 @@ impl<'b> ser::Serializer for &'b mut Serializer {
     }
 
     fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         let v = value.serialize(self)?;
         Ok(Value::Option(Some(Box::new(v))))
@@ -209,7 +210,10 @@ impl<'b> ser::Serializer for &'b mut Serializer {
         variant_index: u32,
         variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        Ok(Value::Enum(Some(String::from(variant)), Some(variant_index)))
+        Ok(Value::Enum(
+            Some(String::from(variant)),
+            Some(variant_index),
+        ))
     }
 
     fn serialize_newtype_struct<T: ?Sized>(
@@ -217,8 +221,8 @@ impl<'b> ser::Serializer for &'b mut Serializer {
         _: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         value.serialize(self)
     }
@@ -230,8 +234,8 @@ impl<'b> ser::Serializer for &'b mut Serializer {
         variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         let s = value.serialize(self)?;
         Ok(Value::Tag(String::from(variant), Box::new(s)))
@@ -286,7 +290,6 @@ impl<'b> ser::Serializer for &'b mut Serializer {
     }
 }
 
-
 /*
  * -----------------------------------------------------------------------------
  *  Serializer types
@@ -297,11 +300,10 @@ impl<'a> ser::SerializeSeq for SeqSerializer {
     type Error = Error;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
-        self.items
-            .push(value.serialize(&mut self.base_serializer)?);
+        self.items.push(value.serialize(&mut self.base_serializer)?);
         Ok(())
     }
 
@@ -315,8 +317,8 @@ impl<'a> ser::SerializeTuple for SeqSerializer {
     type Error = Error;
 
     fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         ser::SerializeSeq::serialize_element(self, value)
     }
@@ -331,8 +333,8 @@ impl ser::SerializeTupleStruct for SeqSerializer {
     type Error = Error;
 
     fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         ser::SerializeSeq::serialize_element(self, value)
     }
@@ -347,8 +349,8 @@ impl ser::SerializeTupleVariant for SeqSerializer {
     type Error = Error;
 
     fn serialize_field<T: ?Sized>(&mut self, _: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         unimplemented!()
     }
@@ -363,15 +365,15 @@ impl ser::SerializeMap for MapSerializer {
     type Error = Error;
 
     fn serialize_key<T: ?Sized>(&mut self, _key: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         unimplemented!()
     }
 
     fn serialize_value<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         unimplemented!()
     }
@@ -390,13 +392,11 @@ impl ser::SerializeStruct for StructSerializer {
         name: &'static str,
         value: &T,
     ) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
-        self.fields.push((
-            name.to_owned(),
-            value.serialize(&mut self.base_serializer)?,
-        ));
+        self.fields
+            .push((name.to_owned(), value.serialize(&mut self.base_serializer)?));
         Ok(())
     }
 
@@ -410,8 +410,8 @@ impl ser::SerializeStructVariant for StructSerializer {
     type Error = Error;
 
     fn serialize_field<T: ?Sized>(&mut self, _: &'static str, _: &T) -> Result<(), Self::Error>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         unimplemented!()
     }
@@ -428,14 +428,13 @@ impl ser::SerializeStructVariant for StructSerializer {
  */
 impl Serialize for BigInt {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: ser::Serializer,
+    where
+        S: ser::Serializer,
     {
         let bigint: num_bigint::BigInt = self.into();
         serializer.serialize_str(&bigint.to_str_radix(16))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -477,16 +476,16 @@ mod tests {
                 assert_eq!("a", fld_1.0);
                 match fld_1.1 {
                     Value::Int32(v) => assert_eq!(23, v),
-                    _ => panic!("Was expecting Value::Int32(v)")
+                    _ => panic!("Was expecting Value::Int32(v)"),
                 }
                 let fld_2 = &fields[1];
                 assert_eq!("p", fld_2.0);
                 match fld_2.1 {
                     Value::Record(ref v) => assert_eq!(4, v.len()),
-                    _ => panic!("Was expecting &Value::Record(v)")
+                    _ => panic!("Was expecting &Value::Record(v)"),
                 }
             }
-            _ => panic!("Invalid  type returned from serialization. Was expecting Value::Record")
+            _ => panic!("Invalid  type returned from serialization. Was expecting Value::Record"),
         }
     }
 }

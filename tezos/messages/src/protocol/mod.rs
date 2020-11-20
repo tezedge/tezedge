@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use failure::Error;
-use serde::{ser, Serialize};
 use serde::ser::SerializeSeq;
+use serde::{ser, Serialize};
 
 use crypto::hash::{HashType, ProtocolHash};
 use tezos_encoding::types::BigInt;
@@ -62,7 +62,7 @@ impl UniversalValue {
         Self::List(ret)
     }
 
-    fn num_list<'a, T: 'a + Into<i32> + Clone, I: IntoIterator<Item=&'a T>>(val: I) -> Self {
+    fn num_list<'a, T: 'a + Into<i32> + Clone, I: IntoIterator<Item = &'a T>>(val: I) -> Self {
         let mut ret: Vec<UniversalValue> = Default::default();
         for x in val {
             ret.push(Self::num(x.clone()))
@@ -70,7 +70,7 @@ impl UniversalValue {
         Self::List(ret)
     }
 
-    fn big_num_list<I: IntoIterator<Item=BigInt>>(val: I) -> Self {
+    fn big_num_list<I: IntoIterator<Item = BigInt>>(val: I) -> Self {
         let mut ret: Vec<UniversalValue> = Default::default();
         for x in val {
             ret.push(Self::big_num(x.clone()))
@@ -81,22 +81,14 @@ impl UniversalValue {
 
 impl Serialize for UniversalValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: ser::Serializer,
+    where
+        S: ser::Serializer,
     {
         match self {
-            UniversalValue::BigNumber(num) => {
-                serializer.serialize_str(&format!("{}", num.0))
-            }
-            UniversalValue::Number(num) => {
-                serializer.serialize_i32(*num)
-            }
-            UniversalValue::NumberI64(num) => {
-                serializer.serialize_str(num.to_string().as_str())
-            }
-            UniversalValue::String(val) => {
-                serializer.serialize_str(val.as_str())
-            }
+            UniversalValue::BigNumber(num) => serializer.serialize_str(&format!("{}", num.0)),
+            UniversalValue::Number(num) => serializer.serialize_i32(*num),
+            UniversalValue::NumberI64(num) => serializer.serialize_str(num.to_string().as_str()),
+            UniversalValue::String(val) => serializer.serialize_str(val.as_str()),
             UniversalValue::TimestampRfc3339(val) => {
                 let timestamp = ts_to_rfc3339(*val);
                 serializer.serialize_str(timestamp.as_str())
@@ -120,13 +112,16 @@ pub trait ToRpcJsonMap {
     fn as_map(&self) -> RpcJsonMap;
 }
 
-pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Option<RpcJsonMap>, Error> {
+pub fn get_constants_for_rpc(
+    bytes: &[u8],
+    protocol: ProtocolHash,
+) -> Result<Option<RpcJsonMap>, Error> {
     let hash: &str = &HashType::ProtocolHash.bytes_to_string(&protocol);
     match hash {
         proto_001::PROTOCOL_HASH => {
             use crate::protocol::proto_001::constants::{ParametricConstants, FIXED};
             let context_param = ParametricConstants::from_bytes(bytes)?;
-            
+
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
             let mut param_map = param.as_map();
@@ -146,7 +141,7 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         proto_003::PROTOCOL_HASH => {
             use crate::protocol::proto_003::constants::{ParametricConstants, FIXED};
             let context_param = ParametricConstants::from_bytes(bytes)?;
-            
+
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
             let mut param_map = param.as_map();
@@ -156,7 +151,7 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
         proto_004::PROTOCOL_HASH => {
             use crate::protocol::proto_004::constants::{ParametricConstants, FIXED};
             let context_param = ParametricConstants::from_bytes(bytes)?;
-            
+
             let param = ParametricConstants::create_with_default_and_merge(context_param);
 
             let mut param_map = param.as_map();
@@ -187,6 +182,9 @@ pub fn get_constants_for_rpc(bytes: &[u8], protocol: ProtocolHash) -> Result<Opt
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))
         }
-        _ => panic!("Missing constants encoding for protocol: {}, protocol is not yet supported!", hash)
+        _ => panic!(
+            "Missing constants encoding for protocol: {}, protocol is not yet supported!",
+            hash
+        ),
     }
 }

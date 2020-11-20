@@ -38,10 +38,10 @@ impl CurrentBranchMessage {
 
 cached_data!(CurrentBranchMessage, body);
 has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-            Field::new("current_branch", CurrentBranch::encoding().clone())
-        ])
+    Encoding::Obj(vec![
+        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+        Field::new("current_branch", CurrentBranch::encoding().clone()),
+    ])
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -68,15 +68,19 @@ impl CurrentBranch {
 
 cached_data!(CurrentBranch, body);
 has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("current_head", Encoding::dynamic(BlockHeader::encoding().clone())),
-            Field::new("history", Encoding::Split(Arc::new(|schema_type|
-                match schema_type {
-                    SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
-                    SchemaType::Binary => Encoding::list(Encoding::Hash(HashType::BlockHash))
-                }
-            )))
-        ])
+    Encoding::Obj(vec![
+        Field::new(
+            "current_head",
+            Encoding::dynamic(BlockHeader::encoding().clone()),
+        ),
+        Field::new(
+            "history",
+            Encoding::Split(Arc::new(|schema_type| match schema_type {
+                SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
+                SchemaType::Binary => Encoding::list(Encoding::Hash(HashType::BlockHash)),
+            })),
+        ),
+    ])
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -90,13 +94,21 @@ pub struct GetCurrentBranchMessage {
 
 impl GetCurrentBranchMessage {
     pub fn new(chain_id: ChainId) -> Self {
-        GetCurrentBranchMessage { chain_id, body: Default::default() }
+        GetCurrentBranchMessage {
+            chain_id,
+            body: Default::default(),
+        }
     }
 }
 
 cached_data!(GetCurrentBranchMessage, body);
-has_encoding!(GetCurrentBranchMessage, GET_CURRENT_BRANCH_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("chain_id", Encoding::Hash(HashType::ChainId))
-        ])
-});
+has_encoding!(
+    GetCurrentBranchMessage,
+    GET_CURRENT_BRANCH_MESSAGE_ENCODING,
+    {
+        Encoding::Obj(vec![Field::new(
+            "chain_id",
+            Encoding::Hash(HashType::ChainId),
+        )])
+    }
+);

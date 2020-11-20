@@ -43,10 +43,10 @@ impl OperationsForBlock {
 
 cached_data!(OperationsForBlock, body);
 has_encoding!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
-            Field::new("validation_pass", Encoding::Int8),
-        ])
+    Encoding::Obj(vec![
+        Field::new("hash", Encoding::Hash(HashType::BlockHash)),
+        Field::new("validation_pass", Encoding::Int8),
+    ])
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -63,7 +63,11 @@ pub struct OperationsForBlocksMessage {
 }
 
 impl OperationsForBlocksMessage {
-    pub fn new(operations_for_block: OperationsForBlock, operation_hashes_path: Path, operations: Vec<Operation>) -> Self {
+    pub fn new(
+        operations_for_block: OperationsForBlock,
+        operation_hashes_path: Path,
+        operations: Vec<Operation>,
+    ) -> Self {
         OperationsForBlocksMessage {
             operations_for_block,
             operation_hashes_path,
@@ -74,13 +78,23 @@ impl OperationsForBlocksMessage {
 }
 
 cached_data!(OperationsForBlocksMessage, body);
-has_encoding!(OperationsForBlocksMessage, OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING, {
+has_encoding!(
+    OperationsForBlocksMessage,
+    OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING,
+    {
         Encoding::Obj(vec![
-            Field::new("operations_for_block", OperationsForBlock::encoding().clone()),
+            Field::new(
+                "operations_for_block",
+                OperationsForBlock::encoding().clone(),
+            ),
             Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operations", Encoding::list(Encoding::dynamic(Operation::encoding().clone()))),
+            Field::new(
+                "operations",
+                Encoding::list(Encoding::dynamic(Operation::encoding().clone())),
+            ),
         ])
-});
+    }
+);
 
 impl From<OperationsForBlocksMessage> for Vec<Operation> {
     fn from(msg: OperationsForBlocksMessage) -> Self {
@@ -101,10 +115,10 @@ pub struct PathRight {
 
 cached_data!(PathRight, body);
 has_encoding!(PathRight, PATH_RIGHT_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("left", Encoding::Hash(HashType::OperationListListHash)),
-            Field::new("path", path_encoding()),
-        ])
+    Encoding::Obj(vec![
+        Field::new("left", Encoding::Hash(HashType::OperationListListHash)),
+        Field::new("path", path_encoding()),
+    ])
 });
 
 impl PathRight {
@@ -126,10 +140,10 @@ pub struct PathLeft {
 
 cached_data!(PathLeft, body);
 has_encoding!(PathLeft, PATH_LEFT_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("path", path_encoding()),
-            Field::new("right", Encoding::Hash(HashType::OperationListListHash)),
-        ])
+    Encoding::Obj(vec![
+        Field::new("path", path_encoding()),
+        Field::new("right", Encoding::Hash(HashType::OperationListListHash)),
+    ])
 });
 
 impl PathLeft {
@@ -150,8 +164,16 @@ pub fn path_encoding() -> Encoding {
     Encoding::Tags(
         size_of::<u8>(),
         TagMap::new(vec![
-            Tag::new(0xF0, "Left", Encoding::Lazy(Arc::new(|| PathLeft::encoding().clone()))),
-            Tag::new(0x0F, "Right", Encoding::Lazy(Arc::new(|| PathRight::encoding().clone()))),
+            Tag::new(
+                0xF0,
+                "Left",
+                Encoding::Lazy(Arc::new(|| PathLeft::encoding().clone())),
+            ),
+            Tag::new(
+                0x0F,
+                "Right",
+                Encoding::Lazy(Arc::new(|| PathRight::encoding().clone())),
+            ),
             Tag::new(0x00, "Op", Encoding::Unit),
         ]),
     )
@@ -176,8 +198,13 @@ impl GetOperationsForBlocksMessage {
 }
 
 cached_data!(GetOperationsForBlocksMessage, body);
-has_encoding!(GetOperationsForBlocksMessage, GET_OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("get_operations_for_blocks", Encoding::dynamic(Encoding::list(OperationsForBlock::encoding().clone()))),
-        ])
-});
+has_encoding!(
+    GetOperationsForBlocksMessage,
+    GET_OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING,
+    {
+        Encoding::Obj(vec![Field::new(
+            "get_operations_for_blocks",
+            Encoding::dynamic(Encoding::list(OperationsForBlock::encoding().clone())),
+        )])
+    }
+);

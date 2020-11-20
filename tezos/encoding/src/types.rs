@@ -125,4 +125,3 @@ pub enum Value {
     /// Tuple is heterogeneous collection of values, it should have fixed amount of elements
     Tuple(Vec<Value>),
 }
-

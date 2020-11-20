@@ -4,13 +4,17 @@
 use super::{
     FfiPath, OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlProtocolHash,
 };
-use crate::ffi::{Applied, ApplyBlockResponse, Errored, ForkingTestchainData, HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, RpcArgDesc, ProtocolRpcError, RpcMethod, ProtocolRpcResponse, ValidateOperationResponse, ValidateOperationResult};
-use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
-use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
-use ocaml_interop::{
-    impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, ToRust, OCaml, OCamlBytes,
-    OCamlInt, OCamlInt32, OCamlList,
+use crate::ffi::{
+    Applied, ApplyBlockResponse, Errored, ForkingTestchainData, HelpersPreapplyResponse,
+    OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolRpcError,
+    ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse, ValidateOperationResult,
 };
+use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
+use ocaml_interop::{
+    impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlInt,
+    OCamlInt32, OCamlList, ToRust,
+};
+use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -101,7 +105,7 @@ impl_from_ocaml_record! {
     }
 }
 
-impl_from_ocaml_variant!{
+impl_from_ocaml_variant! {
     ProtocolRpcResponse {
         ProtocolRpcResponse::RPCConflict(s: Option<OCamlBytes>),
         ProtocolRpcResponse::RPCCreated(s: Option<OCamlBytes>),
@@ -115,7 +119,7 @@ impl_from_ocaml_variant!{
     }
 }
 
-impl_from_ocaml_variant!{
+impl_from_ocaml_variant! {
     ProtocolRpcError {
         ProtocolRpcError::RPCErrorCannotParseBody(s: OCamlBytes),
         ProtocolRpcError::RPCErrorCannotParsePath(p: OCamlList<OCamlBytes>, d: RpcArgDesc, s: OCamlBytes),
@@ -126,14 +130,14 @@ impl_from_ocaml_variant!{
     }
 }
 
-impl_from_ocaml_record!{
+impl_from_ocaml_record! {
     RpcArgDesc {
         name: OCamlBytes,
         descr: Option<OCamlBytes>,
     }
 }
 
-impl_from_ocaml_variant!{
+impl_from_ocaml_variant! {
     RpcMethod {
         RpcMethod::DELETE,
         RpcMethod::GET,

@@ -12,7 +12,10 @@ fn main() {
     loop {
         fuzz!(|data: &[u8]| {
             if let Err(e) = PeerMessageResponse::from_bytes(data) {
-                debug!("PeerMessageResponse::from_bytes produced error for input: {:?}\nError:\n{:?}", data, e);
+                debug!(
+                    "PeerMessageResponse::from_bytes produced error for input: {:?}\nError:\n{:?}",
+                    data, e
+                );
             }
         });
     }

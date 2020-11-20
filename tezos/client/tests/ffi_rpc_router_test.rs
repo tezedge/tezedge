@@ -5,8 +5,14 @@ use assert_json_diff::assert_json_eq;
 use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
-use tezos_api::{environment::{OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV, TezosEnvironmentConfiguration}, ffi::{RpcMethod, ProtocolRpcResponse}};
-use tezos_api::ffi::{ApplyBlockRequest, ComputePathRequest, ComputePathResponse, InitProtocolContextResult, RpcRequest, ProtocolRpcRequest, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    ApplyBlockRequest, ComputePathRequest, ComputePathResponse, InitProtocolContextResult,
+    ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
+};
+use tezos_api::{
+    environment::{TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV},
+    ffi::{ProtocolRpcResponse, RpcMethod},
+};
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
@@ -16,17 +22,25 @@ mod common;
 
 fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
-    client::change_runtime_configuration(
-        TezosRuntimeConfiguration {
-            log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-            debug_mode: false,
-        }
-    ).unwrap();
+    client::change_runtime_configuration(TezosRuntimeConfiguration {
+        log_enabled: common::is_ocaml_log_enabled(),
+        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+        debug_mode: false,
+    })
+    .unwrap();
 }
 
-fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, ProtocolHash, InitProtocolContextResult) {
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no tezos environment configured");
+fn init_test_protocol_context(
+    dir_name: &str,
+) -> (
+    ChainId,
+    BlockHeader,
+    ProtocolHash,
+    InitProtocolContextResult,
+) {
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&test_data::TEZOS_NETWORK)
+        .expect("no tezos environment configured");
 
     let result = client::init_protocol_context(
         common::prepare_empty_dir(dir_name),
@@ -36,28 +50,31 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, Protocol
         false,
         false,
         Some(test_data::get_patch_context()),
-    ).unwrap();
+    )
+    .unwrap();
 
     let genesis_commit_hash = match result.clone().genesis_commit_hash {
         None => panic!("we needed commit_genesis and here should be result of it"),
-        Some(cr) => cr
+        Some(cr) => cr,
     };
 
     (
         tezos_env.main_chain_id().expect("invalid chain id"),
-        tezos_env.genesis_header(
-            genesis_commit_hash,
-            OPERATION_LIST_LIST_HASH_EMPTY.clone(),
-        ).expect("genesis header error"),
+        tezos_env
+            .genesis_header(genesis_commit_hash, OPERATION_LIST_LIST_HASH_EMPTY.clone())
+            .expect("genesis header error"),
         tezos_env.genesis_protocol().expect("protocol_hash error"),
-        result
+        result,
     )
 }
 
 fn extract_body(r: ProtocolRpcResponse) -> Result<String, failure::Error> {
     match r {
         ProtocolRpcResponse::RPCOk(body) => Ok(body),
-        other => Err(failure::err_msg(format!("Expecter RPCOk, instead got {:?}", other))),
+        other => Err(failure::err_msg(format!(
+            "Expecter RPCOk, instead got {:?}",
+            other
+        ))),
     }
 }
 
@@ -67,7 +84,8 @@ fn test_run_operations() -> Result<(), failure::Error> {
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_run_operations_storage_01");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_run_operations_storage_01");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -105,7 +123,8 @@ fn test_forge_operations() -> Result<(), failure::Error> {
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_forge_operations_01");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_forge_operations_01");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -170,7 +189,8 @@ fn test_context_contract() -> Result<(), failure::Error> {
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_context_contract_01");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_context_contract_01");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -191,7 +211,9 @@ fn test_context_contract() -> Result<(), failure::Error> {
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
         request: RpcRequest {
-            context_path: "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17".to_string(),
+            context_path:
+                "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17"
+                    .to_string(),
             body: request.to_string(),
             meth: RpcMethod::GET,
             content_type: None,
@@ -215,7 +237,8 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_preapply_operations_storage_02");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_preapply_operations_storage_02");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -251,7 +274,8 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
 #[serial]
 fn test_current_level_call() -> Result<(), failure::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_current_level_call_storage");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_current_level_call_storage");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -283,7 +307,8 @@ fn test_current_level_call() -> Result<(), failure::Error> {
 #[serial]
 fn test_minimal_valid_time() -> Result<(), failure::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context(" test_minimal_valid_time_storage");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context(" test_minimal_valid_time_storage");
 
     // apply block 1
     let last_block = apply_blocks_1(&chain_id, genesis_block_header);
@@ -293,7 +318,9 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
         request: RpcRequest {
-            context_path: "/chains/main/blocks/head/minimal_valid_time?priority=4&endorsing_power=0".to_string(),
+            context_path:
+                "/chains/main/blocks/head/minimal_valid_time?priority=4&endorsing_power=0"
+                    .to_string(),
             body: "".to_string(),
             meth: RpcMethod::GET,
             content_type: None,
@@ -311,32 +338,39 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
     Ok(())
 }
 
-
 #[test]
 #[serial]
 fn test_compute_path() -> Result<(), failure::Error> {
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_compute_path_storage");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_compute_path_storage");
 
     // apply block 1
     let _ = apply_blocks_1(&chain_id, genesis_block_header);
 
     type ValidationPasses = Vec<Vec<DecodedOperation>>;
     let validation_passes: Vec<Vec<Operation>> =
-        serde_json::from_str::<ValidationPasses>(test_data::VALIDATION_PASSES_WITH_OPERATIONS)?.into_iter()
-            .map(|validation_pass| validation_pass.into_iter()
-                .map(|op| op.into())
-                .collect())
+        serde_json::from_str::<ValidationPasses>(test_data::VALIDATION_PASSES_WITH_OPERATIONS)?
+            .into_iter()
+            .map(|validation_pass| validation_pass.into_iter().map(|op| op.into()).collect())
             .collect();
 
     let request = ComputePathRequest {
-        operations: validation_passes.iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
+        operations: validation_passes
+            .iter()
+            .map(|validation_pass| {
+                validation_pass
+                    .iter()
+                    .map(|op| op.message_hash().unwrap())
+                    .collect()
+            })
+            .collect(),
     };
 
     let response = client::compute_path(request)?;
 
-    let expected_response: ComputePathResponse = serde_json::from_str(test_data::COMPUTE_PATHS_RESPONSE)?;
-
+    let expected_response: ComputePathResponse =
+        serde_json::from_str(test_data::COMPUTE_PATHS_RESPONSE)?;
 
     assert_eq!(expected_response, response);
     Ok(())
@@ -348,7 +382,8 @@ fn test_preapply_block() -> Result<(), failure::Error> {
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, ..) = init_test_protocol_context("test_preapply_block_storage_02");
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_preapply_block_storage_02");
 
     // preapply block 1 with activation of protocol
     // prepare encoded request to send
@@ -360,7 +395,8 @@ fn test_preapply_block() -> Result<(), failure::Error> {
         chain_arg: "main".to_string(),
         chain_id: chain_id.clone(),
         request: RpcRequest {
-            context_path: "/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1592985768".to_string(),
+            context_path: "/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1592985768"
+                .to_string(),
             body: request.to_string(),
             meth: RpcMethod::GET,
             content_type: None,
@@ -380,22 +416,23 @@ fn test_preapply_block() -> Result<(), failure::Error> {
 
 fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> BlockHeader {
     // apply first block - level 1
-    let block_header = BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap();
-    let apply_block_result = client::apply_block(
-        ApplyBlockRequest {
-            chain_id: chain_id.clone(),
-            block_header: block_header.clone(),
-            pred_header: genesis_block_header,
-            operations: ApplyBlockRequest::convert_operations(
-                test_data::block_operations_from_hex(
-                    test_data::BLOCK_HEADER_HASH_LEVEL_1,
-                    test_data::block_header_level1_operations(),
-                )
-            ),
-            max_operations_ttl: 0,
-        }
-    ).unwrap();
-    assert_eq!(test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH), apply_block_result.context_hash);
+    let block_header =
+        BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap()).unwrap();
+    let apply_block_result = client::apply_block(ApplyBlockRequest {
+        chain_id: chain_id.clone(),
+        block_header: block_header.clone(),
+        pred_header: genesis_block_header,
+        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        )),
+        max_operations_ttl: 0,
+    })
+    .unwrap();
+    assert_eq!(
+        test_data::context_hash(test_data::BLOCK_HEADER_LEVEL_1_CONTEXT_HASH),
+        apply_block_result.context_hash
+    );
     assert_eq!(1, apply_block_result.max_operations_ttl);
 
     block_header
@@ -411,17 +448,19 @@ mod test_data {
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Sandbox;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashType::ContextHash
-            .string_to_bytes(hash)
-            .unwrap()
+        HashType::ContextHash.string_to_bytes(hash).unwrap()
     }
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
-    pub const BLOCK_HEADER_HASH_LEVEL_1: &str = "cf764612821498403dd6bd71e2fcbde9ad2c50670113dadc15ec52d167c66b31";
-    pub const BLOCK_HEADER_LEVEL_1: &str = include_str!("resources/sandbox_block_header_level1.bytes");
-    pub const BLOCK_HEADER_LEVEL_1_CONTEXT_HASH: &str = "CoUozrLGjbckFtx3PNhCz1KjacPL8CDEfzZ1WQAruSZLpUgwN378";
+    pub const BLOCK_HEADER_HASH_LEVEL_1: &str =
+        "cf764612821498403dd6bd71e2fcbde9ad2c50670113dadc15ec52d167c66b31";
+    pub const BLOCK_HEADER_LEVEL_1: &str =
+        include_str!("resources/sandbox_block_header_level1.bytes");
+    pub const BLOCK_HEADER_LEVEL_1_CONTEXT_HASH: &str =
+        "CoUozrLGjbckFtx3PNhCz1KjacPL8CDEfzZ1WQAruSZLpUgwN378";
 
-    pub const PATCH_CONTEXT: &str = include_str!("../../../light_node/etc/tezedge_sandbox/sandbox-patch-context.json");
+    pub const PATCH_CONTEXT: &str =
+        include_str!("../../../light_node/etc/tezedge_sandbox/sandbox-patch-context.json");
 
     pub fn block_header_level1_operations() -> Vec<Vec<String>> {
         vec![]
@@ -561,7 +600,10 @@ mod test_data {
     {"operations_hashes_path":[{"Left":{"path":{"Left":{"path":"Op","right":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195]}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Left":{"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Left":{"path":"Op","right":[80,146,47,58,138,154,211,234,76,207,216,93,186,145,204,85,44,17,216,195,123,110,192,172,166,40,175,8,61,159,187,26]}}}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}}}}]}
     "#;
 
-    pub fn block_operations_from_hex(block_hash: &str, hex_operations: Vec<Vec<String>>) -> Vec<OperationsForBlocksMessage> {
+    pub fn block_operations_from_hex(
+        block_hash: &str,
+        hex_operations: Vec<Vec<String>>,
+    ) -> Vec<OperationsForBlocksMessage> {
         hex_operations
             .into_iter()
             .map(|bo| {
@@ -569,7 +611,11 @@ mod test_data {
                     .into_iter()
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
-                OperationsForBlocksMessage::new(OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4), Path::Op, ops)
+                OperationsForBlocksMessage::new(
+                    OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                    Path::Op,
+                    ops,
+                )
             })
             .collect()
     }

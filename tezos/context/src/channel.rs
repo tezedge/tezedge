@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crossbeam::channel::{bounded, Receiver, RecvError, Sender, SendError};
+use crossbeam::channel::{bounded, Receiver, RecvError, SendError, Sender};
 use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
@@ -139,23 +139,65 @@ pub enum ContextAction {
 
 fn get_time(action: &ContextAction) -> f64 {
     match action {
-        ContextAction::Set { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Delete { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::RemoveRecursively { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Copy { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Checkout { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Commit { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Mem { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::DirMem { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Get { start_time, end_time, .. } => *end_time - *start_time,
-        ContextAction::Fold { start_time, end_time, .. } => *end_time - *start_time,
+        ContextAction::Set {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Delete {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::RemoveRecursively {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Copy {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Checkout {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Commit {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Mem {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::DirMem {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Get {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
+        ContextAction::Fold {
+            start_time,
+            end_time,
+            ..
+        } => *end_time - *start_time,
         ContextAction::Shutdown => 0_f64,
     }
 }
 
 impl Ord for ContextAction {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        get_time(&self).partial_cmp(&get_time(&other)).unwrap_or(Equal)
+        get_time(&self)
+            .partial_cmp(&get_time(&other))
+            .unwrap_or(Equal)
     }
 }
 
