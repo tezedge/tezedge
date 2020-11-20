@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Nothing.
+- Build is now tested on GitHub Actions instead of Travis-CI.
 
 ### Deprecated
 
@@ -114,7 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Drone test runs offline with carthagenet-snapshoted nodes.
 - New OCaml FFI - `ocaml-rs` was replaced with a new custom library based on `caml-oxide` to get GC under control and improve performance.
 - P2P bootstrap process - NACK version control after metadata exchange.
-- Build is now tested on GitHub Actions instead of Travis-CI.
 
 ## [0.2.0] - 2020-07-29
 
