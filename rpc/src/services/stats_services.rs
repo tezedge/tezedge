@@ -1,4 +1,5 @@
-#[allow(dead_code)]
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -64,7 +65,11 @@ fn add_action<'a>(
     if key_len > action_stats.key_length_max { action_stats.key_length_max = key_len; }
     action_stats.key_length_sum += key_len as u64;
 
-    let val_len = if value.is_some() { value.unwrap().len() } else { 0 };
+    let val_len = if let Some(value) = value {
+        value.len()
+    } else {
+        0
+    };
     action_stats.val_length_sum += val_len as u64;
     if value.is_some() && (val_len > action_stats.val_length_max) {
         action_stats.val_length_max = val_len;
@@ -98,7 +103,7 @@ struct TopN<T: Ord> {
 }
 
 impl<T: Ord + Clone> TopN<T> {
-    pub fn new(max: usize) -> TopN<T> { return TopN { data: RwLock::new(BinaryHeap::new()), max } }
+    pub fn new(max: usize) -> TopN<T> { TopN { data: RwLock::new(BinaryHeap::new()), max } }
 
     pub fn add(&self, val: &T) {
         let mut should_add;
@@ -130,12 +135,9 @@ pub struct StatsResponse<'a> {
 }
 
 fn remove_values(mut actions: Vec<ContextAction>) -> Vec<ContextAction> {
-    actions.iter_mut().for_each(|action| match action {
-        ContextAction::Set { ref mut value, ref mut value_as_json, .. } => {
-            value.resize(0, 0);
-            *value_as_json = None;
-        },
-        _ => {}
+    actions.iter_mut().for_each(|action| if let ContextAction::Set { ref mut value, ref mut value_as_json, .. } = action {
+        value.clear();
+        *value_as_json = None;
     });
     actions
 }

@@ -1106,6 +1106,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzz_encoding"
+version = "0.8.0"
+dependencies = [
+ "honggfuzz",
+ "log",
+ "rand 0.7.3",
+ "tezos_encoding",
+]
+
+[[package]]
 name = "fuzz_metadata_message"
 version = "0.8.0"
 dependencies = [
