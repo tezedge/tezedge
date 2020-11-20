@@ -272,17 +272,19 @@ impl MempoolState {
 
     /// Indicates, that the operation was already validated and is in the mempool
     fn is_already_validated(&self, operation_hash: &OperationHash) -> bool {
-        if self.validation_result.applied.iter().find(|op| op.hash.eq(operation_hash)).is_some() {
-            true
-        } else if self.validation_result.branch_delayed.iter().find(|op| op.hash.eq(operation_hash)).is_some() {
-            true
-        } else if self.validation_result.branch_refused.iter().find(|op| op.hash.eq(operation_hash)).is_some() {
-            true
-        } else if self.validation_result.refused.iter().find(|op| op.hash.eq(operation_hash)).is_some() {
-            true
-        } else {
-            false
+        if self.validation_result.applied.iter().any(|op| op.hash.eq(operation_hash)) {
+            return true;
         }
+        if self.validation_result.branch_delayed.iter().any(|op| op.hash.eq(operation_hash)) {
+            return true;
+        }
+        if self.validation_result.branch_refused.iter().any(|op| op.hash.eq(operation_hash)) {
+            return true;
+        }
+        if self.validation_result.refused.iter().any(|op| op.hash.eq(operation_hash)) {
+            return true;
+        }
+        false
     }
 }
 

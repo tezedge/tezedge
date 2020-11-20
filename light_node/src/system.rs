@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp;
-use rlimit;
 
-use slog::{info, error, Logger};
+use slog::{error, info, Logger};
 
 const OPEN_FILES_LIMIT: u64 = 64 * 1024; //64k open files limit for process
 
@@ -27,7 +26,7 @@ unsafe fn enable_core_dumps(log: &Logger) {
             match rlimit::setrlimit(rlimit::Resource::CORE, soft, hard) {
                 Ok(()) => info!(log, "Core dumps enabled with maximum size."),
                 Err(e) => {
-                    error!(log,"Enabling core dumps failed (setrlimit): {}", e);
+                    error!(log, "Enabling core dumps failed (setrlimit): {}", e);
                     return;
                 }
             }
@@ -37,7 +36,7 @@ unsafe fn enable_core_dumps(log: &Logger) {
 
 // Sets the limit of open file descriptors for the process
 // If user set a higher limit before, it will be left as is
-unsafe fn set_file_desc_limit(log: &Logger, num : u64) {
+unsafe fn set_file_desc_limit(log: &Logger, num: u64) {
     // Get current open file desc limit
     let rlim = match rlimit::getrlimit(rlimit::Resource::NOFILE) {
         Ok(rlim) => rlim,
@@ -55,10 +54,7 @@ unsafe fn set_file_desc_limit(log: &Logger, num : u64) {
     soft = cmp::min(num, hard);
     match rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard) {
         Ok(()) => info!(log, "Open files limit set to {}.", soft),
-        Err(e) => {
-            error!(log,"Setting open files limit failed (setrlimit): {}", e);
-            return;
-        }
+        Err(e) => error!(log, "Setting open files limit failed (setrlimit): {}", e)
     }
 }
 

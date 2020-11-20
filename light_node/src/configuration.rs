@@ -442,7 +442,7 @@ fn validate_required_args(args: &clap::ArgMatches) {
 
 // Validates single required arg. If missing, exit whole process
 pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
-    if args.is_present(arg_name) == false {
+    if !args.is_present(arg_name) {
         panic!("required \"{}\" arg is missing !!!", arg_name);
     }
 }
@@ -454,7 +454,7 @@ pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
     let mut final_path: PathBuf;
 
     // path is absolute or relative to the current dir -> start with ./ or ../
-    if path.is_absolute() == true || path.starts_with(".") == true {
+    if path.is_absolute() || path.starts_with(".") {
         final_path = path
     }
     // otherwise path is relative to the tezos-data-dir
@@ -465,7 +465,7 @@ pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
 
     // Tries to create final_path parent dir, if non-existing
     if let Some(parent_dir) = final_path.parent() {
-        if parent_dir.exists() == false {
+        if !parent_dir.exists() {
             if let Err(e) = fs::create_dir_all(parent_dir) {
                 panic!("Unable to create required dir '{:?}': {} ", parent_dir, e);
             }
@@ -478,17 +478,17 @@ pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
 // Parses config file and returns vector of OsString representing all argument strings from file
 // All lines that are empty or begin with "#" or "//" are ignored
 pub fn parse_config(config_path: PathBuf) -> Vec<OsString> {
-    let file = fs::File::open(&config_path).expect(format!("Unable to open config file at: {:?}", config_path).as_str());
+    let file = fs::File::open(&config_path).unwrap_or_else(|_| panic!("Unable to open config file at: {:?}", config_path));
     let reader = io::BufReader::new(file);
 
     let mut args: Vec<OsString> = vec![];
 
     let mut line_num = 0;
     for line_result in reader.lines() {
-        let mut line = line_result.expect(format!("Unable to read line: {:?} from config file at: {:?}", line_num, config_path).as_str());
+        let mut line = line_result.unwrap_or_else(|_| panic!("Unable to read line: {:?} from config file at: {:?}", line_num, config_path));
         line = line.trim().to_string();
 
-        if line.is_empty() || line.starts_with("#") || line.starts_with("//") {
+        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
             continue;
         }
 
@@ -507,7 +507,7 @@ impl Environment {
         // First, get cli arguments and find out only if config-file arg is provided
         // If config-file argument is present, read all parameters from config-file and merge it with cli arguments
         let temp_args = app.clone().get_matches();
-        if temp_args.is_present("config-file") == true {
+        if temp_args.is_present("config-file") {
             let config_path = temp_args
                 .value_of("config-file")
                 .unwrap()
@@ -668,7 +668,7 @@ impl Environment {
                                     }
                                     Some(PatchContext {
                                         key: "sandbox_parameter".to_string(),
-                                        json: content.to_string(),
+                                        json: content,
                                     })
                                 }
                                 | Err(e) => panic!("Cannot read file, reason: {}", e)

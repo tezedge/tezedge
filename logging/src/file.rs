@@ -301,7 +301,7 @@ mod tests {
 
     macro_rules! write (
         ($l:expr, $t:expr) => {
-            $l.write($t.as_bytes()).unwrap();
+            $l.write_all($t.as_bytes()).unwrap();
             $l.flush().unwrap();
         };
     );

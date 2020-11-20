@@ -305,7 +305,7 @@ fn block_on_actors(
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage, &init_storage_data)
+    let _ = Monitor::actor(&actor_system, network_channel, websocket_handler, shell_channel.clone(), &persistent_storage, &init_storage_data)
         .expect("Failed to create monitor actor");
     let _ = RpcServer::actor(
         &actor_system,
@@ -369,7 +369,7 @@ fn main() {
     let env = crate::configuration::Environment::from_args();
     let tezos_env = environment::TEZOS_ENV
         .get(&env.tezos_network)
-        .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network));
+        .unwrap_or_else(|| panic!("No tezos environment version configured for: {:?}", env.tezos_network));
 
     // Creates default logger
     let log = create_logger(&env);
