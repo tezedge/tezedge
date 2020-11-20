@@ -8,12 +8,13 @@
 
 |  CI / branch  |      master      |  develop |
 |----------|:-------------:|------:|
-| Travis |  [![Build Status master]][Build Link] | [![Build Status develop]][Build Link] |
+| GitHub Actions |  [![Build Status master]][Build Link master] | [![Build Status develop]][Build Link develop] |
 | Drone |  [![Drone Status master]][Drone Link]   |   [![Drone Status develop]][Drone Link] |
 
-[Build Status master]: https://travis-ci.com/simplestaking/tezedge.svg?branch=master
-[Build Status develop]: https://travis-ci.com/simplestaking/tezedge.svg?branch=develop
-[Build Link]: https://travis-ci.com/simplestaking/tezedge
+[Build Status master]: https://github.com/simplestaking/tezedge/workflows/build/badge.svg?branch=master
+[Build Status develop]: https://github.com/simplestaking/tezedge/workflows/build/badge.svg?branch=develop
+[Build Link master]: https://github.com/simplestaking/tezedge/actions?query=workflow%3Abuild+branch%3Amaster
+[Build Link develop]: https://github.com/simplestaking/tezedge/actions?query=workflow%3Abuild+branch%3Adevelop
 
 [Drone Status master]: http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg?ref=refs/heads/master
 [Drone Status develop]: http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg?ref=refs/heads/develop
