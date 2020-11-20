@@ -552,7 +552,7 @@ impl MerkleStorage {
         let tree = Tree::new();
         let hash = self.hash_tree(&tree)?;
         let idx = self.put_to_staging_area(&hash, Entry::Tree(tree.clone()));
-        Ok(idx)
+        idx
     }
 
     fn ensure_stage_tree_exists(&mut self) -> Result<(), MerkleError> {
@@ -581,6 +581,11 @@ impl MerkleStorage {
         //
         //persist Commit to DB using self.staged HashMap
 
+        //debug
+        let tree = Tree::new();
+        let hash = self.hash_tree(&tree)?;
+        println!("hash of empty tree is: {}", HashType::ContextHash.bytes_to_string(&hash));
+
         self.ensure_stage_tree_exists()?;
         //let root = self.get_staged_root()?;
 
@@ -588,6 +593,15 @@ impl MerkleStorage {
         let actions = self.actions.clone();
         //println!("do_the_thing: len(actions)={}", actions.len());
         for (i, action) in actions.iter().enumerate() {
+            //if self.staged_indices.len() != self.staged.len() {
+                //WORKAROUND: resync both structures
+               // println!("deduplicating staged area");
+               // for (idx, entry) in self.staged.iter().enumerate() {
+               //     if let None = self.staged_indices.get(&entry.0) {
+               //         self.staged_indices.insert(entry.0, idx);
+               //     }
+               // }
+        //    }
             match action {
                 Action::Set(set) =>  {
        // let blob_hash = self.hash_blob(&value)?;
@@ -624,7 +638,13 @@ impl MerkleStorage {
                     //TODO inefficient - instead of pushing here just don't remove this entry on commit() (where we set self.staged to Vec::new())
                     //self.staged.push((root_hash, self.get_entry(&root_hash)?));
                     self.put_to_staging_area(&root_hash, self.get_entry(&root_hash)?);
-                    let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node), false)?;
+                    let mut cow;
+                    if i > 30000 {
+                        cow = true;
+                    } else {
+                        cow = false;
+                    }
+                    let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node), false, cow)?;
 
                     //dump staging
                    // println!("dumping staging");
@@ -653,7 +673,7 @@ impl MerkleStorage {
                     //      well I think yes, after checkout() staged stores only tree of hashes, while blobs are in
                     //      DB..
                     //
-                    assert_eq!(self.staged_indices.len(), self.staged.len());
+                    //assert_eq!(self.staged_indices.len(), self.staged.len());
                 }
 
                 Action::Copy(copy) => {
@@ -700,6 +720,7 @@ impl MerkleStorage {
                     self.current_stage_tree_hash = Some(rv);
                     self.staging_context_hashes.push(rv);
                 }
+
             }
         }
         
@@ -714,6 +735,7 @@ impl MerkleStorage {
                                     key: &[String],
                                     new_node: Option<Node>,
                                     add_empty_tree: bool,
+                                    copy_on_write: bool,
     ) -> Result<EntryHash, MerkleError> {
         //println!("compute_alt with keylen={}, and node hash={}", key.len(),
          //           new_node.clone().unwrap().entry_hash[0]);
@@ -749,11 +771,21 @@ impl MerkleStorage {
             return self.add_empty_tree_to_staging().unwrap();
         });
 
+        let mut node_to_recurse_with = None;
+        let mut tree_backup = None;
+        let mut tree_backup_hash = None;
+
         //println!("modifying tree in place");
         match idx {
             Some(idx) => {
                 let (ref mut tree_hash, ref mut tree) = self.staged[idx];
                 if let Entry::Tree(tree) = tree {
+                    //WORKAROUND: copy on write:
+                    //if tree_hash.to_vec() == HashType::ContextHash.string_to_bytes("CoUenX62chQiKZSgmh3duH9xZQHhQHGxhs1w7yX3nAS7kVHuHVis").unwrap()  {
+                    if copy_on_write == true {
+                        tree_backup = Some(Entry::Tree(tree.clone()));
+                        tree_backup_hash = Some(*tree_hash);
+                    }
                     // make the modification of tree at key, in place
                     match new_node {
                         None => (tree).remove(last),
@@ -763,6 +795,7 @@ impl MerkleStorage {
                     };
                     // calculate hash of modified tree
                     let new_tree_hash = hash_tree2(&tree)?;
+                    //assert_eq!(new_tree_hash, self.staged_indices.get(new_tree_hash).is_none());
                     let old_hash = *tree_hash;
 
                     // tree was modified in place so just update its hash in staged
@@ -783,6 +816,7 @@ impl MerkleStorage {
                     //
                     // Remove hash from staged_indices as it no longer exists
                     self.staged_indices.remove(tree_hash);
+
                     // Entry was modified, so its hash must be updated
                     *tree_hash = new_tree_hash;
                     // Add mapping from hash to index
@@ -811,14 +845,13 @@ impl MerkleStorage {
                             println!("Also path is empty - returning root hash");
                             return Ok(*root_hash);
                         }
-                        self.compute_new_root_with_change_alt(&root_hash, path, None, add_empty_tree)
+                        node_to_recurse_with = None;
                     } else {
                         if path.is_empty() {
                             //println!("path is empty - returning new_tree_hash");
                             return Ok(new_tree_hash);
                         }
-                        self.compute_new_root_with_change_alt(
-                            &root_hash, path, Some(self.get_non_leaf(new_tree_hash)), add_empty_tree)
+                        node_to_recurse_with = Some(self.get_non_leaf(new_tree_hash));
                     }
                 } else {
                     panic!("compute_alt: Entry is not a Tree");
@@ -828,7 +861,14 @@ impl MerkleStorage {
                 // error getting tree from staged - should not happen
                 panic!("compute_alt: idx is None");
             },
+
         }
+
+        if copy_on_write == true {
+            self.put_to_staging_area(&tree_backup_hash.unwrap(), tree_backup.unwrap());
+        }
+        self.compute_new_root_with_change_alt(&root_hash, path, node_to_recurse_with, add_empty_tree, copy_on_write)
+
         // example call chain for set()
         //
         // set(a/b, 2)
@@ -888,8 +928,8 @@ impl MerkleStorage {
                 //self.put_to_staging_area(&ehash,
                 //                         self.get_entry_db(&ehash)?);
                 let last_idx = self.staged.len();
-                self.staged.push((*ehash, self.get_entry_db(&ehash)?));
-                self.staged_indices.insert(*ehash, last_idx);
+                self.staged.push((ehash, self.get_entry_db(&ehash)?));
+                self.staged_indices.insert(ehash, last_idx);
                 entry_idx = last_idx;
             }
         }
@@ -942,12 +982,12 @@ impl MerkleStorage {
             }
             None => {
                 //println!("fallback to linear search");
-                for (idx, entry) in self.staged.iter().enumerate() {
-                    if entry.0 == *hash {
-                        println!("linear search worked!");
-                        return Some(idx);
-                    }
-                }
+               // for (idx, entry) in self.staged.iter().enumerate() {
+               //     if entry.0 == *hash {
+               //         println!("linear search worked!");
+               //         return Some(idx);
+               //     }
+               // }
                 return None;
             }
         }
@@ -1084,8 +1124,9 @@ impl MerkleStorage {
     fn put_to_staging_area(&mut self, key: &EntryHash, value: Entry) -> Result<Option<usize>, MerkleError> {
         //TODO: check if exists already, otherwise we have duplicates
         //
-        if self.staged_get_idx(key).is_some() {
-            return Ok(None);
+        let idx = self.staged_get_idx(key);
+        if let Some(idx) = self.staged_get_idx(key) {
+            return Ok(Some(idx));
         }
 
         let idx = self.staged.len();
@@ -1093,7 +1134,7 @@ impl MerkleStorage {
         self.staged_indices.insert(*key, idx);
         //println!("put_to_staging: key={}, idx={}", key[0], idx);
         self.map_stats.staged_area_elems = self.staged.len() as u64;
-        Ok(Some(idx));
+        Ok(Some(idx))
     }
 
     /// Persists an entry and its descendants from staged area to database on disk.
