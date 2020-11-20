@@ -148,6 +148,7 @@ pub struct MerkleStorage {
     actions: Arc<Vec<Action>>,
     /// list of context hashes after each Action step
     staging_context_hashes: Vec<EntryHash>,
+    cow: bool,
 }
 
 #[derive(Debug, Fail)]
@@ -273,6 +274,7 @@ impl MerkleStorage {
             set_exec_times_to_discard: 20,
             actions: Arc::new(Vec::new()),
             staging_context_hashes: Vec::new(),
+            cow: false,
         }
     }
 
@@ -638,13 +640,10 @@ impl MerkleStorage {
                     //TODO inefficient - instead of pushing here just don't remove this entry on commit() (where we set self.staged to Vec::new())
                     //self.staged.push((root_hash, self.get_entry(&root_hash)?));
                     self.put_to_staging_area(&root_hash, self.get_entry(&root_hash)?);
-                    let mut cow;
                     if i > 30000 {
-                        cow = true;
-                    } else {
-                        cow = false;
+                        self.cow = true;
                     }
-                    let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node), false, cow)?;
+                    let rv = self.compute_new_root_with_change_alt(&root_hash, &key, Some(new_node), false, self.cow)?;
 
                     //dump staging
                    // println!("dumping staging");
