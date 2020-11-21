@@ -503,12 +503,19 @@ impl MerkleStorage {
         //let root = self.get_staged_root()?;
         // store action
         //println!("set()");
+        let instant = Instant::now();
         let act = Arc::make_mut(&mut self.actions);
         act.push(Action::Set( SetAction{ key: key.to_vec(), value: value.to_vec() } ));
         //let new_root_hash = &self._set(&root, key, value)?;
         //println!("_set() returned new_root_hash={}, set as current_stage_tree", new_root_hash[0]);
         //self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
         //self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
+        //
+        let elapsed = instant.elapsed().as_nanos() as f64;
+        if self.set_exec_times >= self.set_exec_times_to_discard.into() {
+            self.cumul_set_exec_time += elapsed;
+        }
+        self.set_exec_times += 1;
         Ok(())
     }
 
@@ -519,13 +526,7 @@ impl MerkleStorage {
         self.put_to_staging_area(&blob_hash, Entry::Blob(value.clone()));
         //println!("put blobhash={} in staging", blob_hash[0]);
         let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
-        let instant = Instant::now();
         let rv = self.compute_new_root_with_change(root, &key, Some(new_node));
-        let elapsed = instant.elapsed().as_nanos() as f64;
-        if self.set_exec_times >= self.set_exec_times_to_discard.into() {
-            self.cumul_set_exec_time += elapsed;
-        }
-        self.set_exec_times += 1;
         rv
     }
 
