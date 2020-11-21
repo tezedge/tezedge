@@ -84,7 +84,7 @@ struct Node {
 
 // Tree must be an ordered structure for consistent hash in hash_tree
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead
-type Tree = OrdMap<String, Node>;
+type Tree = BTreeMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
 struct Commit {
@@ -675,7 +675,7 @@ impl MerkleStorage {
                 }
 
                 Action::Copy(copy) => {
-                    println!("Action::Copy");
+                    //println!("Action::Copy");
                   //  let root_hash = self.current_stage_tree_hash.unwrap();
                   //  self.staged.push((root_hash, self.get_entry(&root_hash)?));
                   //  let root_idx = self.staged_get_idx(&root_hash).unwrap();
@@ -705,7 +705,7 @@ impl MerkleStorage {
                 }
 
                 Action::Remove(remove) => {
-                    println!("Action::Remove");
+                    //println!("Action::Remove");
                     let root_hash = self.current_stage_tree_hash.unwrap();
                     let root = self.get_entry(&root_hash)?;
                     let rv;
