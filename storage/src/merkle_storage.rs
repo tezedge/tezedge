@@ -453,9 +453,9 @@ impl MerkleStorage {
                   author: String,
                   message: String,
     ) -> Result<EntryHash, MerkleError> {
-        println!("commit()");
+        //println!("commit()");
         self.do_the_thing()?;
-        println!("after do_the_thing()");
+        //println!("after do_the_thing()");
 
         let staged_root = self.get_staged_root()?;
         let staged_root_hash = self.hash_tree(&staged_root)?;
@@ -586,7 +586,6 @@ impl MerkleStorage {
         //debug
         let tree = Tree::new();
         let hash = self.hash_tree(&tree)?;
-        println!("hash of empty tree is: {}", HashType::ContextHash.bytes_to_string(&hash));
 
         self.ensure_stage_tree_exists()?;
         //let root = self.get_staged_root()?;
@@ -613,7 +612,7 @@ impl MerkleStorage {
         //
                     //TODO DONT CLONE let root = &self.current_stage_tree.as_ref().unwrap(); 
                     //let root = self.current_stage_tree.clone().unwrap();
-                    println!("Action::Set {}", i);
+                    //println!("Action::Set {}", i);
                     let root_hash = self.current_stage_tree_hash.unwrap();
                     //println!("do_the_thing(), root_hash={}", root_hash[0]);
                     let key = &set.key;
@@ -923,7 +922,7 @@ impl MerkleStorage {
                 entry_idx = idx;
             }
             None => {
-                println!("find_tree_staging: getting from DB");
+//                println!("find_tree_staging: getting from DB");
                 //self.put_to_staging_area(&ehash,
                 //                         self.get_entry_db(&ehash)?);
                 let last_idx = self.staged.len();
