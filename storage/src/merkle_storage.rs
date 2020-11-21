@@ -149,6 +149,11 @@ pub struct MerkleStorage {
     /// list of context hashes after each Action step
     staging_context_hashes: Vec<EntryHash>,
     cow: bool,
+    /// divide this by the next field to get avg time spent in commit
+    cumul_commit_exec_time: f64,
+    commit_exec_times: u64,
+    /// first N measurements to discard
+    commit_exec_times_to_discard: u64,
 }
 
 #[derive(Debug, Fail)]
@@ -201,6 +206,7 @@ pub struct MerkleMapStats {
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct MerklePerfStats {
     pub avg_set_exec_time_ns: f64,
+    pub avg_commit_exec_time_ns: f64,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -275,6 +281,9 @@ impl MerkleStorage {
             actions: Arc::new(Vec::new()),
             staging_context_hashes: Vec::new(),
             cow: false,
+            cumul_commit_exec_time: 0.0,
+            commit_exec_times: 0,
+            commit_exec_times_to_discard: 1,
         }
     }
 
@@ -453,6 +462,7 @@ impl MerkleStorage {
                   author: String,
                   message: String,
     ) -> Result<EntryHash, MerkleError> {
+        let instant = Instant::now();
         //println!("commit()");
         self.do_the_thing()?;
         //println!("after do_the_thing()");
@@ -478,6 +488,13 @@ impl MerkleStorage {
         self.map_stats.staged_area_elems = 0;
         let last_commit_hash = self.hash_commit(&new_commit)?;
         self.last_commit_hash = Some(last_commit_hash);
+
+        let elapsed = instant.elapsed().as_nanos() as f64;
+        if self.commit_exec_times >= self.commit_exec_times_to_discard.into() {
+            self.cumul_commit_exec_time += elapsed;
+        }
+        self.commit_exec_times += 1;
+
         Ok(last_commit_hash)
     }
 
@@ -1323,7 +1340,12 @@ impl MerkleStorage {
         if self.set_exec_times > self.set_exec_times_to_discard {
             avg_set_exec_time_ns = self.cumul_set_exec_time / ((self.set_exec_times - self.set_exec_times_to_discard) as f64);
         }
-        let perf = MerklePerfStats { avg_set_exec_time_ns: avg_set_exec_time_ns };
+        let mut avg_commit_exec_time_ns: f64 = 0.0;
+        if self.commit_exec_times > self.commit_exec_times_to_discard {
+            avg_commit_exec_time_ns = self.cumul_commit_exec_time / ((self.commit_exec_times - self.commit_exec_times_to_discard) as f64);
+        }
+        let perf = MerklePerfStats { avg_set_exec_time_ns: avg_set_exec_time_ns,
+                                     avg_commit_exec_time_ns: avg_commit_exec_time_ns};
         Ok(MerkleStorageStats { rocksdb_stats: db_stats, map_stats: self.map_stats, perf_stats: perf })
     }
 }

@@ -136,6 +136,7 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     assert_eq!(*ctx_hash, merkle_last_hash.unwrap());
     let stats = merkle.get_merkle_stats().unwrap();
     println!("Avg set exec time in ns: {}", stats.perf_stats.avg_set_exec_time_ns);
+    println!("Avg commit exec time in ns: {}", stats.perf_stats.avg_commit_exec_time_ns);
 
     Ok(())
 }
