@@ -394,7 +394,7 @@ mod tests {
                     predecessor: Some(k.clone()),
                     successors: vec![],
                     level: 0,
-                    chain_id: chain_id.clone(),
+                    chain_id,
                 };
                 assert_eq!(expected, value);
             }

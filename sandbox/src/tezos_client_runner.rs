@@ -400,7 +400,7 @@ pub fn reply_with_client_output(reply: TezosClientReply, log: &Logger) -> Result
 }
 
 /// Parse the returned error string from the tezos client
-pub fn extract_field_name_and_message_ocaml(error: &String) -> Option<(String, String)> {
+pub fn extract_field_name_and_message_ocaml(error: &str) -> Option<(String, String)> {
     let parsed_message = error.replace("\\", "").split("\"").filter(|s| s.contains("Invalid protocol_parameters")).join("").replace(" n{ ", "").replace("{", "");
 
     // extract the field name depending on the parsed error

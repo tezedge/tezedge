@@ -118,7 +118,7 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
 
     // apply third block - level 3
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
         )
@@ -170,7 +170,7 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
 
     // apply first block second time - level 0
     let apply_block_result_2 = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
         )
@@ -336,7 +336,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     // apply third block - level 3
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
         )
@@ -425,7 +425,7 @@ fn test_bootstrap_empty_storage_with_third_block_with_first_predecessor_should_f
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
         )
@@ -459,7 +459,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
 
     // apply second block - level 3 has validation_pass = 4
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
         )
@@ -506,7 +506,7 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
 
     // apply second block - level 2 with operations for level 3
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
         )
@@ -522,13 +522,13 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
     assert!(apply_block_result.is_err());
 }
 
-fn assert_contains_metadata(metadata: &String, expected_attributes: Vec<&str>) {
+fn assert_contains_metadata(metadata: &str, expected_attributes: Vec<&str>) {
     expected_attributes
         .iter()
         .for_each(|expected_attribute| assert_contains(&metadata, expected_attribute));
 }
 
-fn assert_contains(value: &String, attribute: &str) {
+fn assert_contains(value: &str, attribute: &str) {
     if !value.contains(attribute) {
         panic!(
             "assert_contains failed: value: `{:?}` does not contains: `{:?}`",

@@ -208,7 +208,7 @@ impl RightsContextData {
             let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?.to_string();
             roll_owners.insert(roll_num.parse()?, delegate);
         }
-        if roll_owners.len() == 0 {
+        if roll_owners.is_empty() {
             bail!("No rolls assigned, all rolls happened to be DELETED")
         }
         Ok(Some(roll_owners))
@@ -567,5 +567,5 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
             break;
         };
     }
-    Ok((v.into(), sequence))
+    Ok((v, sequence))
 }

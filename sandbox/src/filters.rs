@@ -32,7 +32,7 @@ pub fn sandbox(
         .or(wallets(log.clone(), client_runner.clone(), peers.clone()))
         .or(activate(log.clone(), client_runner.clone(), peers.clone()))
         .or(bake(log.clone(), client_runner.clone(), peers.clone()))
-        .or(bake_random(log.clone(), client_runner, peers.clone()))
+        .or(bake_random(log.clone(), client_runner, peers))
         .recover(move |rejection| {
             handle_rejection(rejection, log.clone())
         })
@@ -78,7 +78,7 @@ pub fn list(
     warp::path!("list_nodes")
         .and(warp::get())
         .and(with_log(log))
-        .and(with_peers(peers.clone()))
+        .and(with_peers(peers))
         .and_then(list_nodes)
 }
 

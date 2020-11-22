@@ -175,7 +175,7 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
     nodes.shuffle(&mut rand::thread_rng());
 
     for node in nodes {
-        match get_rpc_as_json(node.clone(), rpc_path).await {
+        match get_rpc_as_json(node, rpc_path).await {
             Ok(data) => return Ok(data),
             Err(e) => {
                 println!("WARN: failed for (node: {:?}) to get data for rpc '{}'. Reason: {}", node.clone(), node_rpc_url(node, rpc_path), e);

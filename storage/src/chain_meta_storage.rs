@@ -251,28 +251,28 @@ mod tests {
         // update for chain_id1
         index.set_test_chain_id(&chain_id1, &chain_id3)?;
         assert!(index.get_test_chain_id(&chain_id1)?.is_some());
-        assert_eq!(index.get_test_chain_id(&chain_id1)?.unwrap(), chain_id3.clone());
+        assert_eq!(index.get_test_chain_id(&chain_id1)?.unwrap(), chain_id3);
         assert!(index.get_test_chain_id(&chain_id2)?.is_none());
 
         // update for chain_id2
         index.set_test_chain_id(&chain_id2, &chain_id3)?;
         assert!(index.get_test_chain_id(&chain_id1)?.is_some());
-        assert_eq!(index.get_test_chain_id(&chain_id1)?.unwrap(), chain_id3.clone());
+        assert_eq!(index.get_test_chain_id(&chain_id1)?.unwrap(), chain_id3);
         assert!(index.get_test_chain_id(&chain_id2)?.is_some());
-        assert_eq!(index.get_test_chain_id(&chain_id2)?.unwrap(), chain_id3.clone());
+        assert_eq!(index.get_test_chain_id(&chain_id2)?.unwrap(), chain_id3);
 
         // update for chain_id1
         index.set_test_chain_id(&chain_id1, &chain_id2)?;
         assert!(index.get_test_chain_id(&chain_id1)?.is_some());
-        assert_eq!(index.get_test_chain_id(&chain_id1)?.unwrap(), chain_id2.clone());
+        assert_eq!(index.get_test_chain_id(&chain_id1)?.unwrap(), chain_id2);
         assert!(index.get_test_chain_id(&chain_id2)?.is_some());
-        assert_eq!(index.get_test_chain_id(&chain_id2)?.unwrap(), chain_id3.clone());
+        assert_eq!(index.get_test_chain_id(&chain_id2)?.unwrap(), chain_id3);
 
         // remove for chain_id1
         index.remove_test_chain_id(&chain_id1)?;
         assert!(index.get_test_chain_id(&chain_id1)?.is_none());
         assert!(index.get_test_chain_id(&chain_id2)?.is_some());
-        assert_eq!(index.get_test_chain_id(&chain_id2)?.unwrap(), chain_id3.clone());
+        assert_eq!(index.get_test_chain_id(&chain_id2)?.unwrap(), chain_id3);
 
         Ok(())
     }

@@ -237,7 +237,7 @@ pub fn inject_block(
     // compute the paths for each validation passes
     let paths = if let Some(vps) = validation_passes.clone() {
         let request = ComputePathRequest {
-            operations: vps.clone().iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
+            operations: vps.iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
         };
 
         let response = env.tezos_without_context_api().pool.get()?.api.compute_path(request)?;

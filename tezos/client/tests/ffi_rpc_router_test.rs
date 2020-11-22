@@ -97,7 +97,7 @@ fn test_run_operations() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/scripts/run_operation".to_string(),
             body: request.to_string(),
@@ -163,7 +163,7 @@ fn test_forge_operations() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/forge/operations".to_string(),
             body: request.to_string(),
@@ -250,7 +250,7 @@ fn test_preapply_operations() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/preapply/operations".to_string(),
             body: request.to_string(),
@@ -283,7 +283,7 @@ fn test_current_level_call() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path: "/chains/main/blocks/head/helpers/current_level?offset=1".to_string(),
             body: "".to_string(),
@@ -316,7 +316,7 @@ fn test_minimal_valid_time() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path:
                 "/chains/main/blocks/head/minimal_valid_time?priority=4&endorsing_power=0"
@@ -393,7 +393,7 @@ fn test_preapply_block() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: genesis_block_header,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path: "/chains/main/blocks/genesis/helpers/preapply/block?timestamp=1592985768"
                 .to_string(),

@@ -19,10 +19,8 @@ pub fn prepare_empty_dir(dir_name: &str) -> String {
 
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    let path = Path::new(out_dir.as_str())
+    Path::new(out_dir.as_str())
         .join(Path::new(dir_name))
-        .to_path_buf();
-    path
 }
 
 pub fn create_logger(level: Level) -> Logger {
