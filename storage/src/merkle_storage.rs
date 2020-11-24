@@ -111,12 +111,8 @@ pub struct MerkleStorage {
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
     last_commit_hash: Option<EntryHash>,
-    map_stats: MerkleMapStats,
-    /// divide this by the next field to get avg time spent in _set
-    cumul_set_exec_time: f64,
-    set_exec_times: u64,
-    /// first N measurements to discard
-    set_exec_times_to_discard: u64,
+    /// storage latency statistics
+    perf_stats: MerklePerfStats,
 }
 
 #[derive(Debug, Fail)]
@@ -160,21 +156,46 @@ impl From<TryFromSliceError> for MerkleError {
     fn from(error: TryFromSliceError) -> Self { MerkleError::HashConversionError { error } }
 }
 
+/// Latency statistics for each action (in nanoseconds)
 #[derive(Serialize, Debug, Clone, Copy)]
-pub struct MerkleMapStats {
-    staged_area_elems: u64,
-    current_tree_elems: u64,
+pub struct OperationLatencies {
+    /// divide this by the next field to get avg (mean) time spent in operation
+    cumul_op_exec_time: f64,
+    pub op_exec_times: u64,
+    pub avg_exec_time: f64,
+    /// lowest time spent in operation
+    pub op_exec_time_min: f64,
+    /// highest time spent in operation
+    pub op_exec_time_max: f64,
 }
 
-#[derive(Serialize, Debug, Clone, Copy)]
+impl OperationLatencies {
+    pub fn new() -> Self {
+        OperationLatencies {
+            cumul_op_exec_time: 0.0,
+            op_exec_times: 0,
+            avg_exec_time: 0.0,
+            op_exec_time_min: f64::MAX,
+            op_exec_time_max: f64::MIN,
+        }
+    }
+}
+
+// Latency statistics indexed by operation name (e.g. "Set")
+pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
+
+// Latency statistics per path indexed by first chunk of path (under /data/)
+pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
+
+#[derive(Serialize, Debug, Clone)]
 pub struct MerklePerfStats {
-    pub avg_set_exec_time_ns: f64,
+    pub global: OperationLatencyStats,
+    pub perpath: PerPathOperationStats,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
     rocksdb_stats: RocksDBStats,
-    map_stats: MerkleMapStats,
     pub perf_stats: MerklePerfStats,
 }
 
@@ -216,10 +237,7 @@ impl MerkleStorage {
             staged: HashMap::new(),
             current_stage_tree: None,
             last_commit_hash: None,
-            map_stats: MerkleMapStats { staged_area_elems: 0, current_tree_elems: 0 },
-            cumul_set_exec_time: 0.0,
-            set_exec_times: 0,
-            set_exec_times_to_discard: 20,
+            perf_stats: MerklePerfStats { global: HashMap::new(), perpath: HashMap::new() },
         }
     }
 
@@ -238,10 +256,13 @@ impl MerkleStorage {
     }
 
     /// Get value from historical context identified by commit hash.
-    pub fn get_history(&self, commit_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
+    pub fn get_history(&mut self, commit_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
+        let instant = Instant::now();
         let commit = self.get_commit(commit_hash)?;
 
-        self.get_from_tree(&commit.root_hash, key)
+        let rv = self.get_from_tree(&commit.root_hash, key);
+        self.update_execution_stats("GetKeyFromHistory".to_string(), Some(&key), &instant);
+        rv
     }
 
     fn get_from_tree(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
@@ -329,11 +350,12 @@ impl MerkleStorage {
 
     /// Get context tree under given prefix in string form (for JSON)
     /// depth - None returns full tree
-    pub fn get_context_tree_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
+    pub fn get_context_tree_by_prefix(&mut self, context_hash: &EntryHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
         if let Some(0) = depth {
             return Ok(StringTreeEntry::Null)
         }
 
+        let instant = Instant::now();
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
@@ -354,14 +376,18 @@ impl MerkleStorage {
             out.insert(key.to_owned(), self.get_context_recursive(&fullpath, &entry, rdepth)?);
         }
 
+        self.update_execution_stats("GetContextTreeByPrefix".to_string(), Some(&prefix), &instant);
         Ok(StringTreeEntry::Tree(out))
     }
 
     /// Construct Vec of all context key-values under given prefix
-    pub fn get_key_values_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+    pub fn get_key_values_by_prefix(&mut self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+        let instant = Instant::now();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
-        self._get_key_values_by_prefix(root_tree, prefix)
+        let rv = self._get_key_values_by_prefix(root_tree, prefix);
+        self.update_execution_stats("GetKeyValuesByPrefix".to_string(), Some(&prefix), &instant);
+        rv
     }
 
     fn _get_key_values_by_prefix(&self, root_tree: Tree, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
@@ -390,12 +416,12 @@ impl MerkleStorage {
 
     /// Flush the staging area and and move to work on a certain commit from history.
     pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
+        let instant = Instant::now();
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         self.last_commit_hash = Some(*context_hash);
         self.staged = HashMap::new();
-        self.map_stats.staged_area_elems = 0;
+        self.update_execution_stats("Checkout".to_string(), None, &instant);
         Ok(())
     }
 
@@ -407,6 +433,7 @@ impl MerkleStorage {
                   author: String,
                   message: String,
     ) -> Result<EntryHash, MerkleError> {
+        let instant = Instant::now();
         let staged_root = self.get_staged_root()?;
         let staged_root_hash = self.hash_tree(&staged_root)?;
         let parent_commit_hash = self.last_commit_hash;
@@ -424,17 +451,18 @@ impl MerkleStorage {
         self.put_to_staging_area(&new_commit_hash, entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = HashMap::new();
-        self.map_stats.staged_area_elems = 0;
         self.last_commit_hash = Some(new_commit_hash);
+        self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(new_commit_hash)
     }
 
     /// Set key/val to the staging area.
     pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
+        let instant = Instant::now();
         let root = self.get_staged_root()?;
         let new_root_hash = &self._set(&root, key, value)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
+        self.update_execution_stats("Set".to_string(), Some(&key), &instant);
         Ok(())
     }
 
@@ -444,22 +472,16 @@ impl MerkleStorage {
         let blob_hash = self.hash_blob(&value)?;
         self.put_to_staging_area(&blob_hash, Entry::Blob(value.clone()));
         let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
-        let instant = Instant::now();
-        let rv = self.compute_new_root_with_change(root, &key, Some(new_node));
-        let elapsed = instant.elapsed().as_nanos() as f64;
-        if self.set_exec_times >= self.set_exec_times_to_discard {
-            self.cumul_set_exec_time += elapsed;
-        }
-        self.set_exec_times += 1;
-        rv
+        self.compute_new_root_with_change(root, &key, Some(new_node))
     }
 
     /// Delete an item from the staging area.
     pub fn delete(&mut self, key: &ContextKey) -> Result<(), MerkleError> {
+        let instant = Instant::now();
         let root = self.get_staged_root()?;
         let new_root_hash = &self._delete(&root, key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
+        self.update_execution_stats("Delete".to_string(), Some(&key), &instant);
         Ok(())
     }
 
@@ -472,10 +494,12 @@ impl MerkleStorage {
     /// Copy subtree under a new path.
     /// TODO Consider copying values!
     pub fn copy(&mut self, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), MerkleError> {
+        let instant = Instant::now();
         let root = self.get_staged_root()?;
         let new_root_hash = &self._copy(&root, from_key, to_key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
+        // TODO: do we need to include from_key in stats?
+        self.update_execution_stats("CopyToDiff".to_string(), Some(&to_key), &instant);
         Ok(())
     }
 
@@ -570,11 +594,9 @@ impl MerkleStorage {
             None => {
                 let tree = Tree::new();
                 self.put_to_staging_area(&self.hash_tree(&tree)?, Entry::Tree(tree.clone()));
-                self.map_stats.current_tree_elems = tree.len() as u64;
                 Ok(tree)
             }
             Some(tree) => {
-                self.map_stats.current_tree_elems = tree.len() as u64;
                 Ok(tree.clone())
             }
         }
@@ -582,7 +604,6 @@ impl MerkleStorage {
 
     fn put_to_staging_area(&mut self, key: &EntryHash, value: Entry) {
         self.staged.insert(*key, value);
-        self.map_stats.staged_area_elems = self.staged.len() as u64;
     }
 
     /// Persists an entry and its descendants from staged area to database on disk.
@@ -756,12 +777,69 @@ impl MerkleStorage {
     /// Get various merkle storage statistics
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
         let db_stats = self.db.get_mem_use_stats()?;
-        let mut avg_set_exec_time_ns: f64 = 0.0;
-        if self.set_exec_times > self.set_exec_times_to_discard {
-            avg_set_exec_time_ns = self.cumul_set_exec_time / ((self.set_exec_times - self.set_exec_times_to_discard) as f64);
+
+        // calculate average values for global stats
+        let mut perf = self.perf_stats.clone();
+        for (_, stat) in perf.global.iter_mut() {
+            if stat.op_exec_times > 0 {
+                stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
+            } else {
+                stat.avg_exec_time = 0.0;
+            }
         }
-        let perf = MerklePerfStats { avg_set_exec_time_ns };
-        Ok(MerkleStorageStats { rocksdb_stats: db_stats, map_stats: self.map_stats, perf_stats: perf })
+        // calculate average values for per-path stats
+        for (_node, stat) in perf.perpath.iter_mut() {
+            for (_op, stat) in stat.iter_mut() {
+                if stat.op_exec_times > 0 {
+                    stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
+                } else {
+                    stat.avg_exec_time = 0.0;
+                }
+            }
+        }
+        Ok(MerkleStorageStats { rocksdb_stats: db_stats, perf_stats: perf })
+    }
+
+    /// Update global and per-path execution stats. Pass Instant with operation execution time
+    pub fn update_execution_stats(&mut self, op: String, path: Option<&ContextKey>, instant: &Instant) {
+        // stop timer and get duration
+        let exec_time: f64 = instant.elapsed().as_nanos() as f64;
+
+        // collect global stats
+        let entry = self.perf_stats.global.entry(op.to_owned()).or_insert( OperationLatencies::new() );
+        // add to cumulative execution time
+        entry.cumul_op_exec_time += exec_time;
+        entry.op_exec_times += 1;
+
+        // update min/max times for op
+        if exec_time < entry.op_exec_time_min {
+            entry.op_exec_time_min = exec_time;
+        }
+        if exec_time > entry.op_exec_time_max {
+            entry.op_exec_time_max = exec_time;
+        }
+
+        // collect per-path stats
+        if let Some(path) = path {
+            // we are only interested in nodes under /data
+            if path.len() > 1 && path[0] == "data".to_string() {
+                let node = path[1].to_string();
+                let perpath = self.perf_stats.perpath.entry(node).or_insert( HashMap::new() );
+                let entry = perpath.entry(op).or_insert( OperationLatencies::new() );
+
+                // add to cumulative execution time
+                entry.cumul_op_exec_time += exec_time;
+                entry.op_exec_times += 1;
+
+                // update min/max times for op
+                if exec_time < entry.op_exec_time_min {
+                    entry.op_exec_time_min = exec_time;
+                }
+                if exec_time > entry.op_exec_time_max {
+                    entry.op_exec_time_max = exec_time;
+                }
+            }
+        }
     }
 }
 
@@ -886,7 +964,7 @@ mod tests {
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(db_name, &cache);
         assert_eq!(storage.get_history(&commit1, key_abc).unwrap(), vec![1u8, 2u8]);
         assert_eq!(storage.get_history(&commit1, key_abx).unwrap(), vec![3u8]);
         assert_eq!(storage.get_history(&commit2, key_abx).unwrap(), vec![5u8]);
@@ -1017,7 +1095,7 @@ mod tests {
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(db_name, &cache);
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
