@@ -128,7 +128,7 @@ impl ContextApi for TezedgeContext {
 
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        let merkle = self.merkle.read().expect("lock poisoning");
+        let mut merkle = self.merkle.write().expect("lock poisoning");
         match merkle.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
@@ -143,13 +143,13 @@ impl ContextApi for TezedgeContext {
 
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        let merkle = self.merkle.read().expect("lock poisoning");
+        let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.get_key_values_by_prefix(&context_hash_arr, prefix)
     }
 
     fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        let merkle = self.merkle.read().expect("lock poisoning");
+        let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
     }
 
