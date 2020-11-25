@@ -230,8 +230,8 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
     );
     routes.handle(
         hash_set![Method::GET],
-        "/stats/database_mem",
-        dev_handler::database_memstats,
+        "/stats/context",
+        dev_handler::context_stats,
     );
     //routes.handle(hash_set![Method::GET], "/stats/storage", dev_handler::dev_stats_storage);
 
