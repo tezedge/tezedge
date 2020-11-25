@@ -111,8 +111,7 @@ pub struct MerkleStorage {
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
     last_commit_hash: Option<EntryHash>,
-    /// storage statistics
-    map_stats: MerkleMapStats,
+    /// storage latency statistics
     perf_stats: MerklePerfStats,
 }
 
@@ -188,12 +187,6 @@ pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
 // Latency statistics per path indexed by first chunk of path (under /data/)
 pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
 
-#[derive(Serialize, Debug, Clone, Copy)]
-pub struct MerkleMapStats {
-    staged_area_elems: u64,
-    current_tree_elems: u64,
-}
-
 #[derive(Serialize, Debug, Clone)]
 pub struct MerklePerfStats {
     pub global: OperationLatencyStats,
@@ -203,7 +196,6 @@ pub struct MerklePerfStats {
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
     rocksdb_stats: RocksDBStats,
-    map_stats: MerkleMapStats,
     pub perf_stats: MerklePerfStats,
 }
 
@@ -245,7 +237,6 @@ impl MerkleStorage {
             staged: HashMap::new(),
             current_stage_tree: None,
             last_commit_hash: None,
-            map_stats: MerkleMapStats { staged_area_elems: 0, current_tree_elems: 0 },
             perf_stats: MerklePerfStats { global: HashMap::new(), perpath: HashMap::new() },
         }
     }
@@ -359,7 +350,7 @@ impl MerkleStorage {
 
     /// Get context tree under given prefix in string form (for JSON)
     /// depth - None returns full tree
-    pub fn get_context_tree_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
+    pub fn get_context_tree_by_prefix(&mut self, context_hash: &EntryHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
         if let Some(0) = depth {
             return Ok(StringTreeEntry::Null)
         }
@@ -428,10 +419,8 @@ impl MerkleStorage {
         let instant = Instant::now();
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         self.last_commit_hash = Some(*context_hash);
         self.staged = HashMap::new();
-        self.map_stats.staged_area_elems = 0;
         self.update_execution_stats("Checkout".to_string(), None, &instant);
         Ok(())
     }
@@ -462,7 +451,6 @@ impl MerkleStorage {
         self.put_to_staging_area(&new_commit_hash, entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = HashMap::new();
-        self.map_stats.staged_area_elems = 0;
         self.last_commit_hash = Some(new_commit_hash);
         self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(new_commit_hash)
@@ -474,7 +462,6 @@ impl MerkleStorage {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._set(&root, key, value)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         self.update_execution_stats("Set".to_string(), Some(&key), &instant);
         Ok(())
     }
@@ -494,7 +481,6 @@ impl MerkleStorage {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._delete(&root, key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         self.update_execution_stats("Delete".to_string(), Some(&key), &instant);
         Ok(())
     }
@@ -512,7 +498,6 @@ impl MerkleStorage {
         let root = self.get_staged_root()?;
         let new_root_hash = &self._copy(&root, from_key, to_key)?;
         self.current_stage_tree = Some(self.get_tree(new_root_hash)?);
-        self.map_stats.current_tree_elems = self.current_stage_tree.as_ref().unwrap().len() as u64;
         // TODO: do we need to include from_key in stats?
         self.update_execution_stats("CopyToDiff".to_string(), Some(&to_key), &instant);
         Ok(())
@@ -609,11 +594,9 @@ impl MerkleStorage {
             None => {
                 let tree = Tree::new();
                 self.put_to_staging_area(&self.hash_tree(&tree)?, Entry::Tree(tree.clone()));
-                self.map_stats.current_tree_elems = tree.len() as u64;
                 Ok(tree)
             }
             Some(tree) => {
-                self.map_stats.current_tree_elems = tree.len() as u64;
                 Ok(tree.clone())
             }
         }
@@ -621,7 +604,6 @@ impl MerkleStorage {
 
     fn put_to_staging_area(&mut self, key: &EntryHash, value: Entry) {
         self.staged.insert(*key, value);
-        self.map_stats.staged_area_elems = self.staged.len() as u64;
     }
 
     /// Persists an entry and its descendants from staged area to database on disk.
@@ -815,7 +797,7 @@ impl MerkleStorage {
                 }
             }
         }
-        Ok(MerkleStorageStats { rocksdb_stats: db_stats, map_stats: self.map_stats, perf_stats: perf })
+        Ok(MerkleStorageStats { rocksdb_stats: db_stats, perf_stats: perf })
     }
 
     /// Update global and per-path execution stats. Pass Instant with operation execution time
