@@ -31,6 +31,7 @@ COPY --from=build-env /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/li
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsodium.so.23 /usr/lib/x86_64-linux-gnu/libsodium.so.23
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libgmp.so.10 /usr/lib/x86_64-linux-gnu/libgmp.so.10
+COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
 
 ENV LD_LIBRARY_PATH="/"
 CMD [ "/light-node", "--config-file", "/tezedge.config"]
