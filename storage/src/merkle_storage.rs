@@ -484,6 +484,8 @@ impl MerkleStorage {
         self.last_commit_hash = Some(*context_hash);
         self.staged = Vec::new();
         self.staged_indices = HashMap::new();
+        // clear list of actions
+        self.actions = Arc::new(Vec::new());
         self.update_execution_stats("Checkout".to_string(), None, &instant);
         Ok(())
     }
@@ -626,6 +628,8 @@ impl MerkleStorage {
                 Action::Copy(copy) => {
                     let root_hash = self.current_stage_tree_hash.unwrap();
                     let root = self.get_entry(&root_hash)?;
+                    //TODO inefficient - maybe instead of pushing root tree here just don't remove this entry on commit() (where we set self.staged to Vec::new())
+                    self.put_to_staging_area(&root_hash, self.get_entry(&root_hash)?)?;
                     let new_hash;
                     if let Entry::Tree(root) = root {
                         //TODO: assert that source_tree isn't Tree::new() ?
@@ -643,6 +647,8 @@ impl MerkleStorage {
 
                 Action::Remove(remove) => {
                     let root_hash = self.current_stage_tree_hash.unwrap();
+                    //TODO inefficient - maybe instead of pushing root tree here just don't remove this entry on commit() (where we set self.staged to Vec::new())
+                    self.put_to_staging_area(&root_hash, self.get_entry(&root_hash)?)?;
                     let new_hash = self.compute_new_root_with_change(&root_hash, &remove.key, None)?;
                     //TODO: check if there is need to decrement refcounts recursively
                     self.current_stage_tree = Some(self.get_tree(&new_hash)?);
@@ -1196,14 +1202,18 @@ mod tests {
     fn test_duplicate_entry_in_staging() {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage("ms_test_duplicate_entry", &cache);
-        storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]); // abc
-        storage.set(&vec!["c".to_string(), "zoo".to_string()], &vec![1, 2]); // abc
+        let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
+        let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
+        storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
+        storage.set(&vec!["c".to_string(), "zoo".to_string()], &vec![1, 2]);
         storage.set(&vec!["c".to_string(), "foo".to_string()], &vec![97, 98]);
         storage.delete(&vec!["c".to_string(), "zoo".to_string()]);
-        // now c/ is the same tree as a/ - which means there are two references to single entry in
-        // staging area
-        let commit = storage.commit(
-            0, "Tezos".to_string(), "Genesis".to_string());
+        // now c/ is the same tree as a/ - which means there are two references to single entry in staging area
+        // modify the tree and check that the other one was kept intact
+        storage.set(&vec!["c".to_string(), "foo".to_string()], &vec![3, 4]);
+        let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string()).unwrap();
+        assert_eq!(storage.get_history(&commit, a_foo).unwrap(), vec![97, 98]);
+        assert_eq!(storage.get_history(&commit, c_foo).unwrap(), vec![3, 4]);
     }
 
     #[test]
@@ -1215,9 +1225,11 @@ mod tests {
         storage.set(&vec!["a".to_string(), "aaa".to_string()], &vec![97, 98, 99, 100]);
         storage.set(&vec!["x".to_string()], &vec![97]);
         storage.set(&vec!["one".to_string(), "two".to_string(), "three".to_string()], &vec![97]);
+        storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+
         let tree = storage.current_stage_tree.clone().unwrap();
 
-        let hash = storage.hash_tree(&tree).unwrap();
+        let hash = hash_tree(&tree).unwrap();
 
         assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
     }
