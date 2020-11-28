@@ -300,6 +300,10 @@ impl MerkleStorage {
 
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
+        // build staging tree from saved list of actions (set/copy/delete)
+        // note: this can be slow if there are a lot of actions
+        self.apply_actions_to_staging_area()?;
+
         let root = &self.get_staged_root()?;
         let root_hash = hash_tree(&root)?;
 
