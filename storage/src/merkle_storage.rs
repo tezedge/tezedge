@@ -143,8 +143,6 @@ pub struct MerkleStorage {
     perf_stats: MerklePerfStats,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
-    /// list of context hashes after each Action step applied
-    staging_context_hashes: Vec<EntryHash>,
 }
 
 #[derive(Debug, Fail)]
@@ -297,7 +295,6 @@ impl MerkleStorage {
             last_commit_hash: None,
             perf_stats: MerklePerfStats { global: HashMap::new(), perpath: HashMap::new() },
             actions: Arc::new(Vec::new()),
-            staging_context_hashes: Vec::new(),
         }
     }
 
@@ -570,7 +567,6 @@ impl MerkleStorage {
                 self.current_stage_tree = Some(tree.clone());
                 let hash = hash_tree(&tree)?;
                 self.current_stage_tree_hash = Some(hash);
-                self.staging_context_hashes.push(hash);
                 self.put_to_staging_area(&hash, Entry::Tree(tree.clone()))?;
             }
             Some(_tree) => (),
@@ -621,7 +617,6 @@ impl MerkleStorage {
                     // e.g. maybe make current_stage_tree an index into self.staged
                     self.current_stage_tree = Some(self.get_tree(&new_hash)?);
                     self.current_stage_tree_hash = Some(new_hash);
-                    self.staging_context_hashes.push(new_hash);
                 }
 
                 Action::Copy(copy) => {
@@ -640,7 +635,6 @@ impl MerkleStorage {
                     }
                     self.current_stage_tree = Some(self.get_tree(&new_hash)?);
                     self.current_stage_tree_hash = Some(new_hash);
-                    self.staging_context_hashes.push(new_hash);
                 }
 
                 Action::Remove(remove) => {
@@ -649,7 +643,6 @@ impl MerkleStorage {
                     //TODO: check if there is need to decrement refcounts recursively
                     self.current_stage_tree = Some(self.get_tree(&new_hash)?);
                     self.current_stage_tree_hash = Some(new_hash);
-                    self.staging_context_hashes.push(new_hash);
                 }
 
             }
