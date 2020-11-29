@@ -10,7 +10,7 @@ use riker::{
 };
 use slog::{Logger, warn};
 
-use crypto::hash::{ChainId, HashType};
+use crypto::hash::ChainId;
 use networking::p2p::{
     network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
 };
@@ -233,13 +233,15 @@ impl Receive<NetworkChannelMsg> for Monitor {
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 match msg {
-                    PeerBootstrapped::Success { peer, peer_public_key, .. } => if let Some(monitor) = self.peer_monitors.get_mut(peer.uri()) {
-                        monitor.public_key = Some(HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer_public_key));
+                    PeerBootstrapped::Success { peer_id, .. } => if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
+                        monitor.public_key = Some(peer_id.peer_id_marker.clone());
                     }
                     PeerBootstrapped::Failure { .. } => ()
                 }
             }
             NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, &ctx.system.log()),
+            NetworkChannelMsg::PeerBlacklisted(..) => {},
+            NetworkChannelMsg::BlacklistPeer(..) => {}
         }
     }
 }

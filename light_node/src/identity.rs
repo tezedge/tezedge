@@ -13,18 +13,11 @@ use tezos_identity::{Identity, IdentitySerdeError};
 #[derive(Fail, Debug)]
 pub enum IdentityError {
     #[fail(display = "I/O error: {}", reason)]
-    IoError {
-        reason: io::Error
-    },
+    IoError { reason: io::Error },
     #[fail(display = "Identity serialization error: {}", reason)]
-    SerializationError {
-        reason: IdentitySerdeError
-    },
+    SerializationError { reason: IdentitySerdeError },
     #[fail(display = "Identity de-serialization error: {}", reason)]
-    DeserializationError {
-        reason: IdentitySerdeError
-    },
-
+    DeserializationError { reason: IdentitySerdeError },
 }
 
 impl From<io::Error> for IdentityError {
@@ -34,28 +27,42 @@ impl From<io::Error> for IdentityError {
 }
 
 impl slog::Value for IdentityError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
 /// Load identity from tezos configuration file.
-pub fn load_identity<P: AsRef<Path>>(identity_json_file_path: P) -> Result<Identity, IdentityError> {
-    let identity = fs::read_to_string(identity_json_file_path)
-        .map(|contents| Identity::from_json(&contents).map_err(|err| IdentityError::DeserializationError { reason: err }))??;
+pub fn load_identity<P: AsRef<Path>>(
+    identity_json_file_path: P,
+) -> Result<Identity, IdentityError> {
+    let identity = fs::read_to_string(identity_json_file_path).map(|contents| {
+        Identity::from_json(&contents)
+            .map_err(|err| IdentityError::DeserializationError { reason: err })
+    })??;
     Ok(identity)
 }
 
 /// Stores provided identity into the file specified by path
 pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
-    let identity_json = identity.as_json().map_err(|err| IdentityError::SerializationError { reason: err })?;
+    let identity_json = identity
+        .as_json()
+        .map_err(|err| IdentityError::SerializationError { reason: err })?;
     fs::write(&path, &identity_json)?;
 
     Ok(())
 }
 
 /// Ensures (load or create) identity exists according to the configuration
-pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: &Logger) -> Result<Identity, IdentityError> {
+pub fn ensure_identity(
+    identity_cfg: &crate::configuration::Identity,
+    log: &Logger,
+) -> Result<Identity, IdentityError> {
     if identity_cfg.identity_json_file_path.exists() {
         load_identity(&identity_cfg.identity_json_file_path)
     } else {
@@ -68,7 +75,7 @@ pub fn ensure_identity(identity_cfg: &crate::configuration::Identity, log: &Logg
                 info!(log, "Generated identity stored to file"; "file" => identity_cfg.identity_json_file_path.clone().into_os_string().into_string().unwrap());
                 Ok(identity)
             }
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
 }

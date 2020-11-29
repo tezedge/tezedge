@@ -44,6 +44,8 @@ lazy_static! {
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum ProtocolMessage {
     ApplyBlockCall(ApplyBlockRequest),
+    AssertEncodingForProtocolDataCall(ProtocolHash, RustBytes),
+    BeginApplicationCall(BeginApplicationRequest),
     BeginConstructionCall(BeginConstructionRequest),
     ValidateOperationCall(ValidateOperationRequest),
     ProtocolRpcCall(ProtocolRpcRequest),
@@ -80,6 +82,8 @@ struct GenesisResultDataParams {
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
+    AssertEncodingForProtocolDataResult(Result<(), ProtocolDataError>),
+    BeginApplicationResult(Result<BeginApplicationResponse, BeginApplicationError>),
     BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
     ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
     RpcResponse(Result<ProtocolRpcResponse, ProtocolRpcError>),
@@ -121,9 +125,17 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(
                 let res = Proto::apply_block(request);
                 tx.send(&NodeMessage::ApplyBlockResult(res))?;
             }
+            ProtocolMessage::AssertEncodingForProtocolDataCall(protocol_hash, protocol_data) => {
+                let res = Proto::assert_encoding_for_protocol_data(protocol_hash, protocol_data);
+                tx.send(&NodeMessage::AssertEncodingForProtocolDataResult(res))?;
+            }
             ProtocolMessage::BeginConstructionCall(request) => {
                 let res = Proto::begin_construction(request);
                 tx.send(&NodeMessage::BeginConstructionResult(res))?;
+            }
+            ProtocolMessage::BeginApplicationCall(request) => {
+                let res = Proto::begin_application(request);
+                tx.send(&NodeMessage::BeginApplicationResult(res))?;
             }
             ProtocolMessage::ValidateOperationCall(request) => {
                 let res = Proto::validate_operation(request);
@@ -188,6 +200,10 @@ pub enum ProtocolError {
     /// Protocol rejected to apply a block.
     #[fail(display = "Apply block error: {}", reason)]
     ApplyBlockError { reason: ApplyBlockError },
+    #[fail(display = "Assert encoding for protocol data error: {}", reason)]
+    AssertEncodingForProtocolDataError { reason: ProtocolDataError },
+    #[fail(display = "Begin construction error: {}", reason)]
+    BeginApplicationError { reason: BeginApplicationError },
     #[fail(display = "Begin construction error: {}", reason)]
     BeginConstructionError { reason: BeginConstructionError },
     #[fail(display = "Validate operation error: {}", reason)]
@@ -372,10 +388,12 @@ pub struct ProtocolController {
 impl ProtocolController {
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(600);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
+    const BEGIN_APPLICATION_TIMEOUT: Duration = Duration::from_secs(120);
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
     const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
     const COMPUTE_PATH_TIMEOUT: Duration = Duration::from_secs(30);
+    const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Duration::from_secs(15);
 
     /// Apply block
     pub fn apply_block(
@@ -396,6 +414,64 @@ impl ProtocolController {
         match receive_result? {
             NodeMessage::ApplyBlockResult(result) => {
                 result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    /// Begin application
+    pub fn assert_encoding_for_protocol_data(
+        &self,
+        protocol_hash: ProtocolHash,
+        protocol_data: RustBytes,
+    ) -> Result<(), ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx
+            .send(&ProtocolMessage::AssertEncodingForProtocolDataCall(
+                protocol_hash,
+                protocol_data,
+            ))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx
+            .set_read_timeout(Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::AssertEncodingForProtocolDataResult(result) => result.map_err(|err| {
+                ProtocolError::AssertEncodingForProtocolDataError { reason: err }.into()
+            }),
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    /// Begin application
+    pub fn begin_application(
+        &self,
+        request: BeginApplicationRequest,
+    ) -> Result<BeginApplicationResponse, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx
+            .send(&ProtocolMessage::BeginApplicationCall(request))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx
+            .set_read_timeout(Some(Self::BEGIN_APPLICATION_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::BeginApplicationResult(result) => {
+                result.map_err(|err| ProtocolError::BeginApplicationError { reason: err }.into())
             }
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),

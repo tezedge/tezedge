@@ -54,7 +54,7 @@ unsafe fn set_file_desc_limit(log: &Logger, num: u64) {
     soft = cmp::min(num, hard);
     match rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard) {
         Ok(()) => info!(log, "Open files limit set to {}.", soft),
-        Err(e) => error!(log, "Setting open files limit failed (setrlimit): {}", e)
+        Err(e) => error!(log, "Setting open files limit failed (setrlimit): {}", e),
     }
 }
 

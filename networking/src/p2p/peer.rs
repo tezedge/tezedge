@@ -9,18 +9,20 @@ use std::time::Duration;
 use failure::{Error, Fail};
 use futures::lock::Mutex;
 use riker::actors::*;
-use slog::{debug, info, Logger, trace, warn};
+use slog::{debug, info, Logger, o, trace, warn};
 use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
 use crypto::crypto_box::precompute;
-use crypto::hash::{CryptoboxPublicKeyHash, HashType};
+use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
+
+use crate::{PeerId, PeerPublicKey};
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -29,9 +31,6 @@ const IO_TIMEOUT: Duration = Duration::from_secs(6);
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
-
-pub type PeerId = String;
-pub type PublicKey = CryptoboxPublicKeyHash;
 
 #[derive(Debug, Fail)]
 pub enum PeerError {
@@ -269,23 +268,24 @@ impl Receive<Bootstrap> for Peer {
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
             match bootstrap(msg, info, &system.log()).await {
-                Ok(BootstrapOutput(rx, tx, public_key, metadata)) => {
-                    debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "metadata" => format!("{:?}", &metadata));
+                Ok(BootstrapOutput(rx, tx, public_key, peer_metadata)) => {
+                    debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "peer_metadata" => format!("{:?}", &peer_metadata));
                     setup_net(&net, tx).await;
 
-                    let peer_id = HashType::CryptoboxPublicKeyHash.bytes_to_string(&public_key);
+                    let peer_id = PeerId::new(myself.clone(), public_key, peer_address.clone());
+                    let peer_id_marker = peer_id.peer_id_marker.clone();
+
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Success {
-                            peer: myself.clone(),
-                            peer_public_key: Arc::new(public_key),
-                            peer_metadata: metadata,
+                            peer_id,
+                            peer_metadata,
                         }.into(),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
 
                     // begin to process incoming messages in a loop
-                    let log = system.log().new(slog::o!("peer" => peer_id));
+                    let log = system.log().new(slog::o!("peer_id" => peer_id_marker));
                     begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
@@ -346,7 +346,7 @@ impl Receive<SendMessage> for Peer {
 }
 
 /// Output values of the successful bootstrap process
-pub struct BootstrapOutput(pub EncryptedMessageReader, pub EncryptedMessageWriter, pub PublicKey, pub MetadataMessage);
+pub struct BootstrapOutput(pub EncryptedMessageReader, pub EncryptedMessageWriter, pub PeerPublicKey, pub MetadataMessage);
 
 pub async fn bootstrap(
     msg: Bootstrap,
@@ -399,8 +399,18 @@ pub async fn bootstrap(
     };
 
     // from now on all messages will be encrypted
-    let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, peer_id.clone(), log.clone());
-    let mut msg_rx = EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, peer_id, log.clone());
+    let mut msg_tx = EncryptedMessageWriter::new(
+        msg_tx,
+        precomputed_key.clone(),
+        nonce_local,
+        log.new(o!("peer_id" => peer_id.clone())),
+    );
+    let mut msg_rx = EncryptedMessageReader::new(
+        msg_rx,
+        precomputed_key,
+        nonce_remote,
+        log.new(o!("peer_id" => peer_id.clone())),
+    );
 
     let connecting_to_self = hex::encode(connection_message.public_key()) == info.public_key;
     if connecting_to_self {

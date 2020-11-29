@@ -1,23 +1,28 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Contains various validation functions:
+//! - to support to validate different parts of the chain
+//! - to ensure consistency of chain
+//! - to support multipass validation
+
 use std::sync::{Arc, RwLock};
 
 use failure::Fail;
 
-use crypto::hash::{ChainId, HashType, OperationHash};
+use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
-use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest, ValidateOperationResult};
+use tezos_api::ffi::{BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::block_header::Fitness;
-use tezos_messages::p2p::encoding::prelude::Operation;
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::shell_channel::CurrentMempoolState;
 use crate::validation::fitness_comparator::FitnessWrapper;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
-pub fn can_accept_new_head(new_head: &BlockHeaderWithHash, current_head: &Head, current_context_fitness: &Fitness) -> bool {
+pub fn can_update_current_head(new_head: &BlockHeaderWithHash, current_head: &Head, current_context_fitness: &Fitness) -> bool {
     let new_head_fitness = FitnessWrapper::new(new_head.header.fitness());
     let current_head_fitness = FitnessWrapper::new(current_head.fitness());
     let context_fitness = FitnessWrapper::new(current_context_fitness);
@@ -194,6 +199,40 @@ pub fn prevalidate_operation(
         })
 }
 
+/// Implementation for multipass validation:
+/// - checks encoding for protocol_data
+/// - checks begin_application, if predecessor
+///
+/// Returns None if everything, else return error
+pub fn check_multipass_validation(
+    chain_id: &ChainId,
+    protocol_hash: ProtocolHash,
+    validated_block_header: &BlockHeader,
+    predecessor: Option<BlockHeaderWithHash>,
+    api: &ProtocolController,
+) -> Option<ProtocolServiceError> {
+
+    // 1. check encoding for protocol_data
+    if let Err(e) = api.assert_encoding_for_protocol_data(protocol_hash, validated_block_header.protocol_data().clone()) {
+        return Some(e);
+    };
+
+    // 2. lets check strict multipasss validation with protocol for block_header
+    if let Some(predecessor) = predecessor {
+        let request = BeginApplicationRequest {
+            chain_id: chain_id.clone(),
+            pred_header: predecessor.header.as_ref().clone(),
+            block_header: validated_block_header.clone(),
+        };
+
+        if let Err(e) = api.begin_application(request) {
+            return Some(e);
+        }
+    }
+
+    None
+}
+
 /// Fitness comparison:
 ///     - shortest lists are smaller
 ///     - lexicographical order for lists of the same length.
@@ -287,51 +326,51 @@ mod tests {
     }
 
     #[test]
-    fn test_can_accept_new_head() -> Result<(), failure::Error> {
+    fn test_can_update_current_head() -> Result<(), failure::Error> {
         assert_eq!(false,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
                    )
         );
         assert_eq!(false,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 1]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
                    )
         );
         assert_eq!(false,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 1]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
                    )
         );
         assert_eq!(false,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 2]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
                    )
         );
         assert_eq!(true,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 3]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
                    )
         );
         assert_eq!(true,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 1], [0]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
                    )
         );
         assert_eq!(true,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 0, 1]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 2]),
@@ -340,7 +379,7 @@ mod tests {
 
         // context fitnes is lower than current head
         assert_eq!(true,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 2]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 1]),
@@ -348,7 +387,7 @@ mod tests {
         );
         // context fitnes is higher than current head
         assert_eq!(false,
-                   can_accept_new_head(
+                   can_update_current_head(
                        &new_head(fitness!([0], [0, 0, 2]))?,
                        &current_head(fitness!([0], [0, 0, 2]))?,
                        &fitness!([0], [0, 0, 3]),

@@ -1,17 +1,17 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use core::fmt;
 use std::cmp;
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use failure::_core::fmt::Formatter;
 use rand::prelude::ThreadRng;
 use rand::Rng;
 use slog::Logger;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use crypto::seeded_step::{Seed, Step};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError};
 use storage::block_meta_storage::Meta;
@@ -20,10 +20,18 @@ use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
+use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
+use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::collections::{BlockData, UniqueBlockData};
 use crate::shell_channel::{BlockApplied, CurrentMempoolState};
 use crate::validation;
+pub enum BlockAcceptanceResult {
+    AcceptBlock,
+    IgnoreBlock,
+    UnknownBranch,
+    MutlipassValidationError(ProtocolServiceError),
+}
 
 /// Holds state of all known blocks
 pub struct BlockchainState {
@@ -56,21 +64,140 @@ impl BlockchainState {
 
     /// Validate if we can accept branch
     pub fn can_accept_branch(&self, branch: &CurrentBranchMessage, current_head: &Option<Head>) -> bool {
+        // validate chain which we operate on
+        if self.get_chain_id() != branch.chain_id() {
+            // return Ok(BlockAcceptanceResult::IgnoreBlock);
+            return false;
+        }
         if branch.current_branch().current_head().level() <= 0 {
             return false;
         }
 
         if let Some(current_head) = current_head.as_ref() {
-            // we can accept branch if increases fitness
+            // (only_if_fitness_increases) we can accept branch if increases fitness
             if validation::is_fitness_increases(current_head, branch.current_branch().current_head().fitness()) {
                 return true;
             }
-
 
             false
         } else {
             true
         }
+    }
+
+    /// Validate if we can accept head
+    pub fn can_accept_head(&self,
+                           head: &CurrentHeadMessage,
+                           current_head: &Option<Head>,
+                           api: &ProtocolController,
+    ) -> Result<BlockAcceptanceResult, failure::Error> {
+        // validate chain which we operate on
+        if self.get_chain_id() != head.chain_id() {
+            return Ok(BlockAcceptanceResult::IgnoreBlock);
+        }
+
+        let validated_header: &BlockHeader = head.current_block_header();
+        if validated_header.level() <= 0 {
+            return Ok(BlockAcceptanceResult::IgnoreBlock);
+        }
+
+        // we need our current head at first
+        if let Some(current_head) = current_head.as_ref() {
+            // (only_if_fitness_increases) we can accept head if increases fitness
+            if !validation::is_fitness_increases(current_head, validated_header.fitness()) {
+                return Ok(BlockAcceptanceResult::IgnoreBlock);
+            }
+
+            // lets try to find protocol for validated_block
+            let (protocol_hash, predecessor_header, missing_predecessor) = self.resolve_protocol(validated_header)?;
+
+            // if missing predecessor
+            if missing_predecessor {
+                return Ok(BlockAcceptanceResult::UnknownBranch);
+            }
+
+            // if we have protocol lets validate
+            if let Some(protocol_hash) = protocol_hash {
+                // lets check strict multipass validation
+                match validation::check_multipass_validation(
+                    head.chain_id(),
+                    protocol_hash,
+                    &validated_header,
+                    predecessor_header,
+                    api,
+                ) {
+                    Some(error) => {
+                        Ok(BlockAcceptanceResult::MutlipassValidationError(error))
+                    }
+                    None => Ok(BlockAcceptanceResult::AcceptBlock)
+                }
+            } else {
+                // if not, we cannot trigger validation, so we just ignore head
+                Ok(BlockAcceptanceResult::IgnoreBlock)
+            }
+        } else {
+            Ok(BlockAcceptanceResult::IgnoreBlock)
+        }
+    }
+
+    /// Returns triplet:
+    /// 1. protocol_hash
+    /// 2. applied_predecessor (only if is already applied)
+    /// 3. (bool) missing_predecessor,
+    fn resolve_protocol(&self, validated_header: &BlockHeader) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), failure::Error> {
+        // TODO: TE-238 - store proto_level and protocol_hash and map - optimization - detect change protocol event
+
+        let (protocol_hash, predecessor_header, missing_predecessor) = match self.block_meta_storage.get(validated_header.predecessor())? {
+            Some(predecessor_meta) => {
+                match predecessor_meta.is_applied() {
+                    true => {
+                        // if predecessor is applied, than we have exact protocol
+                        match self.block_storage.get_with_json_data(validated_header.predecessor())? {
+                            Some((predecessor_header, predecessor_data)) => {
+                                // get next_protocol from predecessor
+                                let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(&predecessor_data.block_header_proto_metadata_json())?;
+                                let protocol_hash = metadata
+                                    .get("next_protocol")
+                                    .map(|value| value.as_str());
+                                if let Some(Some(protocol_hash)) = protocol_hash {
+                                    // return next_protocol and header
+                                    (
+                                        Some(HashType::ProtocolHash.string_to_bytes(protocol_hash)?),
+                                        Some(predecessor_header),
+                                        false,
+                                    )
+                                } else {
+                                    return Err(
+                                        failure::format_err!(
+                                                    "Missing `next_protocol` attribute for applied predecessor: {}!",
+                                                    HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                                )
+                                    );
+                                }
+                            }
+                            None => {
+                                return Err(
+                                    failure::format_err!(
+                                            "Missing data for applied predecessor: {}!",
+                                            HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                        )
+                                );
+                            }
+                        }
+                    }
+                    false => {
+                        // if we dont have applied predecessor, we dont know protocol_hash
+                        (None, None, false)
+                    }
+                }
+            }
+            None => {
+                // if we dont have predecessor stored
+                (None, None, true)
+            }
+        };
+
+        Ok((protocol_hash, predecessor_header, missing_predecessor))
     }
 
     /// Returns true, if [block] can be applied
@@ -105,8 +232,9 @@ impl BlockchainState {
     }
 
     /// Resolves missing blocks and schedules them for download from network
-    pub fn schedule_branch_bootstrap(&mut self, block_hash: &BlockHash, block_header: &BlockHeader, history: &Vec<BlockHash>) -> Result<(), StorageError> {
-        let block_level = block_header.level();
+    pub fn schedule_branch_bootstrap(&mut self, block_header: &BlockHeaderWithHash, history: &Vec<BlockHash>) -> Result<(), StorageError> {
+        let block_level = block_header.header.level();
+        let block_hash = block_header.hash.clone();
 
         // at first schedule history - we try to prioritize download from the beginning, so the history is reversed here
         self.push_missing_history(
@@ -115,10 +243,10 @@ impl BlockchainState {
         )?;
 
         // schedule predecessor (if not present in history)
-        if !history.contains(block_header.predecessor()) {
+        if !history.contains(block_header.header.predecessor()) {
             self.push_missing_block(
                 MissingBlock::with_level_guess(
-                    block_header.predecessor().clone(),
+                    block_header.header.predecessor().clone(),
                     std::cmp::max(1, block_level - 1),
                 )
             )?;
@@ -140,7 +268,7 @@ impl BlockchainState {
     /// Returns:
     /// - None, if head was not updated, means was ignored
     /// - Some(new_head, head_result)
-    pub fn try_set_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>) -> Result<Option<(Head, HeadResult)>, StorageError> {
+    pub fn try_update_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>) -> Result<Option<(Head, HeadResult)>, StorageError> {
         if let Some(current_head) = current_head {
             // get fitness from mempool, if not, than use current_head.fitness
             let current_context_fitness = match mempool_state {
@@ -155,7 +283,7 @@ impl BlockchainState {
             };
 
             // need to check against current_head, if not accepted, just ignore potential head
-            if !validation::can_accept_new_head(potential_new_head.header(), &current_head, &current_context_fitness) {
+            if !validation::can_update_current_head(potential_new_head.header(), &current_head, &current_context_fitness) {
                 // just ignore
                 return Ok(None);
             }
@@ -451,7 +579,7 @@ pub enum HeadResult {
 }
 
 impl fmt::Display for HeadResult {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
             HeadResult::HeadIncrement => write!(f, "HeadIncrement"),

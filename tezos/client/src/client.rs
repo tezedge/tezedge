@@ -3,13 +3,15 @@
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::{
-    ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError,
+    ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
+    BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
     ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyError,
     HelpersPreapplyResponse, InitProtocolContextResult, PatchContext, PrevalidatorWrapper,
-    ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse,
-    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
+    ProtocolDataError, ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest,
+    ProtocolRpcResponse, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+    TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+    ValidateOperationResponse,
 };
 use tezos_interop::ffi;
 
@@ -82,6 +84,18 @@ pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, App
     match ffi::apply_block(request) {
         Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
         Err(e) => Err(ApplyBlockError::FailedToApplyBlock {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
+    }
+}
+
+/// Begin application
+pub fn begin_application(
+    request: BeginApplicationRequest,
+) -> Result<BeginApplicationResponse, BeginApplicationError> {
+    match ffi::begin_application(request) {
+        Ok(result) => result.map_err(|e| BeginApplicationError::from(e)),
+        Err(e) => Err(BeginApplicationError::FailedToBeginApplication {
             message: format!("Unknown OcamlError: {:?}", e),
         }),
     }
@@ -169,6 +183,22 @@ pub fn decode_context_data(
         Ok(result) => Ok(result?),
         Err(e) => Err(ContextDataError::DecodeError {
             message: format!("FFI 'decode_context_data' failed! Reason: {:?}", e),
+        }),
+    }
+}
+
+/// Decode protocoled context data
+pub fn assert_encoding_for_protocol_data(
+    protocol_hash: ProtocolHash,
+    protocol_data: Vec<u8>,
+) -> Result<(), ProtocolDataError> {
+    match ffi::assert_encoding_for_protocol_data(protocol_hash, protocol_data) {
+        Ok(result) => Ok(result?),
+        Err(e) => Err(ProtocolDataError::DecodeError {
+            message: format!(
+                "FFI 'assert_encoding_for_protocol_data' failed! Reason: {:?}",
+                e
+            ),
         }),
     }
 }

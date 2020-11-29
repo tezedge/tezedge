@@ -11,7 +11,7 @@ use std::io;
 use bytes::Buf;
 use failure::{Error, Fail};
 use failure::_core::time::Duration;
-use slog::{FnValue, Logger, o, trace};
+use slog::{FnValue, Logger, trace};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
@@ -20,8 +20,6 @@ use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
 use crypto::nonce::Nonce;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
-
-use crate::p2p::peer::PeerId;
 
 /// Max allowed content length in bytes when taking into account extra data added by encryption
 pub const CONTENT_LENGTH_MAX: usize = tezos_messages::p2p::binary_message::CONTENT_LENGTH_MAX - crypto::crypto_box::BOX_ZERO_BYTES;
@@ -180,8 +178,7 @@ pub struct EncryptedMessageWriter {
 }
 
 impl EncryptedMessageWriter {
-    pub fn new(tx: MessageWriter, precomputed_key: PrecomputedKey, nonce_local: Nonce, peer_id: PeerId, log: Logger) -> Self {
-        let log = log.new(o!("peer" => peer_id));
+    pub fn new(tx: MessageWriter, precomputed_key: PrecomputedKey, nonce_local: Nonce, log: Logger) -> Self {
         EncryptedMessageWriter { tx, precomputed_key, nonce_local, log }
     }
 
@@ -227,8 +224,7 @@ pub struct EncryptedMessageReader {
 
 impl EncryptedMessageReader {
     /// Create new encrypted message from async reader and peer data
-    pub fn new(rx: MessageReader, precomputed_key: PrecomputedKey, nonce_remote: Nonce, peer_id: PeerId, log: Logger) -> Self {
-        let log = log.new(o!("peer" => peer_id));
+    pub fn new(rx: MessageReader, precomputed_key: PrecomputedKey, nonce_remote: Nonce, log: Logger) -> Self {
         EncryptedMessageReader { rx, precomputed_key, nonce_remote, log }
     }
 

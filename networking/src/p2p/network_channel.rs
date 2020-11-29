@@ -11,7 +11,7 @@ use riker::actors::*;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::p2p::peer::PublicKey;
+use crate::PeerId;
 
 use super::peer::PeerRef;
 
@@ -30,8 +30,7 @@ pub struct PeerCreated {
 #[derive(Clone, Debug)]
 pub enum PeerBootstrapped {
     Success {
-        peer: PeerRef,
-        peer_public_key: Arc<PublicKey>,
+        peer_id: PeerId,
         peer_metadata: MetadataMessage,
     },
     Failure {
@@ -53,6 +52,8 @@ pub struct PeerMessageReceived {
 pub enum NetworkChannelMsg {
     PeerCreated(PeerCreated),
     PeerBootstrapped(PeerBootstrapped),
+    PeerBlacklisted(PeerId),
+    BlacklistPeer(PeerId, String),
     PeerMessageReceived(PeerMessageReceived),
 }
 
