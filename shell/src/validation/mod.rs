@@ -56,32 +56,28 @@ pub fn can_accept_operation_from_p2p(operation_hash: &OperationHash, result: &Va
     // we can accept from p2p, only if it is [not refused]
     if result.refused
         .iter()
-        .find(|operation_result| operation_result.hash.eq(operation_hash))
-        .is_some() {
+        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
         return false;
     }
 
     // true, if contained in applied
     if result.applied
         .iter()
-        .find(|operation_result| operation_result.hash.eq(operation_hash))
-        .is_some() {
+        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
         return true;
     }
 
     // true, if contained in branch_refused
     if result.branch_refused
         .iter()
-        .find(|operation_result| operation_result.hash.eq(operation_hash))
-        .is_some() {
+        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
         return true;
     }
 
     // true, if contained in branch_refused
     if result.branch_delayed
         .iter()
-        .find(|operation_result| operation_result.hash.eq(operation_hash))
-        .is_some() {
+        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
         return true;
     }
 

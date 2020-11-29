@@ -84,18 +84,14 @@ steps:
     - export PROTOCOL_RUNNER=/drone/src/target/release/protocol-runner
     - cargo test --package shell --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
     - cargo test --package shell --release -- --nocapture --ignored test_readonly_protocol_runner_connection_pool
-    - cargo test --package shell --release -- --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
-    - cargo test --package shell --release -- --nocapture --ignored test_process_current_branch_on_level3_then_current_head_level4
-    - cargo test --package shell --release -- --nocapture --ignored test_process_reorg_with_different_current_branches
-    - cargo test --package shell --release -- --nocapture --ignored test_process_current_heads_to_level3
-    - cargo test --package shell --release -- --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
     # build and run benches
     - cargo bench -- --nocapture
     - cargo bench --tests -- --nocapture
     # collect binary artefacts
     - mkdir /artifacts/ffi
     - mkdir /artifacts/tezedge
-    - mkdir -p /artifacts/identities
+    - mkdir -p /artifacts/test_data/tests/resources
+    - mkdir /artifacts/identities
     - cp ./target/release/light-node /artifacts
     - cp ./target/release/sandbox /artifacts
     - cp ./target/release/protocol-runner /artifacts
@@ -103,6 +99,12 @@ steps:
     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
     - cp ./sandbox/artifacts/tezos-client /artifacts
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
+    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
+    - cp `find ./target/release/deps/ | grep actors_apply_blocks_test | grep -v "\.d" | head -1` /artifacts/actors_apply_blocks_test
+    - cp ./shell/tests/resources/apply_block_request_until_1326.zip /artifacts/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip /artifacts/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip /artifacts/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox-patch-context.json /artifacts/test_data/tests/resources
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
@@ -114,6 +116,79 @@ steps:
     - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
+
+- name: apply/block-context-shell-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/actors_apply_blocks_test --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
+
+- name: current-branch/head-shell-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_current_branch_on_level3_then_current_head_level4
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_current_heads_to_level3
+
+- name: simple-reorg-shell-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_reorg_with_different_current_branches
+
+- name: multipass-blacklist-shell-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
 
 volumes:
   - name: build

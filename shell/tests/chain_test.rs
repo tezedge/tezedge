@@ -51,7 +51,7 @@ lazy_static! {
 fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
 
     let db = test_cases_data::current_branch_on_level_3::init_data(&log);
 
@@ -118,7 +118,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
 fn test_process_reorg_with_different_current_branches() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
 
     // prepare env data
     let (tezos_env, patch_context) = {
@@ -223,7 +223,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
 fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
 
     let db = test_cases_data::dont_serve_current_branch_messages::init_data(&log);
 
@@ -304,7 +304,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
 fn test_process_current_head_with_malformed_blocks_and_check_blacklist() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
 
     let db = test_cases_data::current_branch_on_level_3::init_data(&log);
 
@@ -723,7 +723,7 @@ mod test_cases_data {
             .level(block_header.level())
             .proto(block_header.proto())
             .predecessor(block_header.predecessor().clone())
-            .timestamp(block_header.timestamp().clone())
+            .timestamp(block_header.timestamp())
             .validation_pass(block_header.validation_pass())
             .operations_hash(block_header.operations_hash().clone())
             .fitness(block_header.fitness().clone())
@@ -744,7 +744,7 @@ mod test_cases_data {
             .level(block_header.level())
             .proto(block_header.proto())
             .predecessor(block_header.predecessor().clone())
-            .timestamp(block_header.timestamp().clone())
+            .timestamp(block_header.timestamp())
             .validation_pass(block_header.validation_pass())
             .operations_hash(block_header.operations_hash().clone())
             .fitness(block_header.fitness().clone())
@@ -928,7 +928,7 @@ mod test_node_peer {
             // lets send message to open tx channel
             let msg: PeerMessageResponse = msg.into().into();
             let tx = self.tx.clone();
-            let name = self.name.clone();
+            let name = self.name.to_string();
             let log = self.log.clone();
             self.tokio_executor.spawn(async move {
                 let mut tx_lock = tx.lock().await;

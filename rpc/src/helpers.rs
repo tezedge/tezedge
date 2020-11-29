@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{collections::HashMap, convert::TryFrom};
+use std::ops::Neg;
 use std::pin::Pin;
 
 use chrono::Utc;
@@ -428,6 +429,21 @@ pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) 
     )
 }
 
+fn split_block_id_param(block_id_param: &str, split_char: char, negate: bool) -> Result<(&str, Option<i32>), failure::Error> {
+    let splits: Vec<&str> = block_id_param.split(split_char).collect();
+    Ok(
+        match splits.len() {
+            1 => (splits[0], None),
+            2 => if negate {
+                (splits[0], Some(splits[1].parse::<i32>()?.neg()))
+            } else {
+                (splits[0], Some(splits[1].parse::<i32>()?))
+            },
+            _ => bail!("Invalid block_id parameter: {}", block_id_param)
+        }
+    )
+}
+
 /// Parses [BlockHash] from block_id url param
 /// # Arguments
 ///
@@ -442,32 +458,15 @@ pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) 
 /// - `<block_hash>` - return block hash directly
 /// - `<block>~<level>` - block can be: genesis/head/level/block_hash, e.g.: head~10 returns: the block which is 10 levels in the past from head)
 /// - `<block>-<level>` - block can be: genesis/head/level/block_hash, e.g.: head-10 returns: the block which is 10 levels in the past from head)
+/// - `<block>+<level>` - block can be: genesis/head/level/block_hash, e.g.: block_hash-10 returns: the block which is 10 levels after block_hash)
 pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &RpcServiceEnvironment) -> Result<BlockHash, failure::Error> {
     // split header and optional offset (+, -, ~)
     let (block_param, offset_param) = {
-        if block_id_param.contains('~') {
-            let splits: Vec<&str> = block_id_param.split('~').collect();
-            match splits.len() {
-                1 => (splits[0], None),
-                2 => (splits[0], Some(splits[1].parse::<i32>()?)),
-                _ => bail!("Invalid block_id parameter: {}", block_id_param)
-            }
-        } else if block_id_param.contains('-') {
-            let splits: Vec<&str> = block_id_param.split('~').collect();
-            match splits.len() {
-                1 => (splits[0], None),
-                2 => (splits[0], Some(splits[1].parse::<i32>()?)),
-                _ => bail!("Invalid block_id parameter: {}", block_id_param)
-            }
-        } else if block_id_param.contains('+') {
-            let splits: Vec<&str> = block_id_param.split('~').collect();
-            match splits.len() {
-                1 => (splits[0], None),
-                2 => (splits[0], Some(splits[1].parse::<i32>()? * -1)),
-                _ => bail!("Invalid block_id parameter: {}", block_id_param)
-            }
-        } else {
-            (block_id_param, None)
+        match block_id_param {
+            bip if bip.contains('~') => split_block_id_param(block_id_param, '~', false)?,
+            bip if bip.contains('-') => split_block_id_param(block_id_param, '-', false)?,
+            bip if bip.contains('+') => split_block_id_param(block_id_param, '+', true)?,
+            _ => (block_id_param, None)
         }
     };
 

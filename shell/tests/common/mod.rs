@@ -154,7 +154,7 @@ pub mod infra {
                     false,
                     &context_db_path,
                     &apply_protocol_runner,
-                    log_level.clone(),
+                    log_level,
                     true,
                 ),
                 log.clone(),

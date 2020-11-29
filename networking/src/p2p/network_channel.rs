@@ -30,7 +30,7 @@ pub struct PeerCreated {
 #[derive(Clone, Debug)]
 pub enum PeerBootstrapped {
     Success {
-        peer_id: PeerId,
+        peer_id: Arc<PeerId>,
         peer_metadata: MetadataMessage,
     },
     Failure {
@@ -52,8 +52,8 @@ pub struct PeerMessageReceived {
 pub enum NetworkChannelMsg {
     PeerCreated(PeerCreated),
     PeerBootstrapped(PeerBootstrapped),
-    PeerBlacklisted(PeerId),
-    BlacklistPeer(PeerId, String),
+    PeerBlacklisted(Arc<PeerId>),
+    BlacklistPeer(Arc<PeerId>, String),
     PeerMessageReceived(PeerMessageReceived),
 }
 

@@ -23,7 +23,7 @@ impl ApplicationMonitor {
             total_applied: 0,
             current_applied: 0,
             last_applied_block: None,
-            first_update: now.clone(),
+            first_update: now,
             last_update: now,
         }
     }

@@ -278,7 +278,7 @@ impl Receive<Bootstrap> for Peer {
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
                         msg: PeerBootstrapped::Success {
-                            peer_id,
+                            peer_id: Arc::new(peer_id),
                             peer_metadata,
                         }.into(),
                         topic: NetworkChannelTopic::NetworkEvents.into(),

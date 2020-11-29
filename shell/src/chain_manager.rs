@@ -375,14 +375,14 @@ impl ChainManager {
                 // retrieve mutable reference and use it as `tell_peer()` parameter
                 let peer = self.peers.get_mut(&actor_uri).unwrap();
 
-                let log = ctx.system.log().new(slog::o!("peer_id" => peer.peer_id_marker.clone()));
+                let log = ctx.system.log().new(slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone()));
                 debug!(log, "Requesting current branch");
                 tell_peer(GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
-                        let log = ctx.system.log().new(slog::o!("peer_id" => peer.peer_id_marker.clone()));
+                        let log = ctx.system.log().new(slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone()));
 
                         for message in received.message.messages() {
                             match message {
@@ -1371,9 +1371,7 @@ impl Receive<AskPeersAboutCurrentBranch> for ChainManager {
 /// Holds information about a specific peer.
 struct PeerState {
     /// PeerId identification (actor_ref + public key)
-    peer_id: PeerId,
-    /// Peer public key displayed as readable format to aviod many computations from hash
-    peer_id_marker: String,
+    peer_id: Arc<PeerId>,
     /// Has peer enabled mempool
     mempool_enabled: bool,
     /// Is bootstrapped flag
@@ -1409,9 +1407,8 @@ struct PeerState {
 }
 
 impl PeerState {
-    fn new(peer_id: PeerId, peer_metadata: MetadataMessage) -> Self {
+    fn new(peer_id: Arc<PeerId>, peer_metadata: MetadataMessage) -> Self {
         PeerState {
-            peer_id_marker: HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer_id.peer_public_key),
             peer_id,
             mempool_enabled: !peer_metadata.disable_mempool(),
             is_bootstrapped: false,
@@ -1561,10 +1558,12 @@ pub mod tests {
         let peer_public_key: CryptoboxPublicKeyHash = HashType::CryptoboxPublicKeyHash.string_to_bytes("idsg2wkkDDv2cbEMK4zH49fjgyn7XT").expect("Failed to create public key hash");
 
         PeerState::new(
-            PeerId::new(
-                peer_ref,
-                peer_public_key,
-                socket_address,
+            Arc::new(
+                PeerId::new(
+                    peer_ref,
+                    peer_public_key,
+                    socket_address,
+                )
             ),
             MetadataMessage::new(false, false),
         )

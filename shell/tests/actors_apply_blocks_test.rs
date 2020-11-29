@@ -38,7 +38,7 @@ mod samples;
 fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
 
     // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
     let (requests, operations, tezos_env) = samples::read_data_apply_block_request_until_1326();

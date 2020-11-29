@@ -220,7 +220,7 @@ impl PeerManager {
         // TODO: call firewall
     }
 
-    fn blacklist_peer(&mut self, peer_id: PeerId, reason: String, actor_system: &ActorSystem) {
+    fn blacklist_peer(&mut self, peer_id: Arc<PeerId>, reason: String, actor_system: &ActorSystem) {
         let log = actor_system.log();
         warn!(log, "Blacklisting peer";
                    "peer_actor_ref" => peer_id.peer_ref.uri().to_string(),

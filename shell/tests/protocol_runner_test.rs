@@ -26,7 +26,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
 
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
     let number_of_endpoints = 10;
 
     // We must have just one write and others can be readonly
@@ -41,7 +41,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
         // create endpoint
         let (mut protocol, child, endpoint_name) = create_endpoint(
             log.clone(),
-            log_level.clone(),
+            log_level,
             format!("test_multiple_endpoint_{}", i),
             context_db_path.clone(),
         )?;
@@ -52,7 +52,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
         // spawn thread for every endpoint and try to initialize protocol context
         let handle = thread::spawn(move || -> Result<InitProtocolContextResult, failure::Error> {
             // init protocol read or write
-            let result = match protocol.accept() {
+            match protocol.accept() {
                 Ok(proto) => Ok({
                     if flag_readonly {
                         proto.init_protocol_for_read()?
@@ -61,8 +61,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
                     }
                 }),
                 Err(e) => Err(format_err!("{:?}", e))
-            };
-            result
+            }
         });
         handles.push((handle, child, endpoint_name, flag_readonly));
     }
@@ -114,7 +113,7 @@ fn create_endpoint(log: Logger, log_level: Level, name: String, context_db_path:
             false,
             &context_db_path,
             &protocol_runner,
-            log_level.clone(),
+            log_level,
             false,
         ),
         log.clone(),
@@ -142,7 +141,7 @@ fn create_endpoint(log: Logger, log_level: Level, name: String, context_db_path:
 fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
     let number_of_endpoints = 3;
 
     // environement
@@ -155,7 +154,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     let protocol_runner = common::protocol_runner_executable_path();
 
     // at first we need to create one writerable context, because of creating new one - see feature AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
-    let (mut write_context_commands, ..) = create_endpoint(log.clone(), log_level.clone(), format!("test_one_writeable_endpoint"), context_db_path.clone())?;
+    let (mut write_context_commands, ..) = create_endpoint(log.clone(), log_level, "test_one_writeable_endpoint".to_string(), context_db_path.clone())?;
     let genesis_context_hash = write_context_commands
         .accept()?
         .init_protocol_for_write(true, &None)?
@@ -182,7 +181,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         false,
         &context_db_path,
         &protocol_runner,
-        log_level.clone(),
+        log_level,
         false,
     );
 
