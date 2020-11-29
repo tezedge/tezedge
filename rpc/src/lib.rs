@@ -92,6 +92,11 @@ pub(crate) fn not_found() -> ServiceResult {
 
 /// Generate 500 error
 pub(crate) fn error(error: failure::Error) -> ServiceResult {
+    error_with_message(format!("{:?}", error))
+}
+
+/// Generate 500 error with message as body
+pub(crate) fn error_with_message(error_msg: String) -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(500)?)
         .header(hyper::header::CONTENT_TYPE, "text/plain")
@@ -99,5 +104,5 @@ pub(crate) fn error(error: failure::Error) -> ServiceResult {
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .header(hyper::header::TRANSFER_ENCODING, "chunked")
-        .body(Body::from(format!("{:?}", error)))?)
+        .body(Body::from(error_msg))?)
 }

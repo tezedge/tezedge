@@ -50,7 +50,7 @@ macro_rules! shutdown_and_exit {
         $err;
         futures::executor::block_on($sys.shutdown()).unwrap();
         return;
-    }}
+    }};
 }
 
 macro_rules! create_terminal_logger {
@@ -344,7 +344,6 @@ fn block_on_actors(
         // give actors some time to shut down
         thread::sleep(Duration::from_secs(1));
 
-
         info!(log, "Shutting down actors");
         let _ = actor_system.shutdown().await;
         info!(log, "Shutdown actors complete");
@@ -370,7 +369,12 @@ fn main() {
     let env = crate::configuration::Environment::from_args();
     let tezos_env = environment::TEZOS_ENV
         .get(&env.tezos_network)
-        .unwrap_or_else(|| panic!("No tezos environment version configured for: {:?}", env.tezos_network));
+        .unwrap_or_else(|| {
+            panic!(
+                "No tezos environment version configured for: {:?}",
+                env.tezos_network
+            )
+        });
 
     // Creates default logger
     let log = create_logger(&env);
@@ -378,7 +382,7 @@ fn main() {
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
-            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string(), "peer_id" => &identity.peer_id);
+            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string());
             if env.validate_cfg_identity_and_stop {
                 info!(log, "Configuration and identity is ok!");
                 return;
@@ -387,14 +391,25 @@ fn main() {
         }
         Err(e) => {
             error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.as_path().display().to_string());
-            panic!("Failed to load identity: {}", env.identity.identity_json_file_path.as_path().display().to_string());
+            panic!(
+                "Failed to load identity: {}",
+                env.identity
+                    .identity_json_file_path
+                    .as_path()
+                    .display()
+                    .to_string()
+            );
         }
     };
 
     // Enable core dumps and increase open files limit
     system::init_limits(&log);
 
-    let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
+    let actor_system = SystemBuilder::new()
+        .name("light-node")
+        .log(log.clone())
+        .create()
+        .expect("Failed to create actor system");
 
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)

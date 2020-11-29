@@ -3,12 +3,12 @@
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 
 use failure::{bail, Fail, format_err};
 use getset::Getters;
 
 use crypto::blake2b;
+use crypto::hash::ContextHash;
 use storage::{BlockHeaderWithHash, context_key, num_from_slice};
 use storage::context::{ContextApi, TezedgeContext};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
@@ -113,12 +113,11 @@ impl RightsContextData {
     /// * `list` - Context list handler.
     ///
     /// Return RightsContextData.
-    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, context: &TezedgeContext) -> Result<Self, failure::Error> {
+    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, (ctx_hash, context): (&ContextHash, &TezedgeContext)) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
 
         // prepare parameters that are used
-        let block_level = *parameters.block_level();
         let requested_level = *parameters.requested_level();
 
         // prepare cycle for which rollers are selected
@@ -127,9 +126,6 @@ impl RightsContextData {
         } else {
             cycle_from_level(requested_level, blocks_per_cycle)?
         };
-
-        // get context_hash from level
-        let ctx_hash = context.level_to_hash(block_level.try_into()?)?;
 
         // get index of roll snapshot
         let roll_snapshot: i16 = {
@@ -158,7 +154,7 @@ impl RightsContextData {
         };
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, block_level, requested_cycle, roll_snapshot)? {
+        let context_rolls = if let Some(rolls) = Self::get_context_rolls((&ctx_hash, &context), requested_cycle, roll_snapshot)? {
             rolls
         } else {
             return Err(format_err!("rolls"));
@@ -178,9 +174,7 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(context: &TezedgeContext, requested_level: i64, cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        let ctx_hash = context.level_to_hash(requested_level.try_into()?)?;
-
+    fn get_context_rolls((ctx_hash, context): (&ContextHash, &TezedgeContext), cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot))? {
             val
         } else {

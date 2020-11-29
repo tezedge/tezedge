@@ -160,10 +160,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     // simple test for walking on headers (-, ~)
     let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
     for i in 0..max_offset {
+        // ~
         test_rpc_compare_json(&format!("{}/{}~{}/{}", "chains/main/blocks", to_block_hash, i, "header")).await;
-        // TODO: TE-238 - simple test for walking on headers (+) - here for -
-        // TODO: TE-238 - Not yet implemented block header parsing for '+'
-        // test_rpc_compare_json(&format!("{}/{}-{}/{}", "chains/main/blocks", to_block_hash, i, "header")).await;
+        // -
+        test_rpc_compare_json(&format!("{}/{}-{}/{}", "chains/main/blocks", to_block_hash, i, "header")).await;
     }
 
     // TODO: TE-238 - simple test for walking on headers (+)

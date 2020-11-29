@@ -8,16 +8,16 @@ use std::path::{Path, PathBuf};
 use failure::Fail;
 use slog::{info, Logger};
 
-use tezos_identity::{Identity, IdentitySerdeError};
+use tezos_identity::Identity;
 
 #[derive(Fail, Debug)]
 pub enum IdentityError {
     #[fail(display = "I/O error: {}", reason)]
     IoError { reason: io::Error },
     #[fail(display = "Identity serialization error: {}", reason)]
-    SerializationError { reason: IdentitySerdeError },
+    SerializationError { reason: tezos_identity::IdentityError },
     #[fail(display = "Identity de-serialization error: {}", reason)]
-    DeserializationError { reason: IdentitySerdeError },
+    DeserializationError { reason: tezos_identity::IdentityError },
 }
 
 impl From<io::Error> for IdentityError {
@@ -42,7 +42,7 @@ pub fn load_identity<P: AsRef<Path>>(
     identity_json_file_path: P,
 ) -> Result<Identity, IdentityError> {
     let identity = fs::read_to_string(identity_json_file_path).map(|contents| {
-        Identity::from_json(&contents)
+        Identity::from_json(&contents, false)
             .map_err(|err| IdentityError::DeserializationError { reason: err })
     })??;
     Ok(identity)

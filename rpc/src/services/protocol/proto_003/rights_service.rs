@@ -65,7 +65,7 @@ pub(crate) fn check_and_get_baking_rights(
     let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(
         params.clone(),
         constants.clone(),
-        context,
+        (&context_proto_params.block_header.header.context(), context),
     )?;
 
     get_baking_rights(&context_data, &params, &constants)
@@ -248,7 +248,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     let context_data: RightsContextData = RightsContextData::prepare_context_data_for_rights(
         params.clone(),
         constants.clone(),
-        context,
+        (&context_proto_params.block_header.header.context(), context),
     )?;
 
     get_endorsing_rights(&context_data, &params, &constants)

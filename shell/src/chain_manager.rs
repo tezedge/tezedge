@@ -227,11 +227,10 @@ impl ChainManager {
                 chain_id.clone(),
                 is_sandbox,
                 peers_threshold.num_of_peers_for_bootstrap_threshold(),
-                HashType::CryptoboxPublicKeyHash.string_to_bytes(&identity.peer_id)
-                    .map_err(|e| {
-                        error!(sys.log(), "Failed to decode peer_id from identity"; "reason" => format!("{}", e));
-                        CreateError::Panicked
-                    })?,
+                identity.calculated_peer_id().map_err(|e| {
+                    error!(sys.log(), "Failed to decode peer_id from identity"; "reason" => format!("{}", e));
+                    CreateError::Panicked
+                })?,
             )),
         )
     }
@@ -1622,7 +1621,7 @@ pub mod tests {
             chain_id,
             false,
             1,
-            HashType::CryptoboxPublicKeyHash.string_to_bytes(&tezos_identity::Identity::generate(0f64).peer_id)?,
+            tezos_identity::Identity::generate(0f64).calculated_peer_id()?,
         ));
 
         // empty chain_manager
