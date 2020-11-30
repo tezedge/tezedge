@@ -5,7 +5,10 @@ use failure::Fail;
 use hex::{FromHex, FromHexError};
 use sodiumoxide::crypto::box_;
 
-use super::{nonce::Nonce, hash::{CryptoboxPublicKeyHash, HashType}};
+use super::{
+    hash::{CryptoboxPublicKeyHash, HashType},
+    nonce::Nonce,
+};
 use std::ops::Deref;
 
 pub const BOX_ZERO_BYTES: usize = 32;
@@ -74,7 +77,11 @@ impl FromHex for SecretKey {
 
 pub fn random_keypair() -> (SecretKey, PublicKey, CryptoboxPublicKeyHash) {
     let (pk, sk) = box_::gen_keypair();
-    (SecretKey(sk), PublicKey(pk), (HashType::CryptoboxPublicKeyHash.hash_fn())(pk.as_ref()))
+    (
+        SecretKey(sk),
+        PublicKey(pk),
+        (HashType::CryptoboxPublicKeyHash.hash_fn())(pk.as_ref()),
+    )
 }
 
 #[derive(Clone, PartialEq)]
@@ -107,7 +114,6 @@ impl Deref for PrecomputedKey {
     }
 }
 
-
 #[derive(Debug, Fail)]
 pub enum CryptoError {
     #[fail(display = "invalid nonce size: {}", _0)]
@@ -121,8 +127,14 @@ pub enum CryptoError {
 /// # Arguments
 /// * `pk_as_hex_string` - Hex string representing public key
 /// * `sk_as_hex_string` - Hex string representing secret key
-pub fn precompute(pk_as_hex_string: &str, sk_as_hex_string: &str) -> Result<PrecomputedKey, FromHexError> {
-    Ok(PrecomputedKey(box_::precompute(&*PublicKey::from_hex(pk_as_hex_string)?, &*SecretKey::from_hex(sk_as_hex_string)?)))
+pub fn precompute(
+    pk_as_hex_string: &str,
+    sk_as_hex_string: &str,
+) -> Result<PrecomputedKey, FromHexError> {
+    Ok(PrecomputedKey(box_::precompute(
+        &*PublicKey::from_hex(pk_as_hex_string)?,
+        &*SecretKey::from_hex(sk_as_hex_string)?,
+    )))
 }
 
 /// Encrypt binary message
@@ -159,18 +171,17 @@ pub fn decrypt(enc: &[u8], nonce: &Nonce, pck: &PrecomputedKey) -> Result<Vec<u8
 
         match box_::open_precomputed(enc, &box_nonce, pck) {
             Ok(msg) => Ok(msg),
-            Err(()) => Err(CryptoError::FailedToDecrypt)
+            Err(()) => Err(CryptoError::FailedToDecrypt),
         }
     } else {
         Err(CryptoError::InvalidNonceSize(nonce_bytes.len()))
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use failure::Error;
     use super::*;
+    use failure::Error;
 
     #[test]
     fn generate_nonce_xsalsa20() {
@@ -185,15 +196,20 @@ mod tests {
 
         let precomputed = precompute(&pk, &sk).unwrap();
         let precomputed = hex::encode(&precomputed.0);
-        let expected_precomputed = "5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c";
+        let expected_precomputed =
+            "5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c";
         Ok(assert_eq!(expected_precomputed, precomputed))
     }
 
     #[test]
     fn encrypt_message() -> Result<(), Error> {
-        let nonce = Nonce::new(&hex::decode("8dde158c55cff52f4be9352787d333e616a67853640d72c5")?);
+        let nonce = Nonce::new(&hex::decode(
+            "8dde158c55cff52f4be9352787d333e616a67853640d72c5",
+        )?);
         let msg = hex::decode("00874d1b98317bd6efad8352a7144c9eb0b218c9130e0a875973908ddc894b764ffc0d7f176cf800b978af9e919bdc35122585168475096d0ebcaca1f2a1172412b91b363ff484d1c64c03417e0e755e696c386a0000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000")?;
-        let pck = PrecomputedKey::from_hex("5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c")?;
+        let pck = PrecomputedKey::from_hex(
+            "5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c",
+        )?;
 
         let encrypted_msg = encrypt(&msg, &nonce, &pck)?;
         let expected_encrypted_msg = hex::decode("45d82d5c4067f5c32748596c1bbc93a9f87b5b1f2058ddd82b6f081ca484b672395c7473ab897c64c01c33878ac1ccb6919a75c9938d8bcf0e7917ddac13a787cfb5c9a5aea50d24502cf86b5c9b000358c039334ec077afe98936feec0dabfff35f14cafd2cd3173bbd56a7c6e5bf6f5f57c92b59b129918a5895e883e7d999b191aad078c4a5b164144c1beaed58b49ba9be094abf3a3bd9")?;
@@ -202,9 +218,13 @@ mod tests {
 
     #[test]
     fn decrypt_message() -> Result<(), Error> {
-        let nonce = Nonce::new(&hex::decode("8dde158c55cff52f4be9352787d333e616a67853640d72c5")?);
+        let nonce = Nonce::new(&hex::decode(
+            "8dde158c55cff52f4be9352787d333e616a67853640d72c5",
+        )?);
         let enc = hex::decode("45d82d5c4067f5c32748596c1bbc93a9f87b5b1f2058ddd82b6f081ca484b672395c7473ab897c64c01c33878ac1ccb6919a75c9938d8bcf0e7917ddac13a787cfb5c9a5aea50d24502cf86b5c9b000358c039334ec077afe98936feec0dabfff35f14cafd2cd3173bbd56a7c6e5bf6f5f57c92b59b129918a5895e883e7d999b191aad078c4a5b164144c1beaed58b49ba9be094abf3a3bd9")?;
-        let pck = PrecomputedKey::from_hex("5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c")?;
+        let pck = PrecomputedKey::from_hex(
+            "5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c",
+        )?;
 
         let decrypted_msg = decrypt(&enc, &nonce, &pck)?;
         let expected_decrypted_msg = hex::decode("00874d1b98317bd6efad8352a7144c9eb0b218c9130e0a875973908ddc894b764ffc0d7f176cf800b978af9e919bdc35122585168475096d0ebcaca1f2a1172412b91b363ff484d1c64c03417e0e755e696c386a0000002d53414e44424f5845445f54455a4f535f414c5048414e45545f323031382d31312d33305431353a33303a35365a00000000")?;
@@ -213,9 +233,13 @@ mod tests {
 
     #[test]
     fn decryption_of_encrypted_should_equal_message() -> Result<(), Error> {
-        let nonce = Nonce::new(&hex::decode("8dde158c55cff52f4be9352787d333e616a67853640d72c5")?);
+        let nonce = Nonce::new(&hex::decode(
+            "8dde158c55cff52f4be9352787d333e616a67853640d72c5",
+        )?);
         let msg = "hello world";
-        let pck = PrecomputedKey::from_hex("5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c")?;
+        let pck = PrecomputedKey::from_hex(
+            "5228751a6f5a6494e38e1042f578e3a64ae3462b7899356f49e50be846c9609c",
+        )?;
 
         let enc = encrypt(msg.as_bytes(), &nonce, &pck)?;
         let dec = String::from_utf8(decrypt(&enc, &nonce, &pck).unwrap())?;

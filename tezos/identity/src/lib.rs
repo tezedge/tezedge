@@ -9,8 +9,8 @@ use hex::FromHexError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::{crypto_box::random_keypair, hash::HashType, proof_of_work::ProofOfWork};
 use crypto::hash::CryptoboxPublicKeyHash;
+use crypto::{crypto_box::random_keypair, hash::HashType, proof_of_work::ProofOfWork};
 
 #[derive(Fail, Debug)]
 pub enum IdentityError {
@@ -62,55 +62,92 @@ impl Identity {
         let peer_id = match identity.get("peer_id") {
             Some(peer_id) => match peer_id.as_str() {
                 Some(peer_id) => peer_id.to_string(),
-                None => return Err(IdentityError::IdentityFieldError { reason: "Missing valid 'peer_id'".to_string() })
+                None => {
+                    return Err(IdentityError::IdentityFieldError {
+                        reason: "Missing valid 'peer_id'".to_string(),
+                    })
+                }
             },
-            None => return Err(IdentityError::IdentityFieldError { reason: "Missing 'peer_id'".to_string() })
+            None => {
+                return Err(IdentityError::IdentityFieldError {
+                    reason: "Missing 'peer_id'".to_string(),
+                })
+            }
         };
         let public_key = match identity.get("public_key") {
             Some(public_key) => match public_key.as_str() {
                 Some(public_key) => public_key.to_string(),
-                None => return Err(IdentityError::IdentityFieldError { reason: "Missing valid 'public_key'".to_string() })
+                None => {
+                    return Err(IdentityError::IdentityFieldError {
+                        reason: "Missing valid 'public_key'".to_string(),
+                    })
+                }
             },
-            None => return Err(IdentityError::IdentityFieldError { reason: "Missing 'public_key'".to_string() })
+            None => {
+                return Err(IdentityError::IdentityFieldError {
+                    reason: "Missing 'public_key'".to_string(),
+                })
+            }
         };
         let secret_key = match identity.get("secret_key") {
             Some(secret_key) => match secret_key.as_str() {
                 Some(secret_key) => secret_key.to_string(),
-                None => return Err(IdentityError::IdentityFieldError { reason: "Missing valid 'secret_key'".to_string() })
+                None => {
+                    return Err(IdentityError::IdentityFieldError {
+                        reason: "Missing valid 'secret_key'".to_string(),
+                    })
+                }
             },
-            None => return Err(IdentityError::IdentityFieldError { reason: "Missing 'public_key'".to_string() })
+            None => {
+                return Err(IdentityError::IdentityFieldError {
+                    reason: "Missing 'public_key'".to_string(),
+                })
+            }
         };
         let proof_of_work_stamp = match identity.get("proof_of_work_stamp") {
             Some(proof_of_work_stamp) => match proof_of_work_stamp.as_str() {
                 Some(proof_of_work_stamp) => proof_of_work_stamp.to_string(),
-                None => return Err(IdentityError::IdentityFieldError { reason: "Missing valid 'proof_of_work_stamp'".to_string() })
+                None => {
+                    return Err(IdentityError::IdentityFieldError {
+                        reason: "Missing valid 'proof_of_work_stamp'".to_string(),
+                    })
+                }
             },
-            None => return Err(IdentityError::IdentityFieldError { reason: "Missing 'proof_of_work_stamp'".to_string() })
+            None => {
+                return Err(IdentityError::IdentityFieldError {
+                    reason: "Missing 'proof_of_work_stamp'".to_string(),
+                })
+            }
         };
 
         // check peer_id
         let calculated_peer_id = {
             // TODO: TE-217 - &public_key is CryptoboxPublicKeyHash or [`crypto_box::PublicKey`] ?
             let public_key_hash: CryptoboxPublicKeyHash = Self::calculate_peer_id(&public_key)?;
-            if validate_peer_id && !peer_id.eq(&HashType::CryptoboxPublicKeyHash.bytes_to_string(&public_key_hash)) {
-                return Err(IdentityError::InvalidPeerIdError { reason: "Invalid peer_id".to_string() });
+            if validate_peer_id
+                && !peer_id.eq(&HashType::CryptoboxPublicKeyHash.bytes_to_string(&public_key_hash))
+            {
+                return Err(IdentityError::InvalidPeerIdError {
+                    reason: "Invalid peer_id".to_string(),
+                });
             }
             public_key_hash
         };
 
-        Ok(
-            Identity {
-                peer_id: calculated_peer_id,
-                public_key,
-                secret_key,
-                proof_of_work_stamp,
-            }
-        )
+        Ok(Identity {
+            peer_id: calculated_peer_id,
+            public_key,
+            secret_key,
+            proof_of_work_stamp,
+        })
     }
 
     pub fn as_json(&self) -> Result<String, IdentityError> {
         let mut identity: HashMap<&'static str, String> = Default::default();
-        identity.insert("peer_id", HashType::CryptoboxPublicKeyHash.bytes_to_string(&self.peer_id));
+        identity.insert(
+            "peer_id",
+            HashType::CryptoboxPublicKeyHash.bytes_to_string(&self.peer_id),
+        );
         identity.insert("public_key", self.public_key.clone());
         identity.insert("secret_key", self.secret_key.clone());
         identity.insert("proof_of_work_stamp", self.proof_of_work_stamp.clone());
@@ -123,8 +160,12 @@ impl Identity {
         Self::calculate_peer_id(&self.public_key)
     }
 
-    fn calculate_peer_id(public_key_as_hex_string: &str) -> Result<CryptoboxPublicKeyHash, IdentityError> {
-        hex::decode(&public_key_as_hex_string).map_err(|e| IdentityError::InvalidPeerIdError { reason: format!("{}", e) })
+    fn calculate_peer_id(
+        public_key_as_hex_string: &str,
+    ) -> Result<CryptoboxPublicKeyHash, IdentityError> {
+        hex::decode(&public_key_as_hex_string).map_err(|e| IdentityError::InvalidPeerIdError {
+            reason: format!("{}", e),
+        })
     }
 }
 

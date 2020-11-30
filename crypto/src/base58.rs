@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use base58::{FromBase58, ToBase58};
 use failure::Fail;
-use base58::{ToBase58, FromBase58};
 use sodiumoxide::crypto::hash::sha256;
 
 /// Possible errors for base58checked
@@ -73,7 +73,7 @@ impl FromBase58Check for str {
                     Err(FromBase58CheckError::MissingChecksum)
                 }
             }
-            Err(_) => Err(FromBase58CheckError::InvalidBase58)
+            Err(_) => Err(FromBase58CheckError::InvalidBase58),
         }
     }
 }
