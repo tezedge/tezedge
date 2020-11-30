@@ -35,10 +35,19 @@ pub struct FixedConstants {
 impl ToRpcJsonMap for FixedConstants {
     fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
-        ret.insert("proof_of_work_nonce_size", UniversalValue::num(self.proof_of_work_nonce_size));
+        ret.insert(
+            "proof_of_work_nonce_size",
+            UniversalValue::num(self.proof_of_work_nonce_size),
+        );
         ret.insert("nonce_length", UniversalValue::num(self.nonce_length));
-        ret.insert("max_revelations_per_block", UniversalValue::num(self.max_revelations_per_block));
-        ret.insert("max_operation_data_length", UniversalValue::num(self.max_operation_data_length));
+        ret.insert(
+            "max_revelations_per_block",
+            UniversalValue::num(self.max_revelations_per_block),
+        );
+        ret.insert(
+            "max_operation_data_length",
+            UniversalValue::num(self.max_operation_data_length),
+        );
         ret
     }
 }
@@ -79,11 +88,13 @@ pub struct ParametricConstants {
 }
 
 impl ParametricConstants {
-    /// Merge the default values with the values set in context DB 
+    /// Merge the default values with the values set in context DB
     pub fn create_with_default_and_merge(context_param_constants: ParametricConstants) -> Self {
         ParametricConstants {
             block_security_deposit: context_param_constants.block_security_deposit.clone(),
-            endorsement_security_deposit: context_param_constants.endorsement_security_deposit.clone(),
+            endorsement_security_deposit: context_param_constants
+                .endorsement_security_deposit
+                .clone(),
             block_reward: context_param_constants.block_reward.clone(),
             endorsement_reward: context_param_constants.endorsement_reward,
             ..Default::default()
@@ -137,58 +148,112 @@ impl ToRpcJsonMap for ParametricConstants {
             ret.insert("blocks_per_cycle", UniversalValue::num(blocks_per_cycle));
         }
         if let Some(blocks_per_commitment) = self.blocks_per_commitment {
-            ret.insert("blocks_per_commitment", UniversalValue::num(blocks_per_commitment));
+            ret.insert(
+                "blocks_per_commitment",
+                UniversalValue::num(blocks_per_commitment),
+            );
         }
         if let Some(blocks_per_roll_snapshot) = self.blocks_per_roll_snapshot {
-            ret.insert("blocks_per_roll_snapshot", UniversalValue::num(blocks_per_roll_snapshot));
+            ret.insert(
+                "blocks_per_roll_snapshot",
+                UniversalValue::num(blocks_per_roll_snapshot),
+            );
         }
         if let Some(blocks_per_voting_period) = self.blocks_per_voting_period {
-            ret.insert("blocks_per_voting_period", UniversalValue::num(blocks_per_voting_period));
+            ret.insert(
+                "blocks_per_voting_period",
+                UniversalValue::num(blocks_per_voting_period),
+            );
         }
         if let Some(time_between_blocks) = &self.time_between_blocks {
-            ret.insert("time_between_blocks", UniversalValue::i64_list(time_between_blocks.clone()));
+            ret.insert(
+                "time_between_blocks",
+                UniversalValue::i64_list(time_between_blocks.clone()),
+            );
         }
         if let Some(endorsers_per_block) = self.endorsers_per_block {
-            ret.insert("endorsers_per_block", UniversalValue::num(endorsers_per_block));
+            ret.insert(
+                "endorsers_per_block",
+                UniversalValue::num(endorsers_per_block),
+            );
         }
         if let Some(hard_gas_limit_per_operation) = &self.hard_gas_limit_per_operation {
-            ret.insert("hard_gas_limit_per_operation", UniversalValue::big_num(hard_gas_limit_per_operation.clone()));
+            ret.insert(
+                "hard_gas_limit_per_operation",
+                UniversalValue::big_num(hard_gas_limit_per_operation.clone()),
+            );
         }
         if let Some(hard_gas_limit_per_block) = &self.hard_gas_limit_per_block {
-            ret.insert("hard_gas_limit_per_block", UniversalValue::big_num(hard_gas_limit_per_block.clone()));
+            ret.insert(
+                "hard_gas_limit_per_block",
+                UniversalValue::big_num(hard_gas_limit_per_block.clone()),
+            );
         }
         if let Some(proof_of_work_threshold) = self.proof_of_work_threshold {
-            ret.insert("proof_of_work_threshold", UniversalValue::i64(proof_of_work_threshold));
+            ret.insert(
+                "proof_of_work_threshold",
+                UniversalValue::i64(proof_of_work_threshold),
+            );
         }
         if let Some(tokens_per_roll) = &self.tokens_per_roll {
-            ret.insert("tokens_per_roll", UniversalValue::big_num(tokens_per_roll.clone()));
+            ret.insert(
+                "tokens_per_roll",
+                UniversalValue::big_num(tokens_per_roll.clone()),
+            );
         }
         if let Some(michelson_maximum_type_size) = self.michelson_maximum_type_size {
-            ret.insert("michelson_maximum_type_size", UniversalValue::num(michelson_maximum_type_size));
+            ret.insert(
+                "michelson_maximum_type_size",
+                UniversalValue::num(michelson_maximum_type_size),
+            );
         }
         if let Some(seed_nonce_revelation_tip) = &self.seed_nonce_revelation_tip {
-            ret.insert("seed_nonce_revelation_tip", UniversalValue::big_num(seed_nonce_revelation_tip.clone()));
+            ret.insert(
+                "seed_nonce_revelation_tip",
+                UniversalValue::big_num(seed_nonce_revelation_tip.clone()),
+            );
         }
         if let Some(origination_burn) = &self.origination_burn {
-            ret.insert("origination_burn", UniversalValue::big_num(origination_burn.clone()));
+            ret.insert(
+                "origination_burn",
+                UniversalValue::big_num(origination_burn.clone()),
+            );
         }
         if let Some(block_security_deposit) = &self.block_security_deposit {
-            ret.insert("block_security_deposit", UniversalValue::big_num(block_security_deposit.clone()));
+            ret.insert(
+                "block_security_deposit",
+                UniversalValue::big_num(block_security_deposit.clone()),
+            );
         }
         if let Some(endorsement_security_deposit) = &self.endorsement_security_deposit {
-            ret.insert("endorsement_security_deposit", UniversalValue::big_num(endorsement_security_deposit.clone()));
+            ret.insert(
+                "endorsement_security_deposit",
+                UniversalValue::big_num(endorsement_security_deposit.clone()),
+            );
         }
         if let Some(block_reward) = &self.block_reward {
-            ret.insert("block_reward", UniversalValue::big_num(block_reward.clone()));
+            ret.insert(
+                "block_reward",
+                UniversalValue::big_num(block_reward.clone()),
+            );
         }
         if let Some(endorsement_reward) = &self.endorsement_reward {
-            ret.insert("endorsement_reward", UniversalValue::big_num(endorsement_reward.clone()));
+            ret.insert(
+                "endorsement_reward",
+                UniversalValue::big_num(endorsement_reward.clone()),
+            );
         }
         if let Some(cost_per_byte) = &self.cost_per_byte {
-            ret.insert("cost_per_byte", UniversalValue::big_num(cost_per_byte.clone()));
+            ret.insert(
+                "cost_per_byte",
+                UniversalValue::big_num(cost_per_byte.clone()),
+            );
         }
         if let Some(hard_storage_limit_per_operation) = &self.hard_storage_limit_per_operation {
-            ret.insert("hard_storage_limit_per_operation", UniversalValue::big_num(hard_storage_limit_per_operation.clone()));
+            ret.insert(
+                "hard_storage_limit_per_operation",
+                UniversalValue::big_num(hard_storage_limit_per_operation.clone()),
+            );
         }
         // if let Some() = self. {
 
@@ -199,26 +264,68 @@ impl ToRpcJsonMap for ParametricConstants {
 
 non_cached_data!(ParametricConstants);
 has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("preserved_cycles", Encoding::option_field(Encoding::Uint8)),
-            Field::new("blocks_per_cycle", Encoding::option_field(Encoding::Int32)),
-            Field::new("blocks_per_commitment", Encoding::option_field(Encoding::Int32)),
-            Field::new("blocks_per_roll_snapshot", Encoding::option_field(Encoding::Int32)),
-            Field::new("blocks_per_voting_period", Encoding::option_field(Encoding::Int32)),
-            Field::new("time_between_blocks", Encoding::option_field(Encoding::dynamic(Encoding::list(Encoding::Int64)))),
-            Field::new("endorsers_per_block", Encoding::option_field(Encoding::Uint16)),
-            Field::new("hard_gas_limit_per_operation", Encoding::option_field(Encoding::Z)),
-            Field::new("hard_gas_limit_per_block", Encoding::option_field(Encoding::Z)),
-            Field::new("proof_of_work_threshold", Encoding::option_field(Encoding::Int64)),
-            Field::new("tokens_per_roll", Encoding::option_field(Encoding::Mutez)),
-            Field::new("michelson_maximum_type_size", Encoding::option_field(Encoding::Uint16)),
-            Field::new("seed_nonce_revelation_tip", Encoding::option_field(Encoding::Mutez)),
-            Field::new("origination_burn", Encoding::option_field(Encoding::Mutez)),
-            Field::new("block_security_deposit", Encoding::option_field(Encoding::Mutez)),
-            Field::new("endorsement_security_deposit", Encoding::option_field(Encoding::Mutez)),
-            Field::new("block_reward", Encoding::option_field(Encoding::Mutez)),
-            Field::new("endorsement_reward", Encoding::option_field(Encoding::Mutez)),
-            Field::new("cost_per_byte", Encoding::option_field(Encoding::Mutez)),
-            Field::new("hard_storage_limit_per_operation", Encoding::option_field(Encoding::Z)),
-        ])
+    Encoding::Obj(vec![
+        Field::new("preserved_cycles", Encoding::option_field(Encoding::Uint8)),
+        Field::new("blocks_per_cycle", Encoding::option_field(Encoding::Int32)),
+        Field::new(
+            "blocks_per_commitment",
+            Encoding::option_field(Encoding::Int32),
+        ),
+        Field::new(
+            "blocks_per_roll_snapshot",
+            Encoding::option_field(Encoding::Int32),
+        ),
+        Field::new(
+            "blocks_per_voting_period",
+            Encoding::option_field(Encoding::Int32),
+        ),
+        Field::new(
+            "time_between_blocks",
+            Encoding::option_field(Encoding::dynamic(Encoding::list(Encoding::Int64))),
+        ),
+        Field::new(
+            "endorsers_per_block",
+            Encoding::option_field(Encoding::Uint16),
+        ),
+        Field::new(
+            "hard_gas_limit_per_operation",
+            Encoding::option_field(Encoding::Z),
+        ),
+        Field::new(
+            "hard_gas_limit_per_block",
+            Encoding::option_field(Encoding::Z),
+        ),
+        Field::new(
+            "proof_of_work_threshold",
+            Encoding::option_field(Encoding::Int64),
+        ),
+        Field::new("tokens_per_roll", Encoding::option_field(Encoding::Mutez)),
+        Field::new(
+            "michelson_maximum_type_size",
+            Encoding::option_field(Encoding::Uint16),
+        ),
+        Field::new(
+            "seed_nonce_revelation_tip",
+            Encoding::option_field(Encoding::Mutez),
+        ),
+        Field::new("origination_burn", Encoding::option_field(Encoding::Mutez)),
+        Field::new(
+            "block_security_deposit",
+            Encoding::option_field(Encoding::Mutez),
+        ),
+        Field::new(
+            "endorsement_security_deposit",
+            Encoding::option_field(Encoding::Mutez),
+        ),
+        Field::new("block_reward", Encoding::option_field(Encoding::Mutez)),
+        Field::new(
+            "endorsement_reward",
+            Encoding::option_field(Encoding::Mutez),
+        ),
+        Field::new("cost_per_byte", Encoding::option_field(Encoding::Mutez)),
+        Field::new(
+            "hard_storage_limit_per_operation",
+            Encoding::option_field(Encoding::Z),
+        ),
+    ])
 });

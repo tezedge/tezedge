@@ -3,7 +3,7 @@ version: "3"
 services:
 
   node:
-    image: simplestakingcom/tezedge:v0.7.1
+    image: simplestakingcom/tezedge:v0.8.0
     hostname: node
     ports:
       - "4927:4927"

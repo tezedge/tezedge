@@ -1,4 +1,5 @@
-#[allow(dead_code)]
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -8,13 +9,13 @@ use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::HashType;
+use crypto::hash::BlockHash;
 use storage::{BlockStorage, BlockStorageReader, ContextActionStorage};
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
 
 use crate::rpc_actor::RpcCollectedStateRef;
-use crate::services::base_services::get_block_actions_by_hash;
+use crate::services::dev_services::get_block_actions_by_hash;
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionTypeStats {
@@ -35,7 +36,7 @@ pub struct ActionStats {
 
 fn compute_key_length(key: Option<&Vec<String>>) -> usize {
     match key {
-        Some(key) => key.into_iter().fold(0, |acc, item| acc + item.len()),
+        Some(key) => key.iter().fold(0, |acc, item| acc + item.len()),
         None => 0,
     }
 }
@@ -64,7 +65,11 @@ fn add_action<'a>(
     if key_len > action_stats.key_length_max { action_stats.key_length_max = key_len; }
     action_stats.key_length_sum += key_len as u64;
 
-    let val_len = if value.is_some() { value.unwrap().len() } else { 0 };
+    let val_len = if let Some(value) = value {
+        value.len()
+    } else {
+        0
+    };
     action_stats.val_length_sum += val_len as u64;
     if value.is_some() && (val_len > action_stats.val_length_max) {
         action_stats.val_length_max = val_len;
@@ -98,7 +103,7 @@ struct TopN<T: Ord> {
 }
 
 impl<T: Ord + Clone> TopN<T> {
-    pub fn new(max: usize) -> TopN<T> { return TopN { data: RwLock::new(BinaryHeap::new()), max } }
+    pub fn new(max: usize) -> TopN<T> { TopN { data: RwLock::new(BinaryHeap::new()), max } }
 
     pub fn add(&self, val: &T) {
         let mut should_add;
@@ -130,12 +135,9 @@ pub struct StatsResponse<'a> {
 }
 
 fn remove_values(mut actions: Vec<ContextAction>) -> Vec<ContextAction> {
-    actions.iter_mut().for_each(|action| match action {
-        ContextAction::Set { ref mut value, ref mut value_as_json, .. } => {
-            value.resize(0, 0);
-            *value_as_json = None;
-        },
-        _ => {}
+    actions.iter_mut().for_each(|action| if let ContextAction::Set { ref mut value, ref mut value_as_json, .. } = action {
+        value.clear();
+        *value_as_json = None;
     });
     actions
 }
@@ -152,7 +154,7 @@ fn fat_tail_vec(fat_tail: TopN<ContextAction>) -> Vec<ContextAction> {
 
 pub(crate) fn compute_storage_stats<'a>(
     _state: &RpcCollectedStateRef,
-    from_block: &str,
+    from_block: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<StatsResponse<'a>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
@@ -160,8 +162,7 @@ pub(crate) fn compute_storage_stats<'a>(
     let stats: Mutex<HashMap<&str, ActionStats>> = Mutex::new(HashMap::new());
     let fat_tail: TopN<ContextAction> = TopN::new(100);
 
-    let blocks = block_storage.get_multiple_without_json(
-        &HashType::BlockHash.string_to_bytes(from_block).unwrap(), std::usize::MAX)?;
+    let blocks = block_storage.get_multiple_without_json(from_block, std::usize::MAX)?;
     blocks.par_iter().for_each(|block| {
         let actions = get_block_actions_by_hash(&context_action_storage, &block.hash).expect("Failed to extract actions from a block!");
         {

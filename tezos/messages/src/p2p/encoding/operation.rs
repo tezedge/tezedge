@@ -24,9 +24,7 @@ pub struct OperationMessage {
 
 cached_data!(OperationMessage, body);
 has_encoding!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("operation", Operation::encoding().clone())
-    ])
+    Encoding::Obj(vec![Field::new("operation", Operation::encoding().clone())])
 });
 
 impl From<Operation> for OperationMessage {
@@ -76,15 +74,16 @@ impl From<DecodedOperation> for Operation {
 
 cached_data!(Operation, body);
 has_encoding!(Operation, OPERATION_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("branch", Encoding::Hash(HashType::BlockHash)),
-            Field::new("data", Encoding::Split(Arc::new(|schema_type|
-                match schema_type {
-                    SchemaType::Json => Encoding::Bytes,
-                    SchemaType::Binary => Encoding::list(Encoding::Uint8)
-                }
-            )))
-        ])
+    Encoding::Obj(vec![
+        Field::new("branch", Encoding::Hash(HashType::BlockHash)),
+        Field::new(
+            "data",
+            Encoding::Split(Arc::new(|schema_type| match schema_type {
+                SchemaType::Json => Encoding::Bytes,
+                SchemaType::Binary => Encoding::list(Encoding::Uint8),
+            })),
+        ),
+    ])
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -124,7 +123,8 @@ impl GetOperationsMessage {
 
 cached_data!(GetOperationsMessage, body);
 has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("get_operations", Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash)))),
-        ])
+    Encoding::Obj(vec![Field::new(
+        "get_operations",
+        Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))),
+    )])
 });

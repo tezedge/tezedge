@@ -1,10 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-/// Rust implementation of messages required for Rust <-> OCaml FFI communication.
-
-use std::fmt;
 use std::fmt::Debug;
+/// Rust implementation of messages required for Rust <-> OCaml FFI communication.
+use std::{convert::TryFrom, fmt};
 
 use derive_builder::Builder;
 use failure::Fail;
@@ -13,7 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage, Path};
+use tezos_messages::p2p::encoding::prelude::{
+    BlockHeader, Operation, OperationsForBlocksMessage, Path,
+};
 
 pub type RustBytes = Vec<u8>;
 
@@ -66,16 +67,16 @@ pub struct ApplyBlockRequest {
     pub chain_id: ChainId,
     pub block_header: BlockHeader,
     pub pred_header: BlockHeader,
+
     pub max_operations_ttl: i32,
     pub operations: Vec<Vec<Operation>>,
 }
 
 impl ApplyBlockRequest {
-    pub fn convert_operations(block_operations: Vec<OperationsForBlocksMessage>) -> Vec<Vec<Operation>> {
-        block_operations
-            .into_iter()
-            .map(|ops| ops.into())
-            .collect()
+    pub fn convert_operations(
+        block_operations: Vec<OperationsForBlocksMessage>,
+    ) -> Vec<Vec<Operation>> {
+        block_operations.into_iter().map(|ops| ops.into()).collect()
     }
 }
 
@@ -102,15 +103,29 @@ pub struct PrevalidatorWrapper {
 
 impl fmt::Debug for PrevalidatorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PrevalidatorWrapper[chain_id: {}, protocol: {}, context_fitness: {}]",
-               HashType::ChainId.bytes_to_string(&self.chain_id),
-               HashType::ProtocolHash.bytes_to_string(&self.protocol),
-               match &self.context_fitness {
-                   Some(fitness) => display_fitness(fitness),
-                   None => "-none-".to_string(),
-               },
+        write!(
+            f,
+            "PrevalidatorWrapper[chain_id: {}, protocol: {}, context_fitness: {}]",
+            HashType::ChainId.bytes_to_string(&self.chain_id),
+            HashType::ProtocolHash.bytes_to_string(&self.protocol),
+            match &self.context_fitness {
+                Some(fitness) => display_fitness(fitness),
+                None => "-none-".to_string(),
+            },
         )
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct BeginApplicationRequest {
+    pub chain_id: ChainId,
+    pub pred_header: BlockHeader,
+    pub block_header: BlockHeader,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct BeginApplicationResponse {
+    pub result: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
@@ -143,8 +158,10 @@ pub struct OperationProtocolDataJsonWithErrorListJson {
 
 impl fmt::Debug for OperationProtocolDataJsonWithErrorListJson {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[error_json: {}, protocol_data_json: (-stripped-)]",
-               &self.error_json,
+        write!(
+            f,
+            "[error_json: {}, protocol_data_json: (-stripped-)]",
+            &self.error_json,
         )
     }
 }
@@ -167,9 +184,11 @@ impl HasOperationHash for Applied {
 
 impl fmt::Debug for Applied {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[hash: {}, protocol_data_json: {}]",
-               HashType::OperationHash.bytes_to_string(&self.hash),
-               &self.protocol_data_json
+        write!(
+            f,
+            "[hash: {}, protocol_data_json: {}]",
+            HashType::OperationHash.bytes_to_string(&self.hash),
+            &self.protocol_data_json
         )
     }
 }
@@ -189,9 +208,11 @@ impl HasOperationHash for Errored {
 
 impl fmt::Debug for Errored {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[hash: {}, protocol_data_json_with_error_json: {:?}]",
-               HashType::OperationHash.bytes_to_string(&self.hash),
-               &self.protocol_data_json_with_error_json
+        write!(
+            f,
+            "[hash: {}, protocol_data_json_with_error_json: {:?}]",
+            HashType::OperationHash.bytes_to_string(&self.hash),
+            &self.protocol_data_json_with_error_json
         )
     }
 }
@@ -215,7 +236,10 @@ impl ValidateOperationResult {
         changed
     }
 
-    fn merge_items<ITEM: HasOperationHash>(result_items: &mut Vec<ITEM>, new_items: Vec<ITEM>) -> bool {
+    fn merge_items<ITEM: HasOperationHash>(
+        result_items: &mut Vec<ITEM>,
+        new_items: Vec<ITEM>,
+    ) -> bool {
         let mut changed = false;
         let mut added = false;
 
@@ -253,13 +277,18 @@ impl fmt::Debug for InitProtocolContextResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let genesis_commit_hash = match &self.genesis_commit_hash {
             Some(hash) => HashType::ContextHash.bytes_to_string(hash),
-            None => "-none-".to_string()
+            None => "-none-".to_string(),
         };
-        let supported_protocol_hashes = self.supported_protocol_hashes
+        let supported_protocol_hashes = self
+            .supported_protocol_hashes
             .iter()
             .map(|ph| HashType::ProtocolHash.bytes_to_string(ph))
             .collect::<Vec<String>>();
-        write!(f, "genesis_commit_hash: {}, supported_protocol_hashes: {:?}", &genesis_commit_hash, &supported_protocol_hashes)
+        write!(
+            f,
+            "genesis_commit_hash: {}, supported_protocol_hashes: {:?}",
+            &genesis_commit_hash, &supported_protocol_hashes
+        )
     }
 }
 
@@ -285,30 +314,22 @@ pub enum CallError {
         parsed_error_message: Option<String>,
     },
     #[fail(display = "Invalid request data - message: {}!", message)]
-    InvalidRequestData {
-        message: String,
-    },
+    InvalidRequestData { message: String },
     #[fail(display = "Invalid response data - message: {}!", message)]
-    InvalidResponseData {
-        message: String,
-    },
+    InvalidResponseData { message: String },
 }
 
 impl From<OCamlError> for CallError {
     fn from(error: OCamlError) -> Self {
         match error {
-            OCamlError::Exception(exception) => {
-                match exception.message() {
-                    None => CallError::FailedToCall {
-                        parsed_error_message: None
-                    },
-                    Some(message) => {
-                        CallError::FailedToCall {
-                            parsed_error_message: Some(message)
-                        }
-                    }
-                }
-            }
+            OCamlError::Exception(exception) => match exception.message() {
+                None => CallError::FailedToCall {
+                    parsed_error_message: None,
+                },
+                Some(message) => CallError::FailedToCall {
+                    parsed_error_message: Some(message),
+                },
+            },
         }
     }
 }
@@ -316,9 +337,7 @@ impl From<OCamlError> for CallError {
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum TezosRuntimeConfigurationError {
     #[fail(display = "Change ocaml settings failed, message: {}!", message)]
-    ChangeConfigurationError {
-        message: String
-    }
+    ChangeConfigurationError { message: String },
 }
 
 impl From<OCamlError> for TezosRuntimeConfigurationError {
@@ -326,7 +345,7 @@ impl From<OCamlError> for TezosRuntimeConfigurationError {
         match error {
             OCamlError::Exception(exception) => {
                 TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
+                    message: exception.message().unwrap_or_else(|| "unknown".to_string()),
                 }
             }
         }
@@ -336,103 +355,129 @@ impl From<OCamlError> for TezosRuntimeConfigurationError {
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum TezosStorageInitError {
     #[fail(display = "Ocaml storage init failed, message: {}!", message)]
-    InitializeError {
-        message: String
-    }
+    InitializeError { message: String },
 }
 
 impl From<OCamlError> for TezosStorageInitError {
     fn from(error: OCamlError) -> Self {
         match error {
-            OCamlError::Exception(exception) => {
-                TezosStorageInitError::InitializeError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
-                }
-            }
+            OCamlError::Exception(exception) => TezosStorageInitError::InitializeError {
+                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
+            },
         }
-    }
-}
-
-impl slog::Value for TezosStorageInitError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum GetDataError {
     #[fail(display = "Ocaml failed to get data, message: {}!", message)]
-    ReadError {
-        message: String
-    }
+    ReadError { message: String },
 }
 
 impl From<OCamlError> for GetDataError {
     fn from(error: OCamlError) -> Self {
         match error {
-            OCamlError::Exception(exception) => {
-                GetDataError::ReadError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
-                }
-            }
+            OCamlError::Exception(exception) => GetDataError::ReadError {
+                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
+            },
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum ApplyBlockError {
-    #[fail(display = "Incomplete operations, exptected: {}, has actual: {}!", expected, actual)]
-    IncompleteOperations {
-        expected: usize,
-        actual: usize,
-    },
+    #[fail(
+        display = "Incomplete operations, exptected: {}, has actual: {}!",
+        expected, actual
+    )]
+    IncompleteOperations { expected: usize, actual: usize },
     #[fail(display = "Failed to apply block - message: {}!", message)]
-    FailedToApplyBlock {
-        message: String,
-    },
-    #[fail(display = "Unknown predecessor context - try to apply predecessor at first message: {}!", message)]
-    UnknownPredecessorContext {
-        message: String,
-    },
+    FailedToApplyBlock { message: String },
+    #[fail(
+        display = "Unknown predecessor context - try to apply predecessor at first message: {}!",
+        message
+    )]
+    UnknownPredecessorContext { message: String },
     #[fail(display = "Predecessor does not match - message: {}!", message)]
-    PredecessorMismatch {
-        message: String,
-    },
+    PredecessorMismatch { message: String },
     #[fail(display = "Invalid request/response data - message: {}!", message)]
-    InvalidRequestResponseData {
-        message: String,
-    },
+    InvalidRequestResponseData { message: String },
 }
 
 impl From<CallError> for ApplyBlockError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall { parsed_error_message } => {
-                match parsed_error_message {
-                    None => ApplyBlockError::FailedToApplyBlock {
-                        message: "unknown".to_string()
-                    },
-                    Some(message) => {
-                        match message.as_str() {
-                            e if e.starts_with("Unknown_predecessor_context") => ApplyBlockError::UnknownPredecessorContext {
-                                message: message.to_string()
-                            },
-                            e if e.starts_with("Predecessor_mismatch") => ApplyBlockError::PredecessorMismatch {
-                                message: message.to_string()
-                            },
-                            message => ApplyBlockError::FailedToApplyBlock {
-                                message: message.to_string()
-                            }
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => ApplyBlockError::FailedToApplyBlock {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => match message.as_str() {
+                    e if e.starts_with("Unknown_predecessor_context") => {
+                        ApplyBlockError::UnknownPredecessorContext {
+                            message: message.to_string(),
                         }
                     }
-                }
+                    e if e.starts_with("Predecessor_mismatch") => {
+                        ApplyBlockError::PredecessorMismatch {
+                            message: message.to_string(),
+                        }
+                    }
+                    message => ApplyBlockError::FailedToApplyBlock {
+                        message: message.to_string(),
+                    },
+                },
+            },
+            CallError::InvalidRequestData { message } => {
+                ApplyBlockError::InvalidRequestResponseData { message }
             }
-            CallError::InvalidRequestData { message } => ApplyBlockError::InvalidRequestResponseData {
-                message
+            CallError::InvalidResponseData { message } => {
+                ApplyBlockError::InvalidRequestResponseData { message }
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+pub enum BeginApplicationError {
+    #[fail(display = "Failed to begin application - message: {}!", message)]
+    FailedToBeginApplication { message: String },
+    #[fail(
+        display = "Unknown predecessor context - try to apply predecessor at first message: {}!",
+        message
+    )]
+    UnknownPredecessorContext { message: String },
+    #[fail(display = "Invalid request/response data - message: {}!", message)]
+    InvalidRequestResponseData { message: String },
+}
+
+impl From<CallError> for BeginApplicationError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => BeginApplicationError::FailedToBeginApplication {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => match message.as_str() {
+                    e if e.starts_with("Unknown_predecessor_context") => {
+                        BeginApplicationError::UnknownPredecessorContext {
+                            message: message.to_string(),
+                        }
+                    }
+                    message => BeginApplicationError::FailedToBeginApplication {
+                        message: message.to_string(),
+                    },
+                },
             },
-            CallError::InvalidResponseData { message } => ApplyBlockError::InvalidRequestResponseData {
-                message
-            },
+            CallError::InvalidRequestData { message } => {
+                BeginApplicationError::InvalidRequestResponseData { message }
+            }
+            CallError::InvalidResponseData { message } => {
+                BeginApplicationError::InvalidRequestResponseData { message }
+            }
         }
     }
 }
@@ -440,45 +485,42 @@ impl From<CallError> for ApplyBlockError {
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum BeginConstructionError {
     #[fail(display = "Failed to begin construction - message: {}!", message)]
-    FailedToBeginConstruction {
-        message: String,
-    },
-    #[fail(display = "Unknown predecessor context - try to apply predecessor at first message: {}!", message)]
-    UnknownPredecessorContext {
-        message: String,
-    },
+    FailedToBeginConstruction { message: String },
+    #[fail(
+        display = "Unknown predecessor context - try to apply predecessor at first message: {}!",
+        message
+    )]
+    UnknownPredecessorContext { message: String },
     #[fail(display = "Invalid request/response data - message: {}!", message)]
-    InvalidRequestResponseData {
-        message: String,
-    },
+    InvalidRequestResponseData { message: String },
 }
 
 impl From<CallError> for BeginConstructionError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall { parsed_error_message } => {
-                match parsed_error_message {
-                    None => BeginConstructionError::FailedToBeginConstruction {
-                        message: "unknown".to_string()
-                    },
-                    Some(message) => {
-                        match message.as_str() {
-                            e if e.starts_with("Unknown_predecessor_context") => BeginConstructionError::UnknownPredecessorContext {
-                                message: message.to_string()
-                            },
-                            message => BeginConstructionError::FailedToBeginConstruction {
-                                message: message.to_string()
-                            }
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => BeginConstructionError::FailedToBeginConstruction {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => match message.as_str() {
+                    e if e.starts_with("Unknown_predecessor_context") => {
+                        BeginConstructionError::UnknownPredecessorContext {
+                            message: message.to_string(),
                         }
                     }
-                }
+                    message => BeginConstructionError::FailedToBeginConstruction {
+                        message: message.to_string(),
+                    },
+                },
+            },
+            CallError::InvalidRequestData { message } => {
+                BeginConstructionError::InvalidRequestResponseData { message }
             }
-            CallError::InvalidRequestData { message } => BeginConstructionError::InvalidRequestResponseData {
-                message
-            },
-            CallError::InvalidResponseData { message } => BeginConstructionError::InvalidRequestResponseData {
-                message
-            },
+            CallError::InvalidResponseData { message } => {
+                BeginConstructionError::InvalidRequestResponseData { message }
+            }
         }
     }
 }
@@ -486,36 +528,28 @@ impl From<CallError> for BeginConstructionError {
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum ValidateOperationError {
     #[fail(display = "Failed to validate operation - message: {}!", message)]
-    FailedToValidateOperation {
-        message: String,
-    },
+    FailedToValidateOperation { message: String },
     #[fail(display = "Invalid request/response data - message: {}!", message)]
-    InvalidRequestResponseData {
-        message: String,
-    },
+    InvalidRequestResponseData { message: String },
 }
 
 impl From<CallError> for ValidateOperationError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall { parsed_error_message } => {
-                match parsed_error_message {
-                    None => ValidateOperationError::FailedToValidateOperation {
-                        message: "unknown".to_string()
-                    },
-                    Some(message) => {
-                        ValidateOperationError::FailedToValidateOperation {
-                            message
-                        }
-                    }
-                }
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => ValidateOperationError::FailedToValidateOperation {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => ValidateOperationError::FailedToValidateOperation { message },
+            },
+            CallError::InvalidRequestData { message } => {
+                ValidateOperationError::InvalidRequestResponseData { message }
             }
-            CallError::InvalidRequestData { message } => ValidateOperationError::InvalidRequestResponseData {
-                message
-            },
-            CallError::InvalidResponseData { message } => ValidateOperationError::InvalidRequestResponseData {
-                message
-            },
+            CallError::InvalidResponseData { message } => {
+                ValidateOperationError::InvalidRequestResponseData { message }
+            }
         }
     }
 }
@@ -523,9 +557,7 @@ impl From<CallError> for ValidateOperationError {
 #[derive(Debug, Fail)]
 pub enum BlockHeaderError {
     #[fail(display = "BlockHeader cannot be read from storage: {}!", message)]
-    ReadError {
-        message: String
-    },
+    ReadError { message: String },
     #[fail(display = "BlockHeader was expected, but was not found!")]
     ExpectedButNotFound,
 }
@@ -533,11 +565,9 @@ pub enum BlockHeaderError {
 impl From<OCamlError> for BlockHeaderError {
     fn from(error: OCamlError) -> Self {
         match error {
-            OCamlError::Exception(exception) => {
-                BlockHeaderError::ReadError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
-                }
-            }
+            OCamlError::Exception(exception) => BlockHeaderError::ReadError {
+                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
+            },
         }
     }
 }
@@ -545,19 +575,31 @@ impl From<OCamlError> for BlockHeaderError {
 #[derive(Debug, Fail)]
 pub enum ContextDataError {
     #[fail(display = "Resolve/decode context data failed to decode: {}!", message)]
-    DecodeError {
-        message: String
-    },
+    DecodeError { message: String },
 }
 
 impl From<OCamlError> for ContextDataError {
     fn from(error: OCamlError) -> Self {
         match error {
-            OCamlError::Exception(exception) => {
-                ContextDataError::DecodeError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string())
-                }
-            }
+            OCamlError::Exception(exception) => ContextDataError::DecodeError {
+                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum ProtocolDataError {
+    #[fail(display = "Resolve/decode context data failed to decode: {}!", message)]
+    DecodeError { message: String },
+}
+
+impl From<OCamlError> for ProtocolDataError {
+    fn from(error: OCamlError) -> Self {
+        match error {
+            OCamlError::Exception(exception) => ProtocolDataError::DecodeError {
+                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
+            },
         }
     }
 }
@@ -565,76 +607,120 @@ impl From<OCamlError> for ContextDataError {
 pub type Json = String;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JsonRpcRequest {
+pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
+    pub meth: RpcMethod,
+    pub content_type: Option<String>,
+    pub accept: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JsonRpcResponse {
-    pub body: Json
+pub struct HelpersPreapplyResponse {
+    pub body: Json,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ProtocolRpcResponse {
+    RPCConflict(Option<String>),
+    RPCCreated(Option<String>),
+    RPCError(Option<String>),
+    RPCForbidden(Option<String>),
+    RPCGone(Option<String>),
+    RPCNoContent,
+    RPCNotFound(Option<String>),
+    RPCOk(String),
+    RPCUnauthorized,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum RpcMethod {
+    DELETE,
+    GET,
+    PATCH,
+    POST,
+    PUT,
+}
+
+impl TryFrom<&str> for RpcMethod {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let upper = s.to_uppercase();
+        match upper.as_ref() {
+            "DELETE" => Ok(RpcMethod::DELETE),
+            "GET" => Ok(RpcMethod::GET),
+            "PATCH" => Ok(RpcMethod::PATCH),
+            "POST" => Ok(RpcMethod::POST),
+            "PUT" => Ok(RpcMethod::PUT),
+            other => Err(format!("Invalid RPC method: {:?}", other)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RpcArgDesc {
+    pub name: String,
+    pub descr: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, Clone, PartialEq)]
+pub enum ProtocolRpcError {
+    #[fail(display = "RPC: cannot parse body: {}", _0)]
+    RPCErrorCannotParseBody(String),
+    #[fail(
+        display = "RPC: cannot parse path: {:?}, arg_desc={:?}, message: {}",
+        _0, _1, _2
+    )]
+    RPCErrorCannotParsePath(Vec<String>, RpcArgDesc, String),
+    #[fail(display = "RPC: cannot parse query: {}", _0)]
+    RPCErrorCannotParseQuery(String),
+    #[fail(display = "RPC: invalid method string: {}", _0)]
+    RPCErrorInvalidMethodString(String),
+    #[fail(display = "RPC: method not allowed: {:?}", _0)]
+    RPCErrorMethodNotAllowed(Vec<RpcMethod>),
+    #[fail(display = "RPC: service not found")]
+    RPCErrorServiceNotFound,
+    #[fail(display = "RPC: Failed to call protocol RPC - message: {}!", _0)]
+    FailedToCallProtocolRpc(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
-pub struct ProtocolJsonRpcRequest {
+pub struct ProtocolRpcRequest {
     pub block_header: BlockHeader,
     pub chain_arg: String,
     pub chain_id: ChainId,
 
-    pub request: JsonRpcRequest,
-
-    // TODO: TE-140 - will be removed, when router is done
-    pub ffi_service: FfiRpcService,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum FfiRpcService {
-    HelpersRunOperation,
-    HelpersPreapplyOperations,
-    HelpersPreapplyBlock,
-    HelpersCurrentLevel,
-    DelegatesMinimalValidTime,
-    HelpersForgeOperations,
-    ContextContract,
+    pub request: RpcRequest,
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
-pub enum ProtocolRpcError {
+pub enum HelpersPreapplyError {
     #[fail(display = "Failed to call protocol rpc - message: {}!", message)]
-    FailedToCallProtocolRpc {
-        message: String,
-    },
+    FailedToCallProtocolRpc { message: String },
     #[fail(display = "Invalid request data - message: {}!", message)]
-    InvalidRequestData {
-        message: String,
-    },
+    InvalidRequestData { message: String },
     #[fail(display = "Invalid response data - message: {}!", message)]
-    InvalidResponseData {
-        message: String,
-    },
+    InvalidResponseData { message: String },
 }
 
-impl From<CallError> for ProtocolRpcError {
+impl From<CallError> for HelpersPreapplyError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall { parsed_error_message } => {
-                match parsed_error_message {
-                    None => ProtocolRpcError::FailedToCallProtocolRpc {
-                        message: "unknown".to_string()
-                    },
-                    Some(message) => {
-                        ProtocolRpcError::FailedToCallProtocolRpc {
-                            message
-                        }
-                    }
-                }
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => HelpersPreapplyError::FailedToCallProtocolRpc {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => HelpersPreapplyError::FailedToCallProtocolRpc { message },
+            },
+            CallError::InvalidRequestData { message } => {
+                HelpersPreapplyError::InvalidRequestData { message }
             }
-            CallError::InvalidRequestData { message } => ProtocolRpcError::InvalidRequestData {
-                message
-            },
-            CallError::InvalidResponseData { message } => ProtocolRpcError::InvalidResponseData {
-                message
-            },
+            CallError::InvalidResponseData { message } => {
+                HelpersPreapplyError::InvalidResponseData { message }
+            }
         }
     }
 }
@@ -652,36 +738,28 @@ pub struct ComputePathResponse {
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum ComputePathError {
     #[fail(display = "Path computation failed, message: {}!", message)]
-    PathError {
-        message: String
-    },
+    PathError { message: String },
     #[fail(display = "Path computation failed, message: {}!", message)]
-    InvalidRequestResponseData {
-        message: String
-    },
+    InvalidRequestResponseData { message: String },
 }
 
 impl From<CallError> for ComputePathError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall { parsed_error_message } => {
-                match parsed_error_message {
-                    None => ComputePathError::PathError {
-                        message: "unknown".to_string()
-                    },
-                    Some(message) => {
-                        ComputePathError::PathError {
-                            message: message.to_string()
-                        }
-                    }
-                }
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => ComputePathError::PathError {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => ComputePathError::PathError { message },
+            },
+            CallError::InvalidRequestData { message } => {
+                ComputePathError::InvalidRequestResponseData { message }
             }
-            CallError::InvalidRequestData { message } => ComputePathError::InvalidRequestResponseData {
-                message
-            },
-            CallError::InvalidResponseData { message } => ComputePathError::InvalidRequestResponseData {
-                message
-            },
+            CallError::InvalidResponseData { message } => {
+                ComputePathError::InvalidRequestResponseData { message }
+            }
         }
     }
 }
@@ -692,7 +770,10 @@ mod tests {
 
     #[test]
     fn test_validate_operation_result_merge() -> Result<(), failure::Error> {
-        let mut validate_result1 = validate_operation_result("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ", "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj");
+        let mut validate_result1 = validate_operation_result(
+            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
+            "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj",
+        );
         assert_eq!(2, validate_result1.applied.len());
         assert_eq!(2, validate_result1.refused.len());
         assert_eq!(2, validate_result1.branch_delayed.len());
@@ -714,7 +795,10 @@ mod tests {
         assert_eq!(2, validate_result1.branch_refused.len());
 
         // merge
-        let validate_result2 = validate_operation_result("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ", "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr");
+        let validate_result2 = validate_operation_result(
+            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
+            "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr",
+        );
         assert!(validate_result1.merge(validate_result2));
         assert_eq!(3, validate_result1.applied.len());
         assert_eq!(3, validate_result1.refused.len());
@@ -733,34 +817,49 @@ mod tests {
             branch_delayed: vec![],
         };
         assert_eq!(0, validate_result.applied.len());
-        assert_eq!(false, ValidateOperationResult::merge_items(&mut validate_result.applied, vec![]));
+        assert_eq!(
+            false,
+            ValidateOperationResult::merge_items(&mut validate_result.applied, vec![])
+        );
 
-        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
-            Applied {
-                hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+        assert!(ValidateOperationResult::merge_items(
+            &mut validate_result.applied,
+            vec![Applied {
+                hash: HashType::OperationHash
+                    .string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
                 protocol_data_json: "protocol_data_json1".to_string(),
-            },
-        ]));
+            },],
+        ));
         assert_eq!(1, validate_result.applied.len());
-        assert_eq!("protocol_data_json1", validate_result.applied[0].protocol_data_json);
+        assert_eq!(
+            "protocol_data_json1",
+            validate_result.applied[0].protocol_data_json
+        );
 
         // merge the same -> test change
-        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
-            Applied {
-                hash: HashType::OperationHash.string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+        assert!(ValidateOperationResult::merge_items(
+            &mut validate_result.applied,
+            vec![Applied {
+                hash: HashType::OperationHash
+                    .string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
                 protocol_data_json: "protocol_data_json2".to_string(),
-            },
-        ]));
+            },],
+        ));
         assert_eq!(1, validate_result.applied.len());
-        assert_eq!("protocol_data_json2", validate_result.applied[0].protocol_data_json);
+        assert_eq!(
+            "protocol_data_json2",
+            validate_result.applied[0].protocol_data_json
+        );
 
         // merge another new one
-        assert!(ValidateOperationResult::merge_items(&mut validate_result.applied, vec![
-            Applied {
-                hash: HashType::OperationHash.string_to_bytes("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
+        assert!(ValidateOperationResult::merge_items(
+            &mut validate_result.applied,
+            vec![Applied {
+                hash: HashType::OperationHash
+                    .string_to_bytes("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
                 protocol_data_json: "protocol_data_json2".to_string(),
-            },
-        ]));
+            },],
+        ));
         assert_eq!(2, validate_result.applied.len());
 
         Ok(())

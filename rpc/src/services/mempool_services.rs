@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
@@ -6,9 +9,8 @@ use failure::format_err;
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::Logger;
 
-use crypto::hash::{HashType, OperationHash, ProtocolHash};
+use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
 use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use shell::validation;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
@@ -38,8 +40,9 @@ pub struct InjectedBlockWithOperations {
 }
 
 pub fn get_pending_operations(
+    _chain_id: &ChainId,
     state: &RpcCollectedStateRef,
-    _log: &Logger) -> Result<MempoolOperations, failure::Error> {
+) -> Result<MempoolOperations, failure::Error> {
 
     // get actual known state of mempool
     let state = state.read().unwrap();
@@ -129,9 +132,10 @@ fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, O
 }
 
 pub fn inject_operation(
+    chain_id: ChainId,
     operation_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: ShellChannelRef) -> Result<String, failure::Error> {
+    shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
     let persistent_storage = env.persistent_storage();
     let block_storage: Box<dyn BlockStorageReader> = Box::new(BlockStorage::new(persistent_storage));
     let block_meta_storage: Box<dyn BlockMetaStorageReader> = Box::new(BlockMetaStorage::new(persistent_storage));
@@ -144,7 +148,7 @@ pub fn inject_operation(
 
     // do prevalidation before add the operation to mempool
     let result = validation::prevalidate_operation(
-        state.chain_id(),
+        &chain_id,
         &operation_hash,
         &operation,
         state.current_mempool_state(),
@@ -155,7 +159,7 @@ pub fn inject_operation(
 
     // can accpect operation ?
     if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
-        return Err(format_err!("Operation from rpc ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), result))
+        return Err(format_err!("Operation from rpc ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), result));
     }
 
     // store operation in mempool storage
@@ -178,9 +182,10 @@ pub fn inject_operation(
 }
 
 pub fn inject_block(
+    _chain_id: ChainId,
     injection_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: ShellChannelRef) -> Result<String, failure::Error> {
+    shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
 
     let header: BlockHeader = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?;
@@ -234,7 +239,7 @@ pub fn inject_block(
     // compute the paths for each validation passes
     let paths = if let Some(vps) = validation_passes.clone() {
         let request = ComputePathRequest {
-            operations: vps.clone().iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
+            operations: vps.iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
         };
 
         let response = env.tezos_without_context_api().pool.get()?.api.compute_path(request)?;

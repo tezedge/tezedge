@@ -23,6 +23,7 @@ use shell::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, ChainMetaStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
+use storage::context::TezedgeContext;
 use storage::merkle_storage::MerkleStorage;
 use storage::persistent::{CommitLogSchema, KeyValueSchema, open_cl, open_kv, PersistentStorage};
 use storage::persistent::sequence::Sequences;
@@ -40,7 +41,7 @@ mod configuration;
 mod identity;
 mod system;
 
-const DATABASE_VERSION: i64 = 15;
+const DATABASE_VERSION: i64 = 16;
 const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
 const SUPPORTED_P2P_VERSION: u16 = 1;
 
@@ -49,7 +50,7 @@ macro_rules! shutdown_and_exit {
         $err;
         futures::executor::block_on($sys.shutdown()).unwrap();
         return;
-    }}
+    }};
 }
 
 macro_rules! create_terminal_logger {
@@ -191,9 +192,10 @@ fn block_on_actors(
     env: crate::configuration::Environment,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: StorageInitInfo,
-    identity: Identity,
+    identity: Arc<Identity>,
     actor_system: ActorSystem,
     persistent_storage: PersistentStorage,
+    tezedge_context: TezedgeContext,
     log: Logger) {
 
     // if feeding is started, than run chain manager
@@ -280,6 +282,7 @@ fn block_on_actors(
         &init_storage_data.chain_id,
         is_sandbox,
         &env.p2p.peer_threshold,
+        identity.clone(),
     ).expect("Failed to create chain manager");
 
     let _ = MempoolPrevalidator::actor(
@@ -303,7 +306,7 @@ fn block_on_actors(
     ).expect("Failed to create peer manager");
     let websocket_handler = WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
         .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(&actor_system, network_channel.clone(), websocket_handler, shell_channel.clone(), &persistent_storage, &init_storage_data)
+    let _ = Monitor::actor(&actor_system, network_channel, websocket_handler, shell_channel.clone(), &persistent_storage, &init_storage_data)
         .expect("Failed to create monitor actor");
     let _ = RpcServer::actor(
         &actor_system,
@@ -311,6 +314,7 @@ fn block_on_actors(
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,
+        &tezedge_context,
         tezos_readonly_api_pool.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
@@ -340,7 +344,6 @@ fn block_on_actors(
         // give actors some time to shut down
         thread::sleep(Duration::from_secs(1));
 
-
         info!(log, "Shutting down actors");
         let _ = actor_system.shutdown().await;
         info!(log, "Shutdown actors complete");
@@ -366,7 +369,12 @@ fn main() {
     let env = crate::configuration::Environment::from_args();
     let tezos_env = environment::TEZOS_ENV
         .get(&env.tezos_network)
-        .expect(&format!("No tezos environment version configured for: {:?}", env.tezos_network));
+        .unwrap_or_else(|| {
+            panic!(
+                "No tezos environment version configured for: {:?}",
+                env.tezos_network
+            )
+        });
 
     // Creates default logger
     let log = create_logger(&env);
@@ -374,7 +382,7 @@ fn main() {
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
-            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string(), "peer_id" => &identity.peer_id);
+            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string());
             if env.validate_cfg_identity_and_stop {
                 info!(log, "Configuration and identity is ok!");
                 return;
@@ -383,14 +391,25 @@ fn main() {
         }
         Err(e) => {
             error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.as_path().display().to_string());
-            panic!("Failed to load identity: {}", env.identity.identity_json_file_path.as_path().display().to_string());
+            panic!(
+                "Failed to load identity: {}",
+                env.identity
+                    .identity_json_file_path
+                    .as_path()
+                    .display()
+                    .to_string()
+            );
         }
     };
 
     // Enable core dumps and increase open files limit
     system::init_limits(&log);
 
-    let actor_system = SystemBuilder::new().name("light-node").log(log.clone()).create().expect("Failed to create actor system");
+    let actor_system = SystemBuilder::new()
+        .name("light-node")
+        .log(log.clone())
+        .create()
+        .expect("Failed to create actor system");
 
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
@@ -437,13 +456,15 @@ fn main() {
         };
 
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
+        let tezedge_context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
         match resolve_storage_init_chain_data(
             &tezos_env,
             &env.storage.db_path,
             &env.storage.tezos_data_dir,
             &env.storage.patch_context,
             &log) {
-            Ok(init_data) => block_on_actors(env, tezos_env, init_data, tezos_identity, actor_system, persistent_storage, log),
+            Ok(init_data) => block_on_actors(env, tezos_env, init_data, Arc::new(tezos_identity), actor_system,
+                                             persistent_storage, tezedge_context, log),
             Err(e) => shutdown_and_exit!(error!(log, "Failed to resolve init storage chain data."; "reason" => e), actor_system),
         }
     }

@@ -1,14 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{io, thread};
 use std::cell::RefCell;
 use std::convert::AsRef;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
+use std::{io, thread};
 
 use failure::Fail;
 use getset::{CopyGetters, Getters};
@@ -44,11 +44,13 @@ lazy_static! {
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum ProtocolMessage {
     ApplyBlockCall(ApplyBlockRequest),
+    AssertEncodingForProtocolDataCall(ProtocolHash, RustBytes),
+    BeginApplicationCall(BeginApplicationRequest),
     BeginConstructionCall(BeginConstructionRequest),
     ValidateOperationCall(ValidateOperationRequest),
-    ProtocolJsonRpcCall(ProtocolJsonRpcRequest),
-    HelpersPreapplyOperationsCall(ProtocolJsonRpcRequest),
-    HelpersPreapplyBlockCall(ProtocolJsonRpcRequest),
+    ProtocolRpcCall(ProtocolRpcRequest),
+    HelpersPreapplyOperationsCall(ProtocolRpcRequest),
+    HelpersPreapplyBlockCall(ProtocolRpcRequest),
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
@@ -80,9 +82,12 @@ struct GenesisResultDataParams {
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
     ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
+    AssertEncodingForProtocolDataResult(Result<(), ProtocolDataError>),
+    BeginApplicationResult(Result<BeginApplicationResponse, BeginApplicationError>),
     BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
     ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
-    JsonRpcResponse(Result<JsonRpcResponse, ProtocolRpcError>),
+    RpcResponse(Result<ProtocolRpcResponse, ProtocolRpcError>),
+    HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
@@ -109,7 +114,9 @@ pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), Ipc
 
 /// Establish connection to existing IPC endpoint (which was created by tezedge node).
 /// Begin receiving commands from the tezedge node until `ShutdownCall` command is received.
-pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
+pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(
+    socket_path: P,
+) -> Result<(), IpcError> {
     let ipc_client: IpcClient<ProtocolMessage, NodeMessage> = IpcClient::new(socket_path);
     let (mut rx, mut tx) = ipc_client.connect()?;
     while let Ok(cmd) = rx.receive() {
@@ -118,25 +125,33 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                 let res = Proto::apply_block(request);
                 tx.send(&NodeMessage::ApplyBlockResult(res))?;
             }
+            ProtocolMessage::AssertEncodingForProtocolDataCall(protocol_hash, protocol_data) => {
+                let res = Proto::assert_encoding_for_protocol_data(protocol_hash, protocol_data);
+                tx.send(&NodeMessage::AssertEncodingForProtocolDataResult(res))?;
+            }
             ProtocolMessage::BeginConstructionCall(request) => {
                 let res = Proto::begin_construction(request);
                 tx.send(&NodeMessage::BeginConstructionResult(res))?;
+            }
+            ProtocolMessage::BeginApplicationCall(request) => {
+                let res = Proto::begin_application(request);
+                tx.send(&NodeMessage::BeginApplicationResult(res))?;
             }
             ProtocolMessage::ValidateOperationCall(request) => {
                 let res = Proto::validate_operation(request);
                 tx.send(&NodeMessage::ValidateOperationResponse(res))?;
             }
-            ProtocolMessage::ProtocolJsonRpcCall(request) => {
-                let res = Proto::call_protocol_json_rpc(request);
-                tx.send(&NodeMessage::JsonRpcResponse(res))?;
+            ProtocolMessage::ProtocolRpcCall(request) => {
+                let res = Proto::call_protocol_rpc(request);
+                tx.send(&NodeMessage::RpcResponse(res))?;
             }
             ProtocolMessage::HelpersPreapplyOperationsCall(request) => {
                 let res = Proto::helpers_preapply_operations(request);
-                tx.send(&NodeMessage::JsonRpcResponse(res))?;
+                tx.send(&NodeMessage::HelpersPreapplyResponse(res))?;
             }
             ProtocolMessage::HelpersPreapplyBlockCall(request) => {
                 let res = Proto::helpers_preapply_block(request);
-                tx.send(&NodeMessage::JsonRpcResponse(res))?;
+                tx.send(&NodeMessage::HelpersPreapplyResponse(res))?;
             }
             ProtocolMessage::ComputePathCall(request) => {
                 let res = Proto::compute_path(request);
@@ -168,7 +183,8 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
             ProtocolMessage::ShutdownCall => {
-                context_send(ContextAction::Shutdown).expect("Failed to send shutdown command to context channel");
+                context_send(ContextAction::Shutdown)
+                    .expect("Failed to send shutdown command to context channel");
                 tx.send(&NodeMessage::ShutdownResult)?;
                 break;
             }
@@ -183,40 +199,32 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(socket_path
 pub enum ProtocolError {
     /// Protocol rejected to apply a block.
     #[fail(display = "Apply block error: {}", reason)]
-    ApplyBlockError {
-        reason: ApplyBlockError
-    },
+    ApplyBlockError { reason: ApplyBlockError },
+    #[fail(display = "Assert encoding for protocol data error: {}", reason)]
+    AssertEncodingForProtocolDataError { reason: ProtocolDataError },
     #[fail(display = "Begin construction error: {}", reason)]
-    BeginConstructionError {
-        reason: BeginConstructionError
-    },
+    BeginApplicationError { reason: BeginApplicationError },
+    #[fail(display = "Begin construction error: {}", reason)]
+    BeginConstructionError { reason: BeginConstructionError },
     #[fail(display = "Validate operation error: {}", reason)]
-    ValidateOperationError {
-        reason: ValidateOperationError
-    },
+    ValidateOperationError { reason: ValidateOperationError },
     #[fail(display = "Protocol rpc call error: {}", reason)]
-    ProtocolRpcError {
-        reason: ProtocolRpcError
-    },
+    ProtocolRpcError { reason: ProtocolRpcError },
+    #[fail(display = "Helper Preapply call error: {}", reason)]
+    HelpersPreapplyError { reason: HelpersPreapplyError },
     #[fail(display = "Compute path call error: {}", reason)]
-    ComputePathError {
-        reason: ComputePathError
-    },
+    ComputePathError { reason: ComputePathError },
     /// Error in configuration.
     #[fail(display = "OCaml runtime configuration error: {}", reason)]
     TezosRuntimeConfigurationError {
-        reason: TezosRuntimeConfigurationError
+        reason: TezosRuntimeConfigurationError,
     },
     /// OCaml part failed to initialize tezos storage.
     #[fail(display = "OCaml storage init error: {}", reason)]
-    OcamlStorageInitError {
-        reason: TezosStorageInitError
-    },
+    OcamlStorageInitError { reason: TezosStorageInitError },
     /// OCaml part failed to get genesis data.
     #[fail(display = "Failed to get genesis data: {}", reason)]
-    GenesisResultDataError {
-        reason: GetDataError
-    },
+    GenesisResultDataError { reason: GetDataError },
 }
 
 /// Errors generated by `protocol_runner`.
@@ -224,38 +232,34 @@ pub enum ProtocolError {
 pub enum ProtocolServiceError {
     /// Generic IPC communication error. See `reason` for more details.
     #[fail(display = "IPC error: {}", reason)]
-    IpcError {
-        reason: IpcError,
-    },
+    IpcError { reason: IpcError },
     /// Tezos protocol error.
     #[fail(display = "Protocol error: {}", reason)]
-    ProtocolError {
-        reason: ProtocolError,
-    },
+    ProtocolError { reason: ProtocolError },
     /// Unexpected message was received from IPC channel
     #[fail(display = "Received unexpected message: {}", message)]
-    UnexpectedMessage {
-        message: &'static str,
-    },
+    UnexpectedMessage { message: &'static str },
     /// Tezedge node failed to spawn new `protocol_runner` sub-process.
-    #[fail(display = "Failed to spawn tezos protocol wrapper sub-process: {}", reason)]
-    SpawnError {
-        reason: io::Error,
-    },
+    #[fail(
+        display = "Failed to spawn tezos protocol wrapper sub-process: {}",
+        reason
+    )]
+    SpawnError { reason: io::Error },
     /// Invalid data error
     #[fail(display = "Invalid data error: {}", message)]
-    InvalidDataError {
-        message: String,
-    },
+    InvalidDataError { message: String },
     /// Lock error
     #[fail(display = "Lock error: {:?}", message)]
-    LockPoisonError {
-        message: String,
-    },
+    LockPoisonError { message: String },
 }
 
 impl slog::Value for ProtocolServiceError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
@@ -292,7 +296,15 @@ pub struct ProtocolEndpointConfiguration {
 }
 
 impl ProtocolEndpointConfiguration {
-    pub fn new<P: AsRef<Path>>(runtime_configuration: TezosRuntimeConfiguration, environment: TezosEnvironmentConfiguration, enable_testchain: bool, data_dir: P, executable_path: P, log_level: Level, need_event_server: bool) -> Self {
+    pub fn new<P: AsRef<Path>>(
+        runtime_configuration: TezosRuntimeConfiguration,
+        environment: TezosEnvironmentConfiguration,
+        enable_testchain: bool,
+        data_dir: P,
+        executable_path: P,
+        log_level: Level,
+        need_event_server: bool,
+    ) -> Self {
         ProtocolEndpointConfiguration {
             runtime_configuration,
             environment,
@@ -306,7 +318,10 @@ impl ProtocolEndpointConfiguration {
 }
 
 /// IPC command server is listening for incoming IPC connections.
-pub struct IpcCmdServer(IpcServer<NodeMessage, ProtocolMessage>, ProtocolEndpointConfiguration);
+pub struct IpcCmdServer(
+    IpcServer<NodeMessage, ProtocolMessage>,
+    ProtocolEndpointConfiguration,
+);
 
 /// Difference between `IpcCmdServer` and `IpcEvtServer` is:
 /// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
@@ -373,127 +388,293 @@ pub struct ProtocolController {
 impl ProtocolController {
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(600);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
+    const BEGIN_APPLICATION_TIMEOUT: Duration = Duration::from_secs(120);
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
     const VALIDATE_OPERATION_TIMEOUT: Duration = Duration::from_secs(120);
     const CALL_PROTOCOL_RPC_TIMEOUT: Duration = Duration::from_secs(30);
     const COMPUTE_PATH_TIMEOUT: Duration = Duration::from_secs(30);
+    const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Duration::from_secs(15);
 
     /// Apply block
-    pub fn apply_block(&self, request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ProtocolServiceError> {
+    pub fn apply_block(
+        &self,
+        request: ApplyBlockRequest,
+    ) -> Result<ApplyBlockResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(request))?;
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::APPLY_BLOCK_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(Self::APPLY_BLOCK_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
-            NodeMessage::ApplyBlockResult(result) => result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::ApplyBlockResult(result) => {
+                result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    /// Begin application
+    pub fn assert_encoding_for_protocol_data(
+        &self,
+        protocol_hash: ProtocolHash,
+        protocol_data: RustBytes,
+    ) -> Result<(), ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx
+            .send(&ProtocolMessage::AssertEncodingForProtocolDataCall(
+                protocol_hash,
+                protocol_data,
+            ))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx
+            .set_read_timeout(Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::AssertEncodingForProtocolDataResult(result) => result.map_err(|err| {
+                ProtocolError::AssertEncodingForProtocolDataError { reason: err }.into()
+            }),
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    /// Begin application
+    pub fn begin_application(
+        &self,
+        request: BeginApplicationRequest,
+    ) -> Result<BeginApplicationResponse, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx
+            .send(&ProtocolMessage::BeginApplicationCall(request))?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx
+            .set_read_timeout(Some(Self::BEGIN_APPLICATION_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::BeginApplicationResult(result) => {
+                result.map_err(|err| ProtocolError::BeginApplicationError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
     /// Begin construction
-    pub fn begin_construction(&self, request: BeginConstructionRequest) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
+    pub fn begin_construction(
+        &self,
+        request: BeginConstructionRequest,
+    ) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::BeginConstructionCall(request))?;
+        io.tx
+            .send(&ProtocolMessage::BeginConstructionCall(request))?;
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::BEGIN_CONSTRUCTION_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(Self::BEGIN_CONSTRUCTION_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
-            NodeMessage::BeginConstructionResult(result) => result.map_err(|err| ProtocolError::BeginConstructionError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::BeginConstructionResult(result) => {
+                result.map_err(|err| ProtocolError::BeginConstructionError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
     /// Validate operation
-    pub fn validate_operation(&self, request: ValidateOperationRequest) -> Result<ValidateOperationResponse, ProtocolServiceError> {
+    pub fn validate_operation(
+        &self,
+        request: ValidateOperationRequest,
+    ) -> Result<ValidateOperationResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ValidateOperationCall(request))?;
+        io.tx
+            .send(&ProtocolMessage::ValidateOperationCall(request))?;
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::VALIDATE_OPERATION_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(Self::VALIDATE_OPERATION_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
-            NodeMessage::ValidateOperationResponse(result) => result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::ValidateOperationResponse(result) => {
+                result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
     /// ComputePath
-    pub fn compute_path(&self, request: ComputePathRequest) -> Result<ComputePathResponse, ProtocolServiceError> {
+    pub fn compute_path(
+        &self,
+        request: ComputePathRequest,
+    ) -> Result<ComputePathResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ComputePathCall(request))?;
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::COMPUTE_PATH_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(Self::COMPUTE_PATH_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
-            NodeMessage::ComputePathResponse(result) => result.map_err(|err| ProtocolError::ComputePathError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::ComputePathResponse(result) => {
+                result.map_err(|err| ProtocolError::ComputePathError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
-    /// Call protocol json rpc - internal
-    fn call_protocol_json_rpc_internal(&self, msg: ProtocolMessage) -> Result<JsonRpcResponse, ProtocolServiceError> {
+    /// Call protocol  rpc - internal
+    fn call_protocol_rpc_internal(
+        &self,
+        msg: ProtocolMessage,
+    ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&msg)?;
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         match receive_result? {
-            NodeMessage::JsonRpcResponse(result) => result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::RpcResponse(result) => {
+                result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
-    /// Call protocol json rpc
-    pub fn call_protocol_json_rpc(&self, request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolServiceError> {
-        self.call_protocol_json_rpc_internal(ProtocolMessage::ProtocolJsonRpcCall(request))
+    /// Call protocol rpc
+    pub fn call_protocol_rpc(
+        &self,
+        request: ProtocolRpcRequest,
+    ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
+        self.call_protocol_rpc_internal(ProtocolMessage::ProtocolRpcCall(request))
+    }
+
+    /// Call helpers_preapply_* shell service - internal
+    fn call_helpers_preapply_internal(
+        &self,
+        msg: ProtocolMessage,
+    ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&msg)?;
+        // this might take a while, so we will use unusually long timeout
+        io.rx
+            .set_read_timeout(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = io.rx.receive();
+        // restore default timeout setting
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        match receive_result? {
+            NodeMessage::HelpersPreapplyResponse(result) => {
+                result.map_err(|err| ProtocolError::HelpersPreapplyError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
     }
 
     /// Call helpers_preapply_operations shell service
-    pub fn helpers_preapply_operations(&self, request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolServiceError> {
-        self.call_protocol_json_rpc_internal(ProtocolMessage::HelpersPreapplyOperationsCall(request))
+    pub fn helpers_preapply_operations(
+        &self,
+        request: ProtocolRpcRequest,
+    ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
+        self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyOperationsCall(request))
     }
 
     /// Call helpers_preapply_block shell service
-    pub fn helpers_preapply_block(&self, request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolServiceError> {
-        self.call_protocol_json_rpc_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
+    pub fn helpers_preapply_block(
+        &self,
+        request: ProtocolRpcRequest,
+    ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
+        self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
     }
 
     /// Change tezos runtime configuration
-    pub fn change_runtime_configuration(&self, settings: TezosRuntimeConfiguration) -> Result<(), ProtocolServiceError> {
+    pub fn change_runtime_configuration(
+        &self,
+        settings: TezosRuntimeConfiguration,
+    ) -> Result<(), ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
+        io.tx
+            .send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
         match io.rx.receive()? {
-            NodeMessage::ChangeRuntimeConfigurationResult(result) => result.map_err(|err| ProtocolError::TezosRuntimeConfigurationError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::ChangeRuntimeConfigurationResult(result) => result.map_err(|err| {
+                ProtocolError::TezosRuntimeConfigurationError { reason: err }.into()
+            }),
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
     /// Command tezos ocaml code to initialize context and protocol.
     /// CommitGenesisResult is returned only if commit_genesis is set to true
-    fn init_protocol_context(&self,
-                             storage_data_dir: String,
-                             tezos_environment: &TezosEnvironmentConfiguration,
-                             commit_genesis: bool,
-                             enable_testchain: bool,
-                             readonly: bool,
-                             patch_context: Option<PatchContext>) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-
+    fn init_protocol_context(
+        &self,
+        storage_data_dir: String,
+        tezos_environment: &TezosEnvironmentConfiguration,
+        commit_genesis: bool,
+        enable_testchain: bool,
+        readonly: bool,
+        patch_context: Option<PatchContext>,
+    ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         // try to check if was at least one write success, other words, if context was already created on file system
         {
             // lock
-            let lock: Arc<(Mutex<bool>, Condvar)> = AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK.clone();
+            let lock: Arc<(Mutex<bool>, Condvar)> =
+                AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK.clone();
             let &(ref lock, ref cvar) = &*lock;
-            let was_one_write_success = lock.lock().map_err(|error| ProtocolServiceError::LockPoisonError { message: format!("{:?}", error) })?;
+            let was_one_write_success =
+                lock.lock()
+                    .map_err(|error| ProtocolServiceError::LockPoisonError {
+                        message: format!("{:?}", error),
+                    })?;
 
             // if we have already one write, we can just continue, if not we put thread to sleep and wait
             if !(*was_one_write_success) {
@@ -507,23 +688,31 @@ impl ProtocolController {
 
         // call init
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::InitProtocolContextCall(InitProtocolContextParams {
-            storage_data_dir,
-            genesis: tezos_environment.genesis.clone(),
-            genesis_max_operations_ttl: tezos_environment.genesis_additional_data().max_operations_ttl,
-            protocol_overrides: tezos_environment.protocol_overrides.clone(),
-            commit_genesis,
-            enable_testchain,
-            readonly,
-            patch_context,
-        }))?;
+        io.tx.send(&ProtocolMessage::InitProtocolContextCall(
+            InitProtocolContextParams {
+                storage_data_dir,
+                genesis: tezos_environment.genesis.clone(),
+                genesis_max_operations_ttl: tezos_environment
+                    .genesis_additional_data()
+                    .max_operations_ttl,
+                protocol_overrides: tezos_environment.protocol_overrides.clone(),
+                commit_genesis,
+                enable_testchain,
+                readonly,
+                patch_context,
+            },
+        ))?;
 
         // wait for response
         // this might take a while, so we will use unusually long timeout
-        io.rx.set_read_timeout(Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
         let receive_result = io.rx.receive();
         // restore default timeout setting
-        io.rx.set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT)).map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        io.rx
+            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
 
         // process response
         match receive_result? {
@@ -533,9 +722,14 @@ impl ProtocolController {
                     // we check if it is the first one, if it is the first one, we can notify other threads to continue
                     if !readonly {
                         // check if first write success
-                        let lock: Arc<(Mutex<bool>, Condvar)> = AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK.clone();
+                        let lock: Arc<(Mutex<bool>, Condvar)> =
+                            AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK.clone();
                         let &(ref lock, ref cvar) = &*lock;
-                        let mut was_one_write_success = lock.lock().map_err(|error| ProtocolServiceError::LockPoisonError { message: format!("{:?}", error) })?;
+                        let mut was_one_write_success =
+                            lock.lock()
+                                .map_err(|error| ProtocolServiceError::LockPoisonError {
+                                    message: format!("{:?}", error),
+                                })?;
                         if !(*was_one_write_success) {
                             *was_one_write_success = true;
                             cvar.notify_all();
@@ -544,7 +738,9 @@ impl ProtocolController {
                 }
                 result.map_err(|err| ProtocolError::OcamlStorageInitError { reason: err }.into())
             }
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
@@ -554,12 +750,18 @@ impl ProtocolController {
         io.tx.send(&ProtocolMessage::ShutdownCall)?;
         match io.rx.receive()? {
             NodeMessage::ShutdownResult => Ok(()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() }),
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 
     /// Initialize protocol environment from default configuration (writeable).
-    pub fn init_protocol_for_write(&self, commit_genesis: bool, patch_context: &Option<PatchContext>) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+    pub fn init_protocol_for_write(
+        &self,
+        commit_genesis: bool,
+        patch_context: &Option<PatchContext>,
+    ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
         self.init_protocol_context(
             self.configuration.data_dir().to_str().unwrap().to_string(),
@@ -572,7 +774,9 @@ impl ProtocolController {
     }
 
     /// Initialize protocol environment from default configuration (readonly).
-    pub fn init_protocol_for_read(&self) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+    pub fn init_protocol_for_read(
+        &self,
+    ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
         self.init_protocol_context(
             self.configuration.data_dir().to_str().unwrap().to_string(),
@@ -585,21 +789,40 @@ impl ProtocolController {
     }
 
     /// Gets data for genesis.
-    pub fn genesis_result_data(&self, genesis_context_hash: &ContextHash) -> Result<CommitGenesisResult, ProtocolServiceError> {
+    pub fn genesis_result_data(
+        &self,
+        genesis_context_hash: &ContextHash,
+    ) -> Result<CommitGenesisResult, ProtocolServiceError> {
         let tezos_environment = self.configuration.environment();
-        let main_chain_id = tezos_environment.main_chain_id().map_err(|e| ProtocolServiceError::InvalidDataError { message: format!("{:?}", e) })?;
-        let protocol_hash = tezos_environment.genesis_protocol().map_err(|e| ProtocolServiceError::InvalidDataError { message: format!("{:?}", e) })?;
+        let main_chain_id = tezos_environment.main_chain_id().map_err(|e| {
+            ProtocolServiceError::InvalidDataError {
+                message: format!("{:?}", e),
+            }
+        })?;
+        let protocol_hash = tezos_environment.genesis_protocol().map_err(|e| {
+            ProtocolServiceError::InvalidDataError {
+                message: format!("{:?}", e),
+            }
+        })?;
 
         let mut io = self.io.borrow_mut();
-        io.tx.send(&ProtocolMessage::GenesisResultDataCall(GenesisResultDataParams {
-            genesis_context_hash: genesis_context_hash.clone(),
-            chain_id: main_chain_id,
-            genesis_protocol_hash: protocol_hash,
-            genesis_max_operations_ttl: tezos_environment.genesis_additional_data().max_operations_ttl,
-        }))?;
+        io.tx.send(&ProtocolMessage::GenesisResultDataCall(
+            GenesisResultDataParams {
+                genesis_context_hash: genesis_context_hash.clone(),
+                chain_id: main_chain_id,
+                genesis_protocol_hash: protocol_hash,
+                genesis_max_operations_ttl: tezos_environment
+                    .genesis_additional_data()
+                    .max_operations_ttl,
+            },
+        ))?;
         match io.rx.receive()? {
-            NodeMessage::CommitGenesisResultData(result) => result.map_err(|err| ProtocolError::GenesisResultDataError { reason: err }.into()),
-            message => Err(ProtocolServiceError::UnexpectedMessage { message: message.into() })
+            NodeMessage::CommitGenesisResultData(result) => {
+                result.map_err(|err| ProtocolError::GenesisResultDataError { reason: err }.into())
+            }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
         }
     }
 }
@@ -622,7 +845,11 @@ pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
-    pub fn new(name: &str, configuration: ProtocolEndpointConfiguration, log: Logger) -> ProtocolRunnerEndpoint<Runner> {
+    pub fn new(
+        name: &str,
+        configuration: ProtocolEndpointConfiguration,
+        log: Logger,
+    ) -> ProtocolRunnerEndpoint<Runner> {
         let cmd_server = IpcCmdServer::new(configuration.clone());
 
         let (evt_server, evt_server_path) = if configuration.need_event_server {
@@ -635,7 +862,12 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
 
         ProtocolRunnerEndpoint {
             name: name.to_string(),
-            runner: Runner::new(configuration, cmd_server.0.client().path(), evt_server_path, name.to_string()),
+            runner: Runner::new(
+                configuration,
+                cmd_server.0.client().path(),
+                evt_server_path,
+                name.to_string(),
+            ),
             commands: cmd_server,
             events: evt_server,
             log,
@@ -711,7 +943,8 @@ impl ProtocolRunner for ExecutableProtocolRunner {
         configuration: ProtocolEndpointConfiguration,
         sock_cmd_path: &Path,
         sock_evt_path: Option<PathBuf>,
-        endpoint_name: String) -> Self {
+        endpoint_name: String,
+    ) -> Self {
         ExecutableProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
             sock_evt_path,
@@ -778,7 +1011,12 @@ impl ProtocolRunner for ExecutableProtocolRunner {
 pub trait ProtocolRunner: Clone + Send + Sync {
     type Subprocess: Send;
 
-    fn new(configuration: ProtocolEndpointConfiguration, sock_cmd_path: &Path, sock_evt_path: Option<PathBuf>, endpoint_name: String) -> Self;
+    fn new(
+        configuration: ProtocolEndpointConfiguration,
+        sock_cmd_path: &Path,
+        sock_evt_path: Option<PathBuf>,
+        endpoint_name: String,
+    ) -> Self;
 
     fn spawn(&self) -> Result<Self::Subprocess, ProtocolServiceError>;
 

@@ -11,7 +11,7 @@ use byteorder::{BigEndian, WriteBytesExt};
 use bytes::BufMut;
 use serde::ser::{Error as SerdeError, Serialize};
 
-use crate::bit_utils::{Bits, BitTrim};
+use crate::bit_utils::{BitTrim, Bits};
 use crate::encoding::{Encoding, Field, SchemaType};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
@@ -46,8 +46,8 @@ use crate::types::{self, Value};
 /// assert_eq!(binary, hex::decode("0000000476312e3000010000").unwrap());
 /// ```
 pub fn write<T>(data: &T, encoding: &Encoding) -> Result<Vec<u8>, Error>
-    where
-        T: ?Sized + Serialize
+where
+    T: ?Sized + Serialize,
 {
     let mut serializer = Serializer::default();
     let value = data.serialize(&mut serializer)?;
@@ -75,7 +75,8 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
             let mut bytes_sz: usize = 0;
             for field in schema {
                 let name = field.get_name();
-                let value = find_value_in_record_values(name, values).unwrap_or_else(|| panic!("No values found for {}", name));
+                let value = find_value_in_record_values(name, values)
+                    .unwrap_or_else(|| panic!("No values found for {}", name));
                 let encoding = field.get_encoding();
 
                 bytes_sz += encode_any(data, value, encoding)?;
@@ -83,7 +84,10 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
 
             Ok(bytes_sz)
         }
-        _ => Err(Error::encoding_mismatch(&Encoding::Obj(schema.to_vec()), value))
+        _ => Err(Error::encoding_mismatch(
+            &Encoding::Obj(schema.to_vec()),
+            value,
+        )),
     }
 }
 
@@ -94,141 +98,120 @@ fn encode_tuple(data: &mut Vec<u8>, value: &Value, encodings: &[Encoding]) -> Re
             if let Some(value) = values.get(index) {
                 bytes_sz += encode_any(data, value, encoding)?;
             } else {
-                return Err(Error::encoding_mismatch(&Encoding::Tup(encodings.to_vec()), value));
+                return Err(Error::encoding_mismatch(
+                    &Encoding::Tup(encodings.to_vec()),
+                    value,
+                ));
             }
         }
         Ok(bytes_sz)
     } else {
-        Err(Error::encoding_mismatch(&Encoding::Tup(encodings.to_vec()), value))
+        Err(Error::encoding_mismatch(
+            &Encoding::Tup(encodings.to_vec()),
+            value,
+        ))
     }
 }
 
 fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Result<usize, Error> {
     match encoding {
-        Encoding::Unit => {
-            Ok(0)
-        }
-        Encoding::Int8 => {
-            match value {
-                Value::Int8(v) => {
-                    data.put_i8(*v);
-                    Ok(size_of::<i8>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+        Encoding::Unit => Ok(0),
+        Encoding::Int8 => match value {
+            Value::Int8(v) => {
+                data.put_i8(*v);
+                Ok(size_of::<i8>())
             }
-        }
-        Encoding::Uint8 => {
-            match value {
-                Value::Uint8(v) => {
-                    data.put_u8(*v);
-                    Ok(size_of::<u8>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Uint8 => match value {
+            Value::Uint8(v) => {
+                data.put_u8(*v);
+                Ok(size_of::<u8>())
             }
-        }
-        Encoding::Int16 => {
-            match value {
-                Value::Int16(v) => {
-                    data.put_i16(*v);
-                    Ok(size_of::<i16>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Int16 => match value {
+            Value::Int16(v) => {
+                data.put_i16(*v);
+                Ok(size_of::<i16>())
             }
-        }
-        Encoding::Uint16 => {
-            match value {
-                Value::Uint16(v) => {
-                    data.put_u16(*v);
-                    Ok(size_of::<u16>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Uint16 => match value {
+            Value::Uint16(v) => {
+                data.put_u16(*v);
+                Ok(size_of::<u16>())
             }
-        }
-        Encoding::Int32 => {
-            match value {
-                Value::Int32(v) => {
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Int32 => match value {
+            Value::Int32(v) => {
+                data.put_i32(*v);
+                Ok(size_of::<i32>())
+            }
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Int31 => match value {
+            Value::Int32(v) => {
+                if (*v & 0x7FFF_FFFF) == *v {
                     data.put_i32(*v);
                     Ok(size_of::<i32>())
+                } else {
+                    Err(Error::custom("Value is outside of Int31 range"))
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
             }
-        }
-        Encoding::Int31 => {
-            match value {
-                Value::Int32(v) => {
-                    if (*v & 0x7FFF_FFFF) == *v {
-                        data.put_i32(*v);
-                        Ok(size_of::<i32>())
-                    } else {
-                        Err(Error::custom("Value is outside of Int31 range"))
-                    }
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Uint32 => match value {
+            Value::Int32(v) => {
+                if *v >= 0 {
+                    data.put_i32(*v);
+                    Ok(size_of::<i32>())
+                } else {
+                    Err(Error::custom("Value is outside of Uint32 range"))
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
             }
-        }
-        Encoding::Uint32 => {
-            match value {
-                Value::Int32(v) => {
-                    if *v >= 0 {
-                        data.put_i32(*v);
-                        Ok(size_of::<i32>())
-                    } else {
-                        Err(Error::custom("Value is outside of Uint32 range"))
-                    }
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::RangedInt => unimplemented!("Encoding::RangedInt is not implemented"),
+        Encoding::RangedFloat => unimplemented!("Encoding::RangedFloat is not implemented"),
+        Encoding::Int64 | Encoding::Timestamp => match value {
+            Value::Int64(v) => {
+                data.put_i64(*v);
+                Ok(size_of::<i64>())
             }
-        }
-        Encoding::RangedInt => {
-            unimplemented!("Encoding::RangedInt is not implemented")
-        }
-        Encoding::RangedFloat => {
-            unimplemented!("Encoding::RangedFloat is not implemented")
-        }
-        Encoding::Int64 |
-        Encoding::Timestamp => {
-            match value {
-                Value::Int64(v) => {
-                    data.put_i64(*v);
-                    Ok(size_of::<i64>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Float => match value {
+            Value::Float(v) => {
+                data.put_f64(*v);
+                Ok(size_of::<f64>())
             }
-        }
-        Encoding::Float => {
-            match value {
-                Value::Float(v) => {
-                    data.put_f64(*v);
-                    Ok(size_of::<f64>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Bool => match value {
+            Value::Bool(v) => {
+                if *v {
+                    data.put_u8(types::BYTE_VAL_TRUE)
+                } else {
+                    data.put_u8(types::BYTE_VAL_FALSE)
+                };
+                Ok(size_of::<u8>())
             }
-        }
-        Encoding::Bool => {
-            match value {
-                Value::Bool(v) => {
-                    if *v { data.put_u8(types::BYTE_VAL_TRUE) } else { data.put_u8(types::BYTE_VAL_FALSE) };
-                    Ok(size_of::<u8>())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::Z | Encoding::Mutez => match value {
+            Value::String(v) => encode_z(data, v),
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::String => match value {
+            Value::String(v) => {
+                data.put_u32(v.len() as u32);
+                data.put_slice(v.as_bytes());
+                Ok(size_of::<u32>() + v.len())
             }
-        }
-        Encoding::Z | Encoding::Mutez => {
-            match value {
-                Value::String(v) => encode_z(data, v),
-                _ => Err(Error::encoding_mismatch(encoding, value))
-            }
-        }
-        Encoding::String => {
-            match value {
-                Value::String(v) => {
-                    data.put_u32(v.len() as u32);
-                    data.put_slice(v.as_bytes());
-                    Ok(size_of::<u32>() + v.len())
-                }
-                _ => Err(Error::encoding_mismatch(encoding, value))
-            }
-        }
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
         Encoding::Enum => {
             match value {
                 Value::Enum(_, ordinal) => {
@@ -236,7 +219,7 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     data.put_u8(ordinal.expect("Was expecting enum ordinal value") as u8);
                     Ok(size_of::<u8>())
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+                _ => Err(Error::encoding_mismatch(encoding, value)),
             }
         }
         Encoding::List(list_inner_encoding) => {
@@ -249,7 +232,7 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     }
                     Ok(data.len() - data_len_before_write)
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+                _ => Err(Error::encoding_mismatch(encoding, value)),
             }
         }
         Encoding::Bytes => {
@@ -264,7 +247,7 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     }
                     Ok(data.len() - data_len_before_write)
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+                _ => Err(Error::encoding_mismatch(encoding, value)),
             }
         }
         Encoding::Hash(hash_type) => {
@@ -285,48 +268,44 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     if bytes_sz == hash_type.size() {
                         Ok(bytes_sz)
                     } else {
-                        Err(Error::custom(format!("Was expecting {} bytes but got {}", hash_type.size(), bytes_sz)))
+                        Err(Error::custom(format!(
+                            "Was expecting {} bytes but got {}",
+                            hash_type.size(),
+                            bytes_sz
+                        )))
                     }
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+                _ => Err(Error::encoding_mismatch(encoding, value)),
             }
         }
-        Encoding::Option(option_encoding) => {
-            match value {
-                Value::Option(ref wrapped_value) => {
-                    match wrapped_value {
-                        Some(option_value) => {
-                            data.put_u8(types::BYTE_VAL_SOME);
-                            let bytes_sz = encode_value(data, option_value, option_encoding)?;
-                            Ok(size_of::<u8>() + bytes_sz)
-                        }
-                        None => {
-                            data.put_u8(types::BYTE_VAL_NONE);
-                            Ok(size_of::<u8>())
-                        }
-                    }
+        Encoding::Option(option_encoding) => match value {
+            Value::Option(ref wrapped_value) => match wrapped_value {
+                Some(option_value) => {
+                    data.put_u8(types::BYTE_VAL_SOME);
+                    let bytes_sz = encode_value(data, option_value, option_encoding)?;
+                    Ok(size_of::<u8>() + bytes_sz)
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
-            }
-        }
-        Encoding::OptionalField(option_encoding) => {
-            match value {
-                Value::Option(ref wrapped_value) => {
-                    match wrapped_value {
-                        Some(option_value) => {
-                            data.put_u8(types::BYTE_FIELD_SOME);
-                            let bytes_sz = encode_value(data, option_value, option_encoding)?;
-                            Ok(size_of::<u8>() + bytes_sz)
-                        }
-                        None => {
-                            data.put_u8(types::BYTE_FIELD_NONE);
-                            Ok(size_of::<u8>())
-                        }
-                    }
+                None => {
+                    data.put_u8(types::BYTE_VAL_NONE);
+                    Ok(size_of::<u8>())
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
-            }
-        }
+            },
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
+        Encoding::OptionalField(option_encoding) => match value {
+            Value::Option(ref wrapped_value) => match wrapped_value {
+                Some(option_value) => {
+                    data.put_u8(types::BYTE_FIELD_SOME);
+                    let bytes_sz = encode_value(data, option_value, option_encoding)?;
+                    Ok(size_of::<u8>() + bytes_sz)
+                }
+                None => {
+                    data.put_u8(types::BYTE_FIELD_NONE);
+                    Ok(size_of::<u8>())
+                }
+            },
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
         Encoding::Dynamic(dynamic_encoding) => {
             let data_len_before_write = data.len();
             // put 0 as a placeholder
@@ -338,7 +317,8 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             let bytes_sz = encode_value(data, value, dynamic_encoding)?;
 
             // capture slice of buffer where List length was stored
-            let mut bytes_sz_slice = &mut data[data_len_before_write..data_len_after_size_placeholder];
+            let mut bytes_sz_slice =
+                &mut data[data_len_before_write..data_len_after_size_placeholder];
             // update size
             bytes_sz_slice.write_u32::<BigEndian>(bytes_sz as u32)?;
 
@@ -351,12 +331,13 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             if bytes_sz == *sized_size {
                 Ok(bytes_sz)
             } else {
-                Err(Error::custom(format!("Was expecting {} bytes but got {}", bytes_sz, sized_size)))
+                Err(Error::custom(format!(
+                    "Was expecting {} bytes but got {}",
+                    bytes_sz, sized_size
+                )))
             }
         }
-        Encoding::Greedy(un_sized_encoding) => {
-            encode_value(data, value, un_sized_encoding)
-        }
+        Encoding::Greedy(un_sized_encoding) => encode_value(data, value, un_sized_encoding),
         Encoding::Tags(tag_sz, tag_map) => {
             match value {
                 Value::Tag(ref tag_variant, ref tag_value) => {
@@ -370,7 +351,10 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
 
                             Ok(data.len() - data_len_before_write)
                         }
-                        None => Err(Error::custom(format!("No tag found for variant: {}", tag_variant)))
+                        None => Err(Error::custom(format!(
+                            "No tag found for variant: {}",
+                            tag_variant
+                        ))),
                     }
                 }
                 Value::Enum(ref tag_variant, _) => {
@@ -383,10 +367,13 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
 
                             Ok(data.len() - data_len_before_write)
                         }
-                        None => Err(Error::custom(format!("No tag found for variant: {}", tag_variant)))
+                        None => Err(Error::custom(format!(
+                            "No tag found for variant: {}",
+                            tag_variant
+                        ))),
                     }
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))
+                _ => Err(Error::encoding_mismatch(encoding, value)),
             }
         }
         Encoding::Split(fn_encoding) => {
@@ -397,12 +384,8 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             let inner_encoding = fn_encoding();
             encode_value(data, value, &inner_encoding)
         }
-        Encoding::Obj(obj_schema) => {
-            encode_record(data, value, obj_schema)
-        }
-        Encoding::Tup(tup_encodings) => {
-            encode_tuple(data, value, tup_encodings)
-        }
+        Encoding::Obj(obj_schema) => encode_record(data, value, obj_schema),
+        Encoding::Tup(tup_encodings) => encode_tuple(data, value, tup_encodings),
     }
 }
 
@@ -410,7 +393,7 @@ fn write_tag_id(data: &mut Vec<u8>, tag_sz: usize, tag_id: u16) -> Result<(), Er
     match tag_sz {
         1 => Ok(data.put_u8(tag_id as u8)),
         2 => Ok(data.put_u16(tag_id)),
-        _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz)))
+        _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz))),
     }
 }
 
@@ -419,7 +402,11 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
         if let Some(sign) = value.chars().next() {
             if sign.is_alphanumeric() {
                 (0, false)
-            } else if sign == '-' { (1, true) } else { (1, false) }
+            } else if sign == '-' {
+                (1, true)
+            } else {
+                (1, false)
+            }
         } else {
             return Err(Error::custom("Cannot process empty value"));
         }
@@ -475,9 +462,13 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
     }
 }
 
-fn find_value_in_record_values<'a>(name: &'a str, values: &'a [(String, Value)]) -> Option<&'a Value> {
-    values.iter()
-        .find(|&(v_name, _)| { v_name == name })
+fn find_value_in_record_values<'a>(
+    name: &'a str,
+    values: &'a [(String, Value)],
+) -> Option<&'a Value> {
+    values
+        .iter()
+        .find(|&(v_name, _)| v_name == name)
         .map(|(_, value)| value)
 }
 
@@ -494,16 +485,14 @@ mod tests {
     fn can_serialize_z_positive_to_binary() {
         #[derive(Serialize, Debug)]
         struct Record {
-            a: BigInt
+            a: BigInt,
         }
-        let record_schema = vec![
-            Field::new("a", Encoding::Z)
-        ];
+        let record_schema = vec![Field::new("a", Encoding::Z)];
         let record_encoding = Encoding::Obj(record_schema);
 
         {
             let record = Record {
-                a: num_bigint::BigInt::from(165_316_510).into()
+                a: num_bigint::BigInt::from(165_316_510).into(),
             };
             let writer_result = write(&record, &record_encoding).unwrap();
             let expected_writer_result = hex::decode("9e9ed49d01").unwrap();
@@ -512,7 +501,7 @@ mod tests {
 
         {
             let record = Record {
-                a: num_bigint::BigInt::from(3000).into()
+                a: num_bigint::BigInt::from(3000).into(),
             };
             let writer_result = write(&record, &record_encoding).unwrap();
             let expected_writer_result = hex::decode("b82e").unwrap();
@@ -524,16 +513,14 @@ mod tests {
     fn can_serialize_mutez_to_binary() {
         #[derive(Serialize, Debug)]
         struct Record {
-            a: BigInt
+            a: BigInt,
         }
-        let record_schema = vec![
-            Field::new("a", Encoding::Mutez)
-        ];
+        let record_schema = vec![Field::new("a", Encoding::Mutez)];
         let record_encoding = Encoding::Obj(record_schema);
 
         {
             let record = Record {
-                a: num_bigint::BigInt::from(165_316_510).into()
+                a: num_bigint::BigInt::from(165_316_510).into(),
             };
             let writer_result = write(&record, &record_encoding).unwrap();
             let expected_writer_result = hex::decode("9e9ed49d01").unwrap();
@@ -542,7 +529,7 @@ mod tests {
 
         {
             let record = Record {
-                a: num_bigint::BigInt::from(3000).into()
+                a: num_bigint::BigInt::from(3000).into(),
             };
             let writer_result = write(&record, &record_encoding).unwrap();
             let expected_writer_result = hex::decode("b82e").unwrap();
@@ -554,15 +541,13 @@ mod tests {
     fn can_serialize_z_negative_to_binary() {
         #[derive(Serialize, Debug)]
         struct Record {
-            a: BigInt
+            a: BigInt,
         }
-        let record_schema = vec![
-            Field::new("a", Encoding::Z)
-        ];
+        let record_schema = vec![Field::new("a", Encoding::Z)];
         let record_encoding = Encoding::Obj(record_schema);
 
         let record = Record {
-            a: num_bigint::BigInt::from(-100_000).into()
+            a: num_bigint::BigInt::from(-100_000).into(),
         };
         let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("e09a0c").unwrap();
@@ -573,15 +558,13 @@ mod tests {
     fn can_serialize_z_small_number_to_binary() {
         #[derive(Serialize, Debug)]
         struct Record {
-            a: BigInt
+            a: BigInt,
         }
-        let record_schema = vec![
-            Field::new("a", Encoding::Z)
-        ];
+        let record_schema = vec![Field::new("a", Encoding::Z)];
         let record_encoding = Encoding::Obj(record_schema);
 
         let record = Record {
-            a: num_bigint::BigInt::from(63).into()
+            a: num_bigint::BigInt::from(63).into(),
         };
         let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("3f").unwrap();
@@ -592,15 +575,13 @@ mod tests {
     fn can_serialize_z_negative_small_number_to_binary() {
         #[derive(Serialize, Debug)]
         struct Record {
-            a: BigInt
+            a: BigInt,
         }
-        let record_schema = vec![
-            Field::new("a", Encoding::Z)
-        ];
+        let record_schema = vec![Field::new("a", Encoding::Z)];
         let record_encoding = Encoding::Obj(record_schema);
 
         let record = Record {
-            a: num_bigint::BigInt::from(-23).into()
+            a: num_bigint::BigInt::from(-23).into(),
         };
         let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("57").unwrap();
@@ -614,13 +595,14 @@ mod tests {
             chain_id: Vec<u8>,
         }
 
-        let get_head_record_schema = vec![
-            Field::new("chain_id", Encoding::Sized(4, Box::new(Encoding::Bytes)))
-        ];
+        let get_head_record_schema = vec![Field::new(
+            "chain_id",
+            Encoding::Sized(4, Box::new(Encoding::Bytes)),
+        )];
 
         #[derive(Serialize, Debug)]
         enum Message {
-            GetHead(GetHeadRecord)
+            GetHead(GetHeadRecord),
         }
 
         #[derive(Serialize, Debug)]
@@ -628,18 +610,23 @@ mod tests {
             messages: Vec<Message>,
         }
 
-        let response_schema = vec![
-            Field::new("messages", Encoding::dynamic(Encoding::list(
-                Encoding::Tags(
-                    size_of::<u16>(),
-                    TagMap::new(vec![Tag::new(0x10, "GetHead", Encoding::Obj(get_head_record_schema))]),
-                )
-            )))
-        ];
+        let response_schema = vec![Field::new(
+            "messages",
+            Encoding::dynamic(Encoding::list(Encoding::Tags(
+                size_of::<u16>(),
+                TagMap::new(vec![Tag::new(
+                    0x10,
+                    "GetHead",
+                    Encoding::Obj(get_head_record_schema),
+                )]),
+            ))),
+        )];
         let response_encoding = Encoding::Obj(response_schema);
 
         let response = Response {
-            messages: vec![Message::GetHead(GetHeadRecord { chain_id: hex::decode("8eceda2f").unwrap() })]
+            messages: vec![Message::GetHead(GetHeadRecord {
+                chain_id: hex::decode("8eceda2f").unwrap(),
+            })],
         };
 
         let writer_result = write(&response, &response_encoding);
@@ -692,7 +679,18 @@ mod tests {
             c: Some(num_bigint::BigInt::from(1_548_569_249).into()),
             d: 12.34,
             e: EnumType::Disconnected,
-            f: vec![Version { name: "A".to_string(), major: 1, minor: 1 }, Version { name: "B".to_string(), major: 2, minor: 0 }],
+            f: vec![
+                Version {
+                    name: "A".to_string(),
+                    major: 1,
+                    minor: 1,
+                },
+                Version {
+                    name: "B".to_string(),
+                    major: 2,
+                    minor: 0,
+                },
+            ],
             s: SubRecord {
                 x: 5,
                 y: 32,
@@ -703,13 +701,13 @@ mod tests {
         let version_schema = vec![
             Field::new("name", Encoding::String),
             Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new("minor", Encoding::Uint16),
         ];
 
         let sub_record_schema = vec![
             Field::new("x", Encoding::Int31),
             Field::new("y", Encoding::Int31),
-            Field::new("v", Encoding::dynamic(Encoding::list(Encoding::Int31)))
+            Field::new("v", Encoding::dynamic(Encoding::list(Encoding::Int31))),
         ];
 
         let record_schema = vec![
@@ -719,7 +717,10 @@ mod tests {
             Field::new("c", Encoding::Option(Box::new(Encoding::Z))),
             Field::new("d", Encoding::Float),
             Field::new("e", Encoding::Enum),
-            Field::new("f", Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema))))
+            Field::new(
+                "f",
+                Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema))),
+            ),
         ];
         let record_encoding = Encoding::Obj(record_schema);
 
@@ -751,7 +752,7 @@ mod tests {
         let version_schema = vec![
             Field::new("name", Encoding::String),
             Field::new("major", Encoding::Uint16),
-            Field::new("minor", Encoding::Uint16)
+            Field::new("minor", Encoding::Uint16),
         ];
 
         let connection_message_schema = vec![
@@ -759,19 +760,35 @@ mod tests {
             Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
             Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
             Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Encoding::Obj(version_schema)))
+            Field::new("versions", Encoding::list(Encoding::Obj(version_schema))),
         ];
         let connection_message_encoding = Encoding::Obj(connection_message_schema);
 
         let connection_message = ConnectionMessage {
             port: 3001,
-            versions: vec![Version { name: "A".to_string(), major: 1, minor: 1 }, Version { name: "B".to_string(), major: 2, minor: 0 }],
-            public_key: hex::decode("eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b").unwrap(),
-            proof_of_work_stamp: hex::decode("000000000000000000000000000000000000000000000000").unwrap(),
+            versions: vec![
+                Version {
+                    name: "A".to_string(),
+                    major: 1,
+                    minor: 1,
+                },
+                Version {
+                    name: "B".to_string(),
+                    major: 2,
+                    minor: 0,
+                },
+            ],
+            public_key: hex::decode(
+                "eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b",
+            )
+            .unwrap(),
+            proof_of_work_stamp: hex::decode("000000000000000000000000000000000000000000000000")
+                .unwrap(),
             message_nonce: hex::decode("000000000000000000000000000000000000000000000000").unwrap(),
         };
 
-        let writer_result = write(&connection_message, &connection_message_encoding).expect("Writer failed");
+        let writer_result =
+            write(&connection_message, &connection_message_encoding).expect("Writer failed");
 
         let expected_writer_result = hex::decode("0bb9eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000014100010001000000014200020000").expect("Failed to decode");
         assert_eq!(expected_writer_result, writer_result);
@@ -784,18 +801,22 @@ mod tests {
             pub forking_block_hash: Vec<u8>,
         }
 
-        let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
-        ];
+        let record_schema = vec![Field::new(
+            "forking_block_hash",
+            Encoding::list(Encoding::Uint8),
+        )];
         let record_encoding = Encoding::Obj(record_schema);
 
-        let record = Some(
-            Record {
-                forking_block_hash: hex::decode("2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap(),
-            }
-        );
+        let record = Some(Record {
+            forking_block_hash: hex::decode(
+                "2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b",
+            )
+            .unwrap(),
+        });
         let writer_result = write(&record, &Encoding::option(record_encoding)).unwrap();
-        let expected_writer_result = hex::decode("012253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b").unwrap();
+        let expected_writer_result =
+            hex::decode("012253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b")
+                .unwrap();
         assert_eq!(expected_writer_result, writer_result);
     }
 
@@ -806,9 +827,10 @@ mod tests {
             pub forking_block_hash: Vec<u8>,
         }
 
-        let record_schema = vec![
-            Field::new("forking_block_hash", Encoding::list(Encoding::Uint8)),
-        ];
+        let record_schema = vec![Field::new(
+            "forking_block_hash",
+            Encoding::list(Encoding::Uint8),
+        )];
         let record_encoding = Encoding::Obj(record_schema);
 
         let record: Option<Record> = None;
@@ -824,9 +846,7 @@ mod tests {
             pub arg: Option<String>,
         }
 
-        let record_schema = vec![
-            Field::new("arg", Encoding::option_field(Encoding::String)),
-        ];
+        let record_schema = vec![Field::new("arg", Encoding::option_field(Encoding::String))];
         let record_encoding = Encoding::Obj(record_schema);
 
         let record = Record {
@@ -844,17 +864,12 @@ mod tests {
             pub arg: Option<String>,
         }
 
-        let record_schema = vec![
-            Field::new("arg", Encoding::option_field(Encoding::String)),
-        ];
+        let record_schema = vec![Field::new("arg", Encoding::option_field(Encoding::String))];
         let record_encoding = Encoding::Obj(record_schema);
 
-        let record = Record {
-            arg: None,
-        };
+        let record = Record { arg: None };
         let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("00").unwrap();
         assert_eq!(expected_writer_result, writer_result);
     }
 }
-

@@ -26,7 +26,12 @@ pub struct EndorsingRight {
 
 impl EndorsingRight {
     /// Simple constructor to construct EndorsingRight
-    pub fn new(level: i32, delegate: SignaturePublicKeyHash, slots: Vec<u16>, estimated_time: Option<i64>) -> Self {
+    pub fn new(
+        level: i32,
+        delegate: SignaturePublicKeyHash,
+        slots: Vec<u16>,
+        estimated_time: Option<i64>,
+    ) -> Self {
         Self {
             level,
             delegate,
@@ -40,7 +45,10 @@ impl ToRpcJsonMap for EndorsingRight {
     fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
         ret.insert("level", UniversalValue::num(self.level));
-        ret.insert("delegate", UniversalValue::string(self.delegate.to_string()));
+        ret.insert(
+            "delegate",
+            UniversalValue::string(self.delegate.to_string()),
+        );
         ret.insert("slots", UniversalValue::num_list(self.slots.iter()));
         if let Some(ts) = self.estimated_time {
             ret.insert("estimated_time", UniversalValue::timestamp_rfc3339(ts));
@@ -67,7 +75,12 @@ pub struct BakingRights {
 
 impl BakingRights {
     /// Simple constructor to construct BakingRights
-    pub fn new(level: i32, delegate: SignaturePublicKeyHash, priority: u16, estimated_time: Option<i64>) -> Self {
+    pub fn new(
+        level: i32,
+        delegate: SignaturePublicKeyHash,
+        priority: u16,
+        estimated_time: Option<i64>,
+    ) -> Self {
         Self {
             level,
             delegate,
@@ -81,7 +94,10 @@ impl ToRpcJsonMap for BakingRights {
     fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
         let mut ret: HashMap<&'static str, UniversalValue> = Default::default();
         ret.insert("level", UniversalValue::num(self.level));
-        ret.insert("delegate", UniversalValue::string(self.delegate.to_string()));
+        ret.insert(
+            "delegate",
+            UniversalValue::string(self.delegate.to_string()),
+        );
         ret.insert("priority", UniversalValue::num(self.priority));
         if let Some(ts) = self.estimated_time {
             ret.insert("estimated_time", UniversalValue::timestamp_rfc3339(ts));
@@ -111,12 +127,7 @@ mod tests {
 
         let json = er.as_map();
         let expected_json = json!({"level":296772,"delegate":"tz1VxS7ff4YnZRs8b4mMP4WaMVpoQjuo1rjf","slots":[27,16,14,13,0],"estimated_time":"2020-03-26T07:16:51Z"});
-        Ok(
-            assert_json_eq!(
-                expected_json,
-                serde_json::to_value(json)?
-            )
-        )
+        Ok(assert_json_eq!(expected_json, serde_json::to_value(json)?))
     }
 
     #[test]
@@ -130,12 +141,7 @@ mod tests {
 
         let json = er.as_map();
         let expected_json = json!({"level":296771,"delegate":"tz3WXYtyDUNL91qfiCJtVUX746QpNv5i5ve5","slots":[30,1],"estimated_time":"2020-03-26T07:16:51Z"});
-        Ok(
-            assert_json_eq!(
-                expected_json,
-                serde_json::to_value(json)?
-            )
-        )
+        Ok(assert_json_eq!(expected_json, serde_json::to_value(json)?))
     }
 
     #[test]
@@ -149,11 +155,6 @@ mod tests {
 
         let json = er.as_map();
         let expected_json = json!({"level":296781,"delegate":"tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj","priority":123,"estimated_time":"2020-03-26T07:23:01Z"});
-        Ok(
-            assert_json_eq!(
-                expected_json,
-                serde_json::to_value(json)?
-            )
-        )
+        Ok(assert_json_eq!(expected_json, serde_json::to_value(json)?))
     }
 }

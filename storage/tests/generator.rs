@@ -119,7 +119,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
         // another 10 sequence numbers, so 60 + 10 = 70. but none of those pre-allocated numbers
         // were used in the second run.
         {
-            let sequences = Sequences::new(db.clone(), 10);
+            let sequences = Sequences::new(db, 10);
             let gen = sequences.generator("gen");
             for i in 0..5 {
                 assert_eq!(70 + i, gen.next()?, "Third run failed");

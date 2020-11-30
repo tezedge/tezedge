@@ -23,8 +23,8 @@ pub struct SwapMessage {
 
 cached_data!(SwapMessage, body);
 has_encoding!(SwapMessage, SWAP_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("point", Encoding::String),
-            Field::new("peer_id", Encoding::String),
-        ])
+    Encoding::Obj(vec![
+        Field::new("point", Encoding::String),
+        Field::new("peer_id", Encoding::String),
+    ])
 });

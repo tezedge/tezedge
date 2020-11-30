@@ -15,9 +15,9 @@ use std::time::{Duration, Instant, SystemTime};
 use riker::actors::*;
 use slog::{info, Logger};
 
-use crypto::hash::{BlockHash, HashType, OperationHash};
+use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
 use shell::shell_channel::{CurrentMempoolState, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, context_key, MempoolStorage, OperationsMetaStorage, OperationsStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
@@ -38,7 +38,7 @@ mod samples;
 fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
-    let log = common::create_logger(log_level.clone());
+    let log = common::create_logger(log_level);
 
     // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
     let (requests, operations, tezos_env) = samples::read_data_apply_block_request_until_1326();
@@ -51,6 +51,7 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
         &tezos_env,
         None,
         None,
+        tezos_identity::Identity::generate(0f64),
         (log, log_level),
     )?;
 
@@ -91,31 +92,14 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     Ok(())
 }
 
-fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::Error> {
+fn check_context(expected_context_hash: ContextHash, persistent_storage: &PersistentStorage) -> Result<(), failure::Error> {
     let context = TezedgeContext::new(
         BlockStorage::new(&persistent_storage),
         persistent_storage.merkle(),
     );
 
-    // check level 0
-    let ctx_hash = context.level_to_hash(0)?;
-    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
-        assert_eq!("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex", HashType::ProtocolHash.bytes_to_string(&data));
-    } else {
-        panic!(format!("Protocol not found in context for level: {}", 0));
-    }
-
-    // check level 1
-    let ctx_hash = context.level_to_hash(1)?;
-    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
-        assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
-    } else {
-        panic!(format!("Protocol not found in context for level: {}", 1));
-    }
-
-    // check level 2
-    let ctx_hash = context.level_to_hash(2)?;
-    if let Some(data) = context.get_key_from_history(&ctx_hash, &vec!["protocol".to_string()])? {
+    // check protocol
+    if let Some(data) = context.get_key_from_history(&expected_context_hash, &context_key!("protocol"))? {
         assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
@@ -127,12 +111,8 @@ fn check_context(persistent_storage: &PersistentStorage) -> Result<(), failure::
     // get final hash from last commit in merkle storage
     let merkle_last_hash = merkle.get_last_commit_hash();
 
-    // compare with context hash of last applied (1324th) block
-    let bhwithhash = BlockStorage::new(&persistent_storage).get_by_block_level(1324);
-    let hash = bhwithhash.unwrap().unwrap();
-    let ctx_hash = hash.header.context();
-
-    assert_eq!(*ctx_hash, merkle_last_hash.unwrap());
+    // compare with context hash of last applied expected_context_hash
+    assert_eq!(*expected_context_hash, merkle_last_hash.unwrap());
     let stats = merkle.get_merkle_stats().unwrap();
     println!("Avg set exec time in ns: {}", stats.perf_stats.avg_set_exec_time_ns);
 
@@ -196,26 +176,29 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
 
     // wait context_listener to finished context for applied blocks
     info!(log, "Waiting for context processing"; "level" => apply_to_level);
-    loop {
+    let current_head_context_hash: Option<ContextHash> = loop {
         match chain_meta_storage.get_current_head(&chain_id)? {
-            None => (),
+            None => continue,
             Some(head) => {
                 if head.level() >= &apply_to_level {
-                    let header = block_storage.get(head.hash()).expect("failed to read current head").expect("current head not found");
+                    let header = block_storage.get(head.block_hash()).expect("failed to read current head").expect("current head not found");
                     // TE-168: check if context is also asynchronously stored
                     let context_hash = header.header.context();
                     let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");
                     if found_by_context_hash.is_some() {
-                        break;
+                        break Some(context_hash.clone());
                     }
                 }
             }
         }
-    }
+    };
     info!(log, "Context done and successfully applied to level"; "level" => apply_to_level);
 
     // check context
-    check_context(&persistent_storage)
+    check_context(
+        current_head_context_hash.unwrap_or_else(|| panic!("Context hash not set for apply_to_level: {}", apply_to_level)),
+        &persistent_storage,
+    )
 }
 
 /// Starts on mempool current state for last applied block, which is supossed to be 1324.

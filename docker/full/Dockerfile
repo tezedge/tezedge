@@ -3,7 +3,7 @@ FROM simplestakingcom/tezos-opam-builder:debian10
 
 # Checkout and compile tezedge source code from master branch
 ARG tezedge_git="https://github.com/simplestaking/tezedge.git"
-ARG rust_toolchain="nightly-2020-07-12"
+ARG rust_toolchain="nightly-2020-10-24"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolchain} -y
 ENV PATH=/home/appuser/.cargo/bin:$PATH
 ENV RUST_BACKTRACE=1

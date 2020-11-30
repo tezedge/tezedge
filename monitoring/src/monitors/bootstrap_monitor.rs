@@ -33,7 +33,7 @@ impl BootstrapMonitor {
             downloaded_per_snapshot: 0,
             headers_per_session: 0,
             headers_per_snapshot: 0,
-            session_start: now.clone(),
+            session_start: now,
             last_snapshot: now,
         }
     }

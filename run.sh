@@ -3,14 +3,15 @@
 # SPDX-License-Identifier: MIT
 
 warn_if_not_using_recommended_rust() {
-  RUSTC_TOOLCHAIN_VERSION="2020-07-12"
+  RUSTC_TOOLCHAIN_VERSION="2020-10-24"
 
   EXPECTED_RUSTC_VERSION=$(date -d "$RUSTC_TOOLCHAIN_VERSION -1 day" +"%Y-%m-%d")
-  RUSTC_VERSION=$(rustc --version | gawk 'match($0, /.*\(.* ([0-9-]+)\)/, a) {print a[1]}')
+  RUSTC_VERSION=$(rustc --version)
 
-  if [ "$RUSTC_VERSION" != "$EXPECTED_RUSTC_VERSION" ]; then
+  if [[ "${RUSTC_VERSION}" != *"${EXPECTED_RUSTC_VERSION}"* ]]; then
     echo -e "\e[33mWarning:\e[0m please use supported rust toolchain version \e[97m$RUSTC_TOOLCHAIN_VERSION\e[0m."
-    echo    "See project README on how to install a supported rust toolchain."
+    echo    "Your current version $RUSTC_VERSION."
+    echo    "See project README.md on how to install a supported rust toolchain."
   fi
 }
 

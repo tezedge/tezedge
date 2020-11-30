@@ -2,18 +2,28 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
-use tezos_api::ffi::{ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError, BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest, ComputePathResponse, ContextDataError, GenesisChain, GetDataError, InitProtocolContextResult, JsonRpcResponse, PatchContext, PrevalidatorWrapper, ProtocolJsonRpcRequest, ProtocolOverrides, ProtocolRpcError, TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse};
+use tezos_api::ffi::{
+    ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
+    BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
+    BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
+    ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyError,
+    HelpersPreapplyResponse, InitProtocolContextResult, PatchContext, PrevalidatorWrapper,
+    ProtocolDataError, ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest,
+    ProtocolRpcResponse, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+    TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+    ValidateOperationResponse,
+};
 use tezos_interop::ffi;
 
 /// Override runtime configuration for OCaml runtime
-pub fn change_runtime_configuration(settings: TezosRuntimeConfiguration) -> Result<(), TezosRuntimeConfigurationError> {
+pub fn change_runtime_configuration(
+    settings: TezosRuntimeConfiguration,
+) -> Result<(), TezosRuntimeConfigurationError> {
     match ffi::change_runtime_configuration(settings) {
         Ok(result) => Ok(result?),
-        Err(e) => {
-            Err(TezosRuntimeConfigurationError::ChangeConfigurationError {
-                message: format!("FFI 'change_runtime_configuration' failed! Reason: {:?}", e)
-            })
-        }
+        Err(e) => Err(TezosRuntimeConfigurationError::ChangeConfigurationError {
+            message: format!("FFI 'change_runtime_configuration' failed! Reason: {:?}", e),
+        }),
     }
 }
 
@@ -44,13 +54,16 @@ pub fn genesis_result_data(
     protocol_hash: &ProtocolHash,
     genesis_max_operations_ttl: u16,
 ) -> Result<CommitGenesisResult, GetDataError> {
-    match ffi::genesis_result_data(context_hash.clone(), chain_id.clone(), protocol_hash.clone(), genesis_max_operations_ttl) {
+    match ffi::genesis_result_data(
+        context_hash.clone(),
+        chain_id.clone(),
+        protocol_hash.clone(),
+        genesis_max_operations_ttl,
+    ) {
         Ok(result) => Ok(result?),
-        Err(e) => {
-            Err(GetDataError::ReadError {
-                message: format!("FFI 'genesis_result_data' failed! Reason: {:?}", e)
-            })
-        }
+        Err(e) => Err(GetDataError::ReadError {
+            message: format!("FFI 'genesis_result_data' failed! Reason: {:?}", e),
+        }),
     }
 }
 
@@ -60,7 +73,6 @@ pub fn genesis_result_data(
 /// - new current head is evaluated
 /// - returns validation_result.message
 pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError> {
-
     // check operations count by validation_pass
     if (request.block_header.validation_pass() as usize) != request.operations.len() {
         return Err(ApplyBlockError::IncompleteOperations {
@@ -71,47 +83,58 @@ pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, App
 
     match ffi::apply_block(request) {
         Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
-        Err(e) => {
-            Err(ApplyBlockError::FailedToApplyBlock {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
+        Err(e) => Err(ApplyBlockError::FailedToApplyBlock {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
+    }
+}
+
+/// Begin application
+pub fn begin_application(
+    request: BeginApplicationRequest,
+) -> Result<BeginApplicationResponse, BeginApplicationError> {
+    match ffi::begin_application(request) {
+        Ok(result) => result.map_err(|e| BeginApplicationError::from(e)),
+        Err(e) => Err(BeginApplicationError::FailedToBeginApplication {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
     }
 }
 
 /// Begin construction
-pub fn begin_construction(request: BeginConstructionRequest) -> Result<PrevalidatorWrapper, BeginConstructionError> {
+pub fn begin_construction(
+    request: BeginConstructionRequest,
+) -> Result<PrevalidatorWrapper, BeginConstructionError> {
     match ffi::begin_construction(request) {
         Ok(result) => result.map_err(|e| BeginConstructionError::from(e)),
-        Err(e) => {
-            Err(BeginConstructionError::FailedToBeginConstruction {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
+        Err(e) => Err(BeginConstructionError::FailedToBeginConstruction {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
     }
 }
 
 /// Validate operation
-pub fn validate_operation(request: ValidateOperationRequest) -> Result<ValidateOperationResponse, ValidateOperationError> {
+pub fn validate_operation(
+    request: ValidateOperationRequest,
+) -> Result<ValidateOperationResponse, ValidateOperationError> {
     match ffi::validate_operation(request) {
         Ok(result) => result.map_err(|e| ValidateOperationError::from(e)),
-        Err(e) => {
-            Err(ValidateOperationError::FailedToValidateOperation {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
+        Err(e) => Err(ValidateOperationError::FailedToValidateOperation {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
     }
 }
 
-/// Call protocol json rpc - general service
-pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
-    match ffi::call_protocol_json_rpc(request) {
-        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
-        Err(e) => {
-            Err(ProtocolRpcError::FailedToCallProtocolRpc {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
+/// Call protocol rpc - general service
+pub fn call_protocol_rpc(
+    request: ProtocolRpcRequest,
+) -> Result<ProtocolRpcResponse, ProtocolRpcError> {
+    match ffi::call_protocol_rpc(request) {
+        Ok(result) => result,
+        Err(e) => Err(ProtocolRpcError::FailedToCallProtocolRpc(format!(
+            "Unknown OcamlError: {:?}",
+            e
+        ))),
     }
 }
 
@@ -120,48 +143,63 @@ pub fn call_protocol_json_rpc(request: ProtocolJsonRpcRequest) -> Result<JsonRpc
 pub fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError> {
     match ffi::compute_path(request) {
         Ok(result) => Ok(result?),
-        Err(e) => {
-            Err(ComputePathError::PathError {
-                message: format!("Path computation failed! Reason: {:?}", e)
-            })
-        }
+        Err(e) => Err(ComputePathError::PathError {
+            message: format!("Path computation failed! Reason: {:?}", e),
+        }),
     }
 }
 
-
 /// Call helpers_preapply_operations shell service
-pub fn helpers_preapply_operations(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+pub fn helpers_preapply_operations(
+    request: ProtocolRpcRequest,
+) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_operations(request) {
-        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
-        Err(e) => {
-            Err(ProtocolRpcError::FailedToCallProtocolRpc {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
+        Ok(result) => result.map_err(|e| HelpersPreapplyError::from(e)),
+        Err(e) => Err(HelpersPreapplyError::FailedToCallProtocolRpc {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
     }
 }
 
 /// Call helpers_preapply_block shell service
-pub fn helpers_preapply_block(request: ProtocolJsonRpcRequest) -> Result<JsonRpcResponse, ProtocolRpcError> {
+pub fn helpers_preapply_block(
+    request: ProtocolRpcRequest,
+) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_block(request) {
-        Ok(result) => result.map_err(|e| ProtocolRpcError::from(e)),
-        Err(e) => {
-            Err(ProtocolRpcError::FailedToCallProtocolRpc {
-                message: format!("Unknown OcamlError: {:?}", e)
-            })
-        }
+        Ok(result) => result.map_err(|e| HelpersPreapplyError::from(e)),
+        Err(e) => Err(HelpersPreapplyError::FailedToCallProtocolRpc {
+            message: format!("Unknown OcamlError: {:?}", e),
+        }),
     }
 }
 
 /// Decode protocoled context data
-pub fn decode_context_data(protocol_hash: ProtocolHash, key: Vec<String>, data: Vec<u8>) -> Result<Option<String>, ContextDataError> {
+pub fn decode_context_data(
+    protocol_hash: ProtocolHash,
+    key: Vec<String>,
+    data: Vec<u8>,
+) -> Result<Option<String>, ContextDataError> {
     match ffi::decode_context_data(protocol_hash, key, data) {
         Ok(result) => Ok(result?),
-        Err(e) => {
-            Err(ContextDataError::DecodeError {
-                message: format!("FFI 'decode_context_data' failed! Reason: {:?}", e)
-            })
-        }
+        Err(e) => Err(ContextDataError::DecodeError {
+            message: format!("FFI 'decode_context_data' failed! Reason: {:?}", e),
+        }),
+    }
+}
+
+/// Decode protocoled context data
+pub fn assert_encoding_for_protocol_data(
+    protocol_hash: ProtocolHash,
+    protocol_data: Vec<u8>,
+) -> Result<(), ProtocolDataError> {
+    match ffi::assert_encoding_for_protocol_data(protocol_hash, protocol_data) {
+        Ok(result) => Ok(result?),
+        Err(e) => Err(ProtocolDataError::DecodeError {
+            message: format!(
+                "FFI 'assert_encoding_for_protocol_data' failed! Reason: {:?}",
+                e
+            ),
+        }),
     }
 }
 

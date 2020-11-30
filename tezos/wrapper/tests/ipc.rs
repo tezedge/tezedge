@@ -13,7 +13,6 @@ fn ipc_fork_and_exchange() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
 
     let child_pid = common::fork(|| {
-
         // wait for parent to be ready
         let sock_path = sock_path.as_path();
         while !sock_path.exists() {
@@ -58,7 +57,6 @@ fn ipc_fork_and_panic() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
 
     let child_pid = common::fork(|| {
-
         // wait for parent to be ready
         let sock_path = sock_path.as_path();
         while !sock_path.exists() {
@@ -86,13 +84,11 @@ fn ipc_fork_and_panic() -> Result<(), failure::Error> {
     Ok(())
 }
 
-
 #[test]
 fn ipc_connect_panic() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
 
     let child_pid = common::fork(|| {
-
         // wait for parent to be ready
         let sock_path = sock_path.as_path();
         while !sock_path.exists() {

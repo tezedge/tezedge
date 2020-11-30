@@ -31,7 +31,8 @@ impl DeactivateMessage {
 
 cached_data!(DeactivateMessage, body);
 has_encoding!(DeactivateMessage, DEACTIVATE_MESSAGE_ENCODING, {
-        Encoding::Obj(vec![
-            Field::new("deactivate", Encoding::Hash(HashType::ChainId)),
-        ])
+    Encoding::Obj(vec![Field::new(
+        "deactivate",
+        Encoding::Hash(HashType::ChainId),
+    )])
 });

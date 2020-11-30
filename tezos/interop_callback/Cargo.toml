@@ -1,6 +1,6 @@
 [package]
 name = "tezos_interop_callback"
-version = "0.7.2"
+version = "0.8.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -8,6 +8,6 @@ edition = "2018"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-ocaml-interop = "0.2.2"
+ocaml-interop = { version = "0.4.4", features = ["docs-rs"] }
 # local dependencies
 tezos_context = { path = "../context" }

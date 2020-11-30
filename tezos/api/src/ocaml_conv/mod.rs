@@ -36,7 +36,7 @@ pub struct FfiOperationShellHeader<'a> {
 }
 
 // A hash that is represented as a tagged block in OCaml (borrows form a `Hash`)
-pub enum TaggedHash<'a>{
+pub enum TaggedHash<'a> {
     Hash(&'a Hash),
 }
 

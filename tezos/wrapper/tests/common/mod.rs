@@ -11,7 +11,7 @@ pub fn fork<F: FnOnce()>(child_func: F) -> libc::pid_t {
                 child_func();
                 libc::exit(0);
             }
-            pid => pid
+            pid => pid,
         }
     }
 }

@@ -1,12 +1,23 @@
 # TezEdge
 
-[![Build Status]][Build Link] [![Drone Status]][Drone Link]   [![Docs Status]][docs Link] [![Changelog][changelog-badge]][changelog] [![release-badge]][release-link] [![MIT licensed]][MIT link]
+[![Docs Status]][docs Link]
+[![Changelog][changelog-badge]][changelog]
+[![release-badge]][release-link]
+[![docker-badge]][docker-link]
+[![MIT licensed]][MIT link]
 
+|  CI / branch  |      master      |  develop |
+|----------|:-------------:|------:|
+| GitHub Actions |  [![Build Status master]][Build Link master] | [![Build Status develop]][Build Link develop] |
+| Drone |  [![Drone Status master]][Drone Link]   |   [![Drone Status develop]][Drone Link] |
 
-[Build Status]: https://travis-ci.com/simplestaking/tezedge.svg?branch=master
-[Build Link]: https://travis-ci.com/simplestaking/tezedge
+[Build Status master]: https://github.com/simplestaking/tezedge/workflows/build/badge.svg?branch=master
+[Build Status develop]: https://github.com/simplestaking/tezedge/workflows/build/badge.svg?branch=develop
+[Build Link master]: https://github.com/simplestaking/tezedge/actions?query=workflow%3Abuild+branch%3Amaster
+[Build Link develop]: https://github.com/simplestaking/tezedge/actions?query=workflow%3Abuild+branch%3Adevelop
 
-[Drone Status]: https://img.shields.io/drone/build/simplestaking/tezedge?server=http%3A%2F%2Fci.tezedge.com
+[Drone Status master]: http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg?ref=refs/heads/master
+[Drone Status develop]: http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg?ref=refs/heads/develop
 [Drone Link]: http://ci.tezedge.com/simplestaking/tezedge/
 
 [Docs Status]: https://img.shields.io/badge/user--docs-master-informational
@@ -23,6 +34,9 @@
 [release-badge]: https://img.shields.io/github/v/release/simplestaking/tezedge
 [release-link]: https://github.com/simplestaking/tezedge/releases/latest
 
+[docker-badge]: https://img.shields.io/badge/docker-images-blue
+[docker-link]: https://hub.docker.com/r/simplestakingcom/tezedge/tags
+
 The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
 In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible.
 
@@ -30,7 +44,6 @@ In addition to implementing a new node, the project seeks to maintain and improv
 
 Quick start
 ------------
-
 
 **Pre-requisites**
 
@@ -90,8 +103,8 @@ curl https://sh.rustup.rs -sSf | sh
 
 Rust nightly is required to build this project.
 ```
-rustup toolchain install nightly-2020-07-12
-rustup default nightly-2020-07-12
+rustup toolchain install nightly-2020-10-24
+rustup default nightly-2020-10-24
 ```
 
 **3. Install required libs**
@@ -116,22 +129,21 @@ Install libs required to build sandbox:
 sudo apt install libhidapi-dev
 ```
 
-**4. Supported Linux distributions**
+**4. Supported OS distributions**
 
 We are linking rust code with pre-compiled Tezos shared library. For your convenience we have created pre-compiled binary files
 for most of the popular linux distributions:
 
-supported linux distributions:
-* Ubuntu (16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10)
-* Debian (9, 10 )
-* OpenSUSE (15.1, 15.2)
-* CentOS (7, 8)
+
+|  OS  |      Versions      |
+|----------|:-------------:|
+| Ubuntu |  16.04, 18.04, 18.10, 19.04, 19.10, 20.04, 20.10 |
+| Debian |  9, 10 |
+| OpenSUSE |  15.1, 15.2 |
+| CentOS |  8 |
+| MacOS |  *experimental* - newer or equal to 10.13 should work |
 
 If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
-
-**5. Supported MacOS versions**
-
-Versions newer or equal to 10.13 should work.
 
 Running node manually
 ----------------

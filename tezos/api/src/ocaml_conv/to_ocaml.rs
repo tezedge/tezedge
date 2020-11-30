@@ -7,17 +7,17 @@ use super::{
     OCamlProtocolHash, TaggedHash,
 };
 use crate::ffi::{
-    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, FfiRpcService,
-    ForkingTestchainData, JsonRpcRequest, PrevalidatorWrapper, ProtocolJsonRpcRequest,
+    ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
+    ForkingTestchainData, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest,
     ValidateOperationRequest,
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 use ocaml_interop::{
     impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant,
     OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
     ToOCaml,
 };
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
 // OCaml type tags
 
@@ -144,6 +144,14 @@ impl_to_ocaml_record! {
 }
 
 impl_to_ocaml_record! {
+    BeginApplicationRequest {
+        chain_id: OCamlBytes,
+        pred_header: BlockHeader => FfiBlockHeader::from(pred_header),
+        block_header: BlockHeader => FfiBlockHeader::from(block_header),
+    }
+}
+
+impl_to_ocaml_record! {
     BeginConstructionRequest {
         chain_id: OCamlBytes,
         predecessor: BlockHeader => FfiBlockHeader::from(predecessor),
@@ -167,31 +175,31 @@ impl_to_ocaml_record! {
 }
 
 impl_to_ocaml_record! {
-    JsonRpcRequest {
+    RpcRequest {
         body: OCamlBytes,
         context_path: OCamlBytes,
+        meth: RpcMethod,
+        content_type: Option<OCamlBytes>,
+        accept: Option<OCamlBytes>,
     }
 }
 
 impl_to_ocaml_variant! {
-    FfiRpcService {
-        FfiRpcService::HelpersRunOperation,
-        FfiRpcService::HelpersPreapplyOperations,
-        FfiRpcService::HelpersPreapplyBlock,
-        FfiRpcService::HelpersCurrentLevel,
-        FfiRpcService::DelegatesMinimalValidTime,
-        FfiRpcService::HelpersForgeOperations,
-        FfiRpcService::ContextContract,
+    RpcMethod {
+        RpcMethod::DELETE,
+        RpcMethod::GET,
+        RpcMethod::PATCH,
+        RpcMethod::POST,
+        RpcMethod::PUT,
     }
 }
 
 impl_to_ocaml_record! {
-    ProtocolJsonRpcRequest {
+    ProtocolRpcRequest {
         block_header: BlockHeader => FfiBlockHeader::from(block_header),
         chain_id: OCamlBytes,
         chain_arg: OCamlBytes,
-        request: JsonRpcRequest,
-        ffi_service: FfiRpcService,
+        request: RpcRequest,
     }
 }
 

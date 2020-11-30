@@ -100,7 +100,7 @@ mod tests {
         #[test]
         fn encode_custom_integral() -> Result<(), serde_json::Error> {
             let value = 10;
-            let original = TimeStamp::Integral(value.clone());
+            let original = TimeStamp::Integral(value);
             custom_encoded(original, &format!("{}", value))
         }
 

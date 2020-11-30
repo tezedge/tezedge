@@ -9,7 +9,10 @@ use std::time::Duration;
 use r2d2::{CustomizeConnection, Pool};
 use slog::Logger;
 
-use crate::pool::{InitReadonlyContextProtocolRunnerConnectionCustomizer, NoopProtocolRunnerConnectionCustomizer, PoolError, ProtocolRunnerConnection, ProtocolRunnerManager, SlogErrorHandler};
+use crate::pool::{
+    InitReadonlyContextProtocolRunnerConnectionCustomizer, NoopProtocolRunnerConnectionCustomizer,
+    PoolError, ProtocolRunnerConnection, ProtocolRunnerManager, SlogErrorHandler,
+};
 use crate::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration};
 
 mod pool;
@@ -49,7 +52,8 @@ impl TezosApiConnectionPool {
         pool_name: String,
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
-        log: Logger) -> TezosApiConnectionPool {
+        log: Logger,
+    ) -> TezosApiConnectionPool {
         Self::new(
             pool_name,
             pool_cfg,
@@ -65,7 +69,8 @@ impl TezosApiConnectionPool {
         pool_name: String,
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
-        log: Logger) -> TezosApiConnectionPool {
+        log: Logger,
+    ) -> TezosApiConnectionPool {
         Self::new(
             pool_name,
             pool_cfg,
@@ -80,10 +85,11 @@ impl TezosApiConnectionPool {
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
         log: Logger,
-        initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection<RunnerType>, PoolError>>) -> TezosApiConnectionPool {
-
+        initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection<RunnerType>, PoolError>>,
+    ) -> TezosApiConnectionPool {
         // create manager
-        let manager = ProtocolRunnerManager::<RunnerType>::new(pool_name.clone(), endpoint_cfg, log.clone());
+        let manager =
+            ProtocolRunnerManager::<RunnerType>::new(pool_name.clone(), endpoint_cfg, log.clone());
 
         // create pool for ffi protocol runner connections
         let pool = r2d2::Pool::builder()
@@ -97,10 +103,7 @@ impl TezosApiConnectionPool {
             .build(manager)
             .unwrap();
 
-        TezosApiConnectionPool {
-            pool,
-            pool_name,
-        }
+        TezosApiConnectionPool { pool, pool_name }
     }
 }
 

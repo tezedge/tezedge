@@ -33,11 +33,16 @@ impl GetOperationHashesForBlocksMessage {
 }
 
 cached_data!(GetOperationHashesForBlocksMessage, body);
-has_encoding!(GetOperationHashesForBlocksMessage, GET_OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("get_operation_hashes_for_blocks", Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding().clone()))),
-    ])
-});
+has_encoding!(
+    GetOperationHashesForBlocksMessage,
+    GET_OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING,
+    {
+        Encoding::Obj(vec![Field::new(
+            "get_operation_hashes_for_blocks",
+            Encoding::dynamic(Encoding::list(OperationHashesForBlock::encoding().clone())),
+        )])
+    }
+);
 
 // ------------------ Response ------------------ //
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
@@ -54,7 +59,11 @@ pub struct OperationHashesForBlocksMessage {
 }
 
 impl OperationHashesForBlocksMessage {
-    pub fn new(operation_hashes_for_block: OperationHashesForBlock, operation_hashes_path: Path, operation_hashes: Vec<OperationHash>) -> Self {
+    pub fn new(
+        operation_hashes_for_block: OperationHashesForBlock,
+        operation_hashes_path: Path,
+        operation_hashes: Vec<OperationHash>,
+    ) -> Self {
         Self {
             operation_hashes_for_block,
             operation_hashes_path,
@@ -65,13 +74,23 @@ impl OperationHashesForBlocksMessage {
 }
 
 cached_data!(OperationHashesForBlocksMessage, body);
-has_encoding!(OperationHashesForBlocksMessage, OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING, {
+has_encoding!(
+    OperationHashesForBlocksMessage,
+    OPERATION_HASHES_FOR_BLOCKS_MESSAGE_ENCODING,
+    {
         Encoding::Obj(vec![
-            Field::new("operation_hashes_for_block", OperationHashesForBlock::encoding().clone()),
+            Field::new(
+                "operation_hashes_for_block",
+                OperationHashesForBlock::encoding().clone(),
+            ),
             Field::new("operation_hashes_path", path_encoding()),
-            Field::new("operation_hashes", Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8)))),
+            Field::new(
+                "operation_hashes",
+                Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8))),
+            ),
         ])
-});
+    }
+);
 
 // ------------------ Inner message for operation hashes message ------------------ //
 #[derive(Serialize, Deserialize, Debug, Getters, CopyGetters, Clone)]
@@ -96,9 +115,13 @@ impl OperationHashesForBlock {
 }
 
 cached_data!(OperationHashesForBlock, body);
-has_encoding!(OperationHashesForBlock, OPERATION_HASHES_FOR_BLOCK_ENCODING, {
+has_encoding!(
+    OperationHashesForBlock,
+    OPERATION_HASHES_FOR_BLOCK_ENCODING,
+    {
         Encoding::Obj(vec![
             Field::new("hash", Encoding::Hash(HashType::BlockHash)),
             Field::new("validation_pass", Encoding::Int8),
         ])
-});
+    }
+);

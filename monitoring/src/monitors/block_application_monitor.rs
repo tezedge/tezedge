@@ -23,7 +23,7 @@ impl ApplicationMonitor {
             total_applied: 0,
             current_applied: 0,
             last_applied_block: None,
-            first_update: now.clone(),
+            first_update: now,
             last_update: now,
         }
     }
@@ -45,7 +45,7 @@ impl ApplicationMonitor {
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
         let last_block = if let Some(block) = &self.last_applied_block {
             Some(BlockInfo {
-                hash: HashType::BlockHash.bytes_to_string(block.hash()),
+                hash: HashType::BlockHash.bytes_to_string(block.block_hash()),
                 level: *block.level(),
             })
         } else {

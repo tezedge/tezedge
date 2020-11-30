@@ -183,9 +183,18 @@ fn listen_protocol_events(
                             context.remove_recursively_to_diff(context_hash, key)?;
                         }
                     ContextAction::Commit { parent_context_hash, new_context_hash, block_hash: Some(block_hash),
-                                            author, message, date, .. } =>
-                        context.commit(block_hash, parent_context_hash, new_context_hash, author.to_string(),
-                                       message.to_string(), *date)?,
+                                            author, message, date, .. } => {
+                            let hash = context.commit(block_hash, parent_context_hash,
+                                                      author.to_string(), message.to_string(),
+                                                      *date)?;
+                            assert_eq!(&hash, new_context_hash,
+                                       "Invalid context_hash for block: {}, expected: {}, but was: {}",
+                                       HashType::BlockHash.bytes_to_string(block_hash),
+                                       HashType::ContextHash.bytes_to_string(new_context_hash),
+                                       HashType::ContextHash.bytes_to_string(&hash),
+                            );
+                        }
+
                     ContextAction::Checkout { context_hash, .. } => {
                         event_count = 0;
                         context.checkout(context_hash)?;

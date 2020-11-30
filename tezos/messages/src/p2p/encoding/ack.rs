@@ -53,19 +53,26 @@ impl fmt::Debug for NackInfo {
             NackMotive::TooManyConnections => "Too_many_connections ".to_string(),
             NackMotive::UnknownChainName => "Unknown_chain_name".to_string(),
             NackMotive::DeprecatedP2pVersion => "Deprecated_p2p_version".to_string(),
-            NackMotive::DeprecatedDistributedDbVersion => "Deprecated_distributed_db_version".to_string(),
+            NackMotive::DeprecatedDistributedDbVersion => {
+                "Deprecated_distributed_db_version".to_string()
+            }
             NackMotive::AlreadyConnected => "Already_connected".to_string(),
         };
         let potential_peers_to_connect = self.potential_peers_to_connect.join(", ");
-        write!(f, "motive: {}, potential_peers_to_connect: {:?}", motive, potential_peers_to_connect)
+        write!(
+            f,
+            "motive: {}, potential_peers_to_connect: {:?}",
+            motive, potential_peers_to_connect
+        )
     }
 }
 
 impl NackInfo {
     fn encoding() -> Encoding {
-        Encoding::Obj(
-            vec![
-                Field::new("motive", Encoding::Tags(
+        Encoding::Obj(vec![
+            Field::new(
+                "motive",
+                Encoding::Tags(
                     size_of::<u16>(),
                     TagMap::new(vec![
                         Tag::new(0, "NoMotive", Encoding::Unit),
@@ -75,21 +82,24 @@ impl NackInfo {
                         Tag::new(4, "DeprecatedDistributedDbVersion", Encoding::Unit),
                         Tag::new(5, "AlreadyConnected", Encoding::Unit),
                     ]),
-                )),
-                Field::new("potential_peers_to_connect", Encoding::dynamic(Encoding::list(Encoding::String))),
-            ]
-        )
+                ),
+            ),
+            Field::new(
+                "potential_peers_to_connect",
+                Encoding::dynamic(Encoding::list(Encoding::String)),
+            ),
+        ])
     }
 }
 
 non_cached_data!(AckMessage);
 has_encoding!(AckMessage, ACK_MESSAGE_ENCODING, {
-        Encoding::Tags(
-            size_of::<u8>(),
-            TagMap::new(vec![
-                Tag::new(0x00, "Ack", Encoding::Unit),
-                Tag::new(0x01, "Nack", NackInfo::encoding()),
-                Tag::new(0xFF, "NackV0", Encoding::Unit),
-            ]),
-        )
+    Encoding::Tags(
+        size_of::<u8>(),
+        TagMap::new(vec![
+            Tag::new(0x00, "Ack", Encoding::Unit),
+            Tag::new(0x01, "Nack", NackInfo::encoding()),
+            Tag::new(0xFF, "NackV0", Encoding::Unit),
+        ]),
+    )
 });

@@ -4,18 +4,21 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use chrono::ParseError;
 use chrono::prelude::*;
+use chrono::ParseError;
 use enum_iterator::IntoEnumIterator;
 use failure::Fail;
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crypto::base58::FromBase58CheckError;
-use crypto::hash::{BlockHash, chain_id_from_block_hash, ChainId, ContextHash, HashType, OperationListListHash, ProtocolHash};
-use lazy_static::lazy_static;
+use crypto::hash::{
+    chain_id_from_block_hash, BlockHash, ChainId, ContextHash, HashType, OperationListListHash,
+    ProtocolHash,
+};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
-use crate::ffi::{GenesisChain, ProtocolOverrides};
+use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
@@ -29,6 +32,7 @@ pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
     Carthagenet,
+    Delphinet,
     Mainnet,
     Zeronet,
     Sandbox,
@@ -45,10 +49,14 @@ impl FromStr for TezosEnvironment {
             "alphanet" => Ok(TezosEnvironment::Alphanet),
             "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
             "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
+            "delphinet" | "delphi" => Ok(TezosEnvironment::Delphinet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
             "sandbox" => Ok(TezosEnvironment::Sandbox),
-            _ => Err(ParseTezosEnvironmentError(format!("Invalid variant name: {}", s)))
+            _ => Err(ParseTezosEnvironmentError(format!(
+                "Invalid variant name: {}",
+                s
+            ))),
         }
     }
 }
@@ -57,102 +65,151 @@ impl FromStr for TezosEnvironment {
 fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     let mut env: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = HashMap::new();
 
-    env.insert(TezosEnvironment::Alphanet, TezosEnvironmentConfiguration {
-        genesis: GenesisChain {
-            time: "2018-11-30T15:30:56Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".to_string(),
-            protocol: "Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H".to_string(),
+    env.insert(
+        TezosEnvironment::Alphanet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2018-11-30T15:30:56Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".to_string(),
+                protocol: "Ps6mwMrF2ER2s51cp9yYpjDcuzQjsc2yAz8bQsRgdaRxw4Fk95H".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "boot.tzalpha.net".to_string(),
+                "bootalpha.tzbeta.net".to_string(),
+            ],
+            version: "TEZOS_ALPHANET_2018-11-30T15:30:56Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                forced_protocol_upgrades: vec![],
+                voted_protocol_overrides: vec![],
+            },
+            enable_testchain: false,
+            patch_context_genesis_parameters: None,
         },
-        bootstrap_lookup_addresses: vec![
-            "boot.tzalpha.net".to_string(),
-            "bootalpha.tzbeta.net".to_string()
-        ],
-        version: "TEZOS_ALPHANET_2018-11-30T15:30:56Z".to_string(),
-        protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
-        },
-        enable_testchain: false,
-    });
+    );
 
-    env.insert(TezosEnvironment::Babylonnet, TezosEnvironmentConfiguration {
-        genesis: GenesisChain {
-            time: "2019-09-27T07:43:32Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesisd1f7bcGMoXy".to_string(),
-            protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+    env.insert(
+        TezosEnvironment::Babylonnet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2019-09-27T07:43:32Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesisd1f7bcGMoXy".to_string(),
+                protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "35.246.251.120".to_string(),
+                "34.89.154.253".to_string(),
+                "babylonnet.kaml.fr".to_string(),
+            ],
+            version: "TEZOS_ALPHANET_BABYLON_2019-09-27T07:43:32Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                forced_protocol_upgrades: vec![],
+                voted_protocol_overrides: vec![],
+            },
+            enable_testchain: true,
+            patch_context_genesis_parameters: None,
         },
-        bootstrap_lookup_addresses: vec![
-            "35.246.251.120".to_string(),
-            "34.89.154.253".to_string(),
-            "babylonnet.kaml.fr".to_string(),
-        ],
-        version: "TEZOS_ALPHANET_BABYLON_2019-09-27T07:43:32Z".to_string(),
-        protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
-        },
-        enable_testchain: true,
-    });
+    );
 
-    env.insert(TezosEnvironment::Carthagenet, TezosEnvironmentConfiguration {
+    env.insert(
+        TezosEnvironment::Carthagenet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2019-11-28T13:02:13Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".to_string(),
+                protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "34.76.169.218".to_string(),
+                "34.90.24.160".to_string(),
+                "carthagenet.kaml.fr".to_string(),
+                "104.248.136.94".to_string(),
+            ],
+            version: "TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                forced_protocol_upgrades: vec![],
+                voted_protocol_overrides: vec![],
+            },
+            enable_testchain: true,
+            patch_context_genesis_parameters: None,
+        },
+    );
+
+    env.insert(TezosEnvironment::Delphinet, TezosEnvironmentConfiguration {
         genesis: GenesisChain {
-            time: "2019-11-28T13:02:13Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".to_string(),
+            time: "2020-09-04T07:08:53Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv".to_string(),
             protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
         },
         bootstrap_lookup_addresses: vec![
-            "34.76.169.218".to_string(),
-            "34.90.24.160".to_string(),
-            "carthagenet.kaml.fr".to_string(),
-            "104.248.136.94".to_string()
+            "delphinet.tezos.co.il".to_string(),
+            "delphinet.smartpy.io".to_string(),
+            "delphinet.kaml.fr".to_string(),
+            "13.53.41.201".to_string(),
         ],
-        version: "TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z".to_string(),
+        version: "TEZOS_DELPHINET_2020-09-04T07:08:53Z".to_string(),
         protocol_overrides: ProtocolOverrides {
             forced_protocol_upgrades: vec![],
             voted_protocol_overrides: vec![],
         },
         enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+        }),
     });
 
-    env.insert(TezosEnvironment::Mainnet, TezosEnvironmentConfiguration {
-        genesis: GenesisChain {
-            time: "2018-06-30T16:07:32Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
-            protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
+    env.insert(
+        TezosEnvironment::Mainnet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2018-06-30T16:07:32Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
+                protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
+            },
+            bootstrap_lookup_addresses: vec!["boot.tzbeta.net".to_string()],
+            version: "TEZOS_MAINNET".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                forced_protocol_upgrades: vec![
+                    (
+                        28082 as i32,
+                        "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
+                    ),
+                    (
+                        204761 as i32,
+                        "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
+                    ),
+                ],
+                voted_protocol_overrides: vec![(
+                    "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
+                    "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
+                )],
+            },
+            enable_testchain: false,
+            patch_context_genesis_parameters: None,
         },
-        bootstrap_lookup_addresses: vec![
-            "boot.tzbeta.net".to_string()
-        ],
-        version: "TEZOS_MAINNET".to_string(),
-        protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![
-                (28082 as i32, "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string()),
-                (204761 as i32, "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string())
-            ],
-            voted_protocol_overrides: vec![
-                ("PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(), "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string())
-            ],
-        },
-        enable_testchain: false,
-    });
+    );
 
-    env.insert(TezosEnvironment::Zeronet, TezosEnvironmentConfiguration {
-        genesis: GenesisChain {
-            time: "2019-08-06T15:18:56Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94".to_string(),
-            protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+    env.insert(
+        TezosEnvironment::Zeronet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2019-08-06T15:18:56Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94".to_string(),
+                protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "bootstrap.zeronet.fun".to_string(),
+                "bootzero.tzbeta.net".to_string(),
+            ],
+            version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                forced_protocol_upgrades: vec![],
+                voted_protocol_overrides: vec![],
+            },
+            enable_testchain: true,
+            patch_context_genesis_parameters: None,
         },
-        bootstrap_lookup_addresses: vec![
-            "bootstrap.zeronet.fun".to_string(),
-            "bootzero.tzbeta.net".to_string()
-        ],
-        version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
-        protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
-        },
-        enable_testchain: true,
-    });
+    );
 
     env.insert(TezosEnvironment::Sandbox, TezosEnvironmentConfiguration {
         genesis: GenesisChain {
@@ -167,11 +224,14 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             voted_protocol_overrides: vec![],
         },
         enable_testchain: false,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuSLWfVU1Vq7Jg9FucPyKmma6otcMHac9zG4oU1KMHSTBpJuGQ2" }"#.to_string(),
+        }),
     });
 
     env
 }
-
 
 /// Possible errors for environment
 #[derive(Debug, Fail)]
@@ -187,10 +247,7 @@ pub enum TezosEnvironmentError {
         error: FromBase58CheckError,
     },
     #[fail(display = "Invalid time: {}, reason: {:?}", time, error)]
-    InvalidTime {
-        time: String,
-        error: ParseError,
-    },
+    InvalidTime { time: String, error: ParseError },
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -212,6 +269,9 @@ pub struct TezosEnvironmentConfiguration {
     pub protocol_overrides: ProtocolOverrides,
     /// if network has enabled switching test chains by default
     pub enable_testchain: bool,
+    /// some networks could require patching context for genesis - like to change genesis key...
+    /// (also this can be overriden on startup with cmd args)
+    pub patch_context_genesis_parameters: Option<PatchContext>,
 }
 
 impl TezosEnvironmentConfiguration {
@@ -245,25 +305,27 @@ impl TezosEnvironmentConfiguration {
     }
 
     /// Returns initialized default genesis header
-    pub fn genesis_header(&self, context_hash: ContextHash, operation_list_list_hash: OperationListListHash) -> Result<BlockHeader, TezosEnvironmentError> {
-
+    pub fn genesis_header(
+        &self,
+        context_hash: ContextHash,
+        operation_list_list_hash: OperationListListHash,
+    ) -> Result<BlockHeader, TezosEnvironmentError> {
         // genesis predecessor is genesis
         let genesis_hash = self.genesis_header_hash()?;
         let genesis_time: i64 = self.genesis_time()?;
 
-        Ok(
-            BlockHeaderBuilder::default()
-                .level(0)
-                .proto(0)
-                .predecessor(genesis_hash)
-                .timestamp(genesis_time)
-                .validation_pass(0)
-                .operations_hash(operation_list_list_hash)
-                .fitness(vec![])
-                .context(context_hash)
-                .protocol_data(vec![])
-                .build().unwrap()
-        )
+        Ok(BlockHeaderBuilder::default()
+            .level(0)
+            .proto(0)
+            .predecessor(genesis_hash)
+            .timestamp(genesis_time)
+            .validation_pass(0)
+            .operations_hash(operation_list_list_hash)
+            .fitness(vec![])
+            .context(context_hash)
+            .protocol_data(vec![])
+            .build()
+            .unwrap())
     }
 
     pub fn genesis_additional_data(&self) -> GenesisAdditionalData {

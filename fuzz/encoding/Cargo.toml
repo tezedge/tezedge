@@ -1,6 +1,6 @@
 [package]
-name = "encoding"
-version = "0.7.2"
+name = "fuzz_encoding"
+version = "0.8.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 publish = false
@@ -8,8 +8,6 @@ publish = false
 [dependencies]
 honggfuzz = "0.5"
 log = "0.4.8"
+rand = "0.7.3"
 # Local dependencies
 tezos_encoding = { path = "../../tezos/encoding" }
-rand = "0.7.3"
-
-[workspace]

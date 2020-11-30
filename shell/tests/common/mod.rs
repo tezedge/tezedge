@@ -19,10 +19,8 @@ pub fn prepare_empty_dir(dir_name: &str) -> String {
 
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    let path = Path::new(out_dir.as_str())
+    Path::new(out_dir.as_str())
         .join(Path::new(dir_name))
-        .to_path_buf();
-    path
 }
 
 pub fn create_logger(level: Level) -> Logger {
@@ -83,10 +81,10 @@ pub mod infra {
     use shell::chain_manager::ChainManager;
     use shell::context_listener::ContextListener;
     use shell::mempool_prevalidator::MempoolPrevalidator;
-    use shell::peer_manager::{P2p, PeerManager};
+    use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::{BlockStorage, ChainMetaStorage, resolve_storage_init_chain_data};
+    use storage::{BlockStorage, ChainMetaStorage, context_key, resolve_storage_init_chain_data};
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
@@ -102,6 +100,7 @@ pub mod infra {
     pub struct NodeInfrastructure {
         name: String,
         pub log: Logger,
+        pub peer_manager: Option<PeerManagerRef>,
         pub shell_channel: ShellChannelRef,
         pub network_channel: NetworkChannelRef,
         pub actor_system: ActorSystem,
@@ -118,7 +117,8 @@ pub mod infra {
             name: &str,
             tezos_env: &TezosEnvironment,
             patch_context: Option<PatchContext>,
-            p2p: Option<(Identity, P2p, NetworkVersion)>,
+            p2p: Option<(P2p, NetworkVersion)>,
+            identity: Identity,
             (log, log_level): (Logger, Level)) -> Result<Self, failure::Error> {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -126,6 +126,7 @@ pub mod infra {
             let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&tezos_env).expect("no environment configuration");
             let is_sandbox = false;
             let p2p_threshold = PeerConnectionThreshold::new(1, 1);
+            let identity = Arc::new(identity);
 
             // storage
             let persistent_storage = tmp_storage.storage();
@@ -153,7 +154,7 @@ pub mod infra {
                     false,
                     &context_db_path,
                     &apply_protocol_runner,
-                    log_level.clone(),
+                    log_level,
                     true,
                 ),
                 log.clone(),
@@ -206,7 +207,16 @@ pub mod infra {
             let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
             let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
             let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
-            let _ = ChainManager::actor(&actor_system, network_channel.clone(), shell_channel.clone(), &persistent_storage, tezos_readonly_api.clone(), &init_storage_data.chain_id, is_sandbox, &p2p_threshold).expect("Failed to create chain manager");
+            let _ = ChainManager::actor(
+                &actor_system,
+                network_channel.clone(), shell_channel.clone(),
+                &persistent_storage,
+                tezos_readonly_api.clone(),
+                &init_storage_data.chain_id,
+                is_sandbox,
+                &p2p_threshold,
+                identity.clone(),
+            ).expect("Failed to create chain manager");
             let _ = MempoolPrevalidator::actor(
                 &actor_system,
                 shell_channel.clone(),
@@ -217,8 +227,8 @@ pub mod infra {
             ).expect("Failed to create chain feeder");
 
             // and than open p2p and others - if configured
-            if let Some((identity, p2p_config, network_version)) = p2p {
-                let _ = PeerManager::actor(
+            let peer_manager = if let Some((p2p_config, network_version)) = p2p {
+                let peer_manager = PeerManager::actor(
                     &actor_system,
                     network_channel.clone(),
                     shell_channel.clone(),
@@ -227,13 +237,17 @@ pub mod infra {
                     network_version,
                     p2p_config,
                 ).expect("Failed to create peer manager");
-            }
+                Some(peer_manager)
+            } else {
+                None
+            };
 
             Ok(
                 NodeInfrastructure {
                     name: String::from(name),
                     log,
                     apply_restarting_feature,
+                    peer_manager,
                     shell_channel,
                     network_channel,
                     tokio_runtime,
@@ -264,6 +278,7 @@ pub mod infra {
             warn!(self.log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
         }
 
+        // TODO: refactor with async/condvar, not to block main thread
         pub fn wait_for_new_current_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
             let tested_head = Some(tested_head).map(|th| HashType::BlockHash.bytes_to_string(&th));
@@ -292,6 +307,7 @@ pub mod infra {
             result
         }
 
+        // TODO: refactor with async/condvar, not to block main thread
         /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
         pub fn wait_for_context(&self, marker: &str, context_hash: ContextHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
@@ -301,7 +317,7 @@ pub mod infra {
                 self.tmp_storage.storage().merkle(),
             );
 
-            let protocol_key = vec!["protocol".to_string()];
+            let protocol_key = context_key!("protocol");
 
             // try checkout context
             let result = loop {
@@ -319,6 +335,12 @@ pub mod infra {
                 }
             };
             result
+        }
+
+        pub fn whitelist_all(&self) {
+            if let Some(peer_manager) = &self.peer_manager {
+                peer_manager.tell(WhitelistAllIpAddresses, None);
+            }
         }
     }
 

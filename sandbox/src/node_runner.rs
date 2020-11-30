@@ -68,13 +68,13 @@ impl reject::Reject for LightNodeRunnerError {}
 /// Thread safe reference to a shared Runner
 pub type LightNodeRunnerRef = Arc<RwLock<LightNodeRunner>>;
 
-const SANDBOX_NODE_IP: &'static str = "localhost";
-const NODE_CONFIG_RPC_PORT: &'static str = "rpc_port";
-const NODE_CONFIG_TEZOS_DATA_DIR: &'static str = "tezos_data_dir";
-const NODE_CONFIG_TEZEDGE_DATA_DIR: &'static str = "bootstrap_db_path";
-const NODE_CONFIG_IDENTITY_FILE: &'static str = "identity_file";
-const NODE_CONFIG_PATCH_CONTEXT_JSON_FILE_PATH: &'static str = "sandbox_patch_context_json_file";
-const NODE_CONFIG_PROTOCOL_RUNNER: &'static str = "protocol_runner";
+const SANDBOX_NODE_IP: &str = "localhost";
+const NODE_CONFIG_RPC_PORT: &str = "rpc_port";
+const NODE_CONFIG_TEZOS_DATA_DIR: &str = "tezos_data_dir";
+const NODE_CONFIG_TEZEDGE_DATA_DIR: &str = "bootstrap_db_path";
+const NODE_CONFIG_IDENTITY_FILE: &str = "identity_file";
+const NODE_CONFIG_PATCH_CONTEXT_JSON_FILE_PATH: &str = "sandbox_patch_context_json_file";
+const NODE_CONFIG_PROTOCOL_RUNNER: &str = "protocol_runner";
 
 /// RPC ip/port, where is light node listening for rpc requests
 #[derive(PartialEq, Eq, Hash, Clone, Debug, Serialize, Deserialize)]
