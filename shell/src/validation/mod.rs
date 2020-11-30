@@ -7,7 +7,9 @@
 //! - to support multipass validation
 
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
+use chrono::TimeZone;
 use failure::Fail;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
@@ -40,6 +42,13 @@ pub fn can_update_current_head(new_head: &BlockHeaderWithHash, current_head: &He
 /// Returns only true, if new_fitness is greater than head's fitness
 pub fn is_fitness_increases(head: &Head, new_fitness: &Fitness) -> bool {
     new_fitness.gt(head.fitness())
+}
+
+/// Returns only true, if timestamp of header is not in the far future
+pub fn is_future_block(block_header: &BlockHeader) -> Result<bool, failure::Error> {
+    let future_margin = chrono::offset::Utc::now() + chrono::Duration::from_std(Duration::from_secs(15))?;
+    let block_timestamp = chrono::Utc.from_utc_datetime(&chrono::NaiveDateTime::from_timestamp(block_header.timestamp(), 0));
+    Ok(block_timestamp > future_margin)
 }
 
 /// Returns true, if we can accept injected operation from rpc

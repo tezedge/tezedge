@@ -551,6 +551,11 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::CurrentHead(message) => {
+                                    // process current head only if we are bootstrapped
+                                    if !self.is_bootstrapped {
+                                        continue;
+                                    }
+
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
                                         &message,
@@ -597,6 +602,10 @@ impl ChainManager {
                                         }
                                         BlockAcceptanceResult::UnknownBranch => {
                                             // ask current_branch from peer
+                                            tell_peer(
+                                                GetCurrentBranchMessage::new(message.chain_id().clone()).into(),
+                                                peer
+                                            );
                                         }
                                         BlockAcceptanceResult::MutlipassValidationError(error) => {
                                             warn!(log, "Mutlipass validation error detected - blacklisting peer"; "reason" => &error);

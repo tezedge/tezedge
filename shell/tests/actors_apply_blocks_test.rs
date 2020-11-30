@@ -197,7 +197,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     // check context
     check_context(
         current_head_context_hash.unwrap_or_else(|| panic!("Context hash not set for apply_to_level: {}", apply_to_level)),
-        &persistent_storage
+        &persistent_storage,
     )
 }
 

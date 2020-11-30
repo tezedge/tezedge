@@ -103,13 +103,18 @@ impl BlockchainState {
 
         // we need our current head at first
         if let Some(current_head) = current_head.as_ref() {
+            // (future block)
+            if validation::is_future_block(&validated_header)? {
+                return Ok(BlockAcceptanceResult::IgnoreBlock);
+            }
+
             // (only_if_fitness_increases) we can accept head if increases fitness
             if !validation::is_fitness_increases(current_head, validated_header.fitness()) {
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
             // lets try to find protocol for validated_block
-            let (protocol_hash, predecessor_header, missing_predecessor) = self.resolve_protocol(validated_header)?;
+            let (protocol_hash, predecessor_header, missing_predecessor) = self.resolve_protocol(validated_header, &current_head)?;
 
             // if missing predecessor
             if missing_predecessor {
@@ -144,7 +149,7 @@ impl BlockchainState {
     /// 1. protocol_hash
     /// 2. applied_predecessor (only if is already applied)
     /// 3. (bool) missing_predecessor,
-    fn resolve_protocol(&self, validated_header: &BlockHeader) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), failure::Error> {
+    fn resolve_protocol(&self, validated_header: &BlockHeader, current_head: &Head) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), failure::Error> {
         // TODO: TE-238 - store proto_level and protocol_hash and map - optimization - detect change protocol event
 
         let (protocol_hash, predecessor_header, missing_predecessor) = match self.block_meta_storage.get(validated_header.predecessor())? {
@@ -169,18 +174,18 @@ impl BlockchainState {
                                 } else {
                                     return Err(
                                         failure::format_err!(
-                                                    "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                                    HashType::BlockHash.bytes_to_string(validated_header.predecessor())
-                                                )
+                                            "Missing `next_protocol` attribute for applied predecessor: {}!",
+                                            HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                        )
                                     );
                                 }
                             }
                             None => {
                                 return Err(
                                     failure::format_err!(
-                                            "Missing data for applied predecessor: {}!",
-                                            HashType::BlockHash.bytes_to_string(validated_header.predecessor())
-                                        )
+                                        "Missing data for applied predecessor: {}!",
+                                        HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                    )
                                 );
                             }
                         }
@@ -197,7 +202,51 @@ impl BlockchainState {
             }
         };
 
-        Ok((protocol_hash, predecessor_header, missing_predecessor))
+        if protocol_hash.is_some() {
+            // if we have protocol by predecessor
+            Ok((protocol_hash, predecessor_header, missing_predecessor))
+        } else {
+            // check protocol by current head for the same proto_level
+            // if predecessor is applied, than we have exact protocol
+            match self.block_storage.get_with_json_data(current_head.block_hash())? {
+                Some((current_head_header, current_head_header_data)) => {
+                    if current_head_header.header.proto() == validated_header.proto() {
+                        // get protocol from predecessor
+                        let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(&current_head_header_data.block_header_proto_metadata_json())?;
+                        let protocol_hash = metadata
+                            .get("protocol")
+                            .map(|value| value.as_str());
+                        if let Some(Some(protocol_hash)) = protocol_hash {
+                            // return protocol
+                            Ok(
+                                (
+                                    Some(HashType::ProtocolHash.string_to_bytes(protocol_hash)?),
+                                    predecessor_header,
+                                    missing_predecessor
+                                )
+                            )
+                        } else {
+                            return Err(
+                                failure::format_err!(
+                                    "Missing `next_protocol` attribute for applied predecessor: {}!",
+                                    HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                )
+                            );
+                        }
+                    } else {
+                        Ok((None, predecessor_header, missing_predecessor))
+                    }
+                }
+                None => {
+                    return Err(
+                        failure::format_err!(
+                            "Missing data for applied current_head: {}!",
+                            HashType::BlockHash.bytes_to_string(current_head.block_hash())
+                        )
+                    );
+                }
+            }
+        }
     }
 
     /// Returns true, if [block] can be applied
