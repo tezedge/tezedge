@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use sodiumoxide::crypto::generichash::State;
 use failure::Fail;
+use sodiumoxide::crypto::generichash::State;
 
 #[derive(Debug, Copy, Clone, Fail)]
 #[fail(display = "Output digest length must be between 16 and 64 bytes.")]
@@ -10,20 +10,17 @@ pub struct Blake2bLengthError;
 
 /// Generate digest of length 256 bits (32bytes) from arbitrary binary data
 pub fn digest_256(data: &[u8]) -> Vec<u8> {
-    digest(data, 32)
-        .expect("Blake2b unexpectedly failed on correct digest length")
+    digest(data, 32).expect("Blake2b unexpectedly failed on correct digest length")
 }
 
 // Generate digest of length 160 bits (20bytes) from arbitrary binary data
 pub fn digest_160(data: &[u8]) -> Vec<u8> {
-    digest(data, 20)
-        .expect("Blake2b unexpectedly failed on correct digest length")
+    digest(data, 20).expect("Blake2b unexpectedly failed on correct digest length")
 }
 
 /// Generate digest of length 256 bits (32bytes) from arbitrary binary data
 pub fn digest_128(data: &[u8]) -> Vec<u8> {
-    digest(data, 16)
-        .expect("Blake2b unexpectedly failed on correct digest length")
+    digest(data, 16).expect("Blake2b unexpectedly failed on correct digest length")
 }
 
 /// Arbitrary Blake2b digest generation from generic data.
@@ -45,7 +42,9 @@ mod tests {
     #[test]
     fn blake2b_256() {
         let hash = digest_256(b"hello world");
-        let expected = hex::decode("256c83b297114d201b30179f3f0ef0cace9783622da5974326b436178aeef610").unwrap();
+        let expected =
+            hex::decode("256c83b297114d201b30179f3f0ef0cace9783622da5974326b436178aeef610")
+                .unwrap();
         assert_eq!(expected, hash)
     }
 

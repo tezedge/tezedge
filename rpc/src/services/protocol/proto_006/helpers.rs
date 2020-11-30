@@ -3,21 +3,19 @@
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 
 use failure::{bail, Fail, format_err};
 use getset::Getters;
 
 use crypto::blake2b;
-use storage::{context_key, num_from_slice};
+use crypto::hash::ContextHash;
+use storage::{BlockHeaderWithHash, context_key, num_from_slice};
 use storage::context::{ContextApi, TezedgeContext};
-use storage::context_action_storage::contract_id_to_contract_address_for_index;
-use storage::persistent::PersistentStorage;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
-use crate::helpers::{ContextProtocolParam, get_block_timestamp_by_level};
 use crate::merge_slices;
+use crate::services::protocol::ContextProtocolParam;
 
 /// Context constants used in baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
@@ -60,14 +58,10 @@ impl RightsConstants {
     ///
     /// # Arguments
     ///
-    /// * `chain_id` - Url path parameter 'chain_id'.
-    /// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
-    /// * `block_level` - Provide level of block_id that is already known to prevent double code execution.
-    /// * `persistent_storage` - Persistent storage handler.
-    /// * `state` - Current RPC collected state (head).
+    /// * `context_proto_param`
     #[inline]
-    pub(crate) fn parse_rights_constants(context_proto_param: ContextProtocolParam) -> Result<Self, failure::Error> {
-        let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(context_proto_param.constants_data)?;
+    pub(crate) fn parse_rights_constants(context_proto_param: &ContextProtocolParam) -> Result<Self, failure::Error> {
+        let dynamic = tezos_messages::protocol::proto_006::constants::ParametricConstants::from_bytes(&context_proto_param.constants_data)?;
         let fixed = tezos_messages::protocol::proto_006::constants::FIXED;
 
         Ok(RightsConstants::new(
@@ -116,12 +110,11 @@ impl RightsContextData {
     /// * `list` - Context list handler.
     ///
     /// Return RightsContextData.
-    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, context: TezedgeContext) -> Result<Self, failure::Error> {
+    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, (ctx_hash, context): (&ContextHash, &TezedgeContext)) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
 
         // prepare parameters that are used
-        let block_level = *parameters.block_level();
         let requested_level = *parameters.requested_level();
 
         // prepare cycle for which rollers are selected
@@ -130,9 +123,6 @@ impl RightsContextData {
         } else {
             cycle_from_level(requested_level, blocks_per_cycle)?
         };
-
-        // get context_hash from level
-        let ctx_hash = context.level_to_hash(block_level.try_into()?)?;
 
         // get index of roll snapshot
         let roll_snapshot: i16 = {
@@ -161,7 +151,7 @@ impl RightsContextData {
         };
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = Self::get_context_rolls(&context, block_level, requested_cycle, roll_snapshot)? {
+        let context_rolls = if let Some(rolls) = Self::get_context_rolls((&ctx_hash, &context), requested_cycle, roll_snapshot)? {
             rolls
         } else {
             return Err(format_err!("rolls"));
@@ -181,11 +171,7 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls(context: &TezedgeContext, requested_level: i64, cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-
-        // get context_hash from level
-        let ctx_hash = context.level_to_hash(requested_level.try_into()?)?;
-
+    fn get_context_rolls((ctx_hash, context): (&ContextHash, &TezedgeContext), cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot))? {
             val
         } else {
@@ -215,10 +201,6 @@ impl RightsContextData {
 /// Set of parameters used to complete baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
 pub struct RightsParams {
-    /// Id of a chain. Url path parameter 'chain_id'.
-    #[get = "pub(crate)"]
-    chain_id: String,
-
     /// Level (height) of block. Parsed from url path parameter 'block_id'.
     #[get = "pub(crate)"]
     block_level: i64,
@@ -259,7 +241,6 @@ pub struct RightsParams {
 impl RightsParams {
     /// Simple constructor to create RightsParams
     pub fn new(
-        chain_id: String,
         block_level: i64,
         block_timestamp: i64,
         requested_delegate: Option<String>,
@@ -270,7 +251,6 @@ impl RightsParams {
         max_priority: i64,
         has_all: bool) -> Self {
         Self {
-            chain_id,
             block_level,
             block_timestamp,
             requested_delegate,
@@ -287,7 +267,6 @@ impl RightsParams {
     ///
     /// # Arguments
     ///
-    /// * `param_chain_id` - Url path parameter 'chain_id'.
     /// * `param_level` - Url query parameter 'level'.
     /// * `param_delegate` - Url query parameter 'delegate'.
     /// * `param_cycle` - Url query parameter 'cycle'.
@@ -301,17 +280,16 @@ impl RightsParams {
     ///
     /// Return RightsParams
     pub(crate) fn parse_rights_parameters(
-        param_chain_id: &str,
         param_level: Option<&str>,
         param_delegate: Option<&str>,
         param_cycle: Option<&str>,
         param_max_priority: Option<&str>,
         param_has_all: bool,
-        block_level: i64,
         rights_constants: &RightsConstants,
-        persistent_storage: &PersistentStorage,
+        block_header: &BlockHeaderWithHash,
         is_baking_rights: bool,
     ) -> Result<Self, failure::Error> {
+        let block_level: i64 = block_header.header.level().into();
         let preserved_cycles = *rights_constants.preserved_cycles();
         let blocks_per_cycle = *rights_constants.blocks_per_cycle();
 
@@ -363,13 +341,9 @@ impl RightsParams {
             None => 64
         };
 
-        // get block header timestamp form block_id
-        let block_timestamp = get_block_timestamp_by_level(block_level.try_into()?, persistent_storage)?;
-
         Ok(Self::new(
-            param_chain_id.to_string(),
             block_level,
-            block_timestamp,
+            block_header.header.timestamp(),
             param_delegate.map(String::from),
             requested_cycle,
             requested_level,
@@ -565,30 +539,4 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
         };
     }
     Ok((v, sequence))
-}
-
-#[inline]
-pub fn create_index_from_contract_id(contract_id: &str) -> Result<Vec<String>, failure::Error> {
-    const INDEX_SIZE: usize = 6;
-    let mut index = Vec::new();
-
-    // input validation is handled by the contract_id_to_address function 
-    let address = contract_id_to_contract_address_for_index(contract_id)?;
-
-    let hashed = hex::encode(blake2b::digest_256(&address));
-
-    for elem in (0..INDEX_SIZE * 2).step_by(2) {
-        index.push(hashed[elem..elem + 2].to_string());
-    }
-
-    Ok(index)
-}
-
-/// Returns something like this: "data/contracts/index/91/6e/d7/72/4e/49/0000535110affdb82923710d1ec205f26ba8820a2259"
-pub(crate) fn construct_indexed_contract_key(pkh: &str) -> Result<String, failure::Error> {
-    const KEY_PREFIX: &str = "data/contracts/index";
-    let index = create_index_from_contract_id(pkh)?.join("/");
-    let key = hex::encode(contract_id_to_contract_address_for_index(pkh)?);
-
-    Ok(format!("{}/{}/{}", KEY_PREFIX, index, key))
 }

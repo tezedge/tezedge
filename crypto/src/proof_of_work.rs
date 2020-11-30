@@ -1,8 +1,11 @@
-use num_bigint::BigUint;
+use super::{
+    blake2b,
+    crypto_box::{PublicKey, CRYPTO_KEY_SIZE, NONCE_SIZE},
+};
 use hex::{FromHex, FromHexError};
-use std::convert::TryFrom;
+use num_bigint::BigUint;
 use sodiumoxide::randombytes::randombytes;
-use super::{blake2b, crypto_box::{PublicKey, CRYPTO_KEY_SIZE, NONCE_SIZE}};
+use std::convert::TryFrom;
 
 #[derive(Clone, PartialEq)]
 pub struct ProofOfWork([u8; NONCE_SIZE]);
@@ -46,7 +49,8 @@ impl ProofOfWork {
                 if c == u64::MAX {
                     let mut b = u64::from_be_bytes(<[u8; 8]>::try_from(&data[0x28..0x30]).unwrap());
                     if b == u64::MAX {
-                        let mut a = u64::from_be_bytes(<[u8; 8]>::try_from(&data[0x20..0x28]).unwrap());
+                        let mut a =
+                            u64::from_be_bytes(<[u8; 8]>::try_from(&data[0x20..0x28]).unwrap());
                         if a == u64::MAX {
                             a = 0;
                             b = 0;
@@ -98,7 +102,7 @@ fn check_proof_of_work_inner(data: &[u8], target_number: &BigUint) -> Result<(),
 }
 
 fn make_target(target: f64) -> BigUint {
-    assert!((0.0 .. 256.0).contains(&target));
+    assert!((0.0..256.0).contains(&target));
     let (frac, shift) = (target.fract(), target.floor() as u64);
     let m = if frac.abs() < std::f64::EPSILON {
         (1 << 54) - 1
@@ -115,9 +119,9 @@ fn make_target(target: f64) -> BigUint {
 
 #[cfg(test)]
 mod tests {
-    use num_bigint::BigUint;
+    use super::{check_proof_of_work, ProofOfWork};
     use hex::FromHex;
-    use super::{ProofOfWork, check_proof_of_work};
+    use num_bigint::BigUint;
 
     // `BigUint::from_bytes_le` is the same as `Z.of_bits`
     #[test]
@@ -139,18 +143,24 @@ mod tests {
 
     #[test]
     fn simple_check() {
-        let data = hex::decode("\
+        let data = hex::decode(
+            "\
             d8246d13d0270cbfff4046b6d94b05ab19920bc5ad9fb77f3e945c40b340e874\
             d1d0ebd55784bc92852d913dbf0fb5152d505b567d930fb2\
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         check_proof_of_work(data.as_ref(), ProofOfWork::DEFAULT_TARGET).unwrap();
     }
 
     #[test]
     fn simple_generate() {
-        let pk = FromHex::from_hex("\
+        let pk = FromHex::from_hex(
+            "\
             d8246d13d0270cbfff4046b6d94b05ab19920bc5ad9fb77f3e945c40b340e874\
-        ").unwrap();
+        ",
+        )
+        .unwrap();
         let _ = ProofOfWork::generate(&pk, 20.0);
     }
 }

@@ -5,7 +5,7 @@ use bytes::buf::BufExt;
 use hyper::{Body, Request};
 use serde::Serialize;
 
-use crypto::hash::HashType;
+use crypto::hash::{chain_id_to_b58_string, HashType};
 use shell::shell_channel::BlockApplied;
 use tezos_api::ffi::ProtocolRpcError;
 use tezos_messages::ts_to_rfc3339;
@@ -24,7 +24,7 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::create_rpc_request;
+use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
@@ -68,79 +68,77 @@ pub async fn valid_blocks(_: Request<Body>, _: Params, _: Query, _: RpcServiceEn
 }
 
 pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
-
-    if chain_id == "main" {
-        make_json_stream_response(base_services::get_current_head_monitor_header(env.state())?.unwrap())
-    } else {
-        // TODO: implement...
-        empty()
-    }
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    make_json_stream_response(base_services::get_current_head_monitor_header(chain_id, env.state())?.unwrap())
 }
 
 pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     use crate::encoding::chain::BlockInfo;
-    if chain_id == "main" {
-        if block_id == "head" {
-            result_option_to_json_response(base_services::get_full_current_head(env.state()).map(|res| res.map(BlockInfo::from)), env.log())
-        } else {
-            result_option_to_json_response(base_services::get_full_block(block_id, env.persistent_storage(), env.state()).map(|res| res.map(BlockInfo::from)), env.log())
-        }
-    } else {
-        empty()
-    }
+    result_option_to_json_response(
+        base_services::get_full_block(
+            &chain_id,
+            &block_hash,
+            env.persistent_storage(),
+        ).map(|res| res.map(BlockInfo::from)),
+        env.log(),
+    )
 }
 
 pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
-    if chain_id == "main" {
-        if block_id == "head" {
-            result_option_to_json_response(base_services::get_current_head_header(env.state()).map(|res| res), env.log())
-        } else {
-            result_option_to_json_response(base_services::get_block_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
-        }
-    } else {
-        empty()
-    }
+    result_option_to_json_response(
+        base_services::get_block_header(
+            chain_id,
+            block_hash,
+            env.persistent_storage(),
+        ),
+        env.log(),
+    )
 }
 
 pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
-    if chain_id == "main" {
-        if block_id == "head" {
-            result_option_to_json_response(base_services::get_current_head_shell_header(env.state()).map(|res| res), env.log())
-        } else {
-            result_option_to_json_response(base_services::get_block_shell_header(block_id, env.persistent_storage(), env.state()).map(|res| res), env.log())
-        }
-    } else {
-        empty()
-    }
+    result_option_to_json_response(
+        base_services::get_block_shell_header(
+            chain_id,
+            block_hash,
+            env.persistent_storage(),
+        ),
+        env.log(),
+    )
 }
 
 pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let block_id = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
     let prefix = params.get_str("any");
-    result_to_json_response(base_services::get_context_raw_bytes(block_id, prefix, env.persistent_storage(), env.tezedge_context(), env.state()), env.log())
+
+    result_to_json_response(
+        base_services::get_context_raw_bytes(
+            &block_hash,
+            prefix,
+            &env,
+        ),
+        env.log(),
+    )
 }
 
 pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
-
-    if chain_id == "main" {
-        result_to_json_response(
-            services::mempool_services::get_pending_operations(env.state(), env.log()),
-            env.log(),
-        )
-    } else {
-        unimplemented!("not implemented yet")
-    }
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    result_to_json_response(
+        services::mempool_services::get_pending_operations(
+            &chain_id,
+            env.state(),
+        ),
+        env.log(),
+    )
 }
 
 pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -149,11 +147,16 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
 
     let shell_channel = env.shell_channel();
 
+    // TODO: TE-221 - add optional chain_id to params mapping
+    let chain_id_param = "main";
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+
     result_to_json_response(
         services::mempool_services::inject_operation(
+            chain_id,
             &operation_data,
             &env,
-            shell_channel.clone(),
+            shell_channel,
         ),
         env.log(),
     )
@@ -165,84 +168,100 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
 
     let shell_channel = env.shell_channel();
 
+    // TODO: TE-221 - add optional chain_id to params mapping
+    let chain_id_param = "main";
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+
     result_to_json_response(
-        services::mempool_services::inject_block(&body, &env, shell_channel.clone()),
+        services::mempool_services::inject_block(
+            chain_id,
+            &body,
+            &env,
+            shell_channel,
+        ),
         env.log(),
     )
 }
 
 pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let _chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
-
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     result_to_json_response(
-        base_services::get_block_protocols(block_id, env.persistent_storage(), env.state()),
+        base_services::get_block_protocols(
+            &chain_id,
+            &block_hash,
+            env.persistent_storage(),
+        ),
         env.log(),
     )
 }
 
 pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let _chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     result_to_json_response(
-        base_services::get_block_hash(block_id, env.persistent_storage(), env.state()),
+        Ok(HashType::BlockHash.bytes_to_string(&block_hash)),
         env.log(),
     )
 }
 
 pub async fn get_chain_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    // this chain_id (e.g. main) reporesents the "alias" for the actial base58 encoded id (e.g. NetXdQprcVkpaWU)
-    let _chain_id = params.get_str("chain_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
 
     result_to_json_response(
-        base_services::get_chain_id(env.state()),
+        Ok(chain_id_to_b58_string(&chain_id)),
         env.log(),
     )
 }
 
 pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let _chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
-
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     result_to_json_response(
-        base_services::get_block_operation_hashes(block_id, env.persistent_storage(), env.state()),
+        base_services::get_block_operation_hashes(
+            &chain_id,
+            &block_hash,
+            env.persistent_storage(),
+        ),
         env.log(),
     )
 }
 
 pub async fn live_blocks(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     result_to_json_response(
-        services::base_services::live_blocks(chain_param, block_param, &env),
+        services::base_services::live_blocks(chain_id, block_hash, &env),
         env.log(),
     )
 }
 
 pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
+    let chain_id_param = params.get_str("chain_id").unwrap();
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     let rpc_request = create_rpc_request(req).await?;
 
     result_to_json_response(
-        services::protocol::preapply_operations(chain_param, block_param, rpc_request, &env),
+        services::protocol::preapply_operations(chain_id_param, chain_id, block_hash, rpc_request, &env),
         env.log(),
     )
 }
 
 pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_param = params.get_str("chain_id").unwrap();
-    let block_param = params.get_str("block_id").unwrap();
+    let chain_id_param = params.get_str("chain_id").unwrap();
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     let rpc_request = create_rpc_request(req).await?;
 
     // launcher - we need the error from preapply
-    match services::protocol::preapply_block(chain_param, block_param, rpc_request, &env) {
+    match services::protocol::preapply_block(chain_id_param, chain_id, block_hash, rpc_request, &env) {
         Ok(resp) => result_to_json_response(Ok(resp), env.log()),
         Err(e) => {
             if let Some(err) = e.as_fail().downcast_ref::<ProtocolServiceError>() {

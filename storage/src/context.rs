@@ -10,7 +10,7 @@ use failure::Fail;
 
 use crypto::hash::{BlockHash, ContextHash, HashType};
 
-use crate::{BlockStorage, BlockStorageReader, StorageError};
+use crate::{BlockStorage, StorageError};
 use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTree};
 
 /// Abstraction on context manipulation
@@ -37,8 +37,6 @@ pub trait ContextApi {
     // get entire context tree in string form for JSON RPC
     fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError>;
 
-    // convert level number to hash (uses block_storage get_by_block_Level)
-    fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError>;
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
@@ -151,15 +149,6 @@ impl ContextApi for TezedgeContext {
         merkle.get_context_tree_by_prefix(&context_hash_arr, prefix)
     }
 
-    fn level_to_hash(&self, level: i32) -> Result<ContextHash, ContextError> {
-        match self.block_storage.get_by_block_level(level) {
-            Ok(Some(hash)) => {
-                Ok(hash.header.context().to_vec())
-            }
-            _ => Err(ContextError::UnknownLevelError { level: level.to_string() })
-        }
-    }
-
     fn get_last_commit_hash(&self) -> Option<Vec<u8>> {
         let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_last_commit_hash().map(|x| x.to_vec())
@@ -202,6 +191,10 @@ pub enum ContextError {
     #[fail(display = "Unknown level: {}", level)]
     UnknownLevelError {
         level: String,
+    },
+    #[fail(display = "Unknown block_hash: {}", block_hash)]
+    UnknownBlockHashError {
+        block_hash: String,
     },
     #[fail(display = "Failed operation on Merkle storage: {}", error)]
     MerkleStorageError {

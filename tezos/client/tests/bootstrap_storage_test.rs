@@ -8,7 +8,8 @@ use tezos_api::environment::{
     TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV,
 };
 use tezos_api::ffi::{
-    ApplyBlockError, ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration,
+    ApplyBlockError, ApplyBlockRequest, BeginApplicationRequest, InitProtocolContextResult,
+    TezosRuntimeConfiguration,
 };
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -520,6 +521,66 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
         max_operations_ttl: 0,
     });
     assert!(apply_block_result.is_err());
+}
+
+#[test]
+#[serial]
+fn test_begin_application_on_empty_storage_with_first_blocks() {
+    init_test_runtime();
+
+    // init empty context for test
+    let (chain_id, genesis_block_header, ..) =
+        init_test_protocol_context("test_begin_application_on_empty_storage_with_first_block");
+
+    // begin application for first block - level 1
+    let result = client::begin_application(BeginApplicationRequest {
+        chain_id: chain_id.clone(),
+        pred_header: genesis_block_header.clone(),
+        block_header: BlockHeader::from_bytes(
+            hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
+        )
+        .unwrap(),
+    });
+    assert!(result.is_ok());
+
+    // begin application for second block - level 2 - should fail (because genesis has different protocol)
+    let result = client::begin_application(BeginApplicationRequest {
+        chain_id: chain_id.clone(),
+        pred_header: genesis_block_header.clone(),
+        block_header: BlockHeader::from_bytes(
+            hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
+        )
+        .unwrap(),
+    });
+    assert!(result.is_err());
+
+    // apply second block - level 1 ok
+    let apply_block_result = client::apply_block(ApplyBlockRequest {
+        chain_id: chain_id.clone(),
+        block_header: BlockHeader::from_bytes(
+            hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap(),
+        )
+        .unwrap(),
+        pred_header: genesis_block_header,
+        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
+            test_data::BLOCK_HEADER_HASH_LEVEL_1,
+            test_data::block_header_level1_operations(),
+        )),
+        max_operations_ttl: 0,
+    });
+    assert!(apply_block_result.is_ok());
+
+    // begin application for second block - level 2 - now it should work on first level
+    let result = client::begin_application(BeginApplicationRequest {
+        chain_id: chain_id.clone(),
+        pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())
+            .unwrap(),
+        block_header: BlockHeader::from_bytes(
+            hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
+        )
+        .unwrap(),
+    });
+    assert!(result.is_ok());
 }
 
 fn assert_contains_metadata(metadata: &str, expected_attributes: Vec<&str>) {

@@ -2,29 +2,30 @@
 // SPDX-License-Identifier: MIT
 
 use std::{collections::HashMap, convert::TryFrom};
-use std::convert::TryInto;
+use std::ops::Neg;
 use std::pin::Pin;
 
 use chrono::Utc;
-use failure::{bail, Fail};
+use failure::bail;
 use futures::Stream;
 use futures::task::{Context, Poll};
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{BlockHash, chain_id_to_b58_string, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, ContextHash, HashType};
 use shell::shell_channel::BlockApplied;
-use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, context_key};
-use storage::context::{ContextApi, TezedgeContext};
+use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage};
+use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context_action_storage::ContextActionType;
-use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{RpcRequest, RpcMethod};
+use tezos_api::ffi::{RpcMethod, RpcRequest};
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::encoding::base_types::{TimeStamp, UniString};
 use crate::rpc_actor::RpcCollectedStateRef;
+use crate::server::RpcServiceEnvironment;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -125,6 +126,7 @@ pub struct BlockHeaderMonitorInfo {
 }
 
 pub struct MonitorHeadStream {
+    pub chain_id: ChainId,
     pub state: RpcCollectedStateRef,
     pub last_polled_timestamp: Option<TimeStamp>,
 }
@@ -143,7 +145,6 @@ impl Stream for MonitorHeadStream {
             return Poll::Pending;
         };
         let current_head = state.current_head().clone();
-        let chain_id = state.chain_id().clone();
 
         // drop the immutable borrow so we can borrow self again as mutable
         // TODO: refactor this drop (remove if possible)
@@ -153,8 +154,8 @@ impl Stream for MonitorHeadStream {
             if poll_time < last_update {
                 // get the desired structure of the
                 let current_head = current_head.as_ref().map(|current_head| {
-                    let chain_id = chain_id_to_b58_string(&chain_id);
-                    BlockHeaderInfo::new(current_head, &chain_id).to_monitor_header(current_head)
+                    let chain_id = chain_id_to_b58_string(&self.chain_id);
+                    BlockHeaderInfo::new(current_head, chain_id).to_monitor_header(current_head)
                 });
 
                 // serialize the struct to a json string to yield by the stream
@@ -181,7 +182,7 @@ impl Stream for MonitorHeadStream {
 }
 
 impl FullBlockInfo {
-    pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
+    pub fn new(val: &BlockApplied, chain_id: String) -> Self {
         let header: &BlockHeader = &val.header().header;
         let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
@@ -193,7 +194,7 @@ impl FullBlockInfo {
 
         Self {
             hash,
-            chain_id: chain_id.into(),
+            chain_id,
             header: InnerBlockHeader {
                 level: header.level(),
                 proto: header.proto(),
@@ -212,7 +213,7 @@ impl FullBlockInfo {
 }
 
 impl BlockHeaderInfo {
-    pub fn new(val: &BlockApplied, chain_id: &str) -> Self {
+    pub fn new(val: &BlockApplied, chain_id: String) -> Self {
         let header: &BlockHeader = &val.header().header;
         let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
@@ -235,7 +236,7 @@ impl BlockHeaderInfo {
 
         Self {
             hash,
-            chain_id: chain_id.into(),
+            chain_id,
             level: header.level(),
             proto: header.proto(),
             predecessor,
@@ -397,76 +398,154 @@ impl NodeVersion {
     }
 }
 
-/// Return block level based on block_id url parameter
-///
+/// Parses [ChainId] from chain_id url param
+pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) -> Result<ChainId, failure::Error> {
+    Ok(
+        match chain_id_param {
+            "main" => env.main_chain_id().clone(),
+            "test" => {
+                // find test chain for main chain
+                let chain_meta_storage = ChainMetaStorage::new(env.persistent_storage());
+                let test_chain = match chain_meta_storage.get_test_chain_id(env.main_chain_id())? {
+                    Some(test_chain_id) => test_chain_id,
+                    None => bail!("No test chain activated for main_chain_id: {}", HashType::ChainId.bytes_to_string(env.main_chain_id()))
+                };
+
+                bail!("Test chains are not supported yet! main_chain_id: {}, test_chain_id: {}",
+                    HashType::ChainId.bytes_to_string(env.main_chain_id()),
+                    HashType::ChainId.bytes_to_string(&test_chain))
+            }
+            chain_id_hash => {
+                let chain_id = HashType::ChainId.string_to_bytes(chain_id_hash)?;
+                if chain_id.eq(env.main_chain_id()) {
+                    chain_id
+                } else {
+                    bail!("Multiple chains are not supported yet! requested_chain_id: {} only main_chain_id: {}",
+                        HashType::ChainId.bytes_to_string(&chain_id),
+                        HashType::ChainId.bytes_to_string(env.main_chain_id()))
+                }
+            }
+        }
+    )
+}
+
+fn split_block_id_param(block_id_param: &str, split_char: char, negate: bool) -> Result<(&str, Option<i32>), failure::Error> {
+    let splits: Vec<&str> = block_id_param.split(split_char).collect();
+    Ok(
+        match splits.len() {
+            1 => (splits[0], None),
+            2 => if negate {
+                (splits[0], Some(splits[1].parse::<i32>()?.neg()))
+            } else {
+                (splits[0], Some(splits[1].parse::<i32>()?))
+            },
+            _ => bail!("Invalid block_id parameter: {}", block_id_param)
+        }
+    )
+}
+
+/// Parses [BlockHash] from block_id url param
 /// # Arguments
 ///
 /// * `block_id` - Url parameter block_id.
 /// * `persistent_storage` - Persistent storage handler.
 /// * `state` - Current RPC collected state (head).
 ///
-/// If block_id is head return current head level
-/// If block_id is level then return level as i64
-/// if block_id is block hash string return level from BlockMetaStorage by block hash string
-#[inline]
-pub(crate) fn get_level_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<Option<usize>, failure::Error> {
-    // first try to parse level as number
-    let level = match block_id.parse() {
-        // block level was passed as parameter to block_id
-        Ok(val) => Some(val),
-        // block hash string or 'head' was passed as parameter to block_id
-        Err(_e) => {
-            let block_hash = get_block_hash_by_block_id(block_id, persistent_storage, state)?;
-            let block_meta_storage: BlockMetaStorage = BlockMetaStorage::new(persistent_storage);
-            if let Some(block_meta) = block_meta_storage.get(&block_hash)? {
-                Some(block_meta.level() as usize)
-            } else {
-                None
+/// `block_id` supports different formats:
+/// - `head` - return current block_hash from RpcCollectedStateRef
+/// - `genesis` - return genesis from RpcCollectedStateRef
+/// - `<level>` - return block which is on the level according to actual current_head branch
+/// - `<block_hash>` - return block hash directly
+/// - `<block>~<level>` - block can be: genesis/head/level/block_hash, e.g.: head~10 returns: the block which is 10 levels in the past from head)
+/// - `<block>-<level>` - block can be: genesis/head/level/block_hash, e.g.: head-10 returns: the block which is 10 levels in the past from head)
+/// - `<block>+<level>` - block can be: genesis/head/level/block_hash, e.g.: block_hash-10 returns: the block which is 10 levels after block_hash)
+pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &RpcServiceEnvironment) -> Result<BlockHash, failure::Error> {
+    // split header and optional offset (+, -, ~)
+    let (block_param, offset_param) = {
+        match block_id_param {
+            bip if bip.contains('~') => split_block_id_param(block_id_param, '~', false)?,
+            bip if bip.contains('-') => split_block_id_param(block_id_param, '-', false)?,
+            bip if bip.contains('+') => split_block_id_param(block_id_param, '+', true)?,
+            _ => (block_id_param, None)
+        }
+    };
+
+    // closure for current head
+    let current_head = || {
+        let state_read = env.state().read().unwrap();
+        match state_read.current_head().as_ref() {
+            Some(current_head) => Ok(
+                (
+                    current_head.header().hash.clone(),
+                    current_head.header().header.level()
+                )
+            ),
+            None => bail!("Head not initialized")
+        }
+    };
+
+    let (block_hash, offset) = match block_param {
+        "head" => {
+            let (current_head, _) = current_head()?;
+            if let Some(offset) = offset_param {
+                if offset < 0 {
+                    bail!("Offset for `head` parameter cannot be used with '+', block_id_param: {}", block_id_param);
+                }
+            }
+            (current_head, offset_param)
+        }
+        "genesis" => {
+            match ChainMetaStorage::new(env.persistent_storage()).get_genesis(chain_id)? {
+                Some(genesis) => {
+                    if let Some(offset) = offset_param {
+                        if offset > 0 {
+                            bail!("Offset for `genesis` parameter cannot be used with '~/-', block_id_param: {}", block_id_param);
+                        }
+                    }
+                    (genesis.into(), offset_param)
+                }
+                None => bail!("No genesis found for chain_id: {}", HashType::ChainId.bytes_to_string(chain_id))
+            }
+        }
+        level_or_hash => {
+            // try to parse level as number
+            match level_or_hash.parse::<Level>() {
+                // block level was passed as parameter to block_id_param
+                Ok(requested_level) => {
+                    // we resolve level as relative to current_head - offset_to_level
+                    let (current_head, current_head_level) = current_head()?;
+                    let mut offset_from_head = current_head_level - requested_level;
+
+                    // if we have also offset_param, we need to apply it
+                    if let Some(offset) = offset_param {
+                        offset_from_head -= offset;
+                    }
+
+                    // represet level as current_head with offset
+                    (current_head, Some(offset_from_head))
+                }
+                Err(_) => {
+                    // block hash as base58 string was passed as parameter to block_id
+                    match HashType::BlockHash.string_to_bytes(level_or_hash) {
+                        Ok(block_hash) => (block_hash, offset_param),
+                        Err(e) => {
+                            bail!("Invalid block_id_param: {}, reason: {}", block_id_param, e)
+                        }
+                    }
+                }
             }
         }
     };
 
-    Ok(level)
-}
-
-/// Get block has bytes from block hash or block level
-/// # Arguments
-///
-/// * `block_id` - Url parameter block_id.
-/// * `persistent_storage` - Persistent storage handler.
-/// * `state` - Current RPC collected state (head).
-///
-/// If block_id is head return block hash byte string from current RpcCollectedStateRef
-/// If block_id is level then return block hash byte string from BlockStorage by level
-/// if block_id is block hash string return block hash byte string from BlockStorage by block hash string
-#[inline]
-pub(crate) fn get_block_hash_by_block_id(block_id: &str, persistent_storage: &PersistentStorage, state: &RpcCollectedStateRef) -> Result<BlockHash, failure::Error> {
-    let block_storage = BlockStorage::new(persistent_storage);
-    // first check if 'head' string was provided as parameter and take hash from RpcCollectedStateRef
-    let block_hash = if block_id == "head" {
-        let state_read = state.read().unwrap();
-        match state_read.current_head().as_ref() {
-            Some(current_head) => {
-                current_head.header().hash.clone()
-            }
-            None => bail!("head not initialized")
-        }
-    } else if block_id == "genesis" {
-        match block_storage.get_by_block_level(0)? {
-            Some(genesis_block) => genesis_block.hash,
-            None => bail!("Error getting genesis block from storage")
+    // find requested header, if no offset we return header
+    let block_hash = if let Some(offset) = offset {
+        match BlockMetaStorage::new(env.persistent_storage())
+            .find_block_at_distance(block_hash, offset)? {
+            Some(block_hash) => block_hash,
+            None => bail!("Unknown block for block_id_param: {}", block_id_param)
         }
     } else {
-        // try to parse level as number
-        match block_id.parse() {
-            // block level was passed as parameter to block_id
-            Ok(value) => match block_storage.get_by_block_level(value)? {
-                Some(current_head) => current_head.hash,
-                None => bail!("block not found in db by level {}", block_id)
-            },
-            // block hash string was passed as parameter to block_id
-            Err(_e) => HashType::BlockHash.string_to_bytes(block_id)?
-        }
+        block_hash
     };
 
     Ok(block_hash)
@@ -479,88 +558,14 @@ pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
         .collect()
 }
 
-/// Return block timestamp in epoch time format by block level
-///
-/// # Arguments
-///
-/// * `level` - Level of block.
-/// * `state` - Current RPC state (head).
-pub(crate) fn get_block_timestamp_by_level(level: i32, persistent_storage: &PersistentStorage) -> Result<i64, failure::Error> {
-    let block_storage = BlockStorage::new(persistent_storage);
-    match block_storage.get_by_block_level(level)? {
-        Some(current_head) => Ok(current_head.header.timestamp()),
-        None => bail!("Block not found in db by level {}", level)
+/// TODO: TE-238 - optimize context_hash/level index, not do deserialize whole header
+/// TODO: returns context_hash and level, but level is here just for one use-case, so maybe it could be splitted
+pub(crate) fn get_context_hash(block_hash: &BlockHash, env: &RpcServiceEnvironment) -> Result<ContextHash, failure::Error> {
+    let block_storage = BlockStorage::new(env.persistent_storage());
+    match block_storage.get(block_hash)? {
+        Some(header) => Ok(header.header.context().clone()),
+        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.bytes_to_string(block_hash))
     }
-}
-
-pub(crate) struct ContextProtocolParam {
-    pub protocol_hash: ProtocolHash,
-    pub constants_data: Vec<u8>,
-    pub level: usize,
-}
-
-
-#[derive(Debug, Clone, Fail)]
-pub enum ContextParamsError {
-    #[fail(display = "Protocol not found in context for block: {}", _0)]
-    NoProtocolForBlock(String),
-    #[fail(display = "Protocol constants not found in context for block: {}", _0)]
-    NoConstantsForBlock(String),
-
-}
-
-
-/// Get protocol and context constants as bytes from context list for desired block or level
-///
-/// # Arguments
-///
-/// * `block_id` - Url path parameter 'block_id', it contains string "head", block level or block hash.
-/// * `opt_level` - Optionaly input block level from block_id if is already known to prevent double code execution.
-/// * `list` - Context list handler.
-/// * `persistent_storage` - Persistent storage handler.
-/// * `state` - Current RPC collected state (head).
-pub(crate) fn get_context_protocol_params(
-    block_id: &str,
-    opt_level: Option<i64>,
-    persistent_storage: &PersistentStorage,
-    state: &RpcCollectedStateRef) -> Result<ContextProtocolParam, failure::Error> {
-
-    // first check if level is already known
-    let level: usize = if let Some(l) = opt_level {
-        l.try_into()?
-    } else {
-        // get level level by block_id
-        if let Some(l) = get_level_by_block_id(block_id, persistent_storage, state)? {
-            l
-        } else {
-            bail!("Level not found for block_id {}", block_id)
-        }
-    };
-
-    let context = TezedgeContext::new(BlockStorage::new(&persistent_storage), persistent_storage.merkle());
-    let ctx_hash = context.level_to_hash(level.try_into()?)?;
-
-    let protocol_hash: Vec<u8>;
-    let constants: Vec<u8>;
-    {
-        if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("protocol"))? {
-            protocol_hash = data;
-        } else {
-            return Err(ContextParamsError::NoProtocolForBlock(block_id.to_string()).into());
-        }
-
-        if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/v1/constants"))? {
-            constants = data;
-        } else {
-            return Err(ContextParamsError::NoConstantsForBlock(block_id.to_string()).into());
-        }
-    };
-
-    Ok(ContextProtocolParam {
-        protocol_hash,
-        constants_data: constants,
-        level,
-    })
 }
 
 pub(crate) fn current_time_timestamp() -> TimeStamp {
@@ -599,7 +604,7 @@ mod tests {
     // code so that it doesn't call `Uri.pct_decode` on the URI fragments. Code using the
     // query part of the URI may have to be updated too.
     #[test]
-    fn test_pct_not_decoded()  {
+    fn test_pct_not_decoded() {
         let req = Request::builder()
             .uri("http://www.example.com/percent%20encoded?query=percent%20encoded")
             .body(())

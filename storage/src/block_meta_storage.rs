@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{ColumnFamilyDescriptor, MergeOperands, Cache};
+use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 use slog::{Logger, warn};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
@@ -19,6 +19,12 @@ pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sy
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
+
+    /// Returns n-th predecessor for block_hash
+    fn find_block_at_distance(&self, block_hash: BlockHash, distance: i32) -> Result<Option<BlockHash>, StorageError>;
+
+    /// Return ancestors of requested [block_hash] according to max_ttl (something like limit) sorted by [BlockHash] bytes
+    fn get_live_blocks(&self, block_hash: BlockHash, max_ttl: usize) -> Result<Vec<BlockHash>, StorageError>;
 }
 
 #[derive(Clone)]
@@ -151,6 +157,88 @@ impl BlockMetaStorageReader for BlockMetaStorage {
         self.kv.get(block_hash)
             .map_err(StorageError::from)
     }
+
+    // TODO: TE-203 - find predecessor re-write in much more optimized and fast way, e.g. like tezos ocaml original impl
+    /// Find header at distance from block_hash.
+    /// If `0` return block_hash
+    /// If `positive value` - searched backward through predecessors
+    /// If `negative value` - searched forwards through successors (reorg, should choose branch related to current head)
+    fn find_block_at_distance(&self, block_hash: BlockHash, requested_distance: i32) -> Result<Option<BlockHash>, StorageError> {
+        if requested_distance == 0 {
+            return Ok(Some(block_hash));
+        }
+        if requested_distance < 0 {
+            unimplemented!("TODO: TE-238 - Not yet implemented block header parsing for '+' - means we need to go forwards throught successors, this could be tricky and should be related to current head branch - reorg");
+        }
+
+        let result = {
+            let mut current_block = block_hash;
+            let mut current_distance = 0;
+
+            let predecessor_at_distance = loop {
+                let (predecessor, predecesor_distance) = match self.get(&current_block)? {
+                    Some(meta) => {
+                        match meta.predecessor {
+                            Some(predecessor) => {
+                                if meta.level > Meta::GENESIS_LEVEL {
+                                    (predecessor, current_distance + 1)
+                                } else {
+                                    // if we found genesis level, we return None, because genesis does not have predecessor
+                                    break None;
+                                }
+                            }
+                            None => break None
+                        }
+                    }
+                    None => break None
+                };
+
+                // we finish, if we found distance or if it is a genesis
+                if predecesor_distance == requested_distance {
+                    break Some(predecessor);
+                } else {
+                    // else we continue to predecessor's predecessor
+                    current_block = predecessor;
+                    current_distance = predecesor_distance;
+                }
+            };
+            predecessor_at_distance
+        };
+
+        Ok(result)
+    }
+
+    fn get_live_blocks(&self, block_hash: BlockHash, max_ttl: usize) -> Result<Vec<BlockHash>, StorageError> {
+        // Note: tezos ocaml for max_ttl=60 returns 61 blocks
+        let mut live_blocks_counter = max_ttl + 1;
+        let mut live_blocks = Vec::with_capacity(live_blocks_counter);
+
+        if let Some(_) = self.get(&block_hash)? {
+            // add requested header (if found)
+            live_blocks.push(block_hash.clone());
+            live_blocks_counter -= 1;
+
+            // lets find ancestors of requested header - (predecessors at distance 1)
+            let mut current = block_hash;
+            for _ in 0..live_blocks_counter {
+                match self.find_block_at_distance(current, 1)? {
+                    Some(predecessor) => {
+                        live_blocks.push(predecessor.clone());
+                        current = predecessor
+                    },
+                    None => {
+                        // Note: if not predecessor, means, that we are done, genesis does not have predecessor
+                        break
+                    }
+                }
+            }
+        }
+
+        // sort by bytes
+        live_blocks.sort_by(|left, right| Ord::cmp(left, right));
+
+        Ok(live_blocks)
+    }
 }
 
 const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
@@ -204,13 +292,15 @@ pub struct Meta {
 }
 
 impl Meta {
+    pub const GENESIS_LEVEL: i32 = 0;
+
     /// Create Metadata for specific genesis block
     pub fn genesis_meta(genesis_hash: &BlockHash, genesis_chain_id: &ChainId, is_applied: bool) -> Self {
         Meta {
             is_applied,
             predecessor: Some(genesis_hash.clone()), // this is what we want
             successors: vec![], // we do not know (yet) successor of the genesis
-            level: 0,
+            level: Self::GENESIS_LEVEL.clone(),
             chain_id: genesis_chain_id.clone(),
         }
     }

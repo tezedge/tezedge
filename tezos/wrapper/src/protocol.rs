@@ -9,6 +9,11 @@ pub trait ProtocolApi {
     /// Apply block
     fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError>;
 
+    /// Begin application new block
+    fn begin_application(
+        request: BeginApplicationRequest,
+    ) -> Result<BeginApplicationResponse, BeginApplicationError>;
+
     /// Begin construction new block
     fn begin_construction(
         request: BeginConstructionRequest,
@@ -60,4 +65,10 @@ pub trait ProtocolApi {
 
     /// Command tezos ocaml code to compute the operations path
     fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError>;
+
+    /// Verify if block_header's protocol_data can be encoded by protocol_hash
+    fn assert_encoding_for_protocol_data(
+        protocol_hash: ProtocolHash,
+        protocol_data: Vec<u8>,
+    ) -> Result<(), ProtocolDataError>;
 }

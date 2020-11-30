@@ -11,9 +11,9 @@ use getset::Getters;
 use hyper::{Body, Method, Request, Response};
 use hyper::service::{make_service_fn, service_fn};
 use riker::actors::ActorSystem;
-use slog::Logger;
+use slog::{error, Logger};
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, ChainId};
 use shell::shell_channel::ShellChannelRef;
 use storage::context::TezedgeContext;
 use storage::persistent::PersistentStorage;
@@ -21,7 +21,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::{not_found, options};
+use crate::{error_with_message, not_found, options};
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
 
 mod dev_handler;
@@ -41,8 +41,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
-    genesis_hash: BlockHash,
-    #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
     shell_channel: ShellChannelRef,
@@ -52,6 +50,11 @@ pub struct RpcServiceEnvironment {
     network_version: NetworkVersion,
     #[get = "pub(crate)"]
     log: Logger,
+
+    #[get = "pub(crate)"]
+    main_chain_genesis_hash: BlockHash,
+    #[get = "pub(crate)"]
+    main_chain_id: ChainId,
 
     #[get = "pub(crate)"]
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
@@ -73,7 +76,8 @@ impl RpcServiceEnvironment {
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
-        genesis_hash: BlockHash,
+        main_chain_id: ChainId,
+        main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         log: &Logger) -> Self {
         Self {
@@ -84,7 +88,8 @@ impl RpcServiceEnvironment {
             network_version,
             persistent_storage: persistent_storage.clone(),
             tezedge_context: tezedge_context.clone(),
-            genesis_hash,
+            main_chain_id,
+            main_chain_genesis_hash,
             state,
             log: log.clone(),
             tezos_readonly_api,
@@ -130,8 +135,15 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                                     let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
 
                                     let handler = handler.clone();
+                                    let log = env.log.clone();
                                     let fut = handler(req, params, query, env);
-                                    Pin::from(fut).await
+                                    match Pin::from(fut).await {
+                                        Ok(response) => Ok(response),
+                                        Err(e) => {
+                                            error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
+                                            error_with_message(format!("{:?}", e))
+                                        }
+                                    }
                                 }
                             }
                         } else {

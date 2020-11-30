@@ -5,9 +5,10 @@ use super::{
     FfiPath, OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlProtocolHash,
 };
 use crate::ffi::{
-    Applied, ApplyBlockResponse, Errored, ForkingTestchainData, HelpersPreapplyResponse,
-    OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolRpcError,
-    ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse, ValidateOperationResult,
+    Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
+    HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
+    ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse,
+    ValidateOperationResult,
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
 use ocaml_interop::{
@@ -50,6 +51,12 @@ impl_from_ocaml_record! {
         last_allowed_fork_level: OCamlInt32,
         forking_testchain: bool,
         forking_testchain_data: Option<ForkingTestchainData>,
+    }
+}
+
+impl_from_ocaml_record! {
+    BeginApplicationResponse {
+        result: String,
     }
 }
 

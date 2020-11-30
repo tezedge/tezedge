@@ -5,10 +5,7 @@
 use hyper::{Body, Response, StatusCode};
 use slog::{error, Logger};
 
-use crypto::hash::HashType;
 pub use services::mempool_services::MempoolOperations;
-
-use crate::rpc_actor::RpcCollectedStateRef;
 
 pub mod encoding;
 mod helpers;
@@ -86,17 +83,6 @@ pub(crate) fn empty() -> ServiceResult {
         .body(Body::empty())?)
 }
 
-/// Unwraps a block hash or provides alternative block hash.
-/// Alternatives are: genesis block or current head
-pub(crate) fn unwrap_block_hash(block_id: Option<&str>, state: &RpcCollectedStateRef, genesis_hash: &str) -> String {
-    block_id.map(String::from).unwrap_or_else(|| {
-        let state = state.read().unwrap();
-        state.current_head().as_ref()
-            .map(|current_head| HashType::BlockHash.bytes_to_string(&current_head.header().hash))
-            .unwrap_or(genesis_hash.to_string())
-    })
-}
-
 /// Generate 404 response
 pub(crate) fn not_found() -> ServiceResult {
     Ok(Response::builder()
@@ -106,6 +92,11 @@ pub(crate) fn not_found() -> ServiceResult {
 
 /// Generate 500 error
 pub(crate) fn error(error: failure::Error) -> ServiceResult {
+    error_with_message(format!("{:?}", error))
+}
+
+/// Generate 500 error with message as body
+pub(crate) fn error_with_message(error_msg: String) -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(500)?)
         .header(hyper::header::CONTENT_TYPE, "text/plain")
@@ -113,5 +104,5 @@ pub(crate) fn error(error: failure::Error) -> ServiceResult {
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .header(hyper::header::TRANSFER_ENCODING, "chunked")
-        .body(Body::from(format!("{:?}", error)))?)
+        .body(Body::from(error_msg))?)
 }

@@ -19,16 +19,19 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::{Error, format_err};
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, info, Logger, trace, warn};
+use slog::{debug, error, info, Logger, trace, warn};
 
-use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerBootstrapped};
-use networking::p2p::peer::{PeerRef, SendMessage};
+use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
+use crypto::seeded_step::Seed;
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped};
+use networking::p2p::peer::SendMessage;
+use networking::PeerId;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use tezos_api::ffi::ApplyBlockRequest;
+use tezos_identity::Identity;
 use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -37,7 +40,7 @@ use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::{PeerConnectionThreshold, validation};
 use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, CurrentMempoolState, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::state::block_state::{BlockchainState, HeadResult, MissingBlock};
+use crate::state::block_state::{BlockAcceptanceResult, BlockchainState, HeadResult, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
 use crate::subscription::*;
 
@@ -110,6 +113,17 @@ impl CurrentHead {
         }
     }
 
+    fn update_remote_head(&mut self, block_header: &BlockHeaderWithHash) {
+        // TODO: maybe fitness check?
+        if self.need_update_remote_level(block_header.header.level()) {
+            self.remote = Some(Head::new(
+                block_header.hash.clone(),
+                block_header.header.level(),
+                block_header.header.fitness().to_vec(),
+            ));
+        }
+    }
+
     fn local_debug_info(&self) -> (String, i32, String) {
         match &self.local {
             None => ("-none-".to_string(), 0 as i32, "-none-".to_string()),
@@ -148,8 +162,6 @@ pub struct ChainManager {
     network_channel: NetworkChannelRef,
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
-    /// Holds the state of all peers
-    peers: HashMap<ActorUri, PeerState>,
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
     /// Block meta storage
@@ -164,17 +176,23 @@ pub struct ChainManager {
     chain_state: BlockchainState,
     /// Holds state of the operations
     operations_state: OperationsState,
+
+    /// Node's identity public key - e.g. used for history computation
+    identity_peer_id: CryptoboxPublicKeyHash,
+
+    /// Holds the state of all peers
+    peers: HashMap<ActorUri, PeerState>,
     /// Current head information
     current_head: CurrentHead,
     // current last known mempool state
     current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
     /// Internal stats
     stats: Stats,
+
     /// Indicates that system is shutting down
     shutting_down: bool,
     /// Indicates node mode
     is_sandbox: bool,
-
     /// Indicates that [chain_manager] is bootstrapped, which means, that can broadcast stuff (new branch, new head) to the network
     is_bootstrapped: bool,
     /// Indicates threshold for minimal count of bootstrapped peers to mark chain_manager as bootstrapped
@@ -190,14 +208,15 @@ pub type ChainManagerRef = ActorRef<ChainManagerMsg>;
 impl ChainManager {
     /// Create new actor instance.
     pub fn actor(
-        sys: &impl ActorRefFactory,
+        sys: &ActorSystem,
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         chain_id: &ChainId,
         is_sandbox: bool,
-        peers_threshold: &PeerConnectionThreshold) -> Result<ChainManagerRef, CreateError> {
+        peers_threshold: &PeerConnectionThreshold,
+        identity: Arc<Identity>) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
             ChainManager::name(),
             Props::new_args((
@@ -207,7 +226,11 @@ impl ChainManager {
                 tezos_readonly_prevalidation_api,
                 chain_id.clone(),
                 is_sandbox,
-                peers_threshold.num_of_peers_for_bootstrap_threshold()
+                peers_threshold.num_of_peers_for_bootstrap_threshold(),
+                identity.calculated_peer_id().map_err(|e| {
+                    error!(sys.log(), "Failed to decode peer_id from identity"; "reason" => format!("{}", e));
+                    CreateError::Panicked
+                })?,
             )),
         )
     }
@@ -319,7 +342,7 @@ impl ChainManager {
         }
 
         if let Some(current_head_local) = self.current_head.local.as_ref() {
-            let block_hash = current_head_local.hash().clone();
+            let block_hash = current_head_local.block_hash().clone();
             self.check_successors_for_apply(ctx, &block_hash)?;
         }
 
@@ -338,27 +361,28 @@ impl ChainManager {
             stats,
             mempool_storage,
             current_head,
+            identity_peer_id,
             ..
         } = self;
 
         match msg {
-            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Success { peer, peer_metadata, .. }) => {
-                let log = ctx.system.log().new(slog::o!("peer" => peer.name().to_string()));
-
-                debug!(log, "Requesting current branch");
-                let peer = PeerState::new(peer, peer_metadata);
+            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Success { peer_id, peer_metadata }) => {
+                let peer = PeerState::new(peer_id, peer_metadata);
                 // store peer
-                let actor_uri = peer.peer_ref.uri().clone();
+                let actor_uri = peer.peer_id.peer_ref.uri().clone();
                 self.peers.insert(actor_uri.clone(), peer);
                 // retrieve mutable reference and use it as `tell_peer()` parameter
                 let peer = self.peers.get_mut(&actor_uri).unwrap();
+
+                let log = ctx.system.log().new(slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone()));
+                debug!(log, "Requesting current branch");
                 tell_peer(GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(), peer);
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
-                let log = ctx.system.log().new(slog::o!("peer" => received.peer.name().to_string()));
-
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {
+                        let log = ctx.system.log().new(slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone()));
+
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
@@ -369,38 +393,24 @@ impl ChainManager {
                                                     "branch" => BLOCK_HASH_ENCODING.bytes_to_string(&head.message_hash()?),
                                                     "level" => head.level());
                                     } else {
-                                        let message_current_head = message.current_branch().current_head();
-                                        let message_current_head_block_hash: BlockHash = message_current_head.message_hash()?;
-                                        let message_current_head_level = message_current_head.level();
+                                        let message_current_head = BlockHeaderWithHash::new(message.current_branch().current_head().clone())?;
 
                                         // schedule to download missing branch blocks
                                         chain_state.schedule_branch_bootstrap(
-                                            &message_current_head_block_hash,
-                                            message_current_head,
+                                            &message_current_head,
                                             message.current_branch().history(),
                                         )?;
 
-                                        // if needed, update remote current head
-                                        if current_head.need_update_remote_level(message_current_head_level) {
-                                            current_head.remote = Some(Head::new(
-                                                message_current_head_block_hash.clone(),
-                                                message_current_head_level,
-                                                message_current_head.fitness().to_vec(),
-                                            ));
-                                        }
-
-                                        // update peer stats
-                                        if peer.current_head_level.is_none() || (message_current_head_level > peer.current_head_level.unwrap()) {
-                                            peer.current_head_level = Some(message_current_head_level);
-                                            peer.current_head_update_last = Instant::now();
-                                        }
+                                        // update remote heads
+                                        current_head.update_remote_head(&message_current_head);
+                                        peer.update_current_head(&message_current_head);
 
                                         // notify others that new block was received
                                         shell_channel.tell(
                                             Publish {
                                                 msg: BlockReceived {
-                                                    hash: message_current_head_block_hash,
-                                                    level: message_current_head_level,
+                                                    hash: message_current_head.hash.clone(),
+                                                    level: message_current_head.header.level(),
                                                 }.into(),
                                                 topic: ShellChannelTopic::ShellEvents.into(),
                                             }, Some(ctx.myself().into()));
@@ -412,12 +422,25 @@ impl ChainManager {
                                 PeerMessage::GetCurrentBranch(message) => {
                                     if chain_state.get_chain_id() == &message.chain_id {
                                         if let Some(current_head_local) = &current_head.local {
-                                            if let Some(current_head) = block_storage.get(current_head_local.hash())? {
-                                                let history = chain_state.get_history()?;
-                                                let msg = CurrentBranchMessage::new(chain_state.get_chain_id().clone(), CurrentBranch::new((*current_head.header).clone(), history));
+                                            if let Some(current_head) = block_storage.get(current_head_local.block_hash())? {
+                                                // calculate history
+                                                let history = chain_state.get_history(
+                                                    &current_head.hash,
+                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key),
+                                                )?;
+                                                // send message
+                                                let msg = CurrentBranchMessage::new(
+                                                    chain_state.get_chain_id().clone(),
+                                                    CurrentBranch::new(
+                                                        (*current_head.header).clone(),
+                                                        history,
+                                                    ),
+                                                );
                                                 tell_peer(msg.into(), peer);
                                             }
                                         }
+                                    } else {
+                                        warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => HashType::ChainId.bytes_to_string(chain_state.get_chain_id()));
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
@@ -425,43 +448,15 @@ impl ChainManager {
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(_) => {
                                             peer.block_response_last = Instant::now();
-
-                                            let (block_metadata, is_new_block, are_operations_complete) =
-                                                chain_state.process_block_header(&block_header_with_hash, &log)
-                                                    .and_then(|(block_metadata, is_new_block)| {
-                                                        operations_state
-                                                            .process_block_header(&block_header_with_hash)
-                                                            .map(|are_operations_complete| (block_metadata, is_new_block, are_operations_complete))
-                                                    })?;
-
-                                            // check if block can be applied
-                                            if chain_state.can_apply_block((&block_header_with_hash.hash, &block_metadata), |_| Ok(are_operations_complete))? {
-                                                ctx.myself().tell(
-                                                    ApplyCompletedBlock {
-                                                        block_hash: block_header_with_hash.hash.clone()
-                                                    },
-                                                    None,
-                                                );
-                                            }
-
-                                            if is_new_block {
-                                                // update stats
-                                                stats.unseen_block_last = Instant::now();
-                                                stats.unseen_block_count += 1;
-
-                                                // trigger CheckChainCompleteness
-                                                ctx.myself().tell(CheckChainCompleteness, None);
-
-                                                // notify others that new block was received
-                                                shell_channel.tell(
-                                                    Publish {
-                                                        msg: BlockReceived {
-                                                            hash: block_header_with_hash.hash,
-                                                            level: block_header_with_hash.header.level(),
-                                                        }.into(),
-                                                        topic: ShellChannelTopic::ShellEvents.into(),
-                                                    }, Some(ctx.myself().into()));
-                                            }
+                                            Self::process_downloaded_header(
+                                                block_header_with_hash,
+                                                ctx.myself(),
+                                                &log,
+                                                chain_state,
+                                                operations_state,
+                                                stats,
+                                                shell_channel,
+                                            )?;
                                         }
                                         None => {
                                             warn!(log, "Received unexpected block header"; "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_header_with_hash.hash));
@@ -479,7 +474,7 @@ impl ChainManager {
                                 PeerMessage::GetCurrentHead(message) => {
                                     if chain_state.get_chain_id() == message.chain_id() {
                                         if let Some(current_head_local) = &current_head.local {
-                                            if let Some(current_head) = block_storage.get(current_head_local.hash())? {
+                                            if let Some(current_head) = block_storage.get(current_head_local.block_hash())? {
                                                 let msg = CurrentHeadMessage::new(
                                                     chain_state.get_chain_id().clone(),
                                                     (*current_head.header).clone(),
@@ -556,23 +551,81 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::CurrentHead(message) => {
-                                    if chain_state.get_chain_id() == message.chain_id() {
-                                        let peer_current_mempool = message.current_mempool();
-
-                                        // all operations (known_valid + pending) should be added to pending and validated afterwards
-                                        // enqueue mempool operations for retrieval
-                                        peer_current_mempool.known_valid().iter().cloned()
-                                            .for_each(|operation_hash| {
-                                                peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::Pending));
-                                            });
-                                        peer_current_mempool.pending().iter().cloned()
-                                            .for_each(|operation_hash| {
-                                                peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::Pending));
-                                            });
-
-                                        // trigger CheckMempoolCompleteness
-                                        ctx.myself().tell(CheckMempoolCompleteness, None);
+                                    // process current head only if we are bootstrapped
+                                    if !self.is_bootstrapped {
+                                        continue;
                                     }
+
+                                    // check if we can accept head
+                                    match chain_state.can_accept_head(
+                                        &message,
+                                        &current_head.local,
+                                        &self.tezos_readonly_prevalidation_api.pool.get()?.api,
+                                    )? {
+                                        BlockAcceptanceResult::AcceptBlock => {
+                                            let message_current_head = BlockHeaderWithHash::new(message.current_block_header().clone())?;
+
+                                            // update remote heads
+                                            current_head.update_remote_head(&message_current_head);
+                                            peer.update_current_head(&message_current_head);
+
+                                            // schedule header/operations download
+                                            Self::process_downloaded_header(
+                                                message_current_head,
+                                                ctx.myself(),
+                                                &log,
+                                                chain_state,
+                                                operations_state,
+                                                stats,
+                                                shell_channel,
+                                            )?;
+
+                                            // schedule mempool download
+                                            let peer_current_mempool = message.current_mempool();
+
+                                            // all operations (known_valid + pending) should be added to pending and validated afterwards
+                                            // enqueue mempool operations for retrieval
+                                            peer_current_mempool.known_valid().iter().cloned()
+                                                .for_each(|operation_hash| {
+                                                    peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::Pending));
+                                                });
+                                            peer_current_mempool.pending().iter().cloned()
+                                                .for_each(|operation_hash| {
+                                                    peer.missing_mempool_operations.push((operation_hash, MempoolOperationType::Pending));
+                                                });
+
+                                            // trigger CheckMempoolCompleteness
+                                            ctx.myself().tell(CheckMempoolCompleteness, None);
+                                        }
+                                        BlockAcceptanceResult::IgnoreBlock => {
+                                            // doing nothing
+                                        }
+                                        BlockAcceptanceResult::UnknownBranch => {
+                                            // ask current_branch from peer
+                                            tell_peer(
+                                                GetCurrentBranchMessage::new(message.chain_id().clone()).into(),
+                                                peer
+                                            );
+                                        }
+                                        BlockAcceptanceResult::MutlipassValidationError(error) => {
+                                            warn!(log, "Mutlipass validation error detected - blacklisting peer"; "reason" => &error);
+
+                                            // clear peer stuff immediatelly
+                                            peer.clear();
+
+                                            // blacklist peer
+                                            self.network_channel.tell(
+                                                Publish {
+                                                    msg: NetworkChannelMsg::BlacklistPeer(
+                                                        peer.peer_id.clone(),
+                                                        format!("{:?}", error),
+                                                    ),
+                                                    topic: NetworkChannelTopic::NetworkEvents.into(),
+                                                },
+                                                None,
+                                            );
+                                        }
+                                    };
                                 }
                                 PeerMessage::GetOperations(message) => {
                                     let requested_operations: &Vec<OperationHash> = message.get_operations();
@@ -585,6 +638,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::Operation(message) => {
+                                    // handling new mempool operations here
                                     // parse operation data
                                     let operation = message.operation();
                                     let operation_hash = operation.message_hash()?;
@@ -608,7 +662,7 @@ impl ChainManager {
                                                     | validation::PrevalidateOperationError::BranchNotAppliedYet { .. } => {
                                                         // here we just ignore UnknownBranch
                                                         return Ok(());
-                                                    },
+                                                    }
                                                     poe => {
                                                         // other error just propagate
                                                         return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), poe));
@@ -641,14 +695,15 @@ impl ChainManager {
                                         None => debug!(log, "Unexpected mempool operation received")
                                     }
                                 }
-                                PeerMessage::Bootstrap => {
-                                    // on bootstrap reset peer state
-                                }
                                 ignored_message => trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
                             }
                         }
                     }
-                    None => debug!(log, "Received message from non-existing peer")
+                    None => {
+                        warn!(ctx.system.log(), "Received message from non-existing peer actor";
+                                                "peer" => received.peer.name().to_string(),
+                                                "peer_uri" => received.peer.uri().to_string());
+                    }
                 }
             }
             _ => (),
@@ -671,9 +726,9 @@ impl ChainManager {
                 // - reset mempool_prevalidator
 
                 // we try to set it as "new current head", if some means set, if none means just ignore block
-                if let Some((new_head, new_head_result)) = self.chain_state.try_set_new_current_head(&message, &self.current_head.local, &self.current_mempool_state)? {
+                if let Some((new_head, new_head_result)) = self.chain_state.try_update_new_current_head(&message, &self.current_head.local, &self.current_mempool_state)? {
                     debug!(ctx.system.log(), "New current head";
-                                             "block_header_hash" => HashType::BlockHash.bytes_to_string(new_head.hash()),
+                                             "block_header_hash" => HashType::BlockHash.bytes_to_string(new_head.block_hash()),
                                              "level" => new_head.level(),
                                              "result" => format!("{}", new_head_result)
                     );
@@ -805,6 +860,7 @@ impl ChainManager {
                             let msg: OperationsForBlocksMessage = OperationsForBlocksMessage::new(opb, op_paths.get(idx).unwrap().to_owned(), ops.clone());
                             if self.operations_state.process_block_operations(&msg)? {
                                 are_operations_complete = true;
+
                                 // update stats
                                 self.stats.unseen_block_operations_last = Instant::now();
 
@@ -843,6 +899,58 @@ impl ChainManager {
                 unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
             }
             _ => ()
+        }
+
+        Ok(())
+    }
+
+    fn process_downloaded_header(
+        received_block: BlockHeaderWithHash,
+        myself: ChainManagerRef,
+        log: &Logger,
+        chain_state: &mut BlockchainState,
+        operations_state: &mut OperationsState,
+        stats: &mut Stats,
+        shell_channel: &ShellChannelRef,
+    ) -> Result<(), Error> {
+
+        // stored header and operations
+        let (block_metadata, is_new_block, are_operations_complete) =
+            chain_state.process_block_header(&received_block, log)
+                .and_then(|(block_metadata, is_new_block)| {
+                    operations_state
+                        .process_block_header(&received_block)
+                        .map(|are_operations_complete| (block_metadata, is_new_block, are_operations_complete))
+                })?;
+
+        // check if block can be applied
+        if chain_state.can_apply_block((&received_block.hash, &block_metadata), |_| Ok(are_operations_complete))? {
+            myself.tell(
+                ApplyCompletedBlock {
+                    block_hash: received_block.hash.clone()
+                },
+                None,
+            );
+        }
+
+        if is_new_block {
+            // update stats
+            stats.unseen_block_last = Instant::now();
+            stats.unseen_block_count += 1;
+
+            // TODO: preverit vsetky tieto pingovacky
+            // trigger CheckChainCompleteness
+            myself.tell(CheckChainCompleteness, None);
+
+            // notify others that new block was received
+            shell_channel.tell(
+                Publish {
+                    msg: BlockReceived {
+                        hash: received_block.hash,
+                        level: received_block.header.level(),
+                    }.into(),
+                    topic: ShellChannelTopic::ShellEvents.into(),
+                }, Some(myself.into()));
         }
 
         Ok(())
@@ -998,8 +1106,10 @@ impl ChainManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize)> for ChainManager {
-    fn create_args((network_channel, shell_channel, persistent_storage, tezos_readonly_prevalidation_api, chain_id, is_sandbox, num_of_peers_for_bootstrap_threshold): (NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize)) -> Self {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize, CryptoboxPublicKeyHash)> for ChainManager {
+    fn create_args(
+        (network_channel, shell_channel, persistent_storage, tezos_readonly_prevalidation_api, chain_id, is_sandbox, num_of_peers_for_bootstrap_threshold, identity_peer_id):
+        (NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize, CryptoboxPublicKeyHash)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
@@ -1008,8 +1118,8 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ar
             chain_meta_storage: Box::new(ChainMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
-            chain_state: BlockchainState::new(&persistent_storage, &chain_id),
-            operations_state: OperationsState::new(&persistent_storage, &chain_id),
+            chain_state: BlockchainState::new(&persistent_storage, chain_id.clone()),
+            operations_state: OperationsState::new(&persistent_storage, chain_id),
             peers: HashMap::new(),
             current_head: CurrentHead {
                 local: None,
@@ -1026,6 +1136,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ar
                 hydrated_state_last: None,
             },
             is_sandbox,
+            identity_peer_id,
             is_bootstrapped: false,
             num_of_peers_for_bootstrap_threshold,
             tezos_readonly_prevalidation_api,
@@ -1138,7 +1249,7 @@ impl Receive<LogStats> for ChainManager {
             "applied_block_secs" => self.stats.applied_block_last.map(|i| i.elapsed().as_secs()));
         for peer in self.peers.values() {
             debug!(log, "Peer state info";
-                "actor_ref" => format!("{}", peer.peer_ref),
+                "actor_ref" => format!("{}", peer.peer_id.peer_ref),
                 "queued_block_headers" => peer.queued_block_headers.len(),
                 "queued_block_operations" => peer.queued_block_operations.len(),
                 "block_request_secs" => peer.block_request_last.elapsed().as_secs(),
@@ -1187,7 +1298,7 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                 };
 
                 if should_disconnect {
-                    ctx.system.stop(state.peer_ref.clone());
+                    ctx.system.stop(state.peer_id.peer_ref.clone());
                 }
             });
     }
@@ -1267,8 +1378,8 @@ impl Receive<AskPeersAboutCurrentBranch> for ChainManager {
 
 /// Holds information about a specific peer.
 struct PeerState {
-    /// Reference to peer actor
-    peer_ref: PeerRef,
+    /// PeerId identification (actor_ref + public key)
+    peer_id: Arc<PeerId>,
     /// Has peer enabled mempool
     mempool_enabled: bool,
     /// Is bootstrapped flag
@@ -1304,9 +1415,9 @@ struct PeerState {
 }
 
 impl PeerState {
-    fn new(peer_ref: PeerRef, peer_metadata: MetadataMessage) -> Self {
+    fn new(peer_id: Arc<PeerId>, peer_metadata: MetadataMessage) -> Self {
         PeerState {
-            peer_ref,
+            peer_id,
             mempool_enabled: !peer_metadata.disable_mempool(),
             is_bootstrapped: false,
             queued_block_headers: HashMap::new(),
@@ -1350,10 +1461,25 @@ impl PeerState {
             0
         }
     }
+
+    fn update_current_head(&mut self, block_header: &BlockHeaderWithHash) {
+        // TODO: maybe fitness check?
+        if self.current_head_level.is_none() || (block_header.header.level() > self.current_head_level.unwrap()) {
+            self.current_head_level = Some(block_header.header.level());
+            self.current_head_update_last = Instant::now();
+        }
+    }
+
+    fn clear(&mut self) {
+        self.missing_mempool_operations.clear();
+        self.queued_block_headers.clear();
+        self.queued_block_operations.clear();
+        self.queued_mempool_operations.clear();
+    }
 }
 
 fn tell_peer(msg: PeerMessageResponse, peer: &PeerState) {
-    peer.peer_ref.tell(SendMessage::new(msg), None);
+    peer.peer_id.peer_ref.tell(SendMessage::new(msg), None);
 }
 
 fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
@@ -1372,7 +1498,7 @@ fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Arc<
     if let Some(mempool_state) = mempool_state {
         let mempool_state = mempool_state.read().unwrap();
         if let Some(mempool_head_hash) = &mempool_state.head {
-            if mempool_head_hash == current_head.hash() {
+            if mempool_head_hash == current_head.block_hash() {
                 resolve_mempool_to_send(&mempool_state)
             } else {
                 Mempool::default()
@@ -1392,6 +1518,7 @@ pub mod tests {
 
     use slog::{Drain, Level, Logger};
 
+    use crypto::hash::CryptoboxPublicKeyHash;
     use networking::p2p::network_channel::NetworkChannel;
     use networking::p2p::peer::Peer;
     use storage::tests_common::TmpStorage;
@@ -1425,7 +1552,7 @@ pub mod tests {
     fn peer(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, tokio_runtime: &tokio::runtime::Runtime) -> PeerState {
         let socket_address: SocketAddr = "127.0.0.1:3011".parse().expect("Expected valid ip:port address");
 
-        let peer = Peer::actor(
+        let peer_ref = Peer::actor(
             sys,
             network_channel,
             3011,
@@ -1436,8 +1563,18 @@ pub mod tests {
             tokio_runtime.handle().clone(),
             &socket_address,
         ).unwrap();
+        let peer_public_key: CryptoboxPublicKeyHash = HashType::CryptoboxPublicKeyHash.string_to_bytes("idsg2wkkDDv2cbEMK4zH49fjgyn7XT").expect("Failed to create public key hash");
 
-        PeerState::new(peer, MetadataMessage::new(false, false))
+        PeerState::new(
+            Arc::new(
+                PeerId::new(
+                    peer_ref,
+                    peer_public_key,
+                    socket_address,
+                )
+            ),
+            MetadataMessage::new(false, false),
+        )
     }
 
     fn assert_peer_bootstrapped(chain_manager: &mut ChainManager, peer_uri: &ActorUri, expected_is_bootstrap: bool) {
@@ -1493,6 +1630,7 @@ pub mod tests {
             chain_id,
             false,
             1,
+            tezos_identity::Identity::generate(0f64).calculated_peer_id()?,
         ));
 
         // empty chain_manager
@@ -1502,13 +1640,13 @@ pub mod tests {
         // add one not bootstrapped peer with level 0
         let mut peer_state = peer(&actor_system, network_channel.clone(), &tokio_runtime);
         peer_state.current_head_level = Some(0);
-        let peer_key = peer_state.peer_ref.uri().clone();
+        let peer_key = peer_state.peer_id.peer_ref.uri().clone();
         chain_manager.peers.insert(peer_key, peer_state);
 
         // add one not bootstrapped peer with level 5
         let mut peer_state = peer(&actor_system, network_channel, &tokio_runtime);
         peer_state.current_head_level = Some(5);
-        let peer_key = peer_state.peer_ref.uri().clone();
+        let peer_key = peer_state.peer_id.peer_ref.uri().clone();
         chain_manager.peers.insert(peer_key.clone(), peer_state);
 
         // check chain_manager and peer (not bootstrapped)

@@ -67,6 +67,7 @@ pub struct ApplyBlockRequest {
     pub chain_id: ChainId,
     pub block_header: BlockHeader,
     pub pred_header: BlockHeader,
+
     pub max_operations_ttl: i32,
     pub operations: Vec<Vec<Operation>>,
 }
@@ -113,6 +114,18 @@ impl fmt::Debug for PrevalidatorWrapper {
             },
         )
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct BeginApplicationRequest {
+    pub chain_id: ChainId,
+    pub pred_header: BlockHeader,
+    pub block_header: BlockHeader,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+pub struct BeginApplicationResponse {
+    pub result: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
@@ -427,6 +440,49 @@ impl From<CallError> for ApplyBlockError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+pub enum BeginApplicationError {
+    #[fail(display = "Failed to begin application - message: {}!", message)]
+    FailedToBeginApplication { message: String },
+    #[fail(
+        display = "Unknown predecessor context - try to apply predecessor at first message: {}!",
+        message
+    )]
+    UnknownPredecessorContext { message: String },
+    #[fail(display = "Invalid request/response data - message: {}!", message)]
+    InvalidRequestResponseData { message: String },
+}
+
+impl From<CallError> for BeginApplicationError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall {
+                parsed_error_message,
+            } => match parsed_error_message {
+                None => BeginApplicationError::FailedToBeginApplication {
+                    message: "unknown".to_string(),
+                },
+                Some(message) => match message.as_str() {
+                    e if e.starts_with("Unknown_predecessor_context") => {
+                        BeginApplicationError::UnknownPredecessorContext {
+                            message: message.to_string(),
+                        }
+                    }
+                    message => BeginApplicationError::FailedToBeginApplication {
+                        message: message.to_string(),
+                    },
+                },
+            },
+            CallError::InvalidRequestData { message } => {
+                BeginApplicationError::InvalidRequestResponseData { message }
+            }
+            CallError::InvalidResponseData { message } => {
+                BeginApplicationError::InvalidRequestResponseData { message }
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum BeginConstructionError {
     #[fail(display = "Failed to begin construction - message: {}!", message)]
     FailedToBeginConstruction { message: String },
@@ -526,6 +582,22 @@ impl From<OCamlError> for ContextDataError {
     fn from(error: OCamlError) -> Self {
         match error {
             OCamlError::Exception(exception) => ContextDataError::DecodeError {
+                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum ProtocolDataError {
+    #[fail(display = "Resolve/decode context data failed to decode: {}!", message)]
+    DecodeError { message: String },
+}
+
+impl From<OCamlError> for ProtocolDataError {
+    fn from(error: OCamlError) -> Self {
+        match error {
+            OCamlError::Exception(exception) => ProtocolDataError::DecodeError {
                 message: exception.message().unwrap_or_else(|| "unknown".to_string()),
             },
         }
@@ -756,7 +828,7 @@ mod tests {
                 hash: HashType::OperationHash
                     .string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
                 protocol_data_json: "protocol_data_json1".to_string(),
-            },]
+            },],
         ));
         assert_eq!(1, validate_result.applied.len());
         assert_eq!(
@@ -771,7 +843,7 @@ mod tests {
                 hash: HashType::OperationHash
                     .string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
                 protocol_data_json: "protocol_data_json2".to_string(),
-            },]
+            },],
         ));
         assert_eq!(1, validate_result.applied.len());
         assert_eq!(
@@ -786,7 +858,7 @@ mod tests {
                 hash: HashType::OperationHash
                     .string_to_bytes("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
                 protocol_data_json: "protocol_data_json2".to_string(),
-            },]
+            },],
         ));
         assert_eq!(2, validate_result.applied.len());
 

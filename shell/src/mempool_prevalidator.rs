@@ -404,7 +404,7 @@ fn hydrate_state(
 
     // load current head
     let current_head = match chain_meta_storage.get_current_head(&chain_id)? {
-        Some(head) => block_storage.get(head.hash())?.map(|header| (head, header.header)),
+        Some(head) => block_storage.get(head.block_hash())?.map(|header| (head, header.header)),
         None => None,
     };
 

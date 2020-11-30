@@ -15,18 +15,21 @@ use crate::runtime::OcamlError;
 
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
+
     use tezos_api::{
         ffi::{
-            ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest,
-            HelpersPreapplyResponse, PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcRequest,
-            ProtocolRpcResponse, ValidateOperationRequest, ValidateOperationResponse,
+            ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest,
+            BeginApplicationResponse, BeginConstructionRequest, HelpersPreapplyResponse,
+            PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse,
+            ValidateOperationRequest, ValidateOperationResponse,
         },
-        ocaml_conv::OCamlOperationHash,
+        ocaml_conv::{OCamlOperationHash, OCamlProtocolHash},
     };
     use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
     ocaml! {
         pub fn apply_block(apply_block_request: ApplyBlockRequest) -> ApplyBlockResponse;
+        pub fn begin_application(begin_application_request: BeginApplicationRequest) -> BeginApplicationResponse;
         pub fn begin_construction(begin_construction_request: BeginConstructionRequest) -> PrevalidatorWrapper;
         pub fn validate_operation(validate_operation_request: ValidateOperationRequest) -> ValidateOperationResponse;
         pub fn call_protocol_rpc(request: ProtocolRpcRequest) -> Result<ProtocolRpcResponse, ProtocolRpcError>;
@@ -57,6 +60,7 @@ mod tezos_ffi {
             data: OCamlBytes
         ) -> Option<OCamlBytes>;
         pub fn compute_path(request: OCamlList<OCamlList<OCamlOperationHash>>) -> OCamlList<Path>;
+        pub fn assert_encoding_for_protocol_data(protocol_hash: OCamlProtocolHash, protocol_data: OCamlBytes);
     }
 }
 
@@ -244,6 +248,13 @@ pub fn apply_block(
 }
 
 /// Begin construction initializes prevalidator and context for new operations based on current head
+pub fn begin_application(
+    request: BeginApplicationRequest,
+) -> Result<Result<BeginApplicationResponse, CallError>, OcamlError> {
+    call(tezos_ffi::begin_application, request)
+}
+
+/// Begin construction initializes prevalidator and context for new operations based on current head
 pub fn begin_construction(
     request: BeginConstructionRequest,
 ) -> Result<Result<PrevalidatorWrapper, CallError>, OcamlError> {
@@ -332,6 +343,29 @@ pub fn decode_context_data(
                     Ok(decoded_data)
                 }
                 Err(e) => Err(ContextDataError::from(e)),
+            }
+        })
+    })
+}
+
+pub fn assert_encoding_for_protocol_data(
+    protocol_hash: RustBytes,
+    protocol_data: RustBytes,
+) -> Result<Result<(), ProtocolDataError>, OcamlError> {
+    runtime::execute(move || {
+        ocaml_frame!(gc(protocol_hash_ref), {
+            let protocol_hash = to_ocaml!(gc, protocol_hash, protocol_hash_ref);
+            let data = to_ocaml!(gc, protocol_data);
+
+            let result = ocaml_call!(tezos_ffi::assert_encoding_for_protocol_data(
+                gc,
+                gc.get(&protocol_hash),
+                data
+            ));
+
+            match result {
+                Ok(_) => Ok(()),
+                Err(e) => Err(ProtocolDataError::from(e)),
             }
         })
     })

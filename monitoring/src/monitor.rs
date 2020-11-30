@@ -233,13 +233,15 @@ impl Receive<NetworkChannelMsg> for Monitor {
             }
             NetworkChannelMsg::PeerBootstrapped(msg) => {
                 match msg {
-                    PeerBootstrapped::Success { peer, peer_id, .. } => if let Some(monitor) = self.peer_monitors.get_mut(peer.uri()) {
-                        monitor.public_key = Some(peer_id);
+                    PeerBootstrapped::Success { peer_id, .. } => if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
+                        monitor.public_key = Some(peer_id.peer_id_marker.clone());
                     }
                     PeerBootstrapped::Failure { .. } => ()
                 }
             }
             NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, &ctx.system.log()),
+            NetworkChannelMsg::PeerBlacklisted(..) => {},
+            NetworkChannelMsg::BlacklistPeer(..) => {}
         }
     }
 }

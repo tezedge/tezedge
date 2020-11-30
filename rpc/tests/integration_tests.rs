@@ -25,12 +25,16 @@ async fn test_rpc_compare() {
 }
 
 async fn integration_tests_rpc(from_block: i64, to_block: i64) {
+    assert!(from_block < to_block, "from_block({}) should be smaller then to_block({})", from_block, to_block);
+
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
+    // lets iterate whole rps'c
     for level in from_block..to_block + 1 {
         if level <= 0 {
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
+            test_rpc_compare_json("chains/main/blocks/genesis/header").await;
             println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
             continue;
         }
@@ -61,9 +65,9 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 
         // we need some constants
         let constants_json = try_get_data_as_json(&format!("{}/{}/{}", "chains/main/blocks", level, "context/constants")).await.expect("Failed to get constants");
-        let preserved_cycles = constants_json["preserved_cycles"].as_i64().expect(&format!("No constant 'preserved_cycles' for block_id: {}", level));
-        let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().expect(&format!("No constant 'blocks_per_cycle' for block_id: {}", level));
-        let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().expect(&format!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
+        let preserved_cycles = constants_json["preserved_cycles"].as_i64().unwrap_or_else(|| panic!("No constant 'preserved_cycles' for block_id: {}", level));
+        let blocks_per_cycle = constants_json["blocks_per_cycle"].as_i64().unwrap_or_else(|| panic!("No constant 'blocks_per_cycle' for block_id: {}", level));
+        let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"].as_i64().unwrap_or_else(|| panic!("No constant 'blocks_per_roll_snapshot' for block_id: {}", level));
 
         // test last level of snapshot
         if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
@@ -120,7 +124,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 
             // tests for cycles from protocol/context
             for cycle in cycles {
-                let cycle = cycle.as_u64().expect(&format!("Invalid cycle: {}", cycle));
+                let cycle = cycle.as_u64().unwrap_or_else(|| panic!("Invalid cycle: {}", cycle));
                 test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", level, "context/raw/bytes/cycle", cycle)).await;
                 test_rpc_compare_json(&format!("{}/{}/{}/{}", "chains/main/blocks", level, "context/raw/json/cycle", cycle)).await;
             }
@@ -145,6 +149,29 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             cycle_loop_counter += 1;
         }
     }
+
+    // get to_block data
+    let block_json= try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", to_block)).await.expect("Failed to get block metadata");
+    let to_block_hash = block_json["hash"].as_str().unwrap();
+
+    // test get header by block_hash string
+    test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", to_block_hash, "header")).await;
+
+    // simple test for walking on headers (-, ~)
+    let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
+    for i in 0..max_offset {
+        // ~
+        test_rpc_compare_json(&format!("{}/{}~{}/{}", "chains/main/blocks", to_block_hash, i, "header")).await;
+        // -
+        test_rpc_compare_json(&format!("{}/{}-{}/{}", "chains/main/blocks", to_block_hash, i, "header")).await;
+    }
+
+    // TODO: TE-238 - simple test for walking on headers (+)
+    // TODO: TE-238 - Not yet implemented block header parsing for '+'
+    // let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
+    // for i in 0..max_offset {
+    //     test_rpc_compare_json(&format!("{}/{}+{}/{}", "chains/main/blocks", from_block, i, "header")).await;
+    // }
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
@@ -188,7 +215,7 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
 
 async fn get_rpc_as_json(node: NodeType, rpc_path: &str) -> Result<serde_json::value::Value, failure::Error> {
     let url_as_string = node_rpc_url(node, rpc_path);
-    let url = url_as_string.parse().expect(&format!("Invalid URL: {}", &url_as_string));
+    let url = url_as_string.parse().unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
 
     let client = Client::new();
     let body = match client.get(url).await {

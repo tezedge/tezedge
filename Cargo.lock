@@ -2871,6 +2871,7 @@ dependencies = [
 name = "shell"
 version = "0.8.0"
 dependencies = [
+ "chrono",
  "crypto",
  "dns-lookup",
  "failure",
@@ -3251,8 +3252,10 @@ dependencies = [
 name = "tezos_identity"
 version = "0.8.0"
 dependencies = [
+ "assert-json-diff",
  "crypto",
  "failure",
+ "failure_derive",
  "hex",
  "serde 1.0.117",
  "serde_json",

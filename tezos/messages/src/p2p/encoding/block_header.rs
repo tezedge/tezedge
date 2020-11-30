@@ -116,6 +116,7 @@ pub struct BlockHeader {
     fitness: Fitness,
     #[get = "pub"]
     context: ContextHash,
+
     #[get = "pub"]
     protocol_data: Vec<u8>,
 

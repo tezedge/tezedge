@@ -140,19 +140,17 @@ fn main() {
 mod tezos {
     use crypto::hash::{ChainId, ContextHash, ProtocolHash};
     use tezos_api::ffi::{
-        ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginConstructionError,
+        ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
+        BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
         BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
         ComputePathResponse, GenesisChain, GetDataError, HelpersPreapplyError,
         HelpersPreapplyResponse, InitProtocolContextResult, PatchContext, PrevalidatorWrapper,
-        ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse,
-        TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-        ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
+        ProtocolDataError, ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest,
+        ProtocolRpcResponse, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+        TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+        ValidateOperationResponse,
     };
-    use tezos_client::client::{
-        apply_block, begin_construction, call_protocol_rpc, change_runtime_configuration,
-        compute_path, genesis_result_data, helpers_preapply_block, helpers_preapply_operations,
-        init_protocol_context, validate_operation,
-    };
+    use tezos_client::client::*;
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
@@ -160,6 +158,12 @@ mod tezos {
     impl ProtocolApi for NativeTezosLib {
         fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError> {
             apply_block(request)
+        }
+
+        fn begin_application(
+            request: BeginApplicationRequest,
+        ) -> Result<BeginApplicationResponse, BeginApplicationError> {
+            begin_application(request)
         }
 
         fn begin_construction(
@@ -236,6 +240,13 @@ mod tezos {
                 genesis_protocol_hash,
                 genesis_max_operations_ttl,
             )
+        }
+
+        fn assert_encoding_for_protocol_data(
+            protocol_hash: ProtocolHash,
+            protocol_data: Vec<u8>,
+        ) -> Result<(), ProtocolDataError> {
+            assert_encoding_for_protocol_data(protocol_hash, protocol_data)
         }
     }
 }

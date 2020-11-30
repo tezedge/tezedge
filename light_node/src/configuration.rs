@@ -77,7 +77,7 @@ impl std::str::FromStr for LogFormat {
         match s.to_ascii_lowercase().as_str() {
             "simple" => Ok(LogFormat::Simple),
             "json" => Ok(LogFormat::Json),
-            _ => Err(format!("Unsupported variant: {}", s))
+            _ => Err(format!("Unsupported variant: {}", s)),
         }
     }
 }
@@ -101,7 +101,15 @@ pub struct Environment {
 }
 
 macro_rules! parse_validator_fn {
-    ($t:ident, $err:expr) => {|v| if v.parse::<$t>().is_ok() { Ok(()) } else { Err($err.to_string()) } }
+    ($t:ident, $err:expr) => {
+        |v| {
+            if v.parse::<$t>().is_ok() {
+                Ok(())
+            } else {
+                Err($err.to_string())
+            }
+        }
+    };
 }
 
 // Creates tezos app

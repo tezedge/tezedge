@@ -22,6 +22,7 @@ use tokio::time::timeout;
 
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
+use networking::PeerId;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -102,7 +103,7 @@ pub struct PeerManager {
     /// We will listen for incoming connection at this port
     listener_port: u16,
     /// Tezos identity
-    identity: Identity,
+    identity: Arc<Identity>,
     /// Network/protocol version
     network_version: NetworkVersion,
     /// Message receiver boolean indicating whether
@@ -126,7 +127,7 @@ impl PeerManager {
                  network_channel: NetworkChannelRef,
                  shell_channel: ShellChannelRef,
                  tokio_executor: Handle,
-                 identity: Identity,
+                 identity: Arc<Identity>,
                  network_version: NetworkVersion,
                  p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
@@ -209,6 +210,40 @@ impl PeerManager {
         self.ip_blacklist.contains(ip_address)
     }
 
+    fn blacklist_address(&mut self, address: SocketAddr, reason: String, log: &Logger) {
+        info!(log, "Blacklisting IP";
+                   "ip" => format!("{}", address.ip()),
+                   "reason" => reason,
+        );
+        self.ip_blacklist.insert(address.ip());
+
+        // TODO: call firewall
+    }
+
+    fn blacklist_peer(&mut self, peer_id: Arc<PeerId>, reason: String, actor_system: &ActorSystem) {
+        let log = actor_system.log();
+        warn!(log, "Blacklisting peer";
+                   "peer_actor_ref" => peer_id.peer_ref.uri().to_string(),
+                   "peer_id" => peer_id.peer_id_marker.clone(),
+                   "reason" => reason.clone(),
+        );
+
+        // blacklist
+        self.blacklist_address(peer_id.peer_address, reason, &log);
+
+        // stop actor
+        actor_system.stop(peer_id.peer_ref.clone());
+
+        // send message
+        self.network_channel.tell(
+            Publish {
+                msg: NetworkChannelMsg::PeerBlacklisted(peer_id),
+                topic: NetworkChannelTopic::NetworkEvents.into(),
+            },
+            None,
+        );
+    }
+
     fn process_shell_channel_message(&mut self, ctx: &Context<PeerManagerMsg>, msg: ShellChannelMsg) -> Result<(), failure::Error> {
         match msg {
             ShellChannelMsg::ShuttingDown(_) => {
@@ -241,9 +276,9 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)> for PeerManager {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)> for PeerManager {
     fn create_args((network_channel, shell_channel, tokio_executor, identity, network_version, p2p_config):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Identity, NetworkVersion, P2p)) -> Self
+                   (NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)) -> Self
     {
         PeerManager {
             network_channel,
@@ -321,8 +356,10 @@ impl Actor for PeerManager {
 impl Receive<DeadLetter> for PeerManager {
     type Msg = PeerManagerMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: DeadLetter, _sender: Option<BasicActorRef>) {
-        self.peers.remove(msg.recipient.uri());
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: DeadLetter, _sender: Option<BasicActorRef>) {
+        if self.peers.remove(msg.recipient.uri()).is_some() {
+            self.trigger_check_peer_count(ctx);
+        }
     }
 }
 
@@ -427,10 +464,12 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                         self.trigger_check_peer_count(ctx);
                     }
                     None => {
-                        info!(ctx.system.log(), "Blacklisting IP because peer failed at bootstrap process"; "ip" => format!("{}", address.ip()));
-                        self.ip_blacklist.insert(address.ip());
+                        self.blacklist_address(address, String::from("peer failed at bootstrap process"), &ctx.system.log());
                     }
                 }
+            }
+            NetworkChannelMsg::BlacklistPeer(peer_id, reason) => {
+                self.blacklist_peer(peer_id, reason, &ctx.system);
             }
             _ => ()
         }
@@ -486,7 +525,7 @@ impl Receive<AcceptPeer> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: AcceptPeer, _sender: Sender) {
         if self.is_blacklisted(&msg.address.ip()) {
-            debug!(ctx.system.log(), "Peer is blacklisted - will not accept connection"; "ip" => format!("{}", msg.address.ip()));
+            warn!(ctx.system.log(), "Peer is blacklisted - will not accept connection"; "ip" => format!("{}", msg.address.ip()));
         } else if self.peers.len() < self.threshold.high {
             info!(ctx.system.log(), "Connection from"; "ip" => msg.address);
             let peer = self.create_peer(ctx, &msg.address);

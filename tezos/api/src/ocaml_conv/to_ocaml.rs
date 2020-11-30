@@ -7,8 +7,9 @@ use super::{
     OCamlProtocolHash, TaggedHash,
 };
 use crate::ffi::{
-    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ForkingTestchainData,
-    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, ValidateOperationRequest,
+    ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
+    ForkingTestchainData, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest,
+    ValidateOperationRequest,
 };
 use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
 use ocaml_interop::{
@@ -139,6 +140,14 @@ impl_to_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
         test_chain_id: OCamlBytes,
+    }
+}
+
+impl_to_ocaml_record! {
+    BeginApplicationRequest {
+        chain_id: OCamlBytes,
+        pred_header: BlockHeader => FfiBlockHeader::from(pred_header),
+        block_header: BlockHeader => FfiBlockHeader::from(block_header),
     }
 }
 
