@@ -8,12 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support for connection to Delphinet.
-- Dynamic RPC router can call Tezos's RPCs inside all protocol versions.
+- Nothing.
 
 ### Changed
 
-- Build is now tested on GitHub Actions instead of Travis-CI.
+- Nothing.
 
 ### Deprecated
 
@@ -30,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Nothing.
+
+## [0.8.0] - 2020-11-30
+
+### Added
+
+- Multipass validation support for CurrentHead processing + blacklisting peers
+- Support for connection to Delphinet.
+- Dynamic RPC router can call Tezos's RPCs inside all protocol versions.
+- Added rustfmt and clippy pipelines
+
+### Changed
+
+- Build is now tested on GitHub Actions instead of Travis-CI.
 
 ## [0.7.2] - 2020-11-26
 
@@ -181,7 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.8.0...HEAD
+[0.7.2]: https://github.com/simplestaking/tezedge/releases/v0.8.0
 [0.7.2]: https://github.com/simplestaking/tezedge/releases/v0.7.2
 [0.7.1]: https://github.com/simplestaking/tezedge/releases/v0.7.1
 [0.7.0]: https://github.com/simplestaking/tezedge/releases/v0.7.0
