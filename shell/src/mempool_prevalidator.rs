@@ -524,15 +524,16 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
 
 /// Notify other actors that mempool state changed
 fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &MempoolState) {
-    let (protocol, fitness) = if let Some(prevalidator) = &mempool_state.prevalidator {
-        (Some(prevalidator.protocol.clone()), prevalidator.context_fitness.clone())
+    let (protocol, fitness, chain_id) = if let Some(prevalidator) = &mempool_state.prevalidator {
+        (Some(prevalidator.protocol.clone()), prevalidator.context_fitness.clone(), Some(prevalidator.chain_id.clone()))
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     shell_channel.tell(
         Publish {
             msg: CurrentMempoolState {
+                chain_id,
                 head: mempool_state.predecessor.clone(),
                 result: mempool_state.validation_result.clone(),
                 operations: mempool_state.operations.clone(),

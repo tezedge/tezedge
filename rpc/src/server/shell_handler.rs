@@ -397,10 +397,9 @@ pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, e
     )
 }
 
-pub async fn worker_prevalidators(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+pub async fn worker_prevalidators(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
-        base_services::get_prevalidators(&chain_id, &env),
+        base_services::get_prevalidators(&env),
         env.log(),
     )
 }

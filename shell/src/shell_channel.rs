@@ -9,7 +9,7 @@ use std::sync::{Arc, RwLock};
 use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
@@ -64,6 +64,7 @@ pub struct MempoolOperationReceived {
 
 #[derive(Clone, Debug)]
 pub struct CurrentMempoolState {
+    pub chain_id: Option<ChainId>,
     pub head: Option<BlockHash>,
     pub protocol: Option<ProtocolHash>,
     pub fitness: Option<Fitness>,
