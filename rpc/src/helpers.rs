@@ -173,17 +173,17 @@ pub struct MonitorHeadStream {
 }
 
 impl MonitorHeadStream {
-    fn yield_head(&self, current_head: Option<BlockApplied>, chain_id: Vec<u8>) -> Result<Option<String>, serde_json::Error> {
+    fn yield_head(&self, current_head: Option<BlockApplied>) -> Result<Option<String>, serde_json::Error> {
         // get the desired structure of the
         let current_head_header = current_head.as_ref().map(|current_head| {
-            let chain_id = chain_id_to_b58_string(&chain_id);
-            BlockHeaderInfo::new(current_head, &chain_id).to_monitor_header(current_head)
+            let chain_id = chain_id_to_b58_string(&self.chain_id);
+            BlockHeaderInfo::new(current_head, chain_id).to_monitor_header(current_head)
         });
 
         if let Some(protocol) = &self.protocol {
             let block_info = current_head.as_ref().map(|current_head| {
-                let chain_id = chain_id_to_b58_string(&chain_id);
-                FullBlockInfo::new(current_head, &chain_id)
+                let chain_id = chain_id_to_b58_string(&self.chain_id);
+                FullBlockInfo::new(current_head, chain_id)
             });
             let block_next_protocol = if let Some(block_info) = block_info {
                 block_info.metadata["next_protocol"].to_string().replace("\"", "")
@@ -205,7 +205,7 @@ impl MonitorHeadStream {
     }
 
     fn yield_operations(&mut self) -> Poll<Option<Result<String, serde_json::Error>>> {
-        let pending_operations = if let Ok(ops) = get_pending_operations(&self.state, &self.log) {
+        let pending_operations = if let Ok(ops) = get_pending_operations(&self.chain_id, &self.state) {
             ops
         } else {
             return Poll::Ready(None)
@@ -333,7 +333,6 @@ impl Stream for MonitorHeadStream {
                     i64::MAX
                 };
                 let current_head = state.current_head().clone();
-                let chain_id = state.chain_id().clone();
 
                 let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
                     head_hash
@@ -352,7 +351,7 @@ impl Stream for MonitorHeadStream {
                             println!("Last update: {}, Last Poll: {}", last_update, poll_time);
                             if poll_time <= last_update {
                                 
-                                let head_string_result = self.yield_head(current_head, chain_id);
+                                let head_string_result = self.yield_head(current_head);
                 
                                 self.last_polled_timestamp = Some(current_time_timestamp());
                                 return Poll::Ready(head_string_result.transpose())
@@ -362,7 +361,7 @@ impl Stream for MonitorHeadStream {
                                 return Poll::Pending
                             }
                         } else {
-                            let head_string_result = self.yield_head(current_head, chain_id);
+                            let head_string_result = self.yield_head(current_head);
                 
                             self.last_polled_timestamp = Some(current_time_timestamp());
                             return Poll::Ready(head_string_result.transpose());
