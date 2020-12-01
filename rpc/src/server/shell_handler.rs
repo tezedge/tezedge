@@ -67,13 +67,14 @@ pub async fn valid_blocks(_: Request<Body>, _: Params, _: Query, _: RpcServiceEn
     empty()
 }
 
-pub async fn head_chain(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn head_chain(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    make_json_stream_response(base_services::get_current_head_monitor_header(chain_id, env.state())?.unwrap())
+    let protocol = query.get_str("next_protocol");
+    make_json_stream_response(base_services::get_current_head_monitor_header(&chain_id, &env, protocol.map(|s| s.to_string()))?.unwrap())
 }
 
 pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
 
     let applied = query.get_str("applied");
     let branch_refused = query.get_str("branch_refused");
@@ -87,30 +88,21 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
         refused: refused == Some("yes"),
     };
 
-    if chain_id == "main" {
-        make_json_stream_response(base_services::get_operations_monitor(&env, Some(mempool_query))?.unwrap())
-    } else {
-        // TODO: implement... 
-        //empty()
-        make_json_stream_response(base_services::get_operations_monitor(&env, Some(mempool_query))?.unwrap())
-    }
+    make_json_stream_response(base_services::get_operations_monitor(&chain_id, &env, Some(mempool_query))?.unwrap())
 }
 
 pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
     let length = query.get_str("length").unwrap_or("0");
-    let head = query.get_str("head").unwrap();
+    let head = parse_block_hash(&chain_id, query.get_str("head").unwrap(), &env)?;
     // TODO: implement min_date query arg
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
-    if chain_id == "main" {
-        make_json_response(&vec![base_services::get_blocks(None, head, length.parse::<usize>()?, env.persistent_storage(), env.state())?.iter()
-            .map(|block| block.hash.clone())
-            .collect::<Vec<String>>()])
-    } else {
-        empty()
-    }
+    make_json_response(&vec![base_services::get_blocks(chain_id, head, None, length.parse::<usize>()?, env.persistent_storage())?.iter()
+        .map(|block| block.hash.clone())
+        .collect::<Vec<String>>()])
+
 }
 
 pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -157,18 +149,10 @@ pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Q
 }
 
 pub async fn chains_block_id_metadata(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = params.get_str("chain_id").unwrap();
-    let block_id = params.get_str("block_id").unwrap();
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
-    if chain_id == "main" {
-        if block_id == "head" {
-            result_option_to_json_response(base_services::get_current_head_metadata(env.state()).map(|res| res), env.log())
-        } else {
-            result_option_to_json_response(base_services::get_block_metadata(block_id, &env).map(|res| res), env.log())
-        }
-    } else {
-        empty()
-    }
+    result_option_to_json_response(base_services::get_block_metadata(&chain_id, &block_hash, &env).map(|res| res), env.log())
 }
 
 pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -413,9 +397,10 @@ pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, e
     )
 }
 
-pub async fn worker_prevalidators(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn worker_prevalidators(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
     result_to_json_response(
-        base_services::get_prevalidators(&env),
+        base_services::get_prevalidators(&chain_id, &env),
         env.log(),
     )
 }

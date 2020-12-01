@@ -25,6 +25,7 @@ use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use networking::PeerId;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
+use crypto::hash::HashType;
 
 use crate::PeerConnectionThreshold;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
@@ -132,7 +133,7 @@ impl PeerManager {
                  p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
-            &format!("{}-{}", PeerManager::name(), &identity.peer_id),
+            &format!("{}-{}", PeerManager::name(), HashType::CryptoboxPublicKeyHash.bytes_to_string(&identity.peer_id)),
             Props::new_args((
                 network_channel,
                 shell_channel,

@@ -34,10 +34,11 @@ pub(crate) fn get_blocks(chain_id: ChainId, block_hash: BlockHash, every_nth_lev
 }
 
 /// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_current_head_monitor_header(env: &RpcServiceEnvironment, protocol: Option<String>) -> Result<Option<MonitorHeadStream>, failure::Error> {
+pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Result<Option<MonitorHeadStream>, failure::Error> {
 
     // create and return the a new stream on rpc call 
     Ok(Some(MonitorHeadStream {
+        chain_id: chain_id.clone(),
         state: env.state().clone(),
         protocol: protocol.clone(),
         last_polled_timestamp: None,
@@ -56,11 +57,12 @@ pub(crate) fn get_full_block(chain_id: &ChainId, block_hash: &BlockHash, persist
 }
 
 /// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_operations_monitor(env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<MonitorHeadStream>, failure::Error> {
+pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<MonitorHeadStream>, failure::Error> {
 
     println!("Q: {:?}", mempool_operaions_query);
     // create and return the a new stream on rpc call 
     Ok(Some(MonitorHeadStream {
+        chain_id: chain_id.clone(),
         state: env.state().clone(),
         protocol: None,
         last_polled_timestamp: None,
@@ -74,19 +76,18 @@ pub(crate) fn get_operations_monitor(env: &RpcServiceEnvironment, mempool_operai
 }
 
 /// Get information about current head
-pub(crate) fn get_current_head_metadata(state: &RpcCollectedStateRef) -> Result<Option<BlockMetadata>, failure::Error> {
+pub(crate) fn get_current_head_metadata(chain_id: &ChainId, state: &RpcCollectedStateRef) -> Result<Option<BlockMetadata>, failure::Error> {
     let state = state.read().unwrap();
     let current_head = state.current_head().as_ref().map(|current_head| {
-        let chain_id = chain_id_to_b58_string(state.chain_id());
-        FullBlockInfo::new(current_head, &chain_id)
+        FullBlockInfo::new(current_head, chain_id_to_b58_string(chain_id))
     });
 
     Ok(Some(current_head.unwrap().metadata))
 }
 
 /// Get block metadata
-pub(crate) fn get_block_metadata(block_id: &str, env: &RpcServiceEnvironment) -> Result<Option<BlockMetadata>, failure::Error> {
-    let block = get_full_block(block_id, env)?.unwrap();
+pub(crate) fn get_block_metadata(chain_id: &ChainId, block_hash: &BlockHash, env: &RpcServiceEnvironment) -> Result<Option<BlockMetadata>, failure::Error> {
+    let block = get_full_block(chain_id, block_hash, env.persistent_storage())?.unwrap();
     Ok(Some(block.metadata))
 }
 
@@ -159,14 +160,13 @@ pub(crate) struct Prevalidator {
 }
 
 // TODO: implement the json structure form ocaml's RPC 
-pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
-    let chain_id = get_chain_id(env.state()).unwrap_or("".to_string());
+pub(crate) fn get_prevalidators(chain_id: &ChainId, env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
     
     if env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").collect::<Vec<BasicActorRef>>().is_empty() {
         Ok(vec![])
     } else {
         Ok(vec![Prevalidator {
-            chain_id,
+            chain_id: chain_id_to_b58_string(chain_id),
             since: env.sys().start_date().to_rfc3339(),
         }])
     }

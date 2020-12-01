@@ -39,7 +39,7 @@ pub enum IdentityError {
 #[derive(Clone, Debug)]
 pub struct Identity {
     /// Peer_id is calculated hash of public_key [`crypto_box::PublicKey`]
-    peer_id: CryptoboxPublicKeyHash,
+    pub peer_id: CryptoboxPublicKeyHash,
 
     /// Hex encoded public key: [`crypto_box::PublicKey`]
     pub public_key: PublicKey,
