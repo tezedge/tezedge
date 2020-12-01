@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use shell::mempool_prevalidator::MempoolPrevalidatorMsg;
+use riker::actors::ActorRef;
 use riker::actors::BasicActorRef;
 use std::convert::TryInto;
 
@@ -160,13 +162,26 @@ pub(crate) struct Prevalidator {
 }
 
 // TODO: implement the json structure form ocaml's RPC 
-pub(crate) fn get_prevalidators(chain_id: &ChainId, env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
+pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
     
-    if env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").collect::<Vec<BasicActorRef>>().is_empty() {
+    let prevalidation_actors = env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").collect::<Vec<BasicActorRef>>();
+
+    if prevalidation_actors.is_empty() {
         Ok(vec![])
     } else {
+        let rpc_state = env.state().read().unwrap();
+        let current_mempool = if let Some(mempool_state) = rpc_state.current_mempool_state(){
+            mempool_state.read().unwrap()
+        } else {
+            return Ok(vec![])
+        };
+        let chain_id = if let Some(chain_id) = &current_mempool.chain_id {
+            chain_id
+        } else {
+            return Ok(vec![])
+        };
         Ok(vec![Prevalidator {
-            chain_id: chain_id_to_b58_string(chain_id),
+            chain_id: chain_id_to_b58_string(&chain_id),
             since: env.sys().start_date().to_rfc3339(),
         }])
     }
