@@ -14,7 +14,9 @@ use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
-use crypto::crypto_box::precompute;
+use hex::ToHex;
+use crypto::crypto_box::{precompute, PublicKey, SecretKey};
+use crypto::proof_of_work::ProofOfWork;
 use crypto::hash::HashType;
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
@@ -156,17 +158,17 @@ pub struct Local {
     /// port where remote node can establish new connection
     listener_port: u16,
     /// our public key
-    public_key: String,
+    public_key: PublicKey,
     /// our secret key
-    secret_key: String,
+    secret_key: SecretKey,
     /// proof of work
-    proof_of_work_stamp: String,
+    proof_of_work_stamp: ProofOfWork,
     /// version of network protocol
     version: NetworkVersion,
 }
 
 impl Local {
-    pub fn new(listener_port: u16, public_key: String, secret_key: String, proof_of_work_stamp: String, network_version: NetworkVersion) -> Self {
+    pub fn new(listener_port: u16, public_key: PublicKey, secret_key: SecretKey, proof_of_work_stamp: ProofOfWork, network_version: NetworkVersion) -> Self {
         Local {
             listener_port,
             public_key,
@@ -199,18 +201,18 @@ impl Peer {
     pub fn actor(sys: &impl ActorRefFactory,
                  network_channel: NetworkChannelRef,
                  listener_port: u16,
-                 public_key: &str,
-                 secret_key: &str,
-                 proof_of_work_stamp: &str,
+                 public_key: &PublicKey,
+                 secret_key: &SecretKey,
+                 proof_of_work_stamp: &ProofOfWork,
                  version: NetworkVersion,
                  tokio_executor: Handle,
                  socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
         let info = Local {
             listener_port,
-            proof_of_work_stamp: proof_of_work_stamp.into(),
-            public_key: public_key.into(),
-            secret_key: secret_key.into(),
+            proof_of_work_stamp: proof_of_work_stamp.clone(),
+            public_key: public_key.clone(),
+            secret_key: secret_key.clone(),
             version,
         };
         let props = Props::new_args::<Peer, _>((network_channel, Arc::new(info), tokio_executor, *socket_address));
@@ -364,8 +366,8 @@ pub async fn bootstrap(
     // send connection message
     let connection_message = ConnectionMessage::new(
         info.listener_port,
-        &info.public_key,
-        &info.proof_of_work_stamp,
+        &info.public_key.as_ref().as_ref(),
+        &info.proof_of_work_stamp.as_ref(),
         &Nonce::random().get_bytes(),
         vec![supported_protocol_version.clone()]);
     let connection_message_sent = {
@@ -393,7 +395,7 @@ pub async fn bootstrap(
     debug!(log, "Received peer public key"; "public_key" => &peer_id);
 
     // pre-compute encryption key
-    let precomputed_key = match precompute(&hex::encode(peer_public_key), &info.secret_key) {
+    let precomputed_key = match precompute(&hex::encode(peer_public_key), &info.secret_key.encode_hex::<String>()) {
         Ok(key) => key,
         Err(_) => return Err(PeerError::FailedToPrecomputeKey)
     };
@@ -412,7 +414,7 @@ pub async fn bootstrap(
         log.new(o!("peer_id" => peer_id.clone())),
     );
 
-    let connecting_to_self = hex::encode(connection_message.public_key()) == info.public_key;
+    let connecting_to_self = connection_message.public_key() == info.public_key.as_ref().as_ref();
     if connecting_to_self {
         debug!(log, "Detected self connection");
         // treat as if nack was received

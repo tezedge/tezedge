@@ -16,7 +16,7 @@ pub(crate) const CRYPTO_KEY_SIZE: usize = 32;
 pub(crate) const NONCE_SIZE: usize = 24;
 
 /// Convenience wrapper around `sodiumoxide::crypto::box_::PublicKey`
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PublicKey(box_::PublicKey);
 
 impl AsRef<box_::PublicKey> for PublicKey {
@@ -45,7 +45,7 @@ impl FromHex for PublicKey {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 /// Convenience wrapper around `sodiumoxide::crypto::box_::SecretKey`
 pub struct SecretKey(box_::SecretKey);
 

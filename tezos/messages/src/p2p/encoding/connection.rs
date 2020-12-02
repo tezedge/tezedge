@@ -29,18 +29,16 @@ pub struct ConnectionMessage {
 impl ConnectionMessage {
     pub fn new(
         port: u16,
-        public_key: &str,
-        proof_of_work_stamp: &str,
+        public_key: &[u8],
+        proof_of_work_stamp: &[u8],
         message_nonce: &[u8],
         versions: Vec<NetworkVersion>,
     ) -> Self {
         ConnectionMessage {
             port,
             versions,
-            public_key: hex::decode(public_key)
-                .expect("Failed to decode public ket from hex string"),
-            proof_of_work_stamp: hex::decode(proof_of_work_stamp)
-                .expect("Failed to decode proof of work stamp from hex string"),
+            public_key: public_key.to_vec(),
+            proof_of_work_stamp: proof_of_work_stamp.to_vec(),
             message_nonce: message_nonce.into(),
         }
     }

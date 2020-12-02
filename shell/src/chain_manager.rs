@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::{Error, format_err};
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, error, info, Logger, trace, warn};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
 use crypto::seeded_step::Seed;
@@ -227,10 +227,7 @@ impl ChainManager {
                 chain_id.clone(),
                 is_sandbox,
                 peers_threshold.num_of_peers_for_bootstrap_threshold(),
-                identity.calculated_peer_id().map_err(|e| {
-                    error!(sys.log(), "Failed to decode peer_id from identity"; "reason" => format!("{}", e));
-                    CreateError::Panicked
-                })?,
+                identity.peer_id(),
             )),
         )
     }
@@ -1518,7 +1515,10 @@ pub mod tests {
 
     use slog::{Drain, Level, Logger};
 
+    use hex::FromHex;
     use crypto::hash::CryptoboxPublicKeyHash;
+    use crypto::crypto_box::{PublicKey, SecretKey};
+    use crypto::proof_of_work::ProofOfWork;
     use networking::p2p::network_channel::NetworkChannel;
     use networking::p2p::peer::Peer;
     use storage::tests_common::TmpStorage;
@@ -1556,9 +1556,9 @@ pub mod tests {
             sys,
             network_channel,
             3011,
-            "eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b",
-            "eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b",
-            "000000000000000000000000000000000000000000000000",
+            &PublicKey::from_hex("eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b").unwrap(),
+            &SecretKey::from_hex("eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b").unwrap(),
+            &ProofOfWork::from_hex("000000000000000000000000000000000000000000000000").unwrap(),
             NetworkVersion::new("testet".to_string(), 0, 0),
             tokio_runtime.handle().clone(),
             &socket_address,
@@ -1630,7 +1630,7 @@ pub mod tests {
             chain_id,
             false,
             1,
-            tezos_identity::Identity::generate(0f64).calculated_peer_id()?,
+            tezos_identity::Identity::generate(0f64).peer_id(),
         ));
 
         // empty chain_manager

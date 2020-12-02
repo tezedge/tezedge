@@ -1109,7 +1109,7 @@ mod test_actor {
         // TODO: refactor with async/condvar, not to block main thread
         fn verify_state(expected_state: &str, peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<String, String>>>, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let peer_public_key = HashType::CryptoboxPublicKeyHash.bytes_to_string(&hex::decode(&peer.identity.public_key)?);
+            let peer_public_key = HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer.identity.public_key.as_ref().as_ref());
 
             let result = loop {
                 let peers_mirror = peers_mirror.read().unwrap();

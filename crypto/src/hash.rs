@@ -129,9 +129,6 @@ impl HashType {
 
     /// Convert hash byte representation into string.
     pub fn bytes_to_string(&self, data: &[u8]) -> String {
-        let hash_fn = self.hash_fn();
-        let data = hash_fn(data);
-
         assert_eq!(
             self.size(),
             data.len(),
@@ -268,9 +265,11 @@ mod tests {
 
     #[test]
     fn test_encode_public_key_hash() -> Result<(), failure::Error> {
-        let decoded = HashType::CryptoboxPublicKeyHash.bytes_to_string(&hex::decode(
+        let pk = hex::decode(
             "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
-        )?);
+        )?;
+        let pk_hash = (HashType::CryptoboxPublicKeyHash.hash_fn())(pk.as_ref());
+        let decoded = HashType::CryptoboxPublicKeyHash.bytes_to_string(pk_hash.as_ref());
         let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
         assert_eq!(expected, decoded);
 

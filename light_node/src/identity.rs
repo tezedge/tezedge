@@ -42,7 +42,7 @@ pub fn load_identity<P: AsRef<Path>>(
     identity_json_file_path: P,
 ) -> Result<Identity, IdentityError> {
     let identity = fs::read_to_string(identity_json_file_path).map(|contents| {
-        Identity::from_json(&contents, false)
+        Identity::from_json(&contents)
             .map_err(|err| IdentityError::DeserializationError { reason: err })
     })??;
     Ok(identity)

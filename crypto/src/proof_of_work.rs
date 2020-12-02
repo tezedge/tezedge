@@ -7,7 +7,7 @@ use num_bigint::BigUint;
 use sodiumoxide::randombytes::randombytes;
 use std::convert::TryFrom;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProofOfWork([u8; NONCE_SIZE]);
 
 impl AsRef<[u8]> for ProofOfWork {
