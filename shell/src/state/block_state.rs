@@ -103,6 +103,11 @@ impl BlockchainState {
 
         // we need our current head at first
         if let Some(current_head) = current_head.as_ref() {
+            // same header means only mempool operations were changed
+            if validation::is_same_head(current_head, validated_header)? {
+                return Ok(BlockAcceptanceResult::AcceptBlock);
+            }
+
             // (future block)
             if validation::is_future_block(&validated_header)? {
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
