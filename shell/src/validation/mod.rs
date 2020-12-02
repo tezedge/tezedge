@@ -18,6 +18,7 @@ use tezos_api::ffi::{BeginApplicationRequest, BeginConstructionRequest, Validate
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::shell_channel::CurrentMempoolState;
@@ -42,6 +43,14 @@ pub fn can_update_current_head(new_head: &BlockHeaderWithHash, current_head: &He
 /// Returns only true, if new_fitness is greater than head's fitness
 pub fn is_fitness_increases(head: &Head, new_fitness: &Fitness) -> bool {
     new_fitness.gt(head.fitness())
+}
+
+/// Returns true only if we recieve the same head as is our current_head
+pub fn is_same_head(head: &Head, incoming_header: &BlockHeader) -> Result<bool, failure::Error> {
+    let mut is_same = head.block_hash() == &incoming_header.message_hash()?;
+    is_same &= head.fitness() == incoming_header.fitness();
+    is_same &= head.level() == &incoming_header.level();
+    Ok(is_same)
 }
 
 /// Returns only true, if timestamp of header is not in the far future
