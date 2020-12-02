@@ -29,6 +29,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use crate::PeerConnectionThreshold;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::*;
+use ipc::IpcClient;
 
 /// Timeout for outgoing connections
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -539,6 +540,13 @@ impl Receive<AcceptPeer> for PeerManager {
 
 /// Start to listen for incoming connections indefinitely.
 async fn begin_listen_incoming(listener_port: u16, peer_manager: PeerManagerRef, rx_run: Arc<AtomicBool>, log: &Logger) {
+    // TODO: POC: add optional socket path to `pub struct P2p {`
+
+    // TODO: POC: cfg to socket path
+    let firewall: IpcClient<NoopMessage, NoopMessage> = IpcClient::new("/tmp/tezedge_firewall.sock");
+    let (_, mut tx) = firewall.connect().expect("TODO: error handling");
+    tx.send_all(vec![3, 38, 4]).expect("TODO: error handling - send message");
+
     let listener_address = format!("0.0.0.0:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
     let mut listener = TcpListener::bind(&listener_address).await.expect("Failed to bind to address");
     info!(log, "Start to listen for incoming p2p connections"; "port" => listener_port);
@@ -588,3 +596,10 @@ struct PeerState {
     /// Peer IP address
     address: SocketAddr,
 }
+
+use serde::{Deserialize, Serialize};
+
+// TODO: POC:
+/// Empty message
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NoopMessage;

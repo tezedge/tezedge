@@ -2878,6 +2878,7 @@ dependencies = [
  "futures",
  "getset",
  "hex",
+ "ipc",
  "itertools",
  "lazy_static",
  "networking",

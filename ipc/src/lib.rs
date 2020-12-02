@@ -85,6 +85,22 @@ impl<S: Serialize> IpcSender<S> {
             .flush()
             .map_err(|err| IpcError::SendError { reason: err })
     }
+
+    /// TODO: rename both functions
+    /// - send - adds lenght
+    /// - send_all - just send bytes
+    ///
+    /// TODO: maybe refactor:
+    /// - send -> send_with_length (will use send_bytes)
+    /// - send_all -> send_bytes
+    pub fn send_all(&mut self, value: Vec<u8>) -> Result<(), IpcError> {
+        self.0
+            .write_all(&value)
+            .map_err(|err| IpcError::SendError { reason: err })?;
+        self.0
+            .flush()
+            .map_err(|err| IpcError::SendError { reason: err })
+    }
 }
 
 impl<S> Drop for IpcSender<S> {
