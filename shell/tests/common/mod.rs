@@ -131,7 +131,7 @@ pub mod infra {
             // environement
             let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&tezos_env).expect("no environment configuration");
             let is_sandbox = false;
-            let p2p_threshold = PeerConnectionThreshold::new(1, 1);
+            let p2p_threshold = PeerConnectionThreshold::new(1, 1, Some(0));
             let identity = Arc::new(identity);
 
             // storage

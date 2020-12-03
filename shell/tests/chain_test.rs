@@ -42,7 +42,7 @@ lazy_static! {
             disable_mempool: false,
             private_node: false,
             initial_peers: vec![],
-            peer_threshold: PeerConnectionThreshold::new(0, 10),
+            peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
         },
         NETWORK_VERSION.clone(),
     );
