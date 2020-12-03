@@ -18,9 +18,7 @@ fn test_init_protocol_context() {
     ffi::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
         log_enabled: common::is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
     })
-    .unwrap()
     .unwrap();
 
     let context_hash_encoding = HashType::ContextHash;
@@ -119,7 +117,6 @@ fn prepare_protocol_context(
         false,
         None,
     )
-    .unwrap()
     .unwrap();
 
     storage_init_info

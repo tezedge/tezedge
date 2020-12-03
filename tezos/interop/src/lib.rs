@@ -13,20 +13,20 @@ pub mod ffi;
 /// It can be then easily awaited in rust:
 ///
 /// ```rust, no_run
-/// use tezos_interop::runtime::OcamlResult;
+/// use tezos_interop::runtime::OCamlCallResult;
 /// use tezos_interop::runtime;
-/// use ocaml_interop::{ocaml, ocaml_frame, ocaml_alloc, ocaml_call, ToOCaml, FromOCaml};
+/// use ocaml_interop::{ocaml, ocaml_frame, to_ocaml, ToOCaml, FromOCaml, OCamlRuntime};
 ///
 /// ocaml! {
 ///     pub fn echo(value: String) -> String;
 /// }
 ///
-/// fn ocaml_fn_echo(arg: String) -> OcamlResult<String> {
-///     runtime::spawn(move || {
-///         ocaml_frame!(gc, {
-///             let value = ocaml_alloc!(arg.to_ocaml(gc));
-///             let ocaml_result = ocaml_call!(echo(gc, value));
-///             String::from_ocaml(ocaml_result.unwrap())
+/// fn ocaml_fn_echo(arg: String) -> OCamlCallResult<String> {
+///     runtime::spawn(move |rt: &mut OCamlRuntime| {
+///         ocaml_frame!(rt, (root), {
+///             let value = to_ocaml!(rt, arg, root);
+///             let ocaml_result = echo(rt, value);
+///             String::from_ocaml(ocaml_result)
 ///         })
 ///     })
 /// }

@@ -52,7 +52,6 @@ pub struct Identity {
 #[derive(Debug, Clone)]
 pub struct Ffi {
     pub protocol_runner: PathBuf,
-    pub no_of_ffi_calls_threshold_for_gc: i32,
     pub tezos_readonly_api_pool: TezosApiConnectionPoolConfiguration,
     pub tezos_readonly_prevalidation_api_pool: TezosApiConnectionPoolConfiguration,
     pub tezos_without_context_api_pool: TezosApiConnectionPoolConfiguration,
@@ -293,12 +292,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to a tezos protocol runner executable")
             .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-        .arg(Arg::with_name("ffi-calls-gc-threshold")
-            .long("ffi-calls-gc-threshold")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of ffi calls, after which will be Ocaml garbage collector called")
-            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
         .args(
             &[
                 Arg::with_name("ffi-pool-max-connections")
@@ -463,7 +456,6 @@ fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "websocket-address");
     validate_required_arg(args, "peer-thresh-low");
     validate_required_arg(args, "peer-thresh-high");
-    validate_required_arg(args, "ffi-calls-gc-threshold");
     validate_required_arg(args, "tokio-threads");
     validate_required_arg(args, "identity-file");
     validate_required_arg(args, "identity-expected-pow");
@@ -778,11 +770,6 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path"),
-                no_of_ffi_calls_threshold_for_gc: args
-                    .value_of("ffi-calls-gc-threshold")
-                    .unwrap_or("50")
-                    .parse::<i32>()
-                    .expect("Provided value cannot be converted to number"),
                 tezos_readonly_api_pool: pool_cfg(
                     &args,
                     Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR,

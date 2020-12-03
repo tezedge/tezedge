@@ -2010,18 +2010,19 @@ checksum = "8d3b63360ec3cb337817c2dbd47ab4a0f170d285d8e5a2064600f3def1402397"
 
 [[package]]
 name = "ocaml-interop"
-version = "0.4.4"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73f6eb1378c49deceaf7fec407633c1f9ca8317ec58992da8a91e2c2164cc628"
+checksum = "b4e98ac1b37adc41b21d5ec66c8dce807c6a8de2651eb644788e812ed2e4fb51"
 dependencies = [
  "ocaml-sys",
+ "static_assertions",
 ]
 
 [[package]]
 name = "ocaml-sys"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69b089ec551535569cbcf41bf8ada032ce80cee4cfaf6fab95da0b01e83aab31"
+checksum = "3ebcb40980dce73b49d0dcf5b3a2844a9a28cbe5fa17115fa09f0f7706463d1a"
 dependencies = [
  "cty",
 ]

@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use ocaml_interop::{ocaml_export, OCaml, OCamlInt64, OCamlList, RawOCaml, ToRust};
+use ocaml_interop::{ocaml_export, OCaml, OCamlInt64, OCamlList, OCamlRef, RawOCaml};
 
 use tezos_context::channel::*;
 
@@ -112,175 +112,175 @@ pub fn initialize_callbacks() {
 ocaml_export! {
 
     // External callback function for set value to context
-    fn real_ml_context_set(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        keyval_and_json: OCaml<(OCamlList<String>, String, Option<String>, bool)>,
+    fn real_ml_context_set(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        keyval_and_json: OCamlRef<(OCamlList<String>, String, Option<String>, bool)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (key, value, json_val, ignored) = keyval_and_json.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (key, value, json_val, ignored) = keyval_and_json.to_rust(cr);
 
         context_set(context_hash, block_hash, operation_hash, key, value, json_val, ignored, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for delete key from context
-    fn real_ml_context_delete(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        keyval: OCaml<(OCamlList<String>, bool)>,
+    fn real_ml_context_delete(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        keyval: OCamlRef<(OCamlList<String>, bool)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (key, ignored) = keyval.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (key, ignored) = keyval.to_rust(cr);
 
         context_delete(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for remove_rec key from context
-    fn real_ml_context_remove_rec(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        keyval: OCaml<(OCamlList<String>, bool)>,
+    fn real_ml_context_remove_rec(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        keyval: OCamlRef<(OCamlList<String>, bool)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (key, ignored) = keyval.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (key, ignored) = keyval.to_rust(cr);
 
         context_remove_rec(context_hash, block_hash, operation_hash, key, ignored, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for copy keys from context
-    fn real_ml_context_copy(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        from_to_key: OCaml<(OCamlList<String>, OCamlList<String>, bool)>,
+    fn real_ml_context_copy(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        from_to_key: OCamlRef<(OCamlList<String>, OCamlList<String>, bool)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (from_key, to_key, ignored) = from_to_key.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (from_key, to_key, ignored) = from_to_key.to_rust(cr);
 
         context_copy(context_hash, block_hash, operation_hash, from_key, to_key, ignored, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for checkout context
-    fn real_ml_context_checkout(gc,
-        context_hash: OCaml<String>,
+    fn real_ml_context_checkout(cr,
+        context_hash: OCamlRef<String>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
+        let context_hash = context_hash.to_rust(cr);
 
         context_checkout(context_hash, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for checkout context
-    fn real_ml_context_commit(gc,
-        parent_context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        new_context_hash: OCaml<String>,
-        info: OCaml<(OCamlInt64, String, String, OCamlList<String>)>,
+    fn real_ml_context_commit(cr,
+        parent_context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        new_context_hash: OCamlRef<String>,
+        info: OCamlRef<(OCamlInt64, String, String, OCamlList<String>)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let parent_context_hash = parent_context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let new_context_hash = new_context_hash.to_rust();
+        let parent_context_hash = parent_context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let new_context_hash = new_context_hash.to_rust(cr);
 
-        let (date, author, message, parents) = info.to_rust();
+        let (date, author, message, parents) = info.to_rust(cr);
 
         context_commit(parent_context_hash, block_hash, new_context_hash, date, author, message, parents, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for mem key from context
-    fn real_ml_context_mem(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        keyval: OCaml<(OCamlList<String>, bool)>,
+    fn real_ml_context_mem(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        keyval: OCamlRef<(OCamlList<String>, bool)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (key, value) = keyval.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (key, value) = keyval.to_rust(cr);
 
         context_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for dir_mem key from context
-    fn real_ml_context_dir_mem(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        keyval: OCaml<(OCamlList<String>, bool)>,
+    fn real_ml_context_dir_mem(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        keyval: OCamlRef<(OCamlList<String>, bool)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (key, value) = keyval.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (key, value) = keyval.to_rust(cr);
 
         context_dir_mem(context_hash, block_hash, operation_hash, key, value, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for raw_get key from context
-    fn real_ml_context_raw_get(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        keyval_and_json: OCaml<(OCamlList<String>, String, Option<String>)>,
+    fn real_ml_context_raw_get(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        keyval_and_json: OCamlRef<(OCamlList<String>, String, Option<String>)>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let (key, value, json_val) =  keyval_and_json.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let (key, value, json_val) =  keyval_and_json.to_rust(cr);
 
         context_raw_get(context_hash, block_hash, operation_hash, key, value, json_val, start_time, end_time);
         OCaml::unit()
     }
 
     // External callback function for fold key from context
-    fn real_ml_context_fold(gc,
-        context_hash: OCaml<Option<String>>,
-        block_hash: OCaml<Option<String>>,
-        operation_hash: OCaml<Option<String>>,
-        key: OCaml<OCamlList<String>>,
+    fn real_ml_context_fold(cr,
+        context_hash: OCamlRef<Option<String>>,
+        block_hash: OCamlRef<Option<String>>,
+        operation_hash: OCamlRef<Option<String>>,
+        key: OCamlRef<OCamlList<String>>,
         start_time: f64,
         end_time: f64,
     ) {
-        let context_hash = context_hash.to_rust();
-        let block_hash = block_hash.to_rust();
-        let operation_hash = operation_hash.to_rust();
-        let key = key.to_rust();
+        let context_hash = context_hash.to_rust(cr);
+        let block_hash = block_hash.to_rust(cr);
+        let operation_hash = operation_hash.to_rust(cr);
+        let key = key.to_rust(cr);
 
         context_fold(context_hash, block_hash, operation_hash, key, start_time, end_time);
         OCaml::unit()

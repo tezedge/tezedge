@@ -7,7 +7,6 @@ use std::{convert::TryFrom, fmt};
 
 use derive_builder::Builder;
 use failure::Fail;
-use ocaml_interop::OCamlError;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
@@ -94,11 +93,10 @@ pub struct TestChain {
     pub expiration_date: String,
 }
 
-/// Holds configuration for ocaml runtime - e.g. arguments which are passed to ocaml and can be change in runtime
+/// Holds configuration for OCaml runtime - e.g. arguments which are passed to OCaml and can be change in runtime
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
-    pub no_of_ffi_calls_treshold_for_gc: i32,
     pub debug_mode: bool,
 }
 
@@ -356,11 +354,38 @@ pub struct ForkingTestchainData {
     pub test_chain_id: ChainId,
 }
 
+/// Represents one of the errors from an error trace produced by Tezos
+pub struct TezosError {
+    pub name: String,
+    pub message: String,
+    pub json: String,
+}
+
+/// Represents a trace of errors produced by Tezos.
+///
+/// `head_error_name` has the name of the main error in the trace, useful for mapping into a Rust error.
+/// `errors` is a list of `TezosError` items.
+pub struct TezosErrorTrace {
+    pub head_error_name: String,
+    pub errors: Vec<TezosError>,
+}
+
+impl TezosErrorTrace {
+    pub fn message(&self) -> String {
+        self.errors
+            .iter()
+            .map(|err| format!("{}: {}", err.name, err.message))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
 pub enum CallError {
-    #[fail(display = "Failed to call - message: {:?}!", parsed_error_message)]
+    #[fail(display = "Failed to call - message: {:?}!", trace_message)]
     FailedToCall {
-        parsed_error_message: Option<String>,
+        error_name: String,
+        trace_message: String,
     },
     #[fail(display = "Invalid request data - message: {}!", message)]
     InvalidRequestData { message: String },
@@ -368,67 +393,55 @@ pub enum CallError {
     InvalidResponseData { message: String },
 }
 
-impl From<OCamlError> for CallError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => match exception.message() {
-                None => CallError::FailedToCall {
-                    parsed_error_message: None,
-                },
-                Some(message) => CallError::FailedToCall {
-                    parsed_error_message: Some(message),
-                },
-            },
+impl From<TezosErrorTrace> for CallError {
+    fn from(error: TezosErrorTrace) -> Self {
+        CallError::FailedToCall {
+            error_name: error.head_error_name.clone(),
+            trace_message: error.message(),
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum TezosRuntimeConfigurationError {
-    #[fail(display = "Change ocaml settings failed, message: {}!", message)]
+    #[fail(display = "Change OCaml settings failed, message: {}!", message)]
     ChangeConfigurationError { message: String },
 }
 
-impl From<OCamlError> for TezosRuntimeConfigurationError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => {
-                TezosRuntimeConfigurationError::ChangeConfigurationError {
-                    message: exception.message().unwrap_or_else(|| "unknown".to_string()),
-                }
-            }
+impl From<TezosErrorTrace> for TezosRuntimeConfigurationError {
+    fn from(error: TezosErrorTrace) -> Self {
+        TezosRuntimeConfigurationError::ChangeConfigurationError {
+            message: error.message(),
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum TezosStorageInitError {
-    #[fail(display = "Ocaml storage init failed, message: {}!", message)]
+    #[fail(display = "OCaml storage init failed, message: {}!", message)]
     InitializeError { message: String },
+    //    #[fail(display = "Panic while executing an OCaml block")]
+    //    OCamlBlockPanic
 }
 
-impl From<OCamlError> for TezosStorageInitError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => TezosStorageInitError::InitializeError {
-                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
-            },
+impl From<TezosErrorTrace> for TezosStorageInitError {
+    fn from(error: TezosErrorTrace) -> Self {
+        TezosStorageInitError::InitializeError {
+            message: error.message(),
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum GetDataError {
-    #[fail(display = "Ocaml failed to get data, message: {}!", message)]
+    #[fail(display = "OCaml failed to get data, message: {}!", message)]
     ReadError { message: String },
 }
 
-impl From<OCamlError> for GetDataError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => GetDataError::ReadError {
-                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
-            },
+impl From<TezosErrorTrace> for GetDataError {
+    fn from(error: TezosErrorTrace) -> Self {
+        GetDataError::ReadError {
+            message: error.message(),
         }
     }
 }
@@ -457,25 +470,19 @@ impl From<CallError> for ApplyBlockError {
     fn from(error: CallError) -> Self {
         match error {
             CallError::FailedToCall {
-                parsed_error_message,
-            } => match parsed_error_message {
-                None => ApplyBlockError::FailedToApplyBlock {
-                    message: "unknown".to_string(),
+                error_name,
+                trace_message,
+            } => match error_name.as_str() {
+                "Ffi_errors.Unknown_predecessor_context" => {
+                    ApplyBlockError::UnknownPredecessorContext {
+                        message: trace_message,
+                    }
+                }
+                "Ffi_errors.Predecessor_mismatch" => ApplyBlockError::PredecessorMismatch {
+                    message: trace_message,
                 },
-                Some(message) => match message.as_str() {
-                    e if e.starts_with("Unknown_predecessor_context") => {
-                        ApplyBlockError::UnknownPredecessorContext {
-                            message: message.to_string(),
-                        }
-                    }
-                    e if e.starts_with("Predecessor_mismatch") => {
-                        ApplyBlockError::PredecessorMismatch {
-                            message: message.to_string(),
-                        }
-                    }
-                    message => ApplyBlockError::FailedToApplyBlock {
-                        message: message.to_string(),
-                    },
+                _ => ApplyBlockError::FailedToApplyBlock {
+                    message: trace_message,
                 },
             },
             CallError::InvalidRequestData { message } => {
@@ -505,20 +512,16 @@ impl From<CallError> for BeginApplicationError {
     fn from(error: CallError) -> Self {
         match error {
             CallError::FailedToCall {
-                parsed_error_message,
-            } => match parsed_error_message {
-                None => BeginApplicationError::FailedToBeginApplication {
-                    message: "unknown".to_string(),
-                },
-                Some(message) => match message.as_str() {
-                    e if e.starts_with("Unknown_predecessor_context") => {
-                        BeginApplicationError::UnknownPredecessorContext {
-                            message: message.to_string(),
-                        }
+                error_name,
+                trace_message,
+            } => match error_name.as_str() {
+                "Ffi_errors.Unknown_predecessor_context" => {
+                    BeginApplicationError::UnknownPredecessorContext {
+                        message: trace_message,
                     }
-                    message => BeginApplicationError::FailedToBeginApplication {
-                        message: message.to_string(),
-                    },
+                }
+                _ => BeginApplicationError::FailedToBeginApplication {
+                    message: trace_message,
                 },
             },
             CallError::InvalidRequestData { message } => {
@@ -548,20 +551,16 @@ impl From<CallError> for BeginConstructionError {
     fn from(error: CallError) -> Self {
         match error {
             CallError::FailedToCall {
-                parsed_error_message,
-            } => match parsed_error_message {
-                None => BeginConstructionError::FailedToBeginConstruction {
-                    message: "unknown".to_string(),
-                },
-                Some(message) => match message.as_str() {
-                    e if e.starts_with("Unknown_predecessor_context") => {
-                        BeginConstructionError::UnknownPredecessorContext {
-                            message: message.to_string(),
-                        }
+                error_name,
+                trace_message,
+            } => match error_name.as_str() {
+                "Ffi_errors.Unknown_predecessor_context" => {
+                    BeginConstructionError::UnknownPredecessorContext {
+                        message: trace_message,
                     }
-                    message => BeginConstructionError::FailedToBeginConstruction {
-                        message: message.to_string(),
-                    },
+                }
+                _ => BeginConstructionError::FailedToBeginConstruction {
+                    message: trace_message,
                 },
             },
             CallError::InvalidRequestData { message } => {
@@ -585,14 +584,11 @@ pub enum ValidateOperationError {
 impl From<CallError> for ValidateOperationError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall {
-                parsed_error_message,
-            } => match parsed_error_message {
-                None => ValidateOperationError::FailedToValidateOperation {
-                    message: "unknown".to_string(),
-                },
-                Some(message) => ValidateOperationError::FailedToValidateOperation { message },
-            },
+            CallError::FailedToCall { trace_message, .. } => {
+                ValidateOperationError::FailedToValidateOperation {
+                    message: trace_message,
+                }
+            }
             CallError::InvalidRequestData { message } => {
                 ValidateOperationError::InvalidRequestResponseData { message }
             }
@@ -603,6 +599,7 @@ impl From<CallError> for ValidateOperationError {
     }
 }
 
+// XXX: UNUSED
 #[derive(Debug, Fail)]
 pub enum BlockHeaderError {
     #[fail(display = "BlockHeader cannot be read from storage: {}!", message)]
@@ -611,28 +608,25 @@ pub enum BlockHeaderError {
     ExpectedButNotFound,
 }
 
-impl From<OCamlError> for BlockHeaderError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => BlockHeaderError::ReadError {
-                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
-            },
+impl From<TezosErrorTrace> for BlockHeaderError {
+    fn from(error: TezosErrorTrace) -> Self {
+        BlockHeaderError::ReadError {
+            message: error.message(),
         }
     }
 }
 
+// XXX: used by decode_context_data, which is unused at the moment
 #[derive(Debug, Fail)]
 pub enum ContextDataError {
     #[fail(display = "Resolve/decode context data failed to decode: {}!", message)]
     DecodeError { message: String },
 }
 
-impl From<OCamlError> for ContextDataError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => ContextDataError::DecodeError {
-                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
-            },
+impl From<TezosErrorTrace> for ContextDataError {
+    fn from(error: TezosErrorTrace) -> Self {
+        ContextDataError::DecodeError {
+            message: error.message(),
         }
     }
 }
@@ -643,12 +637,10 @@ pub enum ProtocolDataError {
     DecodeError { message: String },
 }
 
-impl From<OCamlError> for ProtocolDataError {
-    fn from(error: OCamlError) -> Self {
-        match error {
-            OCamlError::Exception(exception) => ProtocolDataError::DecodeError {
-                message: exception.message().unwrap_or_else(|| "unknown".to_string()),
-            },
+impl From<TezosErrorTrace> for ProtocolDataError {
+    fn from(error: TezosErrorTrace) -> Self {
+        ProtocolDataError::DecodeError {
+            message: error.message(),
         }
     }
 }
@@ -763,14 +755,11 @@ pub enum HelpersPreapplyError {
 impl From<CallError> for HelpersPreapplyError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall {
-                parsed_error_message,
-            } => match parsed_error_message {
-                None => HelpersPreapplyError::FailedToCallProtocolRpc {
-                    message: "unknown".to_string(),
-                },
-                Some(message) => HelpersPreapplyError::FailedToCallProtocolRpc { message },
-            },
+            CallError::FailedToCall { trace_message, .. } => {
+                HelpersPreapplyError::FailedToCallProtocolRpc {
+                    message: trace_message,
+                }
+            }
             CallError::InvalidRequestData { message } => {
                 HelpersPreapplyError::InvalidRequestData { message }
             }
@@ -821,13 +810,8 @@ pub enum ComputePathError {
 impl From<CallError> for ComputePathError {
     fn from(error: CallError) -> Self {
         match error {
-            CallError::FailedToCall {
-                parsed_error_message,
-            } => match parsed_error_message {
-                None => ComputePathError::PathError {
-                    message: "unknown".to_string(),
-                },
-                Some(message) => ComputePathError::PathError { message },
+            CallError::FailedToCall { trace_message, .. } => ComputePathError::PathError {
+                message: trace_message,
             },
             CallError::InvalidRequestData { message } => {
                 ComputePathError::InvalidRequestResponseData { message }
