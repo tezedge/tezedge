@@ -21,6 +21,7 @@ pub mod validation;
 pub struct PeerConnectionThreshold {
     low: usize,
     high: usize,
+    peers_for_bootstrap_threshold: Option<usize>,
 }
 
 impl PeerConnectionThreshold {
@@ -31,16 +32,30 @@ impl PeerConnectionThreshold {
     /// * `higher` - Upper threshold bound
     ///
     /// `low` cannot be bigger than `high`, otherwise function will panic
-    pub fn new(low: usize, high: usize) -> Self {
+    pub fn new(low: usize, high: usize, peers_for_bootstrap_threshold: Option<usize>) -> Self {
         assert!(low <= high, "low must be less than or equal to high");
-        PeerConnectionThreshold { low, high }
+        PeerConnectionThreshold { low, high, peers_for_bootstrap_threshold}
     }
 
     /// Threshold for minimal count of bootstrapped peers
-    /// Ocaml counts it from connections: see [node_shared_arg.ml]
+    /// Ocaml counts it from (expected)connections: see [node_shared_arg.ml]
     pub fn num_of_peers_for_bootstrap_threshold(&self) -> usize {
-        let avarage_connections = (self.low + self.high) / 2;
-        std::cmp::min(2, avarage_connections / 4)
+        if let Some(sync_tresh) = self.peers_for_bootstrap_threshold {
+            // set a concrete value if provided in configuration
+            // NOTE: in a sandbox enviroment, it's ok to set to 0
+            sync_tresh
+        } else {
+            // calculate othervise
+            // TODO TE-244 - Implement the synchronization heuristic 
+            // NOTE: the calculation should never yield 0!
+
+            // since we define the low and high bound, calculate the expected connections
+            // see [node_shared_arg.ml]
+            let expected_connections = 2 * self.high / 3;
+            
+            // never yield 0!
+            std::cmp::max(1, expected_connections / 4)
+        }
     }
 }
 
@@ -120,5 +135,28 @@ pub(crate) mod subscription {
                 actor: Box::new(myself),
                 topic: All.into(),
             }, None);
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn test_num_of_peers_for_bootstrap_threshold() {
+        // fixed threshold
+        let peer_threshold = PeerConnectionThreshold::new(0, 10, Some(5));
+        let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
+        assert_eq!(sync_threshold, 5);
+
+        // clasic scenario
+        let peer_threshold = PeerConnectionThreshold::new(5, 500, None);
+        let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
+        assert_eq!(sync_threshold, 83);
+
+        // calculated threshold too low (0), use minimal value of 1
+        let peer_threshold = PeerConnectionThreshold::new(1, 4, None);
+        let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
+        assert_eq!(sync_threshold, 1);
     }
 }
