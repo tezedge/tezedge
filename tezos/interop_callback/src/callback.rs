@@ -3,7 +3,7 @@
 
 //! This module provides all the FFI callback functions.
 
-use ocaml_interop::{ocaml_export, OCaml, RawOCaml, ToRust};
+use ocaml_interop::{ocaml_export, OCaml, OCamlRef, RawOCaml};
 
 use tezos_context::channel::{context_send, ContextAction, ContextActionMessage};
 
@@ -20,13 +20,13 @@ pub fn initialize_callbacks() {
 ocaml_export! {
     fn real_ml_context_send_action(
         cr,
-        context_action: OCaml<ContextAction>,
-        record: OCaml<bool>,
-        perform: OCaml<bool>,
+        context_action: OCamlRef<ContextAction>,
+        record: OCamlRef<bool>,
+        perform: OCamlRef<bool>,
     ) {
-        let action: ContextAction = context_action.to_rust();
-        let record = record.to_rust();
-        let perform = perform.to_rust();
+        let action: ContextAction = context_action.to_rust(cr);
+        let record = record.to_rust(cr);
+        let perform = perform.to_rust(cr);
         context_send_action(action, record, perform);
         OCaml::unit()
     }

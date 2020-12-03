@@ -21,9 +21,7 @@ fn test_init_protocol_context() {
         debug_mode: false,
         compute_context_action_tree_hashes: false,
         log_enabled: common::is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
     })
-    .unwrap()
     .unwrap();
 
     let storage_dir = "test_storage_01";
@@ -119,7 +117,6 @@ fn prepare_protocol_context(
         false,
         None,
     )
-    .unwrap()
     .unwrap();
 
     storage_init_info

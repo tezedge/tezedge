@@ -66,3 +66,14 @@ pub struct OCamlChainId {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;
+
+pub mod ffi_error_ids {
+    pub const APPLY_ERROR: &str = "ffi.apply_error";
+    pub const CALL_ERROR: &str = "ffi.call_error";
+    pub const CALL_EXCEPTION: &str = "ffi.call_exception";
+    pub const INCONSISTENT_OPERATIONS_HASH: &str = "ffi.inconsistent_operations_hash";
+    pub const PREDECESSOR_MISMATCH: &str = "ffi.predecessor_mismatch";
+    pub const UNAVAILABLE_PROTOCOL: &str = "ffi.unavailable_protocol";
+    pub const UNKNOWN_CONTEXT: &str = "ffi.unknown_context";
+    pub const UNKNOWN_PREDECESSOR_CONTEXT: &str = "ffi.unknown_predecessor_context";
+}
