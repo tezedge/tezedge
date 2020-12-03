@@ -149,9 +149,11 @@ steps:
     - cp -R /home/appuser/tezos-src/tezos /tmp/tezos-src/tezos
     # prepare modified python files for tests (compatibility with tezedge node)
     - cp /tmp/tezos-src/modified/python-tests/daemons/node.py /tmp/tezos-src/tezos/tests_python/daemons/node.py
+    - cp /tmp/tezos-src/modified/python-tests/daemons/baker.py /tmp/tezos-src/tezos/tests_python/daemons/baker.py
     - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/tezos/tests_python/launchers/sandbox.py
     - cp /tmp/tezos-src/modified/python-tests/tests/test_basic.py /tmp/tezos-src/tezos/tests_python/tests/test_basic.py
     - cp /tmp/tezos-src/modified/python-tests/tests/test_mempool.py /tmp/tezos-src/tezos/tests_python/tests/test_mempool.py
+    - cp /tmp/tezos-src/modified/python-tests/tests/test_baker_endorser.py /tmp/tezos-src/tezos/tests_python/tests/test_baker_endorser.py
     - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/tezos/tests_python/tools/constants.py
     - cp /tmp/tezos-src/modified/python-tests/tools/utils.py /tmp/tezos-src/tezos/tests_python/tools/utils.py
     - cp /tmp/tezos-src/modified/python-tests/test-parameters.json /tmp/tezos-src/tezos/src/proto_alpha/parameters/test-parameters.json

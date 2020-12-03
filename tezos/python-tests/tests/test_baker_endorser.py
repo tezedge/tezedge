@@ -43,7 +43,7 @@ class TestAllDaemonsWithOperations:
         utils.activate_alpha(sandbox.client(0), parameters)
         # TODO: TEZEDGE
         # for now, tezedge node needs some time to apply and distributer the 1st level
-        time.sleep(10)
+        time.sleep(30)
         sandbox.add_baker(0, 'bootstrap5', proto=constants.ALPHA_DAEMON)
         sandbox.add_baker(1, 'bootstrap4', proto=constants.ALPHA_DAEMON)
         sandbox.add_endorser(0, account='bootstrap1', endorsement_delay=1,
