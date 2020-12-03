@@ -283,6 +283,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Maximal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("synchronization-thresh")
+            .long("synchronization-thresh")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Maximal number of peers to connect to")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("protocol-runner")
             .long("protocol-runner")
             .takes_value(true)
@@ -592,6 +598,10 @@ impl Environment {
                         .unwrap_or("")
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
+                    args.value_of("synchronization-thresh")
+                        .map(|v| v.parse::<usize>()
+                            .expect("Provided value cannot be converted to number")
+                        ),
                 ),
                 private_node: args.value_of("private-node")
                     .unwrap_or("false")
