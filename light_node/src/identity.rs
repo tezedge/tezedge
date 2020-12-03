@@ -18,6 +18,8 @@ pub enum IdentityError {
     SerializationError { reason: tezos_identity::IdentityError },
     #[fail(display = "Identity de-serialization error: {}", reason)]
     DeserializationError { reason: tezos_identity::IdentityError },
+    #[fail(display = "Identity has invalid peer_id, generate new one: {}", reason)]
+    InvalidPeerId { reason: tezos_identity::IdentityError },
 }
 
 impl From<io::Error> for IdentityError {
@@ -63,7 +65,7 @@ pub fn ensure_identity(
     identity_cfg: &crate::configuration::Identity,
     log: &Logger,
 ) -> Result<Identity, IdentityError> {
-    if identity_cfg.identity_json_file_path.exists() {
+    let identity = if identity_cfg.identity_json_file_path.exists() {
         load_identity(&identity_cfg.identity_json_file_path)
     } else {
         info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
@@ -77,5 +79,12 @@ pub fn ensure_identity(
             }
             Err(e) => Err(e),
         }
-    }
+    };
+
+    identity.and_then(|identity| {
+        match identity.check_peer_id() {
+            Ok(_) => Ok(identity),
+            Err(e) => Err(IdentityError::InvalidPeerId { reason: e })
+        }
+    })
 }

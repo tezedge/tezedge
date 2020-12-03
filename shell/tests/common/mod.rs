@@ -234,7 +234,7 @@ pub mod infra {
                     shell_channel.clone(),
                     tokio_runtime.handle().clone(),
                     identity,
-                    network_version,
+                    Arc::new(network_version),
                     p2p_config,
                 ).expect("Failed to create peer manager");
                 Some(peer_manager)

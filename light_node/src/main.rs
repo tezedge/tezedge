@@ -201,11 +201,11 @@ fn block_on_actors(
     // if feeding is started, than run chain manager
     let is_sandbox = env.tezos_network == environment::TezosEnvironment::Sandbox;
     // version
-    let network_version = NetworkVersion::new(
+    let network_version = Arc::new(NetworkVersion::new(
         tezos_env.version.clone(),
         SUPPORTED_DISTRIBUTED_DB_VERSION,
         SUPPORTED_P2P_VERSION,
-    );
+    ));
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(create_tezos_readonly_api_pool(

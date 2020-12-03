@@ -179,6 +179,8 @@ pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> ChainId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto_box::PublicKey;
+    use hex::FromHex;
 
     #[test]
     fn test_encode_chain_id() -> Result<(), failure::Error> {
@@ -265,10 +267,10 @@ mod tests {
 
     #[test]
     fn test_encode_public_key_hash() -> Result<(), failure::Error> {
-        let pk = hex::decode(
+        let pk = PublicKey::from_hex(
             "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
         )?;
-        let pk_hash = (HashType::CryptoboxPublicKeyHash.hash_fn())(pk.as_ref());
+        let pk_hash = pk.public_key_hash();
         let decoded = HashType::CryptoboxPublicKeyHash.bytes_to_string(pk_hash.as_ref());
         let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
         assert_eq!(expected, decoded);

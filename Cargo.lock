@@ -1864,6 +1864,7 @@ dependencies = [
  "riker",
  "slog",
  "tezos_encoding",
+ "tezos_identity",
  "tezos_messages",
  "tokio",
 ]

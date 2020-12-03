@@ -16,7 +16,8 @@ use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 
-use crypto::crypto_box::{CryptoError, decrypt, encrypt, PrecomputedKey};
+use crypto::CryptoError;
+use crypto::crypto_box::PrecomputedKey;
 use crypto::nonce::Nonce;
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES};
@@ -188,7 +189,8 @@ impl EncryptedMessageWriter {
 
         for chunk_content_bytes in message_bytes.chunks(CONTENT_LENGTH_MAX) {
             // encrypt
-            let message_bytes_encrypted = match encrypt(chunk_content_bytes, &self.nonce_fetch_increment(), &self.precomputed_key) {
+            let nonce = self.nonce_fetch_increment();
+            let message_bytes_encrypted = match self.precomputed_key.encrypt(chunk_content_bytes, &nonce) {
                 Ok(msg) => msg,
                 Err(error) => return Err(StreamError::FailedToEncryptMessage { error })
             };
@@ -241,7 +243,8 @@ impl EncryptedMessageReader {
             let message_encrypted = self.rx.read_message().await?;
 
             // decrypt
-            match decrypt(message_encrypted.content(), &self.nonce_fetch_increment(), &self.precomputed_key) {
+            let nonce = self.nonce_fetch_increment();
+            match self.precomputed_key.decrypt(message_encrypted.content(), &nonce) {
                 Ok(mut message_decrypted) => {
                     trace!(self.log, "Message received"; "message" => FnValue(|_| hex::encode(&message_decrypted)));
                     if input_remaining >= message_decrypted.len() {

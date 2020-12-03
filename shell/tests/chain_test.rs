@@ -779,7 +779,7 @@ mod test_node_peer {
     const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
 
     pub struct TestNodePeer {
-        pub identity: Identity,
+        pub identity: Arc<Identity>,
         pub name: &'static str,
         log: Logger,
         connected: Arc<AtomicBool>,
@@ -802,6 +802,7 @@ mod test_node_peer {
             let tokio_executor = tokio_runtime.handle().clone();
             let connected = Arc::new(AtomicBool::new(false));
             let tx = Arc::new(Mutex::new(None));
+            let identity = Arc::new(identity);
             {
                 let identity = identity.clone();
                 let connected = connected.clone();
@@ -814,10 +815,8 @@ mod test_node_peer {
                             // authenticate
                             let local = Arc::new(Local::new(
                                 1235,
-                                identity.public_key,
-                                identity.secret_key,
-                                identity.proof_of_work_stamp,
-                                network_version,
+                                identity,
+                                Arc::new(network_version),
                             ));
                             let bootstrap = Bootstrap::outgoing(
                                 stream,
@@ -1013,14 +1012,14 @@ mod test_actor {
     use riker::actors::*;
     use slog::warn;
 
-    use crypto::hash::HashType;
+    use crypto::hash::{CryptoboxPublicKeyHash, HashType};
     use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped};
 
     use crate::test_node_peer::TestNodePeer;
 
     #[actor(NetworkChannelMsg)]
     pub(crate) struct NetworkChannelListener {
-        peers_mirror: Arc<RwLock<HashMap<String, String>>>,
+        peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
         network_channel: NetworkChannelRef,
     }
 
@@ -1041,8 +1040,8 @@ mod test_actor {
         }
     }
 
-    impl ActorFactoryArgs<(NetworkChannelRef, Arc<RwLock<HashMap<String, String>>>)> for NetworkChannelListener {
-        fn create_args((network_channel, peers_mirror): (NetworkChannelRef, Arc<RwLock<HashMap<String, String>>>)) -> Self {
+    impl ActorFactoryArgs<(NetworkChannelRef, Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>)> for NetworkChannelListener {
+        fn create_args((network_channel, peers_mirror): (NetworkChannelRef, Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>)) -> Self {
             Self {
                 network_channel,
                 peers_mirror,
@@ -1064,7 +1063,7 @@ mod test_actor {
     impl NetworkChannelListener {
         pub fn name() -> &'static str { "network-channel-listener-actor" }
 
-        pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, peers_mirror: Arc<RwLock<HashMap<String, String>>>) -> Result<NetworkChannelListenerRef, CreateError> {
+        pub fn actor(sys: &ActorSystem, network_channel: NetworkChannelRef, peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>) -> Result<NetworkChannelListenerRef, CreateError> {
             Ok(
                 sys.actor_of_props::<NetworkChannelListener>(
                     Self::name(),
@@ -1079,41 +1078,39 @@ mod test_actor {
                 NetworkChannelMsg::PeerCreated(_) => {}
                 NetworkChannelMsg::PeerBootstrapped(peer) => {
                     if let PeerBootstrapped::Success { peer_id, .. } = peer {
-                        let peer_public_key = HashType::CryptoboxPublicKeyHash.bytes_to_string(peer_id.peer_public_key.as_ref());
                         self.peers_mirror
                             .write()
                             .unwrap()
-                            .insert(peer_public_key, "CONNECTED".to_string());
+                            .insert(peer_id.peer_public_key_hash.clone(), "CONNECTED".to_string());
                     }
                 }
                 NetworkChannelMsg::BlacklistPeer(..) => {}
                 NetworkChannelMsg::PeerBlacklisted(peer_id) => {
-                    let peer_public_key = HashType::CryptoboxPublicKeyHash.bytes_to_string(peer_id.peer_public_key.as_ref());
                     self.peers_mirror
                         .write()
                         .unwrap()
-                        .insert(peer_public_key, "BLACKLISTED".to_string());
+                        .insert(peer_id.peer_public_key_hash.clone(), "BLACKLISTED".to_string());
                 }
             }
             Ok(())
         }
 
-        pub fn verify_connected(peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<String, String>>>) -> Result<(), failure::Error> {
+        pub fn verify_connected(peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>) -> Result<(), failure::Error> {
             Self::verify_state("CONNECTED", peer, peers_mirror, (Duration::from_secs(5), Duration::from_millis(250)))
         }
 
-        pub fn verify_blacklisted(peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<String, String>>>) -> Result<(), failure::Error> {
+        pub fn verify_blacklisted(peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>) -> Result<(), failure::Error> {
             Self::verify_state("BLACKLISTED", peer, peers_mirror, (Duration::from_secs(5), Duration::from_millis(250)))
         }
 
         // TODO: refactor with async/condvar, not to block main thread
-        fn verify_state(expected_state: &str, peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<String, String>>>, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        fn verify_state(expected_state: &str, peer: &TestNodePeer, peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let peer_public_key = HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer.identity.public_key.as_ref().as_ref());
+            let peer_public_key_hash = &peer.identity.public_key.public_key_hash();
 
             let result = loop {
                 let peers_mirror = peers_mirror.read().unwrap();
-                if let Some(peer_state) = peers_mirror.get(&peer_public_key) {
+                if let Some(peer_state) = peers_mirror.get(peer_public_key_hash) {
                     if peer_state == expected_state {
                         break Ok(());
                     }
@@ -1126,7 +1123,7 @@ mod test_actor {
                     break Err(
                         failure::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, peer_public_key, expected_state, timeout, delay
+                            peer.name, HashType::CryptoboxPublicKeyHash.bytes_to_string(peer_public_key_hash), expected_state, timeout, delay
                         )
                     );
                 }

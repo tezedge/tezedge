@@ -105,7 +105,7 @@ pub struct PeerManager {
     /// Tezos identity
     identity: Arc<Identity>,
     /// Network/protocol version
-    network_version: NetworkVersion,
+    network_version: Arc<NetworkVersion>,
     /// Message receiver boolean indicating whether
     /// more connections should be accepted from network
     rx_run: Arc<AtomicBool>,
@@ -128,7 +128,7 @@ impl PeerManager {
                  shell_channel: ShellChannelRef,
                  tokio_executor: Handle,
                  identity: Arc<Identity>,
-                 network_version: NetworkVersion,
+                 network_version: Arc<NetworkVersion>,
                  p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
@@ -183,9 +183,7 @@ impl PeerManager {
             sys,
             self.network_channel.clone(),
             self.listener_port,
-            &self.identity.public_key,
-            &self.identity.secret_key,
-            &self.identity.proof_of_work_stamp,
+            self.identity.clone(),
             self.network_version.clone(),
             self.tokio_executor.clone(),
             socket_address,
@@ -276,9 +274,9 @@ impl PeerManager {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)> for PeerManager {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, Arc<NetworkVersion>, P2p)> for PeerManager {
     fn create_args((network_channel, shell_channel, tokio_executor, identity, network_version, p2p_config):
-                   (NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)) -> Self
+                   (NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, Arc<NetworkVersion>, P2p)) -> Self
     {
         PeerManager {
             network_channel,

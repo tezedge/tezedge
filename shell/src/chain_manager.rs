@@ -423,7 +423,7 @@ impl ChainManager {
                                                 // calculate history
                                                 let history = chain_state.get_history(
                                                     &current_head.hash,
-                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key),
+                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key_hash),
                                                 )?;
                                                 // send message
                                                 let msg = CurrentBranchMessage::new(
@@ -1515,10 +1515,7 @@ pub mod tests {
 
     use slog::{Drain, Level, Logger};
 
-    use hex::FromHex;
     use crypto::hash::CryptoboxPublicKeyHash;
-    use crypto::crypto_box::{PublicKey, SecretKey};
-    use crypto::proof_of_work::ProofOfWork;
     use networking::p2p::network_channel::NetworkChannel;
     use networking::p2p::peer::Peer;
     use storage::tests_common::TmpStorage;
@@ -1552,24 +1549,26 @@ pub mod tests {
     fn peer(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, tokio_runtime: &tokio::runtime::Runtime) -> PeerState {
         let socket_address: SocketAddr = "127.0.0.1:3011".parse().expect("Expected valid ip:port address");
 
+        let node_identity = Arc::new(Identity::generate(0f64));
+        let peer_public_key_hash: CryptoboxPublicKeyHash = node_identity.public_key.public_key_hash();
+        let peer_id_marker = HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer_public_key_hash);
+
         let peer_ref = Peer::actor(
             sys,
             network_channel,
             3011,
-            &PublicKey::from_hex("eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b").unwrap(),
-            &SecretKey::from_hex("eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b").unwrap(),
-            &ProofOfWork::from_hex("000000000000000000000000000000000000000000000000").unwrap(),
-            NetworkVersion::new("testet".to_string(), 0, 0),
+            node_identity.clone(),
+            Arc::new(NetworkVersion::new("testet".to_string(), 0, 0)),
             tokio_runtime.handle().clone(),
             &socket_address,
         ).unwrap();
-        let peer_public_key: CryptoboxPublicKeyHash = HashType::CryptoboxPublicKeyHash.string_to_bytes("idsg2wkkDDv2cbEMK4zH49fjgyn7XT").expect("Failed to create public key hash");
 
         PeerState::new(
             Arc::new(
                 PeerId::new(
                     peer_ref,
-                    peer_public_key,
+                    peer_public_key_hash,
+                    peer_id_marker,
                     socket_address,
                 )
             ),

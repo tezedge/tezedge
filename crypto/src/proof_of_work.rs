@@ -1,14 +1,21 @@
-use super::{
-    blake2b,
-    crypto_box::{PublicKey, CRYPTO_KEY_SIZE, NONCE_SIZE},
-};
+use std::convert::TryFrom;
+
 use hex::{FromHex, FromHexError};
 use num_bigint::BigUint;
 use sodiumoxide::randombytes::randombytes;
-use std::convert::TryFrom;
+
+use super::{
+    blake2b,
+    crypto_box::{PublicKey, CRYPTO_KEY_SIZE},
+    nonce::NONCE_SIZE,
+};
+
+pub const POW_SIZE: usize = NONCE_SIZE;
+
+pub type PowResult = Result<(), ()>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProofOfWork([u8; NONCE_SIZE]);
+pub struct ProofOfWork([u8; POW_SIZE]);
 
 impl AsRef<[u8]> for ProofOfWork {
     fn as_ref(&self) -> &[u8] {
@@ -21,7 +28,7 @@ impl FromHex for ProofOfWork {
 
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
         let bytes = hex::decode(hex)?;
-        let mut arr = [0u8; NONCE_SIZE];
+        let mut arr = [0u8; POW_SIZE];
         arr.copy_from_slice(&bytes);
         Ok(ProofOfWork(arr))
     }
@@ -31,14 +38,14 @@ impl ProofOfWork {
     pub const DEFAULT_TARGET: f64 = 24.0;
 
     pub fn generate(public_key: &PublicKey, target: f64) -> Self {
-        let mut data = [0; CRYPTO_KEY_SIZE + NONCE_SIZE];
+        let mut data = [0; CRYPTO_KEY_SIZE + POW_SIZE];
         data[..CRYPTO_KEY_SIZE].clone_from_slice(public_key.as_ref().as_ref());
-        data[CRYPTO_KEY_SIZE..].clone_from_slice(randombytes(NONCE_SIZE).as_ref());
+        data[CRYPTO_KEY_SIZE..].clone_from_slice(randombytes(POW_SIZE).as_ref());
 
         let target_number = make_target(target);
         loop {
             if let Ok(()) = check_proof_of_work_inner(data.as_ref(), &target_number) {
-                let mut nonce = [0; NONCE_SIZE];
+                let mut nonce = [0; POW_SIZE];
                 nonce.clone_from_slice(&data[CRYPTO_KEY_SIZE..]);
                 return ProofOfWork(nonce);
             } else {
@@ -74,8 +81,8 @@ impl ProofOfWork {
         }
     }
 
-    pub fn check(&self, pk: &PublicKey, target: f64) -> Result<(), ()> {
-        let mut data = [0; CRYPTO_KEY_SIZE + NONCE_SIZE];
+    pub fn check(&self, pk: &PublicKey, target: f64) -> PowResult {
+        let mut data = [0; CRYPTO_KEY_SIZE + POW_SIZE];
         data[..CRYPTO_KEY_SIZE].clone_from_slice(pk.as_ref().as_ref());
         data[CRYPTO_KEY_SIZE..].clone_from_slice(self.as_ref());
         check_proof_of_work(data.as_ref(), target)
@@ -86,12 +93,12 @@ impl ProofOfWork {
 // Will know proof is valid once receive first 60 bytes.
 // 2 chunk length + 2 port + 32 public key + 24 nonce = 60,
 // `check_proof_of_work(&received_raw_data[4..60], target)`
-pub fn check_proof_of_work(data: &[u8], target: f64) -> Result<(), ()> {
+pub fn check_proof_of_work(data: &[u8], target: f64) -> PowResult {
     let target_number = make_target(target);
     check_proof_of_work_inner(data, &target_number)
 }
 
-fn check_proof_of_work_inner(data: &[u8], target_number: &BigUint) -> Result<(), ()> {
+fn check_proof_of_work_inner(data: &[u8], target_number: &BigUint) -> PowResult {
     let hash = blake2b::digest_256(data);
     let hash_number = BigUint::from_bytes_le(hash.as_ref());
     if hash_number.le(target_number) {
@@ -119,9 +126,12 @@ fn make_target(target: f64) -> BigUint {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_proof_of_work, ProofOfWork};
     use hex::FromHex;
     use num_bigint::BigUint;
+
+    use crate::crypto_box::PublicKey;
+
+    use super::{check_proof_of_work, ProofOfWork};
 
     // `BigUint::from_bytes_le` is the same as `Z.of_bits`
     #[test]
@@ -155,12 +165,10 @@ mod tests {
 
     #[test]
     fn simple_generate() {
-        let pk = FromHex::from_hex(
-            "\
-            d8246d13d0270cbfff4046b6d94b05ab19920bc5ad9fb77f3e945c40b340e874\
-        ",
-        )
-        .unwrap();
-        let _ = ProofOfWork::generate(&pk, 20.0);
+        let pk =
+            PublicKey::from_hex("d8246d13d0270cbfff4046b6d94b05ab19920bc5ad9fb77f3e945c40b340e874")
+                .expect("Failed to generate public key");
+        let pow = ProofOfWork::generate(&pk, 3.5);
+        assert!(pow.check(&pk, 3.5).is_ok());
     }
 }

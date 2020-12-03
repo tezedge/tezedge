@@ -47,7 +47,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezos_environment: TezosEnvironmentConfiguration,
     #[get = "pub(crate)"]
-    network_version: NetworkVersion,
+    network_version: Arc<NetworkVersion>,
     #[get = "pub(crate)"]
     log: Logger,
 
@@ -70,7 +70,7 @@ impl RpcServiceEnvironment {
         actor: RpcServerRef,
         shell_channel: ShellChannelRef,
         tezos_environment: TezosEnvironmentConfiguration,
-        network_version: NetworkVersion,
+        network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
