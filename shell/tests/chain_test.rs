@@ -39,7 +39,7 @@ lazy_static! {
             private_node: false,
             initial_peers: vec![],
             peer_threshold: PeerConnectionThreshold::new(0, 10),
-            firewall_socket_path: None,
+            firewall_socket_path: common::firewall_socket_path(),
         },
         NETWORK_VERSION.clone(),
     );

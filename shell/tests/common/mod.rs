@@ -57,6 +57,12 @@ pub fn protocol_runner_executable_path() -> PathBuf {
     PathBuf::from(executable)
 }
 
+pub fn firewall_socket_path() -> Option<PathBuf> {
+    env::var("FIREWALL_SOCKET_PATH")
+        .map(PathBuf::from)
+        .ok()
+}
+
 /// Empty message
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NoopMessage;
