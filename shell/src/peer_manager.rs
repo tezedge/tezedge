@@ -6,6 +6,7 @@
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
+use std::mem;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -511,8 +512,11 @@ impl Receive<WhitelistAllIpAddresses> for PeerManager {
     type Msg = PeerManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: WhitelistAllIpAddresses, _sender: Sender) {
-        info!(ctx.system.log(), "Whitelisting all IP addresses");
-        self.ip_blacklist.clear();
+        info!(ctx.system.log(), "Cleanup blacklist");
+        let blacklist = mem::replace(&mut self.ip_blacklist, HashSet::new());
+        for ip in  blacklist {
+            self.send_firewall_command(FirewallCommand::Unblock(ip));
+        }
     }
 }
 
