@@ -316,14 +316,14 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>
             check_peer_count_last: None,
             shutting_down: false,
             firewall: {
-                let firewall_socket_path = p2p_config.firewall_socket_path
-                    .clone()
-                    .unwrap_or(PathBuf::from("/tmp/tezedge_firewall.sock"));
-                IpcClient::<(), ()>::new(firewall_socket_path)
-                    .connect()
-                    .map_err(|_e| ()) // TODO: report error
-                    .map(|(_, tx)| tx)
-                    .ok()
+                p2p_config.firewall_socket_path
+                    .and_then(|path| {
+                        IpcClient::<(), ()>::new(path)
+                        .connect()
+                        .map_err(|_e| ()) // TODO: report error
+                        .map(|(_, tx)| tx)
+                        .ok()
+                    })
             },
         }
     }
