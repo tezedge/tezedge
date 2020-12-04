@@ -635,6 +635,21 @@ dependencies = [
 
 [[package]]
 name = "crypto"
+version = "0.7.0"
+source = "git+https://github.com/simplestaking/tezedge?tag=v0.7.0#b897047745984b956d24cc13aad43e21f2a3ff62"
+dependencies = [
+ "base58",
+ "failure",
+ "failure_derive",
+ "hex",
+ "num-bigint",
+ "num-traits 0.2.14",
+ "rand 0.7.3",
+ "sodiumoxide",
+]
+
+[[package]]
+name = "crypto"
 version = "0.9.0"
 dependencies = [
  "base58",
@@ -1112,7 +1127,7 @@ dependencies = [
  "honggfuzz",
  "log",
  "rand 0.7.3",
- "tezos_encoding",
+ "tezos_encoding 0.9.0",
 ]
 
 [[package]]
@@ -1807,7 +1822,7 @@ dependencies = [
 name = "monitoring"
 version = "0.9.0"
 dependencies = [
- "crypto",
+ "crypto 0.9.0",
  "erased-serde",
  "failure",
  "networking",
@@ -1857,13 +1872,13 @@ name = "networking"
 version = "0.9.0"
 dependencies = [
  "bytes 0.5.6",
- "crypto",
+ "crypto 0.9.0",
  "failure",
  "futures",
  "hex",
  "riker",
  "slog",
- "tezos_encoding",
+ "tezos_encoding 0.9.0",
  "tezos_messages",
  "tokio",
 ]
@@ -2225,7 +2240,7 @@ name = "protocol-runner"
 version = "0.9.0"
 dependencies = [
  "clap",
- "crypto",
+ "crypto 0.9.0",
  "ctrlc",
  "failure",
  "failure_derive",
@@ -2583,7 +2598,7 @@ dependencies = [
  "assert-json-diff",
  "bytes 0.5.6",
  "chrono",
- "crypto",
+ "crypto 0.9.0",
  "enum-iterator",
  "failure",
  "futures",
@@ -2872,7 +2887,7 @@ name = "shell"
 version = "0.9.0"
 dependencies = [
  "chrono",
- "crypto",
+ "crypto 0.9.0",
  "dns-lookup",
  "failure",
  "futures",
@@ -2895,9 +2910,10 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
+ "tezedge-firewall-command",
  "tezos_api",
  "tezos_context",
- "tezos_encoding",
+ "tezos_encoding 0.9.0",
  "tezos_identity",
  "tezos_interop",
  "tezos_messages",
@@ -3059,7 +3075,7 @@ dependencies = [
  "blake2",
  "bytes 0.5.6",
  "commitlog",
- "crypto",
+ "crypto 0.9.0",
  "derive_builder",
  "failure",
  "getset",
@@ -3193,11 +3209,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezedge-firewall-command"
+version = "0.1.0"
+source = "git+https://github.com/simplestaking/tezedge-firewall.git?branch=develop#9b7ed81ab5c6ea51b7ec67bf0a77673937f333e3"
+dependencies = [
+ "bytes 0.5.6",
+ "hex",
+ "lazy_static",
+ "serde 1.0.117",
+ "tezos_encoding 0.7.0",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "tezos_api"
 version = "0.9.0"
 dependencies = [
  "chrono",
- "crypto",
+ "crypto 0.9.0",
  "derive_builder",
  "enum-iterator",
  "failure",
@@ -3213,7 +3243,7 @@ name = "tezos_client"
 version = "0.9.0"
 dependencies = [
  "assert-json-diff",
- "crypto",
+ "crypto 0.9.0",
  "enum-iterator",
  "failure",
  "hex",
@@ -3235,13 +3265,30 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
+version = "0.7.0"
+source = "git+https://github.com/simplestaking/tezedge?tag=v0.7.0#b897047745984b956d24cc13aad43e21f2a3ff62"
+dependencies = [
+ "bit-vec",
+ "byteorder",
+ "bytes 0.5.6",
+ "chrono",
+ "crypto 0.7.0",
+ "failure",
+ "hex",
+ "num-bigint",
+ "num-traits 0.2.14",
+ "serde 1.0.117",
+]
+
+[[package]]
+name = "tezos_encoding"
 version = "0.9.0"
 dependencies = [
  "bit-vec",
  "byteorder",
  "bytes 0.5.6",
  "chrono",
- "crypto",
+ "crypto 0.9.0",
  "failure",
  "hex",
  "num-bigint",
@@ -3254,7 +3301,7 @@ name = "tezos_identity"
 version = "0.9.0"
 dependencies = [
  "assert-json-diff",
- "crypto",
+ "crypto 0.9.0",
  "failure",
  "failure_derive",
  "hex",
@@ -3268,7 +3315,7 @@ version = "0.9.0"
 dependencies = [
  "colored",
  "criterion",
- "crypto",
+ "crypto 0.9.0",
  "failure",
  "fs_extra",
  "futures",
@@ -3301,7 +3348,7 @@ dependencies = [
  "assert-json-diff",
  "bytes 0.5.6",
  "chrono",
- "crypto",
+ "crypto 0.9.0",
  "derive_builder",
  "failure",
  "getset",
@@ -3311,14 +3358,14 @@ dependencies = [
  "num-traits 0.2.14",
  "serde 1.0.117",
  "serde_json",
- "tezos_encoding",
+ "tezos_encoding 0.9.0",
 ]
 
 [[package]]
 name = "tezos_wrapper"
 version = "0.9.0"
 dependencies = [
- "crypto",
+ "crypto 0.9.0",
  "failure",
  "failure_derive",
  "getset",

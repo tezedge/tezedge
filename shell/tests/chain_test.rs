@@ -39,6 +39,7 @@ lazy_static! {
             private_node: false,
             initial_peers: vec![],
             peer_threshold: PeerConnectionThreshold::new(0, 10),
+            firewall_socket_path: None,
         },
         NETWORK_VERSION.clone(),
     );
@@ -1094,6 +1095,7 @@ mod test_actor {
                         .unwrap()
                         .insert(peer_public_key, "BLACKLISTED".to_string());
                 }
+                NetworkChannelMsg::PeerDisconnected(_) => {}
             }
             Ok(())
         }

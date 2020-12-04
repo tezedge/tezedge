@@ -11,7 +11,7 @@ use riker::actors::*;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-use crate::PeerId;
+use crate::{PeerId, PeerPublicKey};
 
 use super::peer::PeerRef;
 
@@ -47,6 +47,13 @@ pub struct PeerMessageReceived {
     pub message: Arc<PeerMessageResponse>,
 }
 
+/// Peer has been disconncted
+#[derive(Clone, Debug)]
+pub struct PeerDisconnected {
+    pub public_key: PeerPublicKey,
+    pub address: SocketAddr,
+}
+
 /// Network channel event message.
 #[derive(Clone, Debug)]
 pub enum NetworkChannelMsg {
@@ -55,6 +62,7 @@ pub enum NetworkChannelMsg {
     PeerBlacklisted(Arc<PeerId>),
     BlacklistPeer(Arc<PeerId>, String),
     PeerMessageReceived(PeerMessageReceived),
+    PeerDisconnected(PeerDisconnected),
 }
 
 impl From<PeerCreated> for NetworkChannelMsg {
@@ -72,6 +80,12 @@ impl From<PeerBootstrapped> for NetworkChannelMsg {
 impl From<PeerMessageReceived> for NetworkChannelMsg {
     fn from(msg: PeerMessageReceived) -> Self {
         NetworkChannelMsg::PeerMessageReceived(msg)
+    }
+}
+
+impl From<PeerDisconnected> for NetworkChannelMsg {
+    fn from(msg: PeerDisconnected) -> Self {
+        NetworkChannelMsg::PeerDisconnected(msg)
     }
 }
 

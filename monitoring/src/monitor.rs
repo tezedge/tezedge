@@ -241,7 +241,8 @@ impl Receive<NetworkChannelMsg> for Monitor {
             }
             NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, &ctx.system.log()),
             NetworkChannelMsg::PeerBlacklisted(..) => {},
-            NetworkChannelMsg::BlacklistPeer(..) => {}
+            NetworkChannelMsg::BlacklistPeer(..) => {},
+            NetworkChannelMsg::PeerDisconnected(_) => {},
         }
     }
 }

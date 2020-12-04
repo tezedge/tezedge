@@ -7,6 +7,7 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -25,11 +26,12 @@ use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use networking::PeerId;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
+use ipc::{IpcClient, IpcSender};
+use tezedge_firewall_command::Command as FirewallCommand;
 
 use crate::PeerConnectionThreshold;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::subscription::*;
-use ipc::IpcClient;
 
 /// Timeout for outgoing connections
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -70,6 +72,7 @@ pub struct P2p {
     pub peer_threshold: PeerConnectionThreshold,
     pub disable_mempool: bool,
     pub private_node: bool,
+    pub firewall_socket_path: Option<PathBuf>,
 }
 
 /// This actor is responsible for peer management.
@@ -118,6 +121,8 @@ pub struct PeerManager {
     check_peer_count_last: Option<Instant>,
     /// Indicates that system is shutting down
     shutting_down: bool,
+    /// Firewall sender
+    firewall: Option<IpcSender<()>>,
 }
 
 /// Reference to [peer manager](PeerManager) actor.
@@ -218,7 +223,7 @@ impl PeerManager {
         );
         self.ip_blacklist.insert(address.ip());
 
-        // TODO: call firewall
+        self.send_firewall_command(FirewallCommand::Block(address.ip()))
     }
 
     fn blacklist_peer(&mut self, peer_id: Arc<PeerId>, reason: String, actor_system: &ActorSystem) {
@@ -275,6 +280,14 @@ impl PeerManager {
             .collect::<Vec<_>>();
         self.potential_peers.extend(sock_addresses);
     }
+
+    fn send_firewall_command(&mut self, cmd: FirewallCommand) {
+        if let Some(ref mut firewall) = self.firewall {
+            // such simple serialization cannot fail
+            let cmd = cmd.as_bytes().unwrap();
+            firewall.send_bytes(cmd).expect("TODO: error handling - send message");
+        }
+    }
 }
 
 impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>, NetworkVersion, P2p)> for PeerManager {
@@ -301,6 +314,16 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, Handle, Arc<Identity>
             discovery_last: None,
             check_peer_count_last: None,
             shutting_down: false,
+            firewall: {
+                let firewall_socket_path = p2p_config.firewall_socket_path
+                    .clone()
+                    .unwrap_or(PathBuf::from("/tmp/tezedge_firewall.sock"));
+                IpcClient::<(), ()>::new(firewall_socket_path)
+                    .connect()
+                    .map_err(|_e| ()) // TODO: report error
+                    .map(|(_, tx)| tx)
+                    .ok()
+            },
         }
     }
 }
@@ -332,6 +355,8 @@ impl Actor for PeerManager {
         let myself = ctx.myself();
         let rx_run = self.rx_run.clone();
         let log = ctx.system.log();
+
+        self.send_firewall_command(FirewallCommand::FilterLocalPort(listener_port));
 
         // start to listen for incoming p2p connections
         self.tokio_executor.spawn(async move {
@@ -472,6 +497,11 @@ impl Receive<NetworkChannelMsg> for PeerManager {
             NetworkChannelMsg::BlacklistPeer(peer_id, reason) => {
                 self.blacklist_peer(peer_id, reason, &ctx.system);
             }
+            NetworkChannelMsg::PeerDisconnected(peer_disconnected) => {
+                let mut pk = [0; 32];
+                pk.clone_from_slice(peer_disconnected.public_key.as_ref());
+                self.send_firewall_command(FirewallCommand::Disconnected(peer_disconnected.address, pk));
+            }
             _ => ()
         }
     }
@@ -500,6 +530,7 @@ impl Receive<ConnectToPeer> for PeerManager {
             let disable_mempool = self.disable_mempool;
             let private_node = self.private_node;
 
+            self.send_firewall_command(FirewallCommand::FilterRemoteAddr(msg.address.clone()));
             self.tokio_executor.spawn(async move {
                 info!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name());
                 match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
@@ -538,15 +569,8 @@ impl Receive<AcceptPeer> for PeerManager {
     }
 }
 
-/// Start to listen for incoming connections indefinitely.
+/// Start to listen for incoming connections infinitely.
 async fn begin_listen_incoming(listener_port: u16, peer_manager: PeerManagerRef, rx_run: Arc<AtomicBool>, log: &Logger) {
-    // TODO: POC: add optional socket path to `pub struct P2p {`
-
-    // TODO: POC: cfg to socket path
-    let firewall: IpcClient<NoopMessage, NoopMessage> = IpcClient::new("/tmp/tezedge_firewall.sock");
-    let (_, mut tx) = firewall.connect().expect("TODO: error handling");
-    tx.send_all(vec![3, 38, 4]).expect("TODO: error handling - send message");
-
     let listener_address = format!("0.0.0.0:{}", listener_port).parse::<SocketAddr>().expect("Failed to parse listener address");
     let mut listener = TcpListener::bind(&listener_address).await.expect("Failed to bind to address");
     info!(log, "Start to listen for incoming p2p connections"; "port" => listener_port);
@@ -596,10 +620,3 @@ struct PeerState {
     /// Peer IP address
     address: SocketAddr,
 }
-
-use serde::{Deserialize, Serialize};
-
-// TODO: POC:
-/// Empty message
-#[derive(Serialize, Deserialize, Debug)]
-pub struct NoopMessage;

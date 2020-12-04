@@ -20,7 +20,7 @@ use std::time::Duration;
 use failure::Fail;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use timeout_io::Acceptor;
 
 /// IPC communication errors
@@ -67,6 +67,12 @@ impl<S> IpcSender<S> {
 }
 
 impl<S: Serialize> IpcSender<S> {
+    // TODO: rename both functions
+    // - send - adds lenght
+    //
+    // TODO: maybe refactor:
+    // - send -> send_with_length (will use send_bytes)
+
     /// Serialize and sent `value` through IPC channel.
     ///
     /// This is a blocking operation,
@@ -85,15 +91,10 @@ impl<S: Serialize> IpcSender<S> {
             .flush()
             .map_err(|err| IpcError::SendError { reason: err })
     }
+}
 
-    /// TODO: rename both functions
-    /// - send - adds lenght
-    /// - send_all - just send bytes
-    ///
-    /// TODO: maybe refactor:
-    /// - send -> send_with_length (will use send_bytes)
-    /// - send_all -> send_bytes
-    pub fn send_all(&mut self, value: Vec<u8>) -> Result<(), IpcError> {
+impl IpcSender<()> {
+    pub fn send_bytes(&mut self, value: Vec<u8>) -> Result<(), IpcError> {
         self.0
             .write_all(&value)
             .map_err(|err| IpcError::SendError { reason: err })?;
@@ -126,10 +127,7 @@ impl<R> IpcReceiver<R> {
     }
 }
 
-impl<R> IpcReceiver<R>
-where
-    R: for<'de> Deserialize<'de>,
-{
+impl<R: DeserializeOwned> IpcReceiver<R> {
     /// Read bytes from established IPC channel and deserialize into a rust type.
     pub fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 8];
@@ -170,11 +168,7 @@ impl<R, S> Drop for IpcServer<R, S> {
     }
 }
 
-impl<R, S> IpcServer<R, S>
-where
-    R: for<'de> Deserialize<'de>,
-    S: Serialize,
-{
+impl<R, S> IpcServer<R, S> {
     const ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
 
     /// Bind IpcServer to random socket in temp folder
@@ -239,11 +233,7 @@ impl<R, S> IpcClient<R, S> {
     }
 }
 
-impl<R, S> IpcClient<R, S>
-where
-    R: for<'de> Deserialize<'de>,
-    S: Serialize,
-{
+impl<R, S> IpcClient<R, S> {
     /// Create new client instance.
     ///
     /// # Arguments
@@ -276,11 +266,7 @@ pub fn temp_sock() -> PathBuf {
     temp_dir.join(chars + ".sock")
 }
 
-fn split<R, S>(stream: UnixStream) -> Result<(IpcReceiver<R>, IpcSender<S>), io::Error>
-where
-    R: for<'de> Deserialize<'de>,
-    S: Serialize,
-{
+fn split<R, S>(stream: UnixStream) -> Result<(IpcReceiver<R>, IpcSender<S>), io::Error> {
     Ok((
         IpcReceiver(stream.try_clone()?, PhantomData),
         IpcSender(stream, PhantomData),

@@ -601,6 +601,8 @@ impl Environment {
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
+                firewall_socket_path: args.value_of("firewall-socket-path")
+                    .map(From::from)
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

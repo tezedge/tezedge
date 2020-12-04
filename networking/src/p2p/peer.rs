@@ -24,7 +24,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::{PeerId, PeerPublicKey};
 
-use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
+use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived, PeerDisconnected};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
@@ -272,7 +272,7 @@ impl Receive<Bootstrap> for Peer {
                     debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "peer_metadata" => format!("{:?}", &peer_metadata));
                     setup_net(&net, tx).await;
 
-                    let peer_id = PeerId::new(myself.clone(), public_key, peer_address.clone());
+                    let peer_id = PeerId::new(myself.clone(), public_key.clone(), peer_address.clone());
                     let peer_id_marker = peer_id.peer_id_marker.clone();
 
                     // notify that peer was bootstrapped successfully
@@ -286,7 +286,7 @@ impl Receive<Bootstrap> for Peer {
 
                     // begin to process incoming messages in a loop
                     let log = system.log().new(slog::o!("peer_id" => peer_id_marker));
-                    begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address).await;
+                    begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address, public_key).await;
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
@@ -472,7 +472,7 @@ fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: boo
 }
 
 /// Start to process incoming data
-async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger, peer_address: SocketAddr) {
+async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger, peer_address: SocketAddr, peer_public_key: PeerPublicKey) {
     info!(log, "Starting to accept messages"; "ip" => format!("{:?}", &peer_address));
 
     while net.rx_run.load(Ordering::Acquire) {
@@ -519,4 +519,15 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
     }
 
     info!(log, "Stopped to accept messages"; "ip" => format!("{:?}", &peer_address));
+
+    event_channel.tell(
+        Publish {
+            msg: PeerDisconnected {
+                public_key: peer_public_key,
+                address: peer_address,
+            }.into(),
+            topic: NetworkChannelTopic::NetworkEvents.into(),
+        },
+        Some(myself.clone().into()),
+    );
 }
