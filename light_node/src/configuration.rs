@@ -393,7 +393,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .required(false)
             .help("Path to the json file with key-values, which will be added to empty context on startup and commit genesis.")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }));
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }))
+        .arg(Arg::with_name("firewall-socket-path")
+            .long("firewall-socket-path")
+            .takes_value(true)
+            .value_name("PATH")
+            .required(false)
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Firewall socket not found at '{}'", v)) }));
     app
 }
 
@@ -601,6 +607,8 @@ impl Environment {
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
+                firewall_socket_path: args.value_of("firewall-socket-path")
+                    .map(|s| s.parse::<PathBuf>().unwrap())
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
