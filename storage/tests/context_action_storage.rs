@@ -13,9 +13,9 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__ctx_storage_get_by_block_hash")?;
 
     let str_block_hash_1 = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
-    let block_hash_1 = HashType::BlockHash.string_to_bytes(str_block_hash_1)?;
+    let block_hash_1 = HashType::BlockHash.b58check_to_hash(str_block_hash_1)?;
     let str_block_hash_2 = "BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ";
-    let block_hash_2 = HashType::BlockHash.string_to_bytes(str_block_hash_2)?;
+    let block_hash_2 = HashType::BlockHash.b58check_to_hash(str_block_hash_2)?;
     let value_1_0 = ContextAction::Set { key: vec!("hello".to_string(), "this".to_string(), "is".to_string(), "dog".to_string()), value: vec![10, 200], operation_hash: None, block_hash: Some(str_block_hash_1.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0, ignored: false };
     let value_1_1 = ContextAction::Set { key: vec!("hello".to_string(), "world".to_string()), value: vec![11, 200], operation_hash: None, block_hash: Some(str_block_hash_1.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0, ignored: false };
     let value_2_0 = ContextAction::Set { key: vec!("nice".to_string(), "to meet you".to_string()), value: vec![20, 200], operation_hash: None, block_hash: Some(str_block_hash_2.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0, ignored: false };
@@ -62,7 +62,7 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__ctx_storage_get_by_contract_address")?;
 
     let str_block_hash = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
-    let block_hash = HashType::BlockHash.string_to_bytes(str_block_hash)?;
+    let block_hash = HashType::BlockHash.b58check_to_hash(str_block_hash)?;
     let value = ContextAction::Set {
         key: vec![
             "data".to_string(),

@@ -116,7 +116,7 @@ pub fn get_constants_for_rpc(
     bytes: &[u8],
     protocol: ProtocolHash,
 ) -> Result<Option<RpcJsonMap>, Error> {
-    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&protocol);
+    let hash: &str = &HashType::ProtocolHash.hash_to_b58check(&protocol);
     match hash {
         proto_001::PROTOCOL_HASH => {
             use crate::protocol::proto_001::constants::{ParametricConstants, FIXED};

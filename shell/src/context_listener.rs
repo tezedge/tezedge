@@ -159,7 +159,7 @@ fn listen_protocol_events(
                         "count" => event_count,
                         "context_hash" => match &context.get_last_commit_hash() {
                             None => "-none-".to_string(),
-                            Some(c) => HashType::ContextHash.bytes_to_string(c)
+                            Some(c) => HashType::ContextHash.hash_to_b58check(c)
                         }
                     );
                 }
@@ -189,9 +189,9 @@ fn listen_protocol_events(
                                                       *date)?;
                             assert_eq!(&hash, new_context_hash,
                                        "Invalid context_hash for block: {}, expected: {}, but was: {}",
-                                       HashType::BlockHash.bytes_to_string(block_hash),
-                                       HashType::ContextHash.bytes_to_string(new_context_hash),
-                                       HashType::ContextHash.bytes_to_string(&hash),
+                                       HashType::BlockHash.hash_to_b58check(block_hash),
+                                       HashType::ContextHash.hash_to_b58check(new_context_hash),
+                                       HashType::ContextHash.hash_to_b58check(&hash),
                             );
                         }
 

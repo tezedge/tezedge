@@ -176,8 +176,8 @@ pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration
         log,
         "Storage based on data";
         "chain_name" => &tezos_env.version,
-        "init_data.chain_id" => format!("{:?}", HashType::ChainId.bytes_to_string(&init_data.chain_id)),
-        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.bytes_to_string(&init_data.genesis_block_header_hash)),
+        "init_data.chain_id" => format!("{:?}", HashType::ChainId.hash_to_b58check(&init_data.chain_id)),
+        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.hash_to_b58check(&init_data.genesis_block_header_hash)),
         "storage_db_path" => format!("{:?}", storage_db_path),
         "context_db_path" => format!("{:?}", context_db_path),
         "patch_context" => match patch_context {
@@ -307,8 +307,8 @@ pub fn initialize_storage_with_genesis_block(
 
     info!(log,
         "Storage initialized with genesis block";
-        "genesis" => HashType::BlockHash.bytes_to_string(&genesis_with_hash.hash),
-        "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash),
+        "genesis" => HashType::BlockHash.hash_to_b58check(&genesis_with_hash.hash),
+        "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash),
     );
     Ok(genesis_with_hash)
 }

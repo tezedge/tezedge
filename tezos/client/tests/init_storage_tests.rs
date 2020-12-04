@@ -116,7 +116,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
                 assert_eq!(
                     *commit_hash,
                     HashType::ContextHash
-                        .string_to_bytes("CoVBYdAGWBoDTkiVXJEGX6FQvDN1oGCPJu8STMvaTYdeh7N3KGTz")?
+                        .b58check_to_hash("CoVBYdAGWBoDTkiVXJEGX6FQvDN1oGCPJu8STMvaTYdeh7N3KGTz")?
                 )
             } else {
                 panic!("Expected some context hash")
@@ -164,7 +164,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
                 assert_eq!(
                     *commit_hash,
                     HashType::ContextHash
-                        .string_to_bytes("CoVewPVcrKctWXSbrRgoGD6NmkdbDhmTFk5oi1FZpEcRT3bmKxdQ")?
+                        .b58check_to_hash("CoVewPVcrKctWXSbrRgoGD6NmkdbDhmTFk5oi1FZpEcRT3bmKxdQ")?
                 )
             } else {
                 panic!("Expected some context hash")

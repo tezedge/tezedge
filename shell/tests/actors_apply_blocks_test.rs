@@ -100,7 +100,7 @@ fn check_context(expected_context_hash: ContextHash, persistent_storage: &Persis
 
     // check protocol
     if let Some(data) = context.get_key_from_history(&expected_context_hash, &context_key!("protocol"))? {
-        assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.bytes_to_string(&data));
+        assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.hash_to_b58check(&data));
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
     }
@@ -211,8 +211,8 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     shell_channel: ShellChannelRef,
     persistent_storage: &PersistentStorage,
     last_applied_request_1324: &String,
-    request_1325: &String,
-    request_1326: &String) -> Result<(), failure::Error> {
+    request_1325: &str,
+    request_1326: &str) -> Result<(), failure::Error> {
     let last_applied_block: BlockHash = samples::from_captured_bytes(last_applied_request_1324)?.block_header.message_hash()?;
     let mut mempool_storage = MempoolStorage::new(&persistent_storage);
 
@@ -268,7 +268,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     assert!(current_mempool_state.result.refused.is_empty());
 
     // add operations from 1326 to mempool - should by branch_delay
-    let operations_from_1326 = add_operations_to_mempool(request_1326, shell_channel.clone(), &mut mempool_storage)?;
+    let operations_from_1326 = add_operations_to_mempool(request_1326, shell_channel, &mut mempool_storage)?;
     let operations_from_1326_count = operations_from_1326.len();
     assert_ne!(0, operations_from_1326_count);
 
@@ -293,7 +293,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     Ok(())
 }
 
-fn add_operations_to_mempool(request: &String, shell_channel: ShellChannelRef, mempool_storage: &mut MempoolStorage) -> Result<HashSet<OperationHash>, failure::Error> {
+fn add_operations_to_mempool(request: &str, shell_channel: ShellChannelRef, mempool_storage: &mut MempoolStorage) -> Result<HashSet<OperationHash>, failure::Error> {
     let request = samples::from_captured_bytes(request)?;
     let mut operation_hashes = HashSet::new();
     for operations in request.operations {

@@ -886,7 +886,7 @@ mod test_node_peer {
                                         // send back response
                                         let mut tx_lock = tx.lock().await;
                                         if let Some(tx) = tx_lock.as_mut() {
-                                            tx.write_message(&response).await.expect(&format!("[{}] Failed to send message", name));
+                                            tx.write_message(&response).await.unwrap_or_else(|_| panic!("[{}] Failed to send message", name));
                                             drop(tx_lock);
                                         }
                                     };
@@ -1123,7 +1123,7 @@ mod test_actor {
                     break Err(
                         failure::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, HashType::CryptoboxPublicKeyHash.bytes_to_string(peer_public_key_hash), expected_state, timeout, delay
+                            peer.name, HashType::CryptoboxPublicKeyHash.hash_to_b58check(peer_public_key_hash), expected_state, timeout, delay
                         )
                     );
                 }

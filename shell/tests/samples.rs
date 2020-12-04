@@ -47,7 +47,7 @@ pub struct OperationsForBlocksMessageKey {
 impl OperationsForBlocksMessageKey {
     pub fn new(block_hash: BlockHash, validation_pass: i8) -> Self {
         OperationsForBlocksMessageKey {
-            block_hash: HashType::BlockHash.bytes_to_string(&block_hash),
+            block_hash: HashType::BlockHash.hash_to_b58check(&block_hash),
             validation_pass,
         }
     }
@@ -69,7 +69,7 @@ pub fn read_data_zip(zip_file_name: &str, tezos_env: TezosEnvironment) -> (Vec<S
         .join("tests")
         .join("resources")
         .join(zip_file_name);
-    let file = File::open(path).expect(&format!("Couldn't open file: tests/resources/{}", zip_file_name));
+    let file = File::open(path).unwrap_or_else(|_| panic!("Couldn't open file: tests/resources/{}", zip_file_name));
     let mut archive = zip::ZipArchive::new(file).unwrap();
 
     // 1. get requests from files sorted by name
@@ -99,10 +99,10 @@ pub fn read_data_zip(zip_file_name: &str, tezos_env: TezosEnvironment) -> (Vec<S
     for line in lines {
         if let Ok(mut line) = line {
             let _ = line.remove(0);
-            let split = line.split("|").collect_vec();
+            let split = line.split('|').collect_vec();
             assert_eq!(3, split.len());
 
-            let block_hash = HashType::BlockHash.string_to_bytes(split[0]).expect("Failed to parse block_hash");
+            let block_hash = HashType::BlockHash.b58check_to_hash(split[0]).expect("Failed to parse block_hash");
             let validation_pass = split[1].parse::<i8>().expect("Failed to parse validation_pass");
 
             let operations_for_blocks_message = hex::decode(split[2]).expect("Failed to parse operations_for_blocks_message");

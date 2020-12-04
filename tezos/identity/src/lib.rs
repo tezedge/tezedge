@@ -78,7 +78,7 @@ impl Identity {
                 reason: "Missing valid 'peer_id'".to_string(),
             })?;
         let peer_id = HashType::CryptoboxPublicKeyHash
-            .string_to_bytes(peer_id_str)
+            .b58check_to_hash(peer_id_str)
             .map_err(|e| IdentityError::IdentityFieldError {
                 reason: format!("Missing valid 'peer_id': {}", e),
             })?;
@@ -138,7 +138,7 @@ impl Identity {
         let mut identity: HashMap<&'static str, String> = Default::default();
         identity.insert(
             "peer_id",
-            HashType::CryptoboxPublicKeyHash.bytes_to_string(&self.peer_id),
+            HashType::CryptoboxPublicKeyHash.hash_to_b58check(&self.peer_id),
         );
         identity.insert("public_key", hex::encode(self.public_key.as_ref()));
         identity.insert("secret_key", hex::encode(self.secret_key.as_ref()));
@@ -177,10 +177,6 @@ mod tests {
         assert_eq!(identity.public_key, converted.public_key);
         assert_eq!(identity.secret_key, converted.secret_key);
         assert_eq!(identity.proof_of_work_stamp, converted.proof_of_work_stamp);
-
-        let peer_id: CryptoboxPublicKeyHash =
-            (HashType::CryptoboxPublicKeyHash.hash_fn())(identity.public_key.as_ref().as_ref());
-        assert_eq!(identity.peer_id, peer_id);
 
         Ok(())
     }

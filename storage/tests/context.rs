@@ -32,7 +32,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     context.set(&None, &context_key!("data/rolls/owner/current/index/123"), &vec![1, 2, 3, 4, 5, 6])?;
 
     // commit
-    let new_context_hash: ContextHash = HashType::ContextHash.string_to_bytes("CoVf53zSDGcSWS74Mxe2i2RJnVfCaMrAjxK2Xq7tgiFMtkNwUdPv")?;
+    let new_context_hash: ContextHash = HashType::ContextHash.b58check_to_hash("CoVf53zSDGcSWS74Mxe2i2RJnVfCaMrAjxK2Xq7tgiFMtkNwUdPv")?;
 
     let hash = context.commit(
         &block.hash,
@@ -72,7 +72,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     context.set(&None, &context_key!("data/rolls/owner/current/index/123"), &vec![1, 2, 3, 4, 5, 6, 7])?;
 
     // commit
-    let context_hash_1: ContextHash = HashType::ContextHash.string_to_bytes("CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB")?;
+    let context_hash_1: ContextHash = HashType::ContextHash.b58check_to_hash("CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB")?;
 
     let hash = context.commit(
         &block.hash,
@@ -107,7 +107,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_2: ContextHash = HashType::ContextHash.string_to_bytes("CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF")?;
+    let context_hash_2: ContextHash = HashType::ContextHash.b58check_to_hash("CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF")?;
 
     let hash = context.commit(
         &block.hash,
@@ -151,7 +151,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     context.set(&None, &context_key!("data/rolls/owner/current/index/123"), &vec![1, 2, 3, 4, 5, 6, 7])?;
 
     // commit
-    let context_hash_1: ContextHash = HashType::ContextHash.string_to_bytes("CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR")?;
+    let context_hash_1: ContextHash = HashType::ContextHash.b58check_to_hash("CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR")?;
 
     let hash = context.commit(
         &block.hash,
@@ -182,7 +182,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_2: ContextHash = HashType::ContextHash.string_to_bytes("CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G")?;
+    let context_hash_2: ContextHash = HashType::ContextHash.b58check_to_hash("CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G")?;
 
     let hash = context.commit(
         &block.hash,
@@ -210,17 +210,17 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
 fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, failure::Error> {
     Ok(
         BlockHeaderWithHash {
-            hash: HashType::BlockHash.string_to_bytes(block_hash)?,
+            hash: HashType::BlockHash.b58check_to_hash(block_hash)?,
             header: Arc::new(
                 BlockHeaderBuilder::default()
                     .level(level)
                     .proto(0)
-                    .predecessor(HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?)
+                    .predecessor(HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?)
                     .timestamp(5_635_634)
                     .validation_pass(0)
-                    .operations_hash(HashType::OperationListListHash.string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
+                    .operations_hash(HashType::OperationListListHash.b58check_to_hash("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
                     .fitness(vec![])
-                    .context(HashType::ContextHash.string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
+                    .context(HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
                     .protocol_data(vec![])
                     .build().unwrap()
             ),

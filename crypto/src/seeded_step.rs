@@ -98,7 +98,7 @@ mod tests {
         let step = Step::init(
             &Seed::new(&generate_key_string('s'), &generate_key_string('r')),
             &HashType::BlockHash
-                .string_to_bytes("BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm")?,
+                .b58check_to_hash("BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm")?,
         );
         assert_step_state(
             &step,
@@ -115,7 +115,7 @@ mod tests {
         let mut step = Step::init(
             &Seed::new(&generate_key_string('s'), &generate_key_string('r')),
             &HashType::BlockHash
-                .string_to_bytes("BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm")?,
+                .b58check_to_hash("BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm")?,
         );
         assert_step_state(
             &step,

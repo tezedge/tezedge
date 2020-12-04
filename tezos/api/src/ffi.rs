@@ -106,8 +106,8 @@ impl fmt::Debug for PrevalidatorWrapper {
         write!(
             f,
             "PrevalidatorWrapper[chain_id: {}, protocol: {}, context_fitness: {}]",
-            HashType::ChainId.bytes_to_string(&self.chain_id),
-            HashType::ProtocolHash.bytes_to_string(&self.protocol),
+            HashType::ChainId.hash_to_b58check(&self.chain_id),
+            HashType::ProtocolHash.hash_to_b58check(&self.protocol),
             match &self.context_fitness {
                 Some(fitness) => display_fitness(fitness),
                 None => "-none-".to_string(),
@@ -187,7 +187,7 @@ impl fmt::Debug for Applied {
         write!(
             f,
             "[hash: {}, protocol_data_json: {}]",
-            HashType::OperationHash.bytes_to_string(&self.hash),
+            HashType::OperationHash.hash_to_b58check(&self.hash),
             &self.protocol_data_json
         )
     }
@@ -211,7 +211,7 @@ impl fmt::Debug for Errored {
         write!(
             f,
             "[hash: {}, protocol_data_json_with_error_json: {:?}]",
-            HashType::OperationHash.bytes_to_string(&self.hash),
+            HashType::OperationHash.hash_to_b58check(&self.hash),
             &self.protocol_data_json_with_error_json
         )
     }
@@ -276,13 +276,13 @@ pub struct InitProtocolContextResult {
 impl fmt::Debug for InitProtocolContextResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let genesis_commit_hash = match &self.genesis_commit_hash {
-            Some(hash) => HashType::ContextHash.bytes_to_string(hash),
+            Some(hash) => HashType::ContextHash.hash_to_b58check(hash),
             None => "-none-".to_string(),
         };
         let supported_protocol_hashes = self
             .supported_protocol_hashes
             .iter()
-            .map(|ph| HashType::ProtocolHash.bytes_to_string(ph))
+            .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph))
             .collect::<Vec<String>>();
         write!(
             f,
@@ -826,7 +826,7 @@ mod tests {
             &mut validate_result.applied,
             vec![Applied {
                 hash: HashType::OperationHash
-                    .string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                    .b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
                 protocol_data_json: "protocol_data_json1".to_string(),
             },],
         ));
@@ -841,7 +841,7 @@ mod tests {
             &mut validate_result.applied,
             vec![Applied {
                 hash: HashType::OperationHash
-                    .string_to_bytes("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                    .b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
                 protocol_data_json: "protocol_data_json2".to_string(),
             },],
         ));
@@ -856,7 +856,7 @@ mod tests {
             &mut validate_result.applied,
             vec![Applied {
                 hash: HashType::OperationHash
-                    .string_to_bytes("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
+                    .b58check_to_hash("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?,
                 protocol_data_json: "protocol_data_json2".to_string(),
             },],
         ));
@@ -868,18 +868,18 @@ mod tests {
     fn validate_operation_result(op1: &str, op2: &str) -> ValidateOperationResult {
         let applied = vec![
             Applied {
-                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op1).expect("Error"),
                 protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
             },
             Applied {
-                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op2).expect("Error"),
                 protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
             }
         ];
 
         let branch_delayed = vec![
             Errored {
-                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op1).expect("Error"),
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
@@ -887,7 +887,7 @@ mod tests {
                 },
             },
             Errored {
-                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op2).expect("Error"),
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
@@ -898,7 +898,7 @@ mod tests {
 
         let branch_refused = vec![
             Errored {
-                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op1).expect("Error"),
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
@@ -906,7 +906,7 @@ mod tests {
                 },
             },
             Errored {
-                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op2).expect("Error"),
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
@@ -917,7 +917,7 @@ mod tests {
 
         let refused = vec![
             Errored {
-                hash: HashType::OperationHash.string_to_bytes(op1).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op1).expect("Error"),
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
@@ -925,7 +925,7 @@ mod tests {
                 },
             },
             Errored {
-                hash: HashType::OperationHash.string_to_bytes(op2).expect("Error"),
+                hash: HashType::OperationHash.b58check_to_hash(op2).expect("Error"),
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),

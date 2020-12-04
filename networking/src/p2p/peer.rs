@@ -386,7 +386,7 @@ pub async fn bootstrap(
 
     // generate public key hash for PublicKey, which will be used as a peer_id
     let peer_public_key_hash = peer_public_key.public_key_hash();
-    let peer_id_marker = HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer_public_key_hash);
+    let peer_id_marker = HashType::CryptoboxPublicKeyHash.hash_to_b58check(&peer_public_key_hash);
     let log = log.new(o!("peer_id" => peer_id_marker.clone()));
 
     // from now on all messages will be encrypted

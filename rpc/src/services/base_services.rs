@@ -74,14 +74,14 @@ pub(crate) fn live_blocks(_: ChainId, block_hash: BlockHash, env: &RpcServiceEnv
         Some((_, json_data)) => {
             json_data.max_operations_ttl().into()
         }
-        None => bail!("Max_ttl not found for block id: {}", HashType::BlockHash.bytes_to_string(&block_hash))
+        None => bail!("Max_ttl not found for block id: {}", HashType::BlockHash.hash_to_b58check(&block_hash))
     };
 
     // get live blocks
     let live_blocks = block_meta_storage
         .get_live_blocks(block_hash, max_ttl)?
         .iter()
-        .map(|block| HashType::BlockHash.bytes_to_string(&block))
+        .map(|block| HashType::BlockHash.hash_to_b58check(&block))
         .collect();
 
     Ok(live_blocks)
@@ -113,7 +113,7 @@ pub(crate) fn get_block_protocols(chain_id: &ChainId, block_hash: &BlockHash, pe
             block_info.metadata["next_protocol"].to_string().replace("\"", ""),
         ))
     } else {
-        bail!("Cannot retrieve protocols, block_hash {} not found!", HashType::BlockHash.bytes_to_string(block_hash))
+        bail!("Cannot retrieve protocols, block_hash {} not found!", HashType::BlockHash.hash_to_b58check(block_hash))
     }
 }
 
@@ -127,7 +127,7 @@ pub(crate) fn get_block_operation_hashes(chain_id: &ChainId, block_hash: &BlockH
             .collect();
         Ok(operations)
     } else {
-        bail!("Cannot retrieve operation hashes from block, block_hash {} not found!", HashType::BlockHash.bytes_to_string(block_hash))
+        bail!("Cannot retrieve operation hashes from block, block_hash {} not found!", HashType::BlockHash.hash_to_b58check(block_hash))
     }
 }
 

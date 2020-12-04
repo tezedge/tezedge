@@ -81,15 +81,15 @@ pub(crate) fn get_cycle_length_for_block(block_hash: &BlockHash, env: &RpcServic
         Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
-                    slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
+                    slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
                     4096
                 })
             ).flatten().unwrap_or_else(|| {
-            slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
+            slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
             4096
         }))
     } else {
-        slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.bytes_to_string(block_hash));
+        slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
         Ok(4096)
     }
 }

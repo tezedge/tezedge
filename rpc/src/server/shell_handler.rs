@@ -40,7 +40,7 @@ pub async fn bootstrapped(_: Request<Body>, _: Params, _: Query, env: RpcService
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
             let current_head: BlockApplied = current_head.clone();
-            let block = HashType::BlockHash.bytes_to_string(&current_head.header().hash);
+            let block = HashType::BlockHash.hash_to_b58check(&current_head.header().hash);
             let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
             BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
         }
@@ -202,7 +202,7 @@ pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: Rpc
     let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
     result_to_json_response(
-        Ok(HashType::BlockHash.bytes_to_string(&block_hash)),
+        Ok(HashType::BlockHash.hash_to_b58check(&block_hash)),
         env.log(),
     )
 }

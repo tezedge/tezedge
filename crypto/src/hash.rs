@@ -69,7 +69,7 @@ pub enum HashType {
 
 impl HashType {
     #[inline]
-    pub fn prefix(&self) -> &'static [u8] {
+    pub fn base58check_prefix(&self) -> &'static [u8] {
         use prefix_bytes::*;
         match self {
             HashType::ChainId => &CHAIN_ID,
@@ -108,27 +108,8 @@ impl HashType {
         }
     }
 
-    pub const fn hash_fn<'a>(&self) -> &'a dyn Fn(&'a [u8]) -> Vec<u8> {
-        match self {
-            HashType::ChainId
-            | HashType::BlockHash
-            | HashType::ContextHash
-            | HashType::ProtocolHash
-            | HashType::OperationHash
-            | HashType::OperationListListHash
-            | HashType::ContractKt1Hash
-            | HashType::ContractTz1Hash
-            | HashType::ContractTz2Hash
-            | HashType::ContractTz3Hash
-            | HashType::PublicKeyEd25519
-            | HashType::PublicKeySecp256k1
-            | HashType::PublicKeyP256 => &copy_bytes,
-            HashType::CryptoboxPublicKeyHash => &crate::blake2b::digest_128,
-        }
-    }
-
     /// Convert hash byte representation into string.
-    pub fn bytes_to_string(&self, data: &[u8]) -> String {
+    pub fn hash_to_b58check(&self, data: &[u8]) -> String {
         assert_eq!(
             self.size(),
             data.len(),
@@ -136,16 +117,16 @@ impl HashType {
             self.size(),
             data.len()
         );
-        let mut hash = Vec::with_capacity(self.prefix().len() + data.len());
-        hash.extend(self.prefix());
+        let mut hash = Vec::with_capacity(self.base58check_prefix().len() + data.len());
+        hash.extend(self.base58check_prefix());
         hash.extend(data);
         hash.to_base58check()
     }
 
     /// Convert string representation of the hash to bytes form.
-    pub fn string_to_bytes(&self, data: &str) -> Result<Hash, FromBase58CheckError> {
+    pub fn b58check_to_hash(&self, data: &str) -> Result<Hash, FromBase58CheckError> {
         let mut hash = data.from_base58check()?;
-        let expected_len = self.size() + self.prefix().len();
+        let expected_len = self.size() + self.base58check_prefix().len();
         assert_eq!(
             expected_len,
             hash.len(),
@@ -154,19 +135,14 @@ impl HashType {
             hash.len()
         );
         // prefix is not present in a binary representation
-        hash.drain(0..self.prefix().len());
+        hash.drain(0..self.base58check_prefix().len());
         Ok(hash)
     }
 }
 
-// dummy hashing function
-fn copy_bytes(data: &[u8]) -> Vec<u8> {
-    data.to_vec()
-}
-
 #[inline]
 pub fn chain_id_to_b58_string(chain_id: &ChainId) -> String {
-    HashType::ChainId.bytes_to_string(chain_id)
+    HashType::ChainId.hash_to_b58check(chain_id)
 }
 
 /// Implementation of chain_id.ml -> of_block_hash
@@ -184,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_encode_chain_id() -> Result<(), failure::Error> {
-        let decoded = HashType::ChainId.bytes_to_string(&hex::decode("8eceda2f")?);
+        let decoded = HashType::ChainId.hash_to_b58check(&hex::decode("8eceda2f")?);
         let expected = "NetXgtSLGNJvNye";
         assert_eq!(expected, decoded);
 
@@ -204,7 +180,7 @@ mod tests {
     fn test_chain_id_from_block_hash() -> Result<(), failure::Error> {
         let decoded_chain_id: ChainId = chain_id_from_block_hash(
             &HashType::BlockHash
-                .string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
         );
         let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
         let expected_chain_id = "NetXgtSLGNJvNye";
@@ -212,7 +188,7 @@ mod tests {
 
         let decoded_chain_id: ChainId = chain_id_from_block_hash(
             &HashType::BlockHash
-                .string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
         );
         let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
         let expected_chain_id = "NetXjD3HPJJjmcd";
@@ -223,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_encode_block_header_genesis() -> Result<(), failure::Error> {
-        let decoded = HashType::BlockHash.bytes_to_string(&hex::decode(
+        let decoded = HashType::BlockHash.hash_to_b58check(&hex::decode(
             "8fcf233671b6a04fcf679d2a381c2544ea6c1ea29ba6157776ed8424affa610d",
         )?);
         let expected = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe";
@@ -234,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_encode_block_header() -> Result<(), failure::Error> {
-        let decoded = HashType::BlockHash.bytes_to_string(&hex::decode(
+        let decoded = HashType::BlockHash.hash_to_b58check(&hex::decode(
             "46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d",
         )?);
         let expected = "BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9";
@@ -245,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_encode_context() -> Result<(), failure::Error> {
-        let decoded = HashType::ContextHash.bytes_to_string(&hex::decode(
+        let decoded = HashType::ContextHash.hash_to_b58check(&hex::decode(
             "934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9",
         )?);
         let expected = "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd";
@@ -256,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_encode_operations_hash() -> Result<(), failure::Error> {
-        let decoded = HashType::OperationListListHash.bytes_to_string(&hex::decode(
+        let decoded = HashType::OperationListListHash.hash_to_b58check(&hex::decode(
             "acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149",
         )?);
         let expected = "LLoads9N8uB8v659hpNhpbrLzuzLdUCjz5euiR6Lm2hd7C6sS2Vep";
@@ -271,7 +247,7 @@ mod tests {
             "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
         )?;
         let pk_hash = pk.public_key_hash();
-        let decoded = HashType::CryptoboxPublicKeyHash.bytes_to_string(pk_hash.as_ref());
+        let decoded = HashType::CryptoboxPublicKeyHash.hash_to_b58check(pk_hash.as_ref());
         let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
         assert_eq!(expected, decoded);
 
@@ -281,7 +257,7 @@ mod tests {
     #[test]
     fn test_encode_contract_tz1() -> Result<(), failure::Error> {
         let decoded = HashType::ContractTz1Hash
-            .bytes_to_string(&hex::decode("83846eddd5d3c5ed96e962506253958649c84a74")?);
+            .hash_to_b58check(&hex::decode("83846eddd5d3c5ed96e962506253958649c84a74")?);
         let expected = "tz1XdRrrqrMfsFKA8iuw53xHzug9ipr6MuHq";
         assert_eq!(expected, decoded);
 
@@ -291,7 +267,7 @@ mod tests {
     #[test]
     fn test_encode_contract_tz2() -> Result<(), failure::Error> {
         let decoded = HashType::ContractTz2Hash
-            .bytes_to_string(&hex::decode("2fcb1d9307f0b1f94c048ff586c09f46614c7e90")?);
+            .hash_to_b58check(&hex::decode("2fcb1d9307f0b1f94c048ff586c09f46614c7e90")?);
         let expected = "tz2Cfwk4ortcaqAGcVJKSxLiAdcFxXBLBoyY";
         assert_eq!(expected, decoded);
 
@@ -301,7 +277,7 @@ mod tests {
     #[test]
     fn test_encode_contract_tz3() -> Result<(), failure::Error> {
         let decoded = HashType::ContractTz3Hash
-            .bytes_to_string(&hex::decode("193b2b3f6b8f8e1e6b39b4d442fc2b432f6427a8")?);
+            .hash_to_b58check(&hex::decode("193b2b3f6b8f8e1e6b39b4d442fc2b432f6427a8")?);
         let expected = "tz3NdTPb3Ax2rVW2Kq9QEdzfYFkRwhrQRPhX";
         assert_eq!(expected, decoded);
 
@@ -311,7 +287,7 @@ mod tests {
     #[test]
     fn test_encode_contract_kt1() -> Result<(), failure::Error> {
         let decoded = HashType::ContractKt1Hash
-            .bytes_to_string(&hex::decode("42b419240509ddacd12839700b7f720b4aa55e4e")?);
+            .hash_to_b58check(&hex::decode("42b419240509ddacd12839700b7f720b4aa55e4e")?);
         let expected = "KT1EfTusMLoeCAAGd9MZJn5yKzFr6kJU5U91";
         assert_eq!(expected, decoded);
 
@@ -321,7 +297,7 @@ mod tests {
     #[test]
     fn test_decode_block_header_hash() -> Result<(), failure::Error> {
         let decoded = HashType::BlockHash
-            .string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
+            .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
         let decoded = hex::encode(&decoded);
         let expected = "2253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b";
         assert_eq!(expected, decoded);
@@ -332,7 +308,7 @@ mod tests {
     #[test]
     fn test_decode_operations_hash() -> Result<(), failure::Error> {
         let decoded = HashType::OperationListListHash
-            .string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?;
+            .b58check_to_hash("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?;
         let decoded = hex::encode(&decoded);
         let expected = "7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c3";
         assert_eq!(expected, decoded);
@@ -343,14 +319,14 @@ mod tests {
     #[test]
     fn test_decode_protocol_hash() -> Result<(), failure::Error> {
         let decoded = HashType::ProtocolHash
-            .string_to_bytes("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
+            .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
         let decoded = hex::encode(&decoded);
         let expected = "3e5e3a606afab74a59ca09e333633e2770b6492c5e594455b71e9a2f0ea92afb";
         assert_eq!(expected, decoded);
 
         assert_eq!(
             "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
-            HashType::ProtocolHash.bytes_to_string(&hex::decode(decoded)?)
+            HashType::ProtocolHash.hash_to_b58check(&hex::decode(decoded)?)
         );
         Ok(())
     }

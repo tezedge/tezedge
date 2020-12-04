@@ -52,9 +52,9 @@ impl SignaturePublicKeyHash {
     #[inline]
     pub fn to_string(&self) -> String {
         match self {
-            SignaturePublicKeyHash::Ed25519(h) => HashType::ContractTz1Hash.bytes_to_string(h),
-            SignaturePublicKeyHash::Secp256k1(h) => HashType::ContractTz2Hash.bytes_to_string(h),
-            SignaturePublicKeyHash::P256(h) => HashType::ContractTz3Hash.bytes_to_string(h),
+            SignaturePublicKeyHash::Ed25519(h) => HashType::ContractTz1Hash.hash_to_b58check(h),
+            SignaturePublicKeyHash::Secp256k1(h) => HashType::ContractTz2Hash.hash_to_b58check(h),
+            SignaturePublicKeyHash::P256(h) => HashType::ContractTz3Hash.hash_to_b58check(h),
         }
     }
 
@@ -66,20 +66,20 @@ impl SignaturePublicKeyHash {
         if hash.len() == 40 {
             let public_hash_key = match curve {
                 "ed25519" => {
-                    let key = HashType::ContractTz1Hash.bytes_to_string(&hex::decode(&hash)?);
+                    let key = HashType::ContractTz1Hash.hash_to_b58check(&hex::decode(&hash)?);
                     SignaturePublicKeyHash::Ed25519(
-                        HashType::ContractTz1Hash.string_to_bytes(&key)?,
+                        HashType::ContractTz1Hash.b58check_to_hash(&key)?,
                     )
                 }
                 "secp256k1" => {
-                    let key = HashType::ContractTz2Hash.bytes_to_string(&hex::decode(&hash)?);
+                    let key = HashType::ContractTz2Hash.hash_to_b58check(&hex::decode(&hash)?);
                     SignaturePublicKeyHash::Secp256k1(
-                        HashType::ContractTz2Hash.string_to_bytes(&key)?,
+                        HashType::ContractTz2Hash.b58check_to_hash(&key)?,
                     )
                 }
                 "p256" => {
-                    let key = HashType::ContractTz3Hash.bytes_to_string(&hex::decode(&hash)?);
-                    SignaturePublicKeyHash::P256(HashType::ContractTz3Hash.string_to_bytes(&key)?)
+                    let key = HashType::ContractTz3Hash.hash_to_b58check(&hex::decode(&hash)?);
+                    SignaturePublicKeyHash::P256(HashType::ContractTz3Hash.b58check_to_hash(&key)?)
                 }
                 _ => {
                     return Err(ConversionError::InvalidCurveTag {
@@ -100,13 +100,13 @@ impl SignaturePublicKeyHash {
         if b58_hash.len() > 3 {
             match &b58_hash[0..3] {
                 "tz1" => Ok(SignaturePublicKeyHash::Ed25519(
-                    HashType::ContractTz1Hash.string_to_bytes(b58_hash)?,
+                    HashType::ContractTz1Hash.b58check_to_hash(b58_hash)?,
                 )),
                 "tz2" => Ok(SignaturePublicKeyHash::Secp256k1(
-                    HashType::ContractTz2Hash.string_to_bytes(b58_hash)?,
+                    HashType::ContractTz2Hash.b58check_to_hash(b58_hash)?,
                 )),
                 "tz3" => Ok(SignaturePublicKeyHash::P256(
-                    HashType::ContractTz3Hash.string_to_bytes(b58_hash)?,
+                    HashType::ContractTz3Hash.b58check_to_hash(b58_hash)?,
                 )),
                 _ => Err(ConversionError::InvalidCurveTag {
                     curve_tag: String::from(&b58_hash[0..3]),
@@ -174,7 +174,7 @@ mod tests {
         assert!(decoded.is_some());
 
         let decoded = decoded
-            .map(|h| HashType::ContractTz1Hash.bytes_to_string(&h))
+            .map(|h| HashType::ContractTz1Hash.hash_to_b58check(&h))
             .unwrap();
         assert_eq!("tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", decoded);
 

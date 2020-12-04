@@ -22,9 +22,9 @@ impl SignaturePublicKey {
     #[inline]
     pub fn to_string(&self) -> String {
         match self {
-            SignaturePublicKey::Ed25519(h) => HashType::PublicKeyEd25519.bytes_to_string(h),
-            SignaturePublicKey::Secp256k1(h) => HashType::PublicKeySecp256k1.bytes_to_string(h),
-            SignaturePublicKey::P256(h) => HashType::PublicKeyP256.bytes_to_string(h),
+            SignaturePublicKey::Ed25519(h) => HashType::PublicKeyEd25519.hash_to_b58check(h),
+            SignaturePublicKey::Secp256k1(h) => HashType::PublicKeySecp256k1.hash_to_b58check(h),
+            SignaturePublicKey::P256(h) => HashType::PublicKeyP256.hash_to_b58check(h),
         }
     }
 
@@ -33,13 +33,13 @@ impl SignaturePublicKey {
         if b58_hash.len() > 4 {
             match &b58_hash[0..4] {
                 "edpk" => Ok(SignaturePublicKey::Ed25519(
-                    HashType::PublicKeyEd25519.string_to_bytes(b58_hash)?,
+                    HashType::PublicKeyEd25519.b58check_to_hash(b58_hash)?,
                 )),
                 "sppk" => Ok(SignaturePublicKey::Secp256k1(
-                    HashType::PublicKeySecp256k1.string_to_bytes(b58_hash)?,
+                    HashType::PublicKeySecp256k1.b58check_to_hash(b58_hash)?,
                 )),
                 "p2pk" => Ok(SignaturePublicKey::P256(
-                    HashType::PublicKeyP256.string_to_bytes(b58_hash)?,
+                    HashType::PublicKeyP256.b58check_to_hash(b58_hash)?,
                 )),
                 _ => Err(ConversionError::InvalidCurveTag {
                     curve_tag: String::from(&b58_hash[0..4]),
@@ -60,18 +60,18 @@ impl SignaturePublicKey {
         if hash.len() == 66 || hash.len() == 64 {
             let public_hash_key = match curve {
                 "ed25519" => {
-                    let key = HashType::PublicKeyEd25519.bytes_to_string(&hex::decode(&hash)?);
-                    SignaturePublicKey::Ed25519(HashType::PublicKeyEd25519.string_to_bytes(&key)?)
+                    let key = HashType::PublicKeyEd25519.hash_to_b58check(&hex::decode(&hash)?);
+                    SignaturePublicKey::Ed25519(HashType::PublicKeyEd25519.b58check_to_hash(&key)?)
                 }
                 "secp256k1" => {
-                    let key = HashType::PublicKeySecp256k1.bytes_to_string(&hex::decode(&hash)?);
+                    let key = HashType::PublicKeySecp256k1.hash_to_b58check(&hex::decode(&hash)?);
                     SignaturePublicKey::Secp256k1(
-                        HashType::PublicKeySecp256k1.string_to_bytes(&key)?,
+                        HashType::PublicKeySecp256k1.b58check_to_hash(&key)?,
                     )
                 }
                 "p256" => {
-                    let key = HashType::PublicKeyP256.bytes_to_string(&hex::decode(&hash)?);
-                    SignaturePublicKey::P256(HashType::PublicKeyP256.string_to_bytes(&key)?)
+                    let key = HashType::PublicKeyP256.hash_to_b58check(&hex::decode(&hash)?);
+                    SignaturePublicKey::P256(HashType::PublicKeyP256.b58check_to_hash(&key)?)
                 }
                 _ => {
                     return Err(ConversionError::InvalidCurveTag {

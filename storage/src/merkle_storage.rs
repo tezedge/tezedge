@@ -713,7 +713,7 @@ impl MerkleStorage {
             None => {
                 let entry_bytes = self.db.get(hash)?;
                 match entry_bytes {
-                    None => Err(MerkleError::EntryNotFound { hash: HashType::ContextHash.bytes_to_string(hash) }),
+                    None => Err(MerkleError::EntryNotFound { hash: HashType::ContextHash.hash_to_b58check(hash) }),
                     Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
                 }
             }

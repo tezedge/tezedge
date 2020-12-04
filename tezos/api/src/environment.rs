@@ -23,7 +23,7 @@ use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
     /// alternative to ocaml Operation_list_list_hash.empty
-    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = HashType::OperationListListHash.string_to_bytes("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap();
+    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = HashType::OperationListListHash.b58check_to_hash("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap();
 }
 
 /// Enum representing different Tezos environment.
@@ -278,7 +278,7 @@ impl TezosEnvironmentConfiguration {
     /// Resolves genesis hash from configuration of GenesisChain.block
     pub fn genesis_header_hash(&self) -> Result<BlockHash, TezosEnvironmentError> {
         HashType::BlockHash
-            .string_to_bytes(&self.genesis.block)
+            .b58check_to_hash(&self.genesis.block)
             .map_err(|e| TezosEnvironmentError::InvalidBlockHash {
                 hash: self.genesis.block.clone(),
                 error: e,
@@ -293,7 +293,7 @@ impl TezosEnvironmentConfiguration {
     /// Resolves genesis protocol
     pub fn genesis_protocol(&self) -> Result<ProtocolHash, TezosEnvironmentError> {
         HashType::ProtocolHash
-            .string_to_bytes(&self.genesis.protocol)
+            .b58check_to_hash(&self.genesis.protocol)
             .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
                 hash: self.genesis.protocol.clone(),
                 error: e,

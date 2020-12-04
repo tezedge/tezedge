@@ -151,12 +151,12 @@ pub fn prevalidate_operation(
 
             if !is_applied {
                 return Err(PrevalidateOperationError::BranchNotAppliedYet {
-                    branch: HashType::BlockHash.bytes_to_string(&operation_branch)
+                    branch: HashType::BlockHash.hash_to_b58check(&operation_branch)
                 });
             }
         }
         false => return Err(PrevalidateOperationError::UnknownBranch {
-            branch: HashType::BlockHash.bytes_to_string(&operation_branch)
+            branch: HashType::BlockHash.hash_to_b58check(&operation_branch)
         })
     }
 
@@ -167,7 +167,7 @@ pub fn prevalidate_operation(
             Some(head) => match block_storage.get(head)? {
                 Some(head) => head,
                 None => return Err(PrevalidateOperationError::UnknownBranch {
-                    branch: HashType::BlockHash.bytes_to_string(&head)
+                    branch: HashType::BlockHash.hash_to_b58check(&head)
                 })
             },
             None => {
@@ -191,7 +191,7 @@ pub fn prevalidate_operation(
         predecessor: (&*mempool_head.header).clone(),
         protocol_data: None,
     }).map_err(|e| PrevalidateOperationError::ValidationError {
-        operation_hash: HashType::OperationHash.bytes_to_string(operation_hash),
+        operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
         reason: e,
     })?;
 
@@ -199,7 +199,7 @@ pub fn prevalidate_operation(
     api.validate_operation(ValidateOperationRequest { prevalidator, operation: operation.clone() })
         .map(|r| r.result)
         .map_err(|e| PrevalidateOperationError::ValidationError {
-            operation_hash: HashType::OperationHash.bytes_to_string(operation_hash),
+            operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
             reason: e,
         })
 }
@@ -405,17 +405,17 @@ mod tests {
     fn new_head(fitness: Fitness) -> Result<BlockHeaderWithHash, failure::Error> {
         Ok(
             BlockHeaderWithHash {
-                hash: HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+                hash: HashType::BlockHash.b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
                 header: Arc::new(
                     BlockHeaderBuilder::default()
                         .level(34)
                         .proto(1)
-                        .predecessor(HashType::BlockHash.string_to_bytes("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?)
+                        .predecessor(HashType::BlockHash.b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?)
                         .timestamp(5_635_634)
                         .validation_pass(4)
-                        .operations_hash(HashType::OperationListListHash.string_to_bytes("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
+                        .operations_hash(HashType::OperationListListHash.b58check_to_hash("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
                         .fitness(fitness)
-                        .context(HashType::ContextHash.string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
+                        .context(HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
                         .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
                         .build().unwrap()
                 ),
@@ -426,7 +426,7 @@ mod tests {
     fn current_head(fitness: Fitness) -> Result<Head, failure::Error> {
         Ok(
             Head::new(
-                HashType::BlockHash.string_to_bytes("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?,
+                HashType::BlockHash.b58check_to_hash("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?,
                 5,
                 fitness,
             )
