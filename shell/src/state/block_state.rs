@@ -22,6 +22,7 @@ use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
 use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
+use tezos_messages::p2p::binary_message::MessageHash;
 
 use crate::collections::{BlockData, UniqueBlockData};
 use crate::shell_channel::{BlockApplied, CurrentMempoolState};
@@ -110,11 +111,13 @@ impl BlockchainState {
 
             // (future block)
             if validation::is_future_block(&validated_header)? {
+                println!("HEADER: {} - Future block - Ignoring", HashType::BlockHash.bytes_to_string(&validated_header.message_hash()?));
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
             // (only_if_fitness_increases) we can accept head if increases fitness
-            if !validation::is_fitness_increases(current_head, validated_header.fitness()) {
+            if !validation::is_fitness_increases_or_same(current_head, validated_header.fitness()) {
+                println!("HEADER: {} - No fitness increase - Ignoring", HashType::BlockHash.bytes_to_string(&validated_header.message_hash()?));
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
@@ -123,6 +126,7 @@ impl BlockchainState {
 
             // if missing predecessor
             if missing_predecessor {
+                println!("HEADER: {} - No fitness increase - Unknow Branch", HashType::BlockHash.bytes_to_string(&validated_header.message_hash()?));
                 return Ok(BlockAcceptanceResult::UnknownBranch);
             }
 
@@ -143,9 +147,11 @@ impl BlockchainState {
                 }
             } else {
                 // if not, we cannot trigger validation, so we just ignore head
+                println!("HEADER: {} - No protocol - Ignoring", HashType::BlockHash.bytes_to_string(&validated_header.message_hash()?));
                 Ok(BlockAcceptanceResult::IgnoreBlock)
             }
         } else {
+            println!("HEADER: {} - No current head set - Ignoring", HashType::BlockHash.bytes_to_string(&validated_header.message_hash()?));
             Ok(BlockAcceptanceResult::IgnoreBlock)
         }
     }

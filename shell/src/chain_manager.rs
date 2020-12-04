@@ -442,8 +442,8 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
-                                    // info!(log, "MESSAGE BLOCKHEADER RECIEVED - RAW: {:?}", message);
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
+                                    info!(log, "MESSAGE BLOCKHEADER RECIEVED: {:?}", BLOCK_HASH_ENCODING.bytes_to_string(&block_header_with_hash.hash));
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(_) => {
                                             peer.block_response_last = Instant::now();
@@ -553,6 +553,7 @@ impl ChainManager {
                                 }
                                 PeerMessage::CurrentHead(message) => {
                                     // process current head only if we are bootstrapped
+                                    info!(log, "MESSAGE CURRENTHEAD RECIEVED - CURRENT HEAD: {:?}", BLOCK_HASH_ENCODING.bytes_to_string(&message.current_block_header().message_hash()?));
                                     if !self.is_bootstrapped {
                                         continue;
                                     }
