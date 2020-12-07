@@ -1202,7 +1202,7 @@ impl Actor for ChainManager {
             None,
             CheckChainCompleteness.into());
         ctx.schedule::<Self::Msg, _>(
-            ASK_CURRENT_BRANCH_INTERVAL,
+            ASK_CURRENT_BRANCH_INTERVAL / 100,
             ASK_CURRENT_BRANCH_INTERVAL,
             ctx.myself(),
             None,
