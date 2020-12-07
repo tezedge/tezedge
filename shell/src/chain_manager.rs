@@ -53,7 +53,7 @@ const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = 10;
 /// How often to check chain completeness
 const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(30);
 /// How often to ask all connected peers for current branch
-const ASK_CURRENT_BRANCH_INTERVAL: Duration = Duration::from_secs(15);
+const ASK_CURRENT_BRANCH_INTERVAL: Duration = Duration::from_secs(600);
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 /// After this time we will disconnect peer if his current head level stays the same
@@ -751,7 +751,34 @@ impl ChainManager {
                     // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
                     if self.is_bootstrapped {
                         match new_head_result {
-                            HeadResult::BranchSwitch => (/*"TODO: TE-174 sent current_branch message"*/),
+                            HeadResult::BranchSwitch => {
+                                let ChainManager {
+                                    peers,
+                                    chain_state,
+                                    identity_peer_id,
+                                    ..
+                                } = self;
+                                let header: &BlockHeader = &message.header().header;
+                                let chain_id = chain_state.get_chain_id();
+
+                                let block_hash: BlockHash = header.message_hash()?;
+                                for (_, peer) in peers {
+                                    tell_peer(
+                                        CurrentBranchMessage::new(
+                                            chain_id.clone(),
+                                            CurrentBranch::new(
+                                                (*header).clone(),
+                                                // calculate history for each peer
+                                                chain_state.get_history(
+                                                    &block_hash,
+                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key),
+                                                )?
+                                            )
+                                        ).into(),
+                                        peer
+                                    )
+                                }
+                            }
                             HeadResult::HeadIncrement => {
                                 // send new current_head to peers
                                 let header: &BlockHeader = &message.header().header;
@@ -1175,7 +1202,7 @@ impl Actor for ChainManager {
             None,
             CheckChainCompleteness.into());
         ctx.schedule::<Self::Msg, _>(
-            ASK_CURRENT_BRANCH_INTERVAL,
+            ASK_CURRENT_BRANCH_INTERVAL / 100,
             ASK_CURRENT_BRANCH_INTERVAL,
             ctx.myself(),
             None,

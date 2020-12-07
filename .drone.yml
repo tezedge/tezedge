@@ -400,6 +400,91 @@ trigger:
     - develop
 
 ##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests
+
+clone:
+  disable: true
+
+steps:
+- name: mempool-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
+
+- name: fork-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
+
+- name: baker-endorser-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
+
+- name: basic-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  pull: if-not-exists
+  user: root
+  failure: ignore
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
+
+volumes:
+  - name: build
+    host:
+      path: /etc/tezedge-ci-build/
+  - name: tezos-src
+    host:
+      path: /etc/tmp/tezos-src
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-and-tests
+
+##############################################################################################################
 # This pipeline test the sandbox and its rpc sercver
 ##############################################################################################################
 ---
@@ -1469,91 +1554,6 @@ volumes:
     temp: {}
   - name: indexer-ocaml-data
     temp: {}
-
-trigger:
-  branch:
-    - master
-    - develop
-
-depends_on:
-  - build-and-tests
-
-##############################################################################################################
-# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
-##############################################################################################################
----
-kind: pipeline
-name: tezos-python-tests
-
-clone:
-  disable: true
-
-steps:
-- name: mempool-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
-
-- name: fork-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
-
-- name: baker-endorser-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
-
-- name: basic-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  pull: if-not-exists
-  user: root
-  failure: ignore
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
-
-volumes:
-  - name: build
-    host:
-      path: /etc/tezedge-ci-build/
-  - name: tezos-src
-    host:
-      path: /etc/tmp/tezos-src
 
 trigger:
   branch:
