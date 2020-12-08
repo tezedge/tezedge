@@ -133,7 +133,7 @@ impl PeerManager {
                  p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
-            &format!("{}-{}", PeerManager::name(), HashType::CryptoboxPublicKeyHash.bytes_to_string(&identity.peer_id)),
+            &format!("{}-{}", PeerManager::name(), HashType::CryptoboxPublicKeyHash.hash_to_b58check(&identity.peer_id)),
             Props::new_args((
                 network_channel,
                 shell_channel,

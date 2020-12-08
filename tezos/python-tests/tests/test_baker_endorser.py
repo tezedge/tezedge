@@ -37,13 +37,14 @@ class TestAllDaemonsWithOperations:
     def test_setup_network(self, sandbox: Sandbox):
         parameters = dict(constants.PARAMETERS)
         # each priority has a delay of 1 sec
-        parameters["time_between_blocks"] = ["1"]
+        parameters["time_between_blocks"] = ["10"]
         for i in range(NUM_NODES):
             sandbox.add_node(i, params=constants.NODE_PARAMS)
         utils.activate_alpha(sandbox.client(0), parameters)
-        # TODO: TEZEDGE
-        # for now, tezedge node needs some time to apply and distributer the 1st level
-        time.sleep(30)
+        # TEZEDGE
+        # Delay to ensure block 1 is propagated to all nodes before starting a baker
+        # See also delay in [client.py]
+        time.sleep(5)
         sandbox.add_baker(0, 'bootstrap5', proto=constants.ALPHA_DAEMON)
         sandbox.add_baker(1, 'bootstrap4', proto=constants.ALPHA_DAEMON)
         sandbox.add_endorser(0, account='bootstrap1', endorsement_delay=1,
