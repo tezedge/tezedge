@@ -336,15 +336,19 @@ impl BlockchainState {
                     let mempool_state = state.read().unwrap();
                     match mempool_state.fitness.as_ref() {
                         Some(fitness) => fitness.clone(),
-                        None => current_head.fitness().to_vec()
+                        None => {
+                            println!("[mempool-fitness] Context fitness is None -> setting fitness to current head");
+                            current_head.fitness().to_vec()
+                        }
                     }
                 }
                 None => current_head.fitness().to_vec()
             };
-
+            println!("[mempool-fitness] Potential new head -> Context fitness: {:?}, new_fitness: {:?}, current_head_fitness: {:?}", &current_context_fitness, &potential_new_head.header().header.fitness(), current_head.fitness());
             // need to check against current_head, if not accepted, just ignore potential head
             if !validation::can_update_current_head(potential_new_head.header(), &current_head, &current_context_fitness) {
                 // just ignore
+                println!("[mempool-fitness] NewHead ignored");
                 return Ok(None);
             }
         }
