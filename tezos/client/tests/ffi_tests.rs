@@ -39,7 +39,7 @@ fn test_init_protocol_context() {
     let genesis_commit_hash = genesis_commit_hash.unwrap();
     assert_eq!(
         context_hash_encoding
-            .bytes_to_string(&genesis_commit_hash)
+            .hash_to_b58check(&genesis_commit_hash)
             .as_str(),
         "CoWZVRSM6DdNUpn3mamy7e8rUSxQVWkQCQfJBg7DrTVXUjzGZGCa",
     );
@@ -69,10 +69,10 @@ fn test_assert_encoding_for_protocol_data() {
     ).expect("Failed to decode block header 2");
 
     let protocol_hash_1 = HashType::ProtocolHash
-        .string_to_bytes("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex")
+        .b58check_to_hash("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex")
         .expect("Failed to decode protocol hash");
     let protocol_hash_2 = HashType::ProtocolHash
-        .string_to_bytes("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS")
+        .b58check_to_hash("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS")
         .expect("Failed to decode protocol hash");
 
     // check

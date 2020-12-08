@@ -64,7 +64,7 @@ impl RpcServer {
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
         tezos_env: TezosEnvironmentConfiguration,
-        network_version: NetworkVersion,
+        network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
         is_sandbox: bool) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {

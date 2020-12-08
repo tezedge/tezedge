@@ -56,8 +56,8 @@ fn test_storage() -> Result<(), Error> {
     assert!(init_data.is_ok());
 
     let init_data = init_data.unwrap();
-    assert_eq!(init_data.genesis_block_header_hash, HashType::BlockHash.string_to_bytes(&tezos_env.genesis.block)?);
-    assert_eq!(init_data.chain_id, chain_id_from_block_hash(&HashType::BlockHash.string_to_bytes(&tezos_env.genesis.block)?));
+    assert_eq!(init_data.genesis_block_header_hash, HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?);
+    assert_eq!(init_data.chain_id, chain_id_from_block_hash(&HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?));
 
     // load current head (non)
     let current_head = chain_meta_storage.get_current_head(&init_data.chain_id);
@@ -69,7 +69,7 @@ fn test_storage() -> Result<(), Error> {
     assert!(genesis.is_none());
 
     // simulate commit genesis in two steps
-    let new_context_hash: ContextHash = HashType::ContextHash.string_to_bytes("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
+    let new_context_hash: ContextHash = HashType::ContextHash.b58check_to_hash("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
     let _ = initialize_storage_with_genesis_block(
         &block_storage,
         &init_data,
@@ -135,7 +135,7 @@ fn test_storage() -> Result<(), Error> {
     let apply_result = ApplyBlockResponse {
         last_allowed_fork_level: 5,
         max_operations_ttl: 6,
-        context_hash: HashType::ContextHash.string_to_bytes("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?.clone(),
+        context_hash: HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?.clone(),
         block_header_proto_json: "{block_header_proto_json}".to_string(),
         block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
         operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),

@@ -14,15 +14,16 @@ use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
-use crypto::crypto_box::precompute;
-use crypto::hash::HashType;
+use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
+use crypto::hash::{CryptoboxPublicKeyHash, HashType};
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::{PeerId, PeerPublicKey};
+use crate::PeerId;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -45,20 +46,22 @@ pub enum PeerError {
     NackWithMotiveReceived {
         nack_info: NackInfo
     },
-    #[fail(display = "Failed to create precomputed key")]
-    FailedToPrecomputeKey,
-    #[fail(display = "Network error: {}", message)]
+    #[fail(display = "Network error: {}, reason: {}", message, error)]
     NetworkError {
         error: Error,
         message: &'static str,
     },
-    #[fail(display = "Message serialization error")]
+    #[fail(display = "Message serialization error, reason: {}", error)]
     SerializationError {
         error: tezos_encoding::ser::Error
     },
-    #[fail(display = "Message deserialization error")]
+    #[fail(display = "Message deserialization error, reason: {}", error)]
     DeserializationError {
         error: BinaryReaderError
+    },
+    #[fail(display = "Crypto error, reason: {}", error)]
+    CryptoError {
+        error: crypto::CryptoError
     },
 }
 
@@ -92,9 +95,9 @@ impl From<BinaryChunkError> for PeerError {
     }
 }
 
-impl slog::Value for PeerError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
-        serializer.emit_arguments(key, &format_args!("{}", self))
+impl From<crypto::CryptoError> for PeerError {
+    fn from(error: crypto::CryptoError) -> Self {
+        PeerError::CryptoError { error }
     }
 }
 
@@ -155,23 +158,17 @@ struct Network {
 pub struct Local {
     /// port where remote node can establish new connection
     listener_port: u16,
-    /// our public key
-    public_key: String,
-    /// our secret key
-    secret_key: String,
-    /// proof of work
-    proof_of_work_stamp: String,
+    /// Our node identity
+    identity: Arc<Identity>,
     /// version of network protocol
-    version: NetworkVersion,
+    version: Arc<NetworkVersion>,
 }
 
 impl Local {
-    pub fn new(listener_port: u16, public_key: String, secret_key: String, proof_of_work_stamp: String, network_version: NetworkVersion) -> Self {
+    pub fn new(listener_port: u16, identity: Arc<Identity>, network_version: Arc<NetworkVersion>) -> Self {
         Local {
             listener_port,
-            public_key,
-            secret_key,
-            proof_of_work_stamp,
+            identity,
             version: network_version,
         }
     }
@@ -199,20 +196,12 @@ impl Peer {
     pub fn actor(sys: &impl ActorRefFactory,
                  network_channel: NetworkChannelRef,
                  listener_port: u16,
-                 public_key: &str,
-                 secret_key: &str,
-                 proof_of_work_stamp: &str,
-                 version: NetworkVersion,
+                 node_identity: Arc<Identity>,
+                 version: Arc<NetworkVersion>,
                  tokio_executor: Handle,
                  socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
     {
-        let info = Local {
-            listener_port,
-            proof_of_work_stamp: proof_of_work_stamp.into(),
-            public_key: public_key.into(),
-            secret_key: secret_key.into(),
-            version,
-        };
+        let info = Local::new(listener_port, node_identity, version);
         let props = Props::new_args::<Peer, _>((network_channel, Arc::new(info), tokio_executor, *socket_address));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of_props(&format!("peer-{}", actor_id), props)
@@ -268,12 +257,14 @@ impl Receive<Bootstrap> for Peer {
             let peer_address = msg.address;
             debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
             match bootstrap(msg, info, &system.log()).await {
-                Ok(BootstrapOutput(rx, tx, public_key, peer_metadata)) => {
-                    debug!(system.log(), "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "peer_metadata" => format!("{:?}", &peer_metadata));
-                    setup_net(&net, tx).await;
+                Ok(BootstrapOutput(rx, tx, peer_public_key_hash, peer_id_marker, peer_metadata)) => {
+                    // prepare PeerId
+                    let peer_id = PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, peer_address);
+                    let log = system.log().new(slog::o!("peer_id" => peer_id.peer_id_marker.clone()));
+                    debug!(log, "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "peer_metadata" => format!("{:?}", &peer_metadata));
 
-                    let peer_id = PeerId::new(myself.clone(), public_key, peer_address.clone());
-                    let peer_id_marker = peer_id.peer_id_marker.clone();
+                    // setup encryption writer
+                    setup_net(&net, tx).await;
 
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
@@ -285,13 +276,13 @@ impl Receive<Bootstrap> for Peer {
                     }, Some(myself.clone().into()));
 
                     // begin to process incoming messages in a loop
-                    let log = system.log().new(slog::o!("peer_id" => peer_id_marker));
                     begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address).await;
+
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
                 Err(err) => {
-                    info!(system.log(), "Connection to peer failed"; "reason" => &err, "ip" => &peer_address, "peer" => myself.name());
+                    warn!(system.log(), "Connection to peer failed"; "reason" => format!("{}", &err), "ip" => &peer_address, "peer" => myself.name());
 
                     let potential_peers = match err {
                         PeerError::NackWithMotiveReceived { nack_info } => Some(nack_info.potential_peers_to_connect().clone()),
@@ -346,7 +337,7 @@ impl Receive<SendMessage> for Peer {
 }
 
 /// Output values of the successful bootstrap process
-pub struct BootstrapOutput(pub EncryptedMessageReader, pub EncryptedMessageWriter, pub PeerPublicKey, pub MetadataMessage);
+pub struct BootstrapOutput(pub EncryptedMessageReader, pub EncryptedMessageWriter, pub CryptoboxPublicKeyHash, pub String, pub MetadataMessage);
 
 pub async fn bootstrap(
     msg: Bootstrap,
@@ -359,15 +350,15 @@ pub async fn bootstrap(
         msg_reader.split()
     };
 
-    let supported_protocol_version = info.version.clone();
+    let supported_protocol_version = &info.version;
 
     // send connection message
     let connection_message = ConnectionMessage::new(
         info.listener_port,
-        &info.public_key,
-        &info.proof_of_work_stamp,
-        &Nonce::random().get_bytes(),
-        vec![supported_protocol_version.clone()]);
+        &info.identity.public_key,
+        &info.identity.proof_of_work_stamp,
+        Nonce::random(),
+        vec![supported_protocol_version.as_ref().clone()])?;
     let connection_message_sent = {
         let connection_message_bytes = BinaryChunk::from_content(&connection_message.as_bytes()?)?;
         match timeout(IO_TIMEOUT, msg_tx.write_message(&connection_message_bytes)).await? {
@@ -387,32 +378,32 @@ pub async fn bootstrap(
     // generate local and remote nonce
     let NoncePair { local: nonce_local, remote: nonce_remote } = generate_nonces(&connection_message_sent, &received_connection_message_bytes, msg.incoming);
 
-    // convert received bytes from remote peer into `ConnectionMessage`
-    let peer_public_key = connection_message.public_key();
-    let peer_id = HashType::CryptoboxPublicKeyHash.bytes_to_string(&peer_public_key);
-    debug!(log, "Received peer public key"; "public_key" => &peer_id);
+    // create PublicKey from received bytes from remote peer
+    let peer_public_key = PublicKey::from_bytes(connection_message.public_key())?;
 
     // pre-compute encryption key
-    let precomputed_key = match precompute(&hex::encode(peer_public_key), &info.secret_key) {
-        Ok(key) => key,
-        Err(_) => return Err(PeerError::FailedToPrecomputeKey)
-    };
+    let precomputed_key = PrecomputedKey::precompute(&peer_public_key, &info.identity.secret_key);
+
+    // generate public key hash for PublicKey, which will be used as a peer_id
+    let peer_public_key_hash = peer_public_key.public_key_hash();
+    let peer_id_marker = HashType::CryptoboxPublicKeyHash.hash_to_b58check(&peer_public_key_hash);
+    let log = log.new(o!("peer_id" => peer_id_marker.clone()));
 
     // from now on all messages will be encrypted
     let mut msg_tx = EncryptedMessageWriter::new(
         msg_tx,
         precomputed_key.clone(),
         nonce_local,
-        log.new(o!("peer_id" => peer_id.clone())),
+        log.clone(),
     );
     let mut msg_rx = EncryptedMessageReader::new(
         msg_rx,
         precomputed_key,
         nonce_remote,
-        log.new(o!("peer_id" => peer_id.clone())),
+        log.clone(),
     );
 
-    let connecting_to_self = hex::encode(connection_message.public_key()) == info.public_key;
+    let connecting_to_self = peer_public_key == info.identity.public_key;
     if connecting_to_self {
         debug!(log, "Detected self connection");
         // treat as if nack was received
@@ -449,7 +440,7 @@ pub async fn bootstrap(
     match ack_received {
         AckMessage::Ack => {
             debug!(log, "Received ACK");
-            Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key.clone(), metadata_received))
+            Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key_hash, peer_id_marker, metadata_received))
         }
         AckMessage::NackV0 => {
             debug!(log, "Received NACK");

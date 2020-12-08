@@ -35,19 +35,19 @@ pub fn create_logger(level: Level) -> Logger {
 
 pub fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>().unwrap()
 }
 
 pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
     env::var("OCAML_CALLS_GC")
-        .unwrap_or("2000".to_string())
+        .unwrap_or_else(|_| "2000".to_string())
         .parse::<i32>().unwrap()
 }
 
 pub fn log_level() -> Level {
     env::var("LOG_LEVEL")
-        .unwrap_or("info".to_string())
+        .unwrap_or_else(|_| "info".to_string())
         .parse::<Level>().unwrap()
 }
 
@@ -222,7 +222,7 @@ pub mod infra {
                 shell_channel.clone(),
                 &persistent_storage,
                 &init_storage_data,
-                tezos_readonly_api.clone(),
+                tezos_readonly_api,
                 log.clone(),
             ).expect("Failed to create chain feeder");
 
@@ -234,7 +234,7 @@ pub mod infra {
                     shell_channel.clone(),
                     tokio_runtime.handle().clone(),
                     identity,
-                    network_version,
+                    Arc::new(network_version),
                     p2p_config,
                 ).expect("Failed to create peer manager");
                 Some(peer_manager)
@@ -281,7 +281,7 @@ pub mod infra {
         // TODO: refactor with async/condvar, not to block main thread
         pub fn wait_for_new_current_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let tested_head = Some(tested_head).map(|th| HashType::BlockHash.bytes_to_string(&th));
+            let tested_head = Some(tested_head).map(|th| HashType::BlockHash.hash_to_b58check(&th));
 
             let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
             let result = loop {
@@ -290,7 +290,7 @@ pub mod infra {
                         let ch: BlockHash = ch.into();
                         ch
                     })
-                    .map(|ch| HashType::BlockHash.bytes_to_string(&ch));
+                    .map(|ch| HashType::BlockHash.hash_to_b58check(&ch));
 
                 if current_head.eq(&tested_head) {
                     info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head, "marker" => marker);
@@ -323,7 +323,7 @@ pub mod infra {
             let result = loop {
                 // if success, than ok
                 if let Ok(Some(_)) = context.get_key_from_history(&context_hash, &protocol_key) {
-                    info!(self.log, "[NODE] Expected context found"; "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash), "marker" => marker);
+                    info!(self.log, "[NODE] Expected context found"; "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash), "marker" => marker);
                     break Ok(());
                 }
 
@@ -331,7 +331,7 @@ pub mod infra {
                 if start.elapsed()?.le(&timeout) {
                     thread::sleep(delay);
                 } else {
-                    break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", HashType::ContextHash.bytes_to_string(&context_hash), timeout, delay, marker));
+                    break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", HashType::ContextHash.hash_to_b58check(&context_hash), timeout, delay, marker));
                 }
             };
             result

@@ -14,5 +14,6 @@ slog = "2.5"
 tokio = { version = "0.2", features = ["io-util", "time", "tcp", "rt-core"] }
 # local dependencies
 tezos_encoding = { path = "../tezos/encoding" }
+tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
 crypto = { path = "../crypto" }

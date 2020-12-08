@@ -75,8 +75,8 @@ impl ContextApi for TezedgeContext {
                     if parent_context_hash.is_some() {
                         return Err(
                             ContextError::ContextHashAssignError {
-                                block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                                context_hash: HashType::ContextHash.bytes_to_string(commit_hash),
+                                block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+                                context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
                                 error: e,
                             }
                         );
@@ -87,8 +87,8 @@ impl ContextApi for TezedgeContext {
                 }
                 _ => return Err(
                     ContextError::ContextHashAssignError {
-                        block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                        context_hash: HashType::ContextHash.bytes_to_string(commit_hash),
+                        block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+                        context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
                         error: e,
                     }
                 )
@@ -128,7 +128,7 @@ impl ContextApi for TezedgeContext {
         match merkle.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
-                Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.bytes_to_string(context_hash) })
+                Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.hash_to_b58check(context_hash) })
             }
             Err(err) => {
                 Err(ContextError::MerkleStorageError { error: err })

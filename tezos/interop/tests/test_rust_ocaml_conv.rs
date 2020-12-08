@@ -231,7 +231,7 @@ fn test_apply_block_request_conv() {
         let ffi_operations: Vec<Vec<FfiOperation>> = request
             .operations
             .iter()
-            .map(|ops| ops.iter().map(|op| FfiOperation::from(op)).collect())
+            .map(|ops| ops.iter().map(FfiOperation::from).collect())
             .collect();
 
         ocaml_frame!(

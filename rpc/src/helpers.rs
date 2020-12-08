@@ -184,12 +184,12 @@ impl Stream for MonitorHeadStream {
 impl FullBlockInfo {
     pub fn new(val: &BlockApplied, chain_id: String) -> Self {
         let header: &BlockHeader = &val.header().header;
-        let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
+        let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash = HashType::OperationListListHash.bytes_to_string(header.operations_hash());
+        let operations_hash = HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = HashType::ContextHash.bytes_to_string(header.context());
-        let hash = HashType::BlockHash.bytes_to_string(&val.header().hash);
+        let context = HashType::ContextHash.hash_to_b58check(header.context());
+        let hash = HashType::BlockHash.hash_to_b58check(&val.header().hash);
         let json_data = val.json_data();
 
         Self {
@@ -215,12 +215,12 @@ impl FullBlockInfo {
 impl BlockHeaderInfo {
     pub fn new(val: &BlockApplied, chain_id: String) -> Self {
         let header: &BlockHeader = &val.header().header;
-        let predecessor = HashType::BlockHash.bytes_to_string(header.predecessor());
+        let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash = HashType::OperationListListHash.bytes_to_string(header.operations_hash());
+        let operations_hash = HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = HashType::ContextHash.bytes_to_string(header.context());
-        let hash = HashType::BlockHash.bytes_to_string(&val.header().hash);
+        let context = HashType::ContextHash.hash_to_b58check(header.context());
+        let hash = HashType::BlockHash.hash_to_b58check(&val.header().hash);
         let header_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_json()).unwrap_or_default();
         let signature = header_data.get("signature").map(|val| val.as_str().unwrap().to_string());
         let priority = header_data.get("priority").map(|val| val.as_i64().unwrap());
@@ -408,21 +408,21 @@ pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) 
                 let chain_meta_storage = ChainMetaStorage::new(env.persistent_storage());
                 let test_chain = match chain_meta_storage.get_test_chain_id(env.main_chain_id())? {
                     Some(test_chain_id) => test_chain_id,
-                    None => bail!("No test chain activated for main_chain_id: {}", HashType::ChainId.bytes_to_string(env.main_chain_id()))
+                    None => bail!("No test chain activated for main_chain_id: {}", HashType::ChainId.hash_to_b58check(env.main_chain_id()))
                 };
 
                 bail!("Test chains are not supported yet! main_chain_id: {}, test_chain_id: {}",
-                    HashType::ChainId.bytes_to_string(env.main_chain_id()),
-                    HashType::ChainId.bytes_to_string(&test_chain))
+                    HashType::ChainId.hash_to_b58check(env.main_chain_id()),
+                    HashType::ChainId.hash_to_b58check(&test_chain))
             }
             chain_id_hash => {
-                let chain_id = HashType::ChainId.string_to_bytes(chain_id_hash)?;
+                let chain_id = HashType::ChainId.b58check_to_hash(chain_id_hash)?;
                 if chain_id.eq(env.main_chain_id()) {
                     chain_id
                 } else {
                     bail!("Multiple chains are not supported yet! requested_chain_id: {} only main_chain_id: {}",
-                        HashType::ChainId.bytes_to_string(&chain_id),
-                        HashType::ChainId.bytes_to_string(env.main_chain_id()))
+                        HashType::ChainId.hash_to_b58check(&chain_id),
+                        HashType::ChainId.hash_to_b58check(env.main_chain_id()))
                 }
             }
         }
@@ -504,7 +504,7 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
                     }
                     (genesis.into(), offset_param)
                 }
-                None => bail!("No genesis found for chain_id: {}", HashType::ChainId.bytes_to_string(chain_id))
+                None => bail!("No genesis found for chain_id: {}", HashType::ChainId.hash_to_b58check(chain_id))
             }
         }
         level_or_hash => {
@@ -526,7 +526,7 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
                 }
                 Err(_) => {
                     // block hash as base58 string was passed as parameter to block_id
-                    match HashType::BlockHash.string_to_bytes(level_or_hash) {
+                    match HashType::BlockHash.b58check_to_hash(level_or_hash) {
                         Ok(block_hash) => (block_hash, offset_param),
                         Err(e) => {
                             bail!("Invalid block_id_param: {}, reason: {}", block_id_param, e)
@@ -564,7 +564,7 @@ pub(crate) fn get_context_hash(block_hash: &BlockHash, env: &RpcServiceEnvironme
     let block_storage = BlockStorage::new(env.persistent_storage());
     match block_storage.get(block_hash)? {
         Some(header) => Ok(header.header.context().clone()),
-        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.bytes_to_string(block_hash))
+        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.hash_to_b58check(block_hash))
     }
 }
 

@@ -72,7 +72,7 @@ pub(crate) fn check_and_get_baking_rights(
     let context_proto_params = get_context_protocol_params(&block_hash, env)?;
 
     // split impl by protocol
-    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    let hash: &str = &HashType::ProtocolHash.hash_to_b58check(&context_proto_params.protocol_hash);
     match hash {
         proto_001_constants::PROTOCOL_HASH => {
             proto_001::rights_service::check_and_get_baking_rights(
@@ -183,7 +183,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     let context_proto_params = get_context_protocol_params(&block_hash, env)?;
 
     // split impl by protocol
-    let hash: &str = &HashType::ProtocolHash.bytes_to_string(&context_proto_params.protocol_hash);
+    let hash: &str = &HashType::ProtocolHash.hash_to_b58check(&context_proto_params.protocol_hash);
     match hash {
         proto_001_constants::PROTOCOL_HASH => {
             proto_001::rights_service::check_and_get_endorsing_rights(
@@ -371,7 +371,7 @@ fn create_protocol_rpc_request(chain_param: &str, chain_id: ChainId, block_hash:
     let block_storage = BlockStorage::new(env.persistent_storage());
     let block_header = match block_storage.get(&block_hash)? {
         Some(header) => header.header.as_ref().clone(),
-        None => bail!("No block header found for hash: {}", HashType::BlockHash.bytes_to_string(&block_hash))
+        None => bail!("No block header found for hash: {}", HashType::BlockHash.hash_to_b58check(&block_hash))
     };
 
     // create request to ffi
@@ -414,7 +414,7 @@ pub(crate) fn get_context_protocol_params(
     // get block header
     let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
         Some(block) => block,
-        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.bytes_to_string(block_hash)),
+        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.hash_to_b58check(block_hash)),
     };
 
     let protocol_hash: Vec<u8>;
@@ -426,13 +426,13 @@ pub(crate) fn get_context_protocol_params(
         if let Some(data) = context.get_key_from_history(&context_hash, &context_key!("protocol"))? {
             protocol_hash = data;
         } else {
-            return Err(ContextParamsError::NoProtocolForBlock(HashType::BlockHash.bytes_to_string(&block_hash)).into());
+            return Err(ContextParamsError::NoProtocolForBlock(HashType::BlockHash.hash_to_b58check(&block_hash)).into());
         }
 
         if let Some(data) = context.get_key_from_history(&context_hash, &context_key!("data/v1/constants"))? {
             constants = data;
         } else {
-            return Err(ContextParamsError::NoConstantsForBlock(HashType::BlockHash.bytes_to_string(&block_hash)).into());
+            return Err(ContextParamsError::NoConstantsForBlock(HashType::BlockHash.hash_to_b58check(&block_hash)).into());
         }
     };
 

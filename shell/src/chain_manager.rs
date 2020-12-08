@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::{Error, format_err};
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{debug, error, info, Logger, trace, warn};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
 use crypto::seeded_step::Seed;
@@ -126,14 +126,14 @@ impl CurrentHead {
 
     fn local_debug_info(&self) -> (String, i32, String) {
         match &self.local {
-            None => ("-none-".to_string(), 0 as i32, "-none-".to_string()),
+            None => ("-none-".to_string(), 0_i32, "-none-".to_string()),
             Some(head) => head.to_debug_info()
         }
     }
 
     fn remote_debug_info(&self) -> (String, i32, String) {
         match &self.remote {
-            None => ("-none-".to_string(), 0 as i32, "-none-".to_string()),
+            None => ("-none-".to_string(), 0_i32, "-none-".to_string()),
             Some(head) => head.to_debug_info()
         }
     }
@@ -227,10 +227,7 @@ impl ChainManager {
                 chain_id.clone(),
                 is_sandbox,
                 peers_threshold.num_of_peers_for_bootstrap_threshold(),
-                identity.calculated_peer_id().map_err(|e| {
-                    error!(sys.log(), "Failed to decode peer_id from identity"; "reason" => format!("{}", e));
-                    CreateError::Panicked
-                })?,
+                identity.peer_id(),
             )),
         )
     }
@@ -390,7 +387,7 @@ impl ChainManager {
                                     if !chain_state.can_accept_branch(&message, &current_head.local) {
                                         let head = message.current_branch().current_head();
                                         debug!(log, "Ignoring received (low) current branch";
-                                                    "branch" => BLOCK_HASH_ENCODING.bytes_to_string(&head.message_hash()?),
+                                                    "branch" => BLOCK_HASH_ENCODING.hash_to_b58check(&head.message_hash()?),
                                                     "level" => head.level());
                                     } else {
                                         let message_current_head = BlockHeaderWithHash::new(message.current_branch().current_head().clone())?;
@@ -426,7 +423,7 @@ impl ChainManager {
                                                 // calculate history
                                                 let history = chain_state.get_history(
                                                     &current_head.hash,
-                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key),
+                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key_hash),
                                                 )?;
                                                 // send message
                                                 let msg = CurrentBranchMessage::new(
@@ -440,7 +437,7 @@ impl ChainManager {
                                             }
                                         }
                                     } else {
-                                        warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => HashType::ChainId.bytes_to_string(chain_state.get_chain_id()));
+                                        warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => HashType::ChainId.hash_to_b58check(chain_state.get_chain_id()));
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
@@ -459,7 +456,7 @@ impl ChainManager {
                                             )?;
                                         }
                                         None => {
-                                            warn!(log, "Received unexpected block header"; "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_header_with_hash.hash));
+                                            warn!(log, "Received unexpected block header"; "block_header_hash" => BLOCK_HASH_ENCODING.hash_to_b58check(&block_header_with_hash.hash));
                                         }
                                     }
                                 }
@@ -492,7 +489,7 @@ impl ChainManager {
                                             let operation_was_expected = missing_operations.validation_passes.remove(&operations.operations_for_block().validation_pass());
                                             if operation_was_expected {
                                                 peer.block_operations_response_last = Instant::now();
-                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
+                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.hash_to_b58check(&block_hash));
 
                                                 if operations_state.process_block_operations(&operations)? {
                                                     // update stats
@@ -528,7 +525,7 @@ impl ChainManager {
                                                     peer.queued_block_operations.remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
+                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.hash_to_b58check(&block_hash));
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
@@ -665,14 +662,14 @@ impl ChainManager {
                                                     }
                                                     poe => {
                                                         // other error just propagate
-                                                        return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), poe));
+                                                        return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.hash_to_b58check(&operation_hash), poe));
                                                     }
                                                 }
                                             };
 
                                             // can accpect operation ?
                                             if !validation::can_accept_operation_from_p2p(&operation_hash, &result) {
-                                                return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.bytes_to_string(&operation_hash), result));
+                                                return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.hash_to_b58check(&operation_hash), result));
                                             }
 
                                             // store mempool operation
@@ -728,7 +725,7 @@ impl ChainManager {
                 // we try to set it as "new current head", if some means set, if none means just ignore block
                 if let Some((new_head, new_head_result)) = self.chain_state.try_update_new_current_head(&message, &self.current_head.local, &self.current_mempool_state)? {
                     debug!(ctx.system.log(), "New current head";
-                                             "block_header_hash" => HashType::BlockHash.bytes_to_string(new_head.block_hash()),
+                                             "block_header_hash" => HashType::BlockHash.hash_to_b58check(new_head.block_hash()),
                                              "level" => new_head.level(),
                                              "result" => format!("{}", new_head_result)
                     );
@@ -818,7 +815,7 @@ impl ChainManager {
                 let level = inject_data.block_header.level();
                 let block_header_with_hash = BlockHeaderWithHash::new(inject_data.block_header).unwrap();
                 let block_header_hash = block_header_with_hash.hash.clone();
-                let log = ctx.system.log().new(slog::o!("block" => HashType::BlockHash.bytes_to_string(&block_header_hash)));
+                let log = ctx.system.log().new(slog::o!("block" => HashType::BlockHash.hash_to_b58check(&block_header_hash)));
 
                 // this should  allways return [is_new_block==true], as we are injecting a forged new block
                 let (block_metadata, is_new_block, mut are_operations_complete) =
@@ -887,7 +884,7 @@ impl ChainManager {
                         );
                     } else {
                         warn!(log, "Injected block cannot be applied - will be ignored!";
-                                   "block_predecessor" => HashType::BlockHash.bytes_to_string(&block_header_with_hash.header.predecessor()),
+                                   "block_predecessor" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.header.predecessor()),
                                    "are_operations_complete" => are_operations_complete);
                     }
                 } else {
@@ -1053,11 +1050,11 @@ impl ChainManager {
             Some(meta) => {
                 if meta.is_applied() {
                     // block already applied - ok, doing nothing
-                    debug!(ctx.system.log(), "Block is already applied"; "block" => HashType::BlockHash.bytes_to_string(&msg.block_hash));
+                    debug!(ctx.system.log(), "Block is already applied"; "block" => HashType::BlockHash.hash_to_b58check(&msg.block_hash));
                     return Ok(());
                 }
             }
-            None => return Err(format_err!("Block metadata not found for block_hash: {}", HashType::BlockHash.bytes_to_string(&msg.block_hash))),
+            None => return Err(format_err!("Block metadata not found for block_hash: {}", HashType::BlockHash.hash_to_b58check(&msg.block_hash))),
         }
 
         // collect data
@@ -1552,24 +1549,26 @@ pub mod tests {
     fn peer(sys: &impl ActorRefFactory, network_channel: NetworkChannelRef, tokio_runtime: &tokio::runtime::Runtime) -> PeerState {
         let socket_address: SocketAddr = "127.0.0.1:3011".parse().expect("Expected valid ip:port address");
 
+        let node_identity = Arc::new(Identity::generate(0f64));
+        let peer_public_key_hash: CryptoboxPublicKeyHash = node_identity.public_key.public_key_hash();
+        let peer_id_marker = HashType::CryptoboxPublicKeyHash.hash_to_b58check(&peer_public_key_hash);
+
         let peer_ref = Peer::actor(
             sys,
             network_channel,
             3011,
-            "eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b",
-            "eaef40186db19fd6f56ed5b1af57f9d9c8a1eed85c29f8e4daaa7367869c0f0b",
-            "000000000000000000000000000000000000000000000000",
-            NetworkVersion::new("testet".to_string(), 0, 0),
+            node_identity.clone(),
+            Arc::new(NetworkVersion::new("testet".to_string(), 0, 0)),
             tokio_runtime.handle().clone(),
             &socket_address,
         ).unwrap();
-        let peer_public_key: CryptoboxPublicKeyHash = HashType::CryptoboxPublicKeyHash.string_to_bytes("idsg2wkkDDv2cbEMK4zH49fjgyn7XT").expect("Failed to create public key hash");
 
         PeerState::new(
             Arc::new(
                 PeerId::new(
                     peer_ref,
-                    peer_public_key,
+                    peer_public_key_hash,
+                    peer_id_marker,
                     socket_address,
                 )
             ),
@@ -1591,7 +1590,7 @@ pub mod tests {
         let actor_system = SystemBuilder::new().name("test_actors_apply_blocks_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
         let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-        let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let chain_id = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&TezosEnvironment::Sandbox).expect("no environment configuration");
 
         let pool = Arc::new(
@@ -1630,7 +1629,7 @@ pub mod tests {
             chain_id,
             false,
             1,
-            tezos_identity::Identity::generate(0f64).calculated_peer_id()?,
+            tezos_identity::Identity::generate(0f64).peer_id(),
         ));
 
         // empty chain_manager
@@ -1656,7 +1655,7 @@ pub mod tests {
 
         // simulate - BlockApplied event with level 4
         let new_head = Head::new(
-            HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+            HashType::BlockHash.b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
             4,
             vec![],
         );
@@ -1668,7 +1667,7 @@ pub mod tests {
 
         // simulate - BlockApplied event with level 5
         let new_head = Head::new(
-            HashType::BlockHash.string_to_bytes("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+            HashType::BlockHash.b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
             5,
             vec![],
         );

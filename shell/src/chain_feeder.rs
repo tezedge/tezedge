@@ -268,19 +268,19 @@ fn feed_chain_to_protocol(
         if let Ok(event) = block_applier_event_receiver.recv() {
             match event {
                 Event::ApplyBlock(block_hash, request) => {
-                    debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.bytes_to_string(&block_hash));
+                    debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash));
 
                     // check if block is already applied (not necessray here)
                     match block_meta_storage.get(&block_hash)? {
                         Some(meta) => {
                             if meta.is_applied() {
                                 // block already applied - ok, doing nothing
-                                debug!(log, "Block is already applied (feeder)"; "block" => HashType::BlockHash.bytes_to_string(&block_hash));
+                                debug!(log, "Block is already applied (feeder)"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash));
                                 continue;
                             }
                         }
                         None => {
-                            warn!(log, "Block metadata not found (feeder)"; "block" => HashType::BlockHash.bytes_to_string(&block_hash));
+                            warn!(log, "Block metadata not found (feeder)"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash));
                             continue;
                         }
                     }
@@ -289,8 +289,8 @@ fn feed_chain_to_protocol(
                     match protocol_controller.apply_block((&*request).clone()) {
                         Ok(apply_block_result) => {
                             debug!(log, "Block was applied";
-                                "block_header_hash" => block_hash_encoding.bytes_to_string(&block_hash),
-                                "context_hash" => HashType::ContextHash.bytes_to_string(&apply_block_result.context_hash),
+                                "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash),
+                                "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
                                 "validation_result_message" => &apply_block_result.validation_result_message);
 
                             // Lets mark header as applied and store result
@@ -319,7 +319,7 @@ fn feed_chain_to_protocol(
                         }
                         Err(err) => {
                             warn!(log, "Failed to apply block";
-                                       "block" => HashType::BlockHash.bytes_to_string(&block_hash),
+                                       "block" => HashType::BlockHash.hash_to_b58check(&block_hash),
                                        "reason" => format!("{:?}", err));
                         }
                     }

@@ -167,7 +167,7 @@ impl BlockchainState {
                                 if let Some(Some(protocol_hash)) = protocol_hash {
                                     // return next_protocol and header
                                     (
-                                        Some(HashType::ProtocolHash.string_to_bytes(protocol_hash)?),
+                                        Some(HashType::ProtocolHash.b58check_to_hash(protocol_hash)?),
                                         Some(predecessor_header),
                                         false,
                                     )
@@ -175,7 +175,7 @@ impl BlockchainState {
                                     return Err(
                                         failure::format_err!(
                                             "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                            HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                            HashType::BlockHash.hash_to_b58check(validated_header.predecessor())
                                         )
                                     );
                                 }
@@ -184,7 +184,7 @@ impl BlockchainState {
                                 return Err(
                                     failure::format_err!(
                                         "Missing data for applied predecessor: {}!",
-                                        HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                        HashType::BlockHash.hash_to_b58check(validated_header.predecessor())
                                     )
                                 );
                             }
@@ -220,7 +220,7 @@ impl BlockchainState {
                             // return protocol
                             Ok(
                                 (
-                                    Some(HashType::ProtocolHash.string_to_bytes(protocol_hash)?),
+                                    Some(HashType::ProtocolHash.b58check_to_hash(protocol_hash)?),
                                     predecessor_header,
                                     missing_predecessor
                                 )
@@ -229,7 +229,7 @@ impl BlockchainState {
                             return Err(
                                 failure::format_err!(
                                     "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                    HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                    HashType::BlockHash.hash_to_b58check(validated_header.predecessor())
                                 )
                             );
                         }
@@ -241,7 +241,7 @@ impl BlockchainState {
                     return Err(
                         failure::format_err!(
                             "Missing data for applied current_head: {}!",
-                            HashType::BlockHash.bytes_to_string(current_head.block_hash())
+                            HashType::BlockHash.hash_to_b58check(current_head.block_hash())
                         )
                     );
                 }
@@ -900,8 +900,8 @@ mod tests {
             };
 
             ($blocks:ident, $name:expr, $block_hash:expr, $block_hash_expected:expr, $block_header_hex_data:expr) => {
-                let block_hash = HashType::BlockHash.string_to_bytes($block_hash).expect("Failed to create block hash");
-                let block_hash_expected = HashType::BlockHash.string_to_bytes($block_hash_expected).expect("Failed to create block hash");
+                let block_hash = HashType::BlockHash.b58check_to_hash($block_hash).expect("Failed to create block hash");
+                let block_hash_expected = HashType::BlockHash.b58check_to_hash($block_hash_expected).expect("Failed to create block hash");
                 $blocks.insert(
                     $name,
                     (

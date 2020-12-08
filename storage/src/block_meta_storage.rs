@@ -53,9 +53,9 @@ impl BlockMetaStorage {
                         if *stored_predecessor != block_predecessor {
                             warn!(
                                 log, "Detected rewriting predecessor - not allowed (change is just ignored)";
-                                "block_hash" => HashType::BlockHash.bytes_to_string(&block_header.hash),
-                                "stored_predecessor" => HashType::BlockHash.bytes_to_string(&stored_predecessor),
-                                "new_predecessor" => HashType::BlockHash.bytes_to_string(&block_predecessor)
+                                "block_hash" => HashType::BlockHash.hash_to_b58check(&block_header.hash),
+                                "stored_predecessor" => HashType::BlockHash.hash_to_b58check(&stored_predecessor),
+                                "new_predecessor" => HashType::BlockHash.hash_to_b58check(&block_predecessor)
                             );
                         }
                     }
@@ -96,15 +96,15 @@ impl BlockMetaStorage {
                         if !meta.successors.contains(&block_hash) {
                             warn!(
                                 log, "Extending successors - means detected reorg or new branch";
-                                "block_hash_predecessor" => HashType::BlockHash.bytes_to_string(&block_header.header.predecessor()),
+                                "block_hash_predecessor" => HashType::BlockHash.hash_to_b58check(&block_header.header.predecessor()),
                                 "stored_successors" => {
                                     meta.successors
                                         .iter()
-                                        .map(|bh| HashType::BlockHash.bytes_to_string(bh))
+                                        .map(|bh| HashType::BlockHash.hash_to_b58check(bh))
                                         .collect::<Vec<String>>()
                                         .join(", ")
                                 },
-                                "new_successor" => HashType::BlockHash.bytes_to_string(&block_hash)
+                                "new_successor" => HashType::BlockHash.hash_to_b58check(&block_hash)
                             );
                             true
                         } else {
@@ -213,7 +213,7 @@ impl BlockMetaStorageReader for BlockMetaStorage {
         let mut live_blocks_counter = max_ttl + 1;
         let mut live_blocks = Vec::with_capacity(live_blocks_counter);
 
-        if let Some(_) = self.get(&block_hash)? {
+        if self.get(&block_hash)?.is_some() {
             // add requested header (if found)
             live_blocks.push(block_hash.clone());
             live_blocks_counter -= 1;
@@ -472,8 +472,8 @@ mod tests {
     fn genesis_block_initialized_success() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__blockmeta_genesistest")?;
 
-        let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-        let chain_id = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let k = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+        let chain_id = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let v = Meta::genesis_meta(&k, &chain_id, true);
         let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
