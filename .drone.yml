@@ -76,35 +76,39 @@ steps:
   commands:
     # prepare rust toolchain dir
     - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
-    # build and test
+    # build and unit-test
     - cargo build --release --workspace
     - cargo test --release --workspace
-    # build and run special tests
-    - export LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts
-    - export PROTOCOL_RUNNER=/drone/src/target/release/protocol-runner
-    - cargo test --package shell --release -- --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
-    - cargo test --package shell --release -- --nocapture --ignored test_readonly_protocol_runner_connection_pool
     # build and run benches
-    - cargo bench -- --nocapture
+      # just compile all benches
+    - cargo bench --no-run -- --nocapture
+      # run benches except tezos_messages (they have special step)
+    - cargo bench --workspace --exclude tezos_messages -- --nocapture
+      # run all other test benches
     - cargo bench --tests -- --nocapture
     # collect binary artefacts
     - mkdir /artifacts/ffi
     - mkdir /artifacts/tezedge
-    - mkdir -p /artifacts/test_data/tests/resources
     - mkdir /artifacts/identities
+    - mkdir -p /artifacts/test_data/tests/resources
+    # copy binaries
     - cp ./target/release/light-node /artifacts
     - cp ./target/release/sandbox /artifacts
     - cp ./target/release/protocol-runner /artifacts
     - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
     - cp ./sandbox/artifacts/tezos-client /artifacts
+    # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
     - cp `find ./target/release/deps/ | grep actors_apply_blocks_test | grep -v "\.d" | head -1` /artifacts/actors_apply_blocks_test
+    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` /artifacts/protocol_runner_test
+    # copy test resources
     - cp ./shell/tests/resources/apply_block_request_until_1326.zip /artifacts/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox_branch_1_level3.zip /artifacts/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox_branch_2_level4.zip /artifacts/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox-patch-context.json /artifacts/test_data/tests/resources
+    # copy sandbox resources
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
@@ -112,10 +116,73 @@ steps:
     - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json /tmp/sandbox/
+    # copy other resources
     - cp ./light_node/etc/drone/assert_equals.sh /artifacts/ && chmod 755 /artifacts/assert_equals.sh
     - cp ./light_node/etc/drone/assert_contains.sh /artifacts/ && chmod 755 /artifacts/assert_contains.sh
+    - cp ./light_node/etc/drone/wait_file.sh /artifacts/ && chmod 755 /artifacts/wait_file.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
+
+- name: message-encoding-bench
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cargo bench --bench message_benchmark -- --noplot --save-baseline current_branch_bench_result
+    # Results are exported defaultly here: tezos/messages/target
+    - critcmp --export current_branch_bench_result --target-dir tezos/messages/target > /artifacts/current_branch_bench_result.json
+
+# start async bench for target branch (only for PR)
+- name: message-encoding-target-branch-bench
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezedge-cache
+    - rm -rf tezedge
+    - target_branch=$${DRONE_TARGET_BRANCH}
+    - echo "...checkouting target branch - $target_branch"
+    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
+    - cd /tmp/tezedge-cache/tezedge/tezos/messages
+    - cargo bench --bench message_benchmark -- --noplot --save-baseline target_branch_bench_result
+    - critcmp --export target_branch_bench_result > /artifacts/target_branch_bench_result.json
+  when:
+    ref:
+      - refs/pull/*/head
+
+- name: protocol-runner/pool-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    OUT_DIR: .
+  commands:
+    - /artifacts/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+    - /artifacts/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
 
 - name: apply/block-context-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -190,6 +257,43 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
 
+- name: wait-for-message-encoding-bench
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    # Wait for async results
+    - /artifacts/wait_file.sh "/artifacts/current_branch_bench_result.json" 60
+
+# compare benches with target branch (only for PR)
+- name: compare-message-encoding-benches
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    # Wait for async results
+    - /artifacts/wait_file.sh "/artifacts/target_branch_bench_result.json" 120
+    - critcmp /artifacts/target_branch_bench_result.json /artifacts/current_branch_bench_result.json --list
+  when:
+    ref:
+      - refs/pull/*/head
+
 volumes:
   - name: build
     host:
@@ -197,6 +301,9 @@ volumes:
   - name: sandbox-data
     host:
       path: /etc/tezedge-ci-data/sandbox
+  - name: cache
+    host:
+      path: /etc/tezedge-ci/cache
 
 trigger:
   branch:
