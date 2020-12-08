@@ -1,6 +1,7 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::env;
-use std::fs::File;
-use std::io::prelude::*;
 use std::path::Path;
 
 use bytes::Buf;
@@ -8,12 +9,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use csv;
 use hex::FromHex;
 use serde::{Deserialize, Deserializer};
-use serde_json;
 
+use crypto::crypto_box::PrecomputedKey;
 use crypto::{
-    crypto_box::{decrypt, precompute, CryptoError},
+    crypto_box::{CryptoKey, PublicKey},
     hash::HashType,
     nonce::{generate_nonces, NoncePair},
+    CryptoError,
 };
 use tezos_encoding::{
     binary_reader::BinaryReader,
@@ -28,14 +30,6 @@ use tezos_messages::p2p::{
     encoding::peer::PeerMessageResponse,
     encoding::prelude::ConnectionMessage,
 };
-
-#[derive(Deserialize, Debug)]
-pub struct Identity {
-    pub peer_id: String,
-    pub public_key: String,
-    pub secret_key: String,
-    pub proof_of_work_stamp: String,
-}
 
 pub struct BinaryStream(Vec<u8>);
 
@@ -116,10 +110,8 @@ pub fn decode_stream(c: &mut Criterion) {
             .join("benches");
 
     // read file: "benches/identity.json"
-    let mut identity_file = File::open(data_dir.join("identity.json")).unwrap();
-    let mut identity_raw = String::new();
-    identity_file.read_to_string(&mut identity_raw).unwrap();
-    let identity: Identity = serde_json::from_str(&identity_raw).unwrap();
+    let identity = tezos_identity::load_identity(data_dir.join("identity.json"))
+        .expect("Failed to load identity");
 
     // read file benches/tezedge_communication.csv
     let mut reader = csv::Reader::from_path(data_dir.join("tezedge_communication.csv")).unwrap();
@@ -145,11 +137,9 @@ pub fn decode_stream(c: &mut Criterion) {
             return;
         }
     };
-    let peer_public_key = connection_message_remote.public_key();
-    let precomputed_key = match precompute(&hex::encode(peer_public_key), &identity.secret_key) {
-        Ok(key) => key,
-        Err(_) => panic!("can't read precomputed key from data stream"),
-    };
+    let peer_public_key = PublicKey::from_bytes(connection_message_remote.public_key())
+        .expect("PublicKey decode failed");
+    let precomputed_key = PrecomputedKey::precompute(&peer_public_key, &identity.secret_key);
 
     let is_incoming = messages[0].direction == TxRx::Received;
     let NoncePair {
@@ -157,14 +147,14 @@ pub fn decode_stream(c: &mut Criterion) {
         mut local,
     } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
 
-    let decrypted_message = decrypt(&messages[2].message[2..], &local, &precomputed_key);
+    let decrypted_message = precomputed_key.decrypt(&messages[2].message[2..], &local);
     assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");
 
     let meta_sent = MetadataMessage::from_bytes(decrypted_message.unwrap());
     assert!(meta_sent.is_ok(), "can't deserialize sent metadata");
     local = local.increment();
 
-    let decrypted_message = decrypt(&messages[3].message[2..], &remote, &precomputed_key);
+    let decrypted_message = precomputed_key.decrypt(&messages[3].message[2..], &remote);
     assert!(decrypted_message.is_ok(), "can't decrypt received metadata");
     let meta_received = MetadataMessage::from_bytes(decrypted_message.unwrap());
     assert!(meta_received.is_ok(), "can't deserialize received metadata");
@@ -178,7 +168,7 @@ pub fn decode_stream(c: &mut Criterion) {
             TxRx::Sent => {
                 outgoing.add_payload(&messages[i].message);
                 match outgoing.drain_chunk() {
-                    Ok(chunk) => match decrypt(&chunk.content(), &local, &precomputed_key) {
+                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &local) {
                         Ok(dm) => {
                             local = local.increment();
                             Ok(dm)
@@ -191,7 +181,7 @@ pub fn decode_stream(c: &mut Criterion) {
             TxRx::Received => {
                 incoming.add_payload(&messages[i].message);
                 match incoming.drain_chunk() {
-                    Ok(chunk) => match decrypt(&chunk.content(), &remote, &precomputed_key) {
+                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &remote) {
                         Ok(dm) => {
                             remote = remote.increment();
                             Ok(dm)
@@ -237,10 +227,8 @@ pub fn simulate_bootstrap_crypto(c: &mut Criterion) {
             .join("benches");
 
     // read file: "benches/identity.json"
-    let mut identity_file = File::open(data_dir.join("identity.json")).unwrap();
-    let mut identity_raw = String::new();
-    identity_file.read_to_string(&mut identity_raw).unwrap();
-    let identity: Identity = serde_json::from_str(&identity_raw).unwrap();
+    let identity = tezos_identity::load_identity(data_dir.join("identity.json"))
+        .expect("Failed to load identity");
 
     // read file benches/tezedge_communication.csv
     let mut reader = csv::Reader::from_path(data_dir.join("tezedge_communication.csv")).unwrap();
@@ -267,16 +255,14 @@ pub fn simulate_bootstrap_crypto(c: &mut Criterion) {
             return;
         }
     };
-    let peer_public_key = connection_message_remote.public_key();
+    let peer_public_key = PublicKey::from_bytes(connection_message_remote.public_key())
+        .expect("PublicKey decode failed");
 
     c.bench_function("simulate_bootstrap_crypto", |b| {
         b.iter(|| {
             // create PrecomputedKey
             let precomputed_key =
-                match precompute(&hex::encode(peer_public_key), &identity.secret_key) {
-                    Ok(key) => key,
-                    Err(_) => panic!("can't read precomputed key from data stream"),
-                };
+                PrecomputedKey::precompute(&peer_public_key, &identity.secret_key);
 
             // generate nonces
             let is_incoming = messages[0].direction == TxRx::Received;
@@ -284,7 +270,7 @@ pub fn simulate_bootstrap_crypto(c: &mut Criterion) {
                 generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
 
             // decrypt message
-            let decrypted_message = decrypt(&messages[2].message[2..], &local, &precomputed_key);
+            let decrypted_message = precomputed_key.decrypt(&messages[2].message[2..], &local);
             assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");
 
             let meta_sent = MetadataMessage::from_bytes(decrypted_message.unwrap());

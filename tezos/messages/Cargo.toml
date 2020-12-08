@@ -18,8 +18,6 @@ num-traits = "0.2.8"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
-csv = "1.1"
-criterion = "0.3"
 
 [[bench]]
 name = "message_benchmark"
@@ -27,4 +25,7 @@ harness = false
 
 [dev-dependencies]
 assert-json-diff = "1.0.0"
+criterion = "0.3"
+csv = "1.1"
 serde_json = "1.0"
+tezos_identity = { path = "../identity" }

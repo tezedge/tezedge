@@ -1,6 +1,16 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use bytes::Buf;
+use csv;
+use hex::FromHex;
+use serde::{Deserialize, Deserializer};
+
+use crypto::crypto_box::PrecomputedKey;
 use crypto::{
-    crypto_box::{decrypt, precompute, CryptoError},
+    crypto_box::{CryptoKey, PublicKey},
     nonce::{generate_nonces, NoncePair},
+    CryptoError,
 };
 use tezos_messages::p2p::{
     binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES},
@@ -8,22 +18,6 @@ use tezos_messages::p2p::{
     encoding::peer::PeerMessageResponse,
     encoding::prelude::ConnectionMessage,
 };
-
-use bytes::Buf;
-use csv;
-use hex::FromHex;
-use serde::{Deserialize, Deserializer};
-use serde_json;
-use std::fs::File;
-use std::io::prelude::*;
-
-#[derive(Deserialize, Debug)]
-pub struct Identity {
-    pub peer_id: String,
-    pub public_key: String,
-    pub secret_key: String,
-    pub proof_of_work_stamp: String,
-}
 
 pub struct BinaryStream(Vec<u8>);
 
@@ -72,10 +66,8 @@ struct Message {
 // for performing a benchmark of decryption, deserialization and decoding.
 #[test]
 pub fn decode_stream() {
-    let mut identity_file = File::open("benches/identity.json").unwrap();
-    let mut identity_raw = String::new();
-    identity_file.read_to_string(&mut identity_raw).unwrap();
-    let identity: Identity = serde_json::from_str(&identity_raw).unwrap();
+    let identity =
+        tezos_identity::load_identity("benches/identity.json").expect("Failed to load identity");
 
     let mut reader = csv::Reader::from_path("benches/tezedge_communication.csv").unwrap();
     let mut messages: Vec<Message> = vec![];
@@ -100,11 +92,9 @@ pub fn decode_stream() {
             return;
         }
     };
-    let peer_public_key = connection_message_remote.public_key();
-    let precomputed_key = match precompute(&hex::encode(peer_public_key), &identity.secret_key) {
-        Ok(key) => key,
-        Err(_) => panic!("can't read precomputed key from data stream"),
-    };
+    let peer_public_key = PublicKey::from_bytes(connection_message_remote.public_key())
+        .expect("PublicKey decode failed");
+    let precomputed_key = PrecomputedKey::precompute(&peer_public_key, &identity.secret_key);
 
     let is_incoming = messages[0].direction == TxRx::Received;
     let NoncePair {
@@ -112,13 +102,13 @@ pub fn decode_stream() {
         mut local,
     } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
 
-    let decrypted_message = decrypt(&messages[2].message[2..], &local, &precomputed_key);
+    let decrypted_message = precomputed_key.decrypt(&messages[2].message[2..], &local);
     assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");
     let meta_sent = MetadataMessage::from_bytes(decrypted_message.unwrap());
     assert!(meta_sent.is_ok(), "can't deserialize sent metadata");
     local = local.increment();
 
-    let decrypted_message = decrypt(&messages[3].message[2..], &remote, &precomputed_key);
+    let decrypted_message = precomputed_key.decrypt(&messages[3].message[2..], &remote);
     assert!(decrypted_message.is_ok(), "can't decrypt received metadata");
     let _meta_received = MetadataMessage::from_bytes(decrypted_message.unwrap());
     assert!(meta_sent.is_ok(), "can't deserialize received metadata");
@@ -132,7 +122,7 @@ pub fn decode_stream() {
             TxRx::Sent => {
                 outgoing.add_payload(&messages[i].message);
                 match outgoing.drain_chunk() {
-                    Ok(chunk) => match decrypt(&chunk.content(), &local, &precomputed_key) {
+                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &local) {
                         Ok(dm) => {
                             local = local.increment();
                             Ok(dm)
@@ -145,7 +135,7 @@ pub fn decode_stream() {
             TxRx::Received => {
                 incoming.add_payload(&messages[i].message);
                 match incoming.drain_chunk() {
-                    Ok(chunk) => match decrypt(&chunk.content(), &remote, &precomputed_key) {
+                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &remote) {
                         Ok(dm) => {
                             remote = remote.increment();
                             Ok(dm)
@@ -169,8 +159,9 @@ pub fn decode_stream() {
         decrypted_messages.len() > 0,
         "could not decrypt any message"
     );
-    assert!(
-        decrypted_messages.len() == 5472,
+    assert_eq!(
+        5472,
+        decrypted_messages.len(),
         "should be able do decrypt 5472 messages, only done {}",
         decrypted_messages.len()
     );

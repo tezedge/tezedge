@@ -116,7 +116,7 @@ impl_to_ocaml_record! {
         max_operations_ttl: OCamlInt,
         operations: OCamlList<OCamlList<Operation>> => {
             operations.iter()
-                      .map(|ops| ops.iter().map(|op| FfiOperation::from(op)).collect())
+                      .map(|ops| ops.iter().map(FfiOperation::from).collect())
                       .collect::<Vec<Vec<FfiOperation>>>()
         },
     }

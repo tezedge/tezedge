@@ -82,7 +82,7 @@ pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, App
     }
 
     match ffi::apply_block(request) {
-        Ok(result) => result.map_err(|e| ApplyBlockError::from(e)),
+        Ok(result) => result.map_err(ApplyBlockError::from),
         Err(e) => Err(ApplyBlockError::FailedToApplyBlock {
             message: format!("Unknown OcamlError: {:?}", e),
         }),
@@ -94,7 +94,7 @@ pub fn begin_application(
     request: BeginApplicationRequest,
 ) -> Result<BeginApplicationResponse, BeginApplicationError> {
     match ffi::begin_application(request) {
-        Ok(result) => result.map_err(|e| BeginApplicationError::from(e)),
+        Ok(result) => result.map_err(BeginApplicationError::from),
         Err(e) => Err(BeginApplicationError::FailedToBeginApplication {
             message: format!("Unknown OcamlError: {:?}", e),
         }),
@@ -106,7 +106,7 @@ pub fn begin_construction(
     request: BeginConstructionRequest,
 ) -> Result<PrevalidatorWrapper, BeginConstructionError> {
     match ffi::begin_construction(request) {
-        Ok(result) => result.map_err(|e| BeginConstructionError::from(e)),
+        Ok(result) => result.map_err(BeginConstructionError::from),
         Err(e) => Err(BeginConstructionError::FailedToBeginConstruction {
             message: format!("Unknown OcamlError: {:?}", e),
         }),
@@ -118,7 +118,7 @@ pub fn validate_operation(
     request: ValidateOperationRequest,
 ) -> Result<ValidateOperationResponse, ValidateOperationError> {
     match ffi::validate_operation(request) {
-        Ok(result) => result.map_err(|e| ValidateOperationError::from(e)),
+        Ok(result) => result.map_err(ValidateOperationError::from),
         Err(e) => Err(ValidateOperationError::FailedToValidateOperation {
             message: format!("Unknown OcamlError: {:?}", e),
         }),
@@ -154,7 +154,7 @@ pub fn helpers_preapply_operations(
     request: ProtocolRpcRequest,
 ) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_operations(request) {
-        Ok(result) => result.map_err(|e| HelpersPreapplyError::from(e)),
+        Ok(result) => result.map_err(HelpersPreapplyError::from),
         Err(e) => Err(HelpersPreapplyError::FailedToCallProtocolRpc {
             message: format!("Unknown OcamlError: {:?}", e),
         }),
@@ -166,7 +166,7 @@ pub fn helpers_preapply_block(
     request: ProtocolRpcRequest,
 ) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_block(request) {
-        Ok(result) => result.map_err(|e| HelpersPreapplyError::from(e)),
+        Ok(result) => result.map_err(HelpersPreapplyError::from),
         Err(e) => Err(HelpersPreapplyError::FailedToCallProtocolRpc {
             message: format!("Unknown OcamlError: {:?}", e),
         }),

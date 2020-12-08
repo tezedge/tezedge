@@ -390,7 +390,7 @@ fn main() {
             identity
         }
         Err(e) => {
-            error!(log, "Failed to load identity"; "reason" => e, "file" => env.identity.identity_json_file_path.as_path().display().to_string());
+            error!(log, "Failed to load identity"; "reason" => format!("{}", e), "file" => env.identity.identity_json_file_path.as_path().display().to_string());
             panic!(
                 "Failed to load identity: {}",
                 env.identity

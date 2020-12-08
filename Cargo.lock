@@ -3314,6 +3314,7 @@ dependencies = [
  "serde 1.0.117",
  "serde_json",
  "tezos_encoding",
+ "tezos_identity",
 ]
 
 [[package]]

@@ -3,6 +3,8 @@
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 use failure::Fail;
 use hex::{FromHex, FromHexError};
@@ -17,6 +19,9 @@ use crypto::{
 
 #[derive(Fail, Debug)]
 pub enum IdentityError {
+    #[fail(display = "I/O error: {}", reason)]
+    IoError { reason: io::Error },
+
     #[fail(display = "Serde error, reason: {}", reason)]
     IdentitySerdeError { reason: serde_json::Error },
 
@@ -153,6 +158,22 @@ impl Identity {
     pub fn peer_id(&self) -> CryptoboxPublicKeyHash {
         self.peer_id.clone()
     }
+}
+
+/// Load identity from tezos configuration file.
+pub fn load_identity<P: AsRef<Path>>(
+    identity_json_file_path: P,
+) -> Result<Identity, IdentityError> {
+    fs::read_to_string(identity_json_file_path)
+        .map(|contents| Identity::from_json(&contents))
+        .map_err(|e| IdentityError::IoError { reason: e })?
+}
+
+/// Stores provided identity into the file specified by path
+pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
+    let identity_json = identity.as_json()?;
+    fs::write(&path, &identity_json).map_err(|e| IdentityError::IoError { reason: e })?;
+    Ok(())
 }
 
 #[cfg(test)]
