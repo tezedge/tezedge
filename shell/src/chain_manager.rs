@@ -451,7 +451,7 @@ impl ChainManager {
                                 }
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
-                                    info!(log, "MESSAGE BLOCKHEADER RECIEVED: {:?}", BLOCK_HASH_ENCODING.bytes_to_string(&block_header_with_hash.hash));
+                                    info!(log, "MESSAGE BLOCKHEADER RECIEVED: {:?}", BLOCK_HASH_ENCODING.hash_to_b58check(&block_header_with_hash.hash));
                                     match peer.queued_block_headers.remove(&block_header_with_hash.hash) {
                                         Some(_) => {
                                             peer.block_response_last = Instant::now();
@@ -476,7 +476,7 @@ impl ChainManager {
                                         if let Some(block) = block_storage.get(block_hash)? {
                                             let msg: BlockHeaderMessage = (*block.header).clone().into();
                                             tell_peer(msg.into(), peer);
-                                            info!(log, "Header {:?} sent", BLOCK_HASH_ENCODING.bytes_to_string(&block_hash));
+                                            info!(log, "Header {:?} sent", BLOCK_HASH_ENCODING.hash_to_b58check(&block_hash));
                                         }
                                     }
                                 }
@@ -561,7 +561,7 @@ impl ChainManager {
                                 }
                                 PeerMessage::CurrentHead(message) => {
                                     // process current head only if we are bootstrapped
-                                    info!(log, "MESSAGE CURRENTHEAD RECIEVED - CURRENT HEAD: {:?}", BLOCK_HASH_ENCODING.bytes_to_string(&message.current_block_header().message_hash()?));
+                                    info!(log, "MESSAGE CURRENTHEAD RECIEVED - CURRENT HEAD: {:?}", BLOCK_HASH_ENCODING.hash_to_b58check(&message.current_block_header().message_hash()?));
                                     if !self.is_bootstrapped {
                                         continue;
                                     }
@@ -779,7 +779,7 @@ impl ChainManager {
                                                 // calculate history for each peer
                                                 chain_state.get_history(
                                                     &block_hash,
-                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key),
+                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key_hash),
                                                 )?
                                             )
                                         ).into(),
