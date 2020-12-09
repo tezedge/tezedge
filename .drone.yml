@@ -83,7 +83,7 @@ steps:
       # just compile all benches
     - cargo bench --no-run -- --nocapture
       # run benches except tezos_messages (they have special step)
-    - cargo bench --workspace --exclude tezos_messages -- --nocapture
+    - cargo bench --workspace --exclude tezos_messages --exclude tezos_interop -- --nocapture
       # run all other test benches
     - cargo bench --tests -- --nocapture
     # collect binary artefacts
@@ -123,11 +123,11 @@ steps:
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
 
-- name: message-encoding-bench
+# this is not triggered on pull request, because there is complex bench comparison on PR
+- name: benchmarks
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  detach: true
   volumes:
     - name: build
       path: /artifacts
@@ -135,12 +135,19 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cargo bench --bench message_benchmark -- --noplot --save-baseline current_branch_bench_result
-    # Results are exported defaultly here: tezos/messages/target
-    - critcmp --export current_branch_bench_result --target-dir tezos/messages/target > /artifacts/current_branch_bench_result.json
+    # message_benchmark
+    - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
+    - cargo bench --bench message_benchmark -- --noplot
+    # interop_benchmark
+    - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
+    - cargo bench --bench interop_benchmark -- --noplot
+  when:
+    ref:
+      exclude:
+        - refs/pull/*/head
 
-# start async bench for target branch (only for PR)
-- name: message-encoding-target-branch-bench
+# prepare and compiles (async) bench for target branch (only for PR)
+- name: compile-benchmarks-for-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -159,9 +166,14 @@ steps:
     - target_branch=$${DRONE_TARGET_BRANCH}
     - echo "...checkouting target branch - $target_branch"
     - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
+    # message_benchmark
     - cd /tmp/tezedge-cache/tezedge/tezos/messages
-    - cargo bench --bench message_benchmark -- --noplot --save-baseline target_branch_bench_result
-    - critcmp --export target_branch_bench_result > /artifacts/target_branch_bench_result.json
+    - cargo bench --bench message_benchmark --no-run
+    # interop_benchmark
+    - cd /tmp/tezedge-cache/tezedge/tezos/interop
+    - cargo bench --bench interop_benchmark --no-run
+    # this step is async, so we will sync later on this file
+    - echo > /tmp/tezedge-cache/tezedge/tezos/messages/build.done
   when:
     ref:
       - refs/pull/*/head
@@ -257,7 +269,7 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
 
-- name: wait-for-message-encoding-bench
+- name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -270,26 +282,40 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    # Wait for async results
-    - /artifacts/wait_file.sh "/artifacts/current_branch_bench_result.json" 60
-
-# compare benches with target branch (only for PR)
-- name: compare-message-encoding-benches
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: cache
-      path: /tmp/tezedge-cache
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    # Wait for async results
-    - /artifacts/wait_file.sh "/artifacts/target_branch_bench_result.json" 120
-    - critcmp /artifacts/target_branch_bench_result.json /artifacts/current_branch_bench_result.json --list
+    # we should have here precompiled target branch
+    - /artifacts/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 120
+    - branch=$(git status | grep "On branch")
+    - echo "...running bench for git - $branch"
+    # message_benchmark - target
+    - cd /tmp/tezedge-cache/tezedge/tezos/messages
+    - cargo bench --bench message_benchmark --no-run
+    - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
+    - critcmp --export message_benchmark_target_branch_result > /artifacts/message_benchmark_target_branch_result.json
+    # interop_benchmark - target
+    - cd /tmp/tezedge-cache/tezedge/tezos/interop
+    - cargo bench --bench interop_benchmark --no-run
+    - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_target_branch_result
+    - critcmp --export interop_benchmark_target_branch_result > /artifacts/interop_benchmark_target_branch_result.json
+    # checkout current branch
+    - current_branch=$${DRONE_SOURCE_BRANCH}
+    - git reset --hard origin/$current_branch && git checkout $current_branch
+    - branch=$(git status | grep "On branch")
+    - echo "...running bench for git - $branch"
+    # message_benchmark - current
+    - cd /tmp/tezedge-cache/tezedge/tezos/messages
+    - cargo bench --bench message_benchmark --no-run
+    - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
+    - critcmp --export message_benchmark_current_branch_result > /artifacts/message_benchmark_current_branch_result.json
+    # interop_benchmark - current
+    - cd /tmp/tezedge-cache/tezedge/tezos/interop
+    - cargo bench --bench interop_benchmark --no-run
+    - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_current_branch_result
+    - critcmp --export interop_benchmark_current_branch_result > /artifacts/interop_benchmark_current_branch_result.json
+    # compare results
+    - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
+    - critcmp /artifacts/message_benchmark_target_branch_result.json /artifacts/message_benchmark_current_branch_result.json --list
+    - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
+    - critcmp /artifacts/interop_benchmark_target_branch_result.json /artifacts/interop_benchmark_current_branch_result.json --list
   when:
     ref:
       - refs/pull/*/head
