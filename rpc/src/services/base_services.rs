@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use riker::actors::BasicActorRef;
-
 use failure::bail;
 use riker::actor::ActorReference;
 use serde::Serialize;
@@ -16,7 +15,7 @@ use storage::merkle_storage::StringTree;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, MempoolOperationsQuery, MonitorRpc, get_context_hash, MonitorHeadStream, NodeVersion, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, get_context_hash, NodeVersion, Protocols};
 use crate::server::RpcServiceEnvironment;
 
 pub type BlockOperations = Vec<String>;
@@ -29,43 +28,6 @@ pub(crate) fn get_blocks(chain_id: ChainId, block_hash: BlockHash, every_nth_lev
         None => block_storage.get_multiple_with_json_data(&block_hash, limit),
     }?.into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &chain_id)).collect();
     Ok(blocks)
-}
-
-/// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Result<Option<MonitorHeadStream>, failure::Error> {
-
-    // create and return the a new stream on rpc call 
-    Ok(Some(MonitorHeadStream {
-        chain_id: chain_id.clone(),
-        state: env.state().clone(),
-        protocol: protocol.clone(),
-        last_polled_timestamp: None,
-        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
-        log: env.log().clone(),
-        query: None,
-        rpc_type: MonitorRpc::Head,
-        streamed_operations: None,
-        delay: None,
-    }))
-}
-
-/// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<MonitorHeadStream>, failure::Error> {
-
-    println!("Q: {:?}", mempool_operaions_query);
-    // create and return the a new stream on rpc call 
-    Ok(Some(MonitorHeadStream {
-        chain_id: chain_id.clone(),
-        state: env.state().clone(),
-        protocol: None,
-        last_polled_timestamp: None,
-        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
-        log: env.log().clone(),
-        query: mempool_operaions_query,
-        rpc_type: MonitorRpc::MempoolOperations,
-        streamed_operations: None,
-        delay: None,
-    }))
 }
 
 /// Get block metadata

@@ -19,7 +19,8 @@ use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::encoding::base_types::TimeStamp;
-use crate::helpers::current_time_timestamp;
+// TODO: move this fn
+use crate::services::stream_services::current_time_timestamp;
 use crate::server::{RpcServiceEnvironment, spawn_server};
 
 

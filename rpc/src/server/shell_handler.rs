@@ -24,9 +24,9 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::{create_rpc_request, MempoolOperationsQuery, parse_block_hash, parse_chain_id};
+use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
-use crate::services::base_services;
+use crate::services::{base_services, stream_services};
 
 #[derive(Serialize)]
 pub struct ErrorMessage {
@@ -70,7 +70,7 @@ pub async fn valid_blocks(_: Request<Body>, _: Params, _: Query, _: RpcServiceEn
 pub async fn head_chain(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
     let protocol = query.get_str("next_protocol");
-    make_json_stream_response(base_services::get_current_head_monitor_header(&chain_id, &env, protocol.map(|s| s.to_string()))?.unwrap())
+    make_json_stream_response(stream_services::get_current_head_monitor_header(&chain_id, &env, protocol.map(|s| s.to_string()))?.unwrap())
 }
 
 pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -81,14 +81,14 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
     let branch_delayed = query.get_str("branch_delayed");
     let refused = query.get_str("refused");
 
-    let mempool_query = MempoolOperationsQuery{
+    let mempool_query = stream_services::MempoolOperationsQuery{
         applied: applied == Some("yes"),
         branch_refused: branch_refused == Some("yes"),
         branch_delayed: branch_delayed == Some("yes"),
         refused: refused == Some("yes"),
     };
 
-    make_json_stream_response(base_services::get_operations_monitor(&chain_id, &env, Some(mempool_query))?.unwrap())
+    make_json_stream_response(stream_services::get_operations_monitor(&chain_id, &env, Some(mempool_query))?.unwrap())
 }
 
 pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -172,13 +172,9 @@ pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: 
 
 pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    result_to_json_response(
-        services::mempool_services::get_pending_operations(
-            &chain_id,
-            env.state(),
-        ),
-        env.log(),
-    )
+    let (pending_operations, _) =
+        services::mempool_services::get_pending_operations(&chain_id, env.state())?;
+    result_to_json_response(Ok(pending_operations), env.log())
 }
 
 pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
