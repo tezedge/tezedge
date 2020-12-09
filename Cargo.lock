@@ -3226,6 +3226,7 @@ dependencies = [
 name = "tezos_api"
 version = "0.9.0"
 dependencies = [
+ "assert-json-diff",
  "chrono",
  "crypto",
  "derive_builder",
@@ -3235,6 +3236,7 @@ dependencies = [
  "lazy_static",
  "ocaml-interop",
  "serde 1.0.117",
+ "serde_json",
  "tezos_messages",
 ]
 

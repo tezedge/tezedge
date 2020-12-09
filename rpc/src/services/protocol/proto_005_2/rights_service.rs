@@ -18,8 +18,8 @@ use itertools::Itertools;
 
 use storage::context::TezedgeContext;
 use storage::context_action_storage::contract_id_to_contract_address_for_index;
+use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
-use tezos_messages::protocol::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::protocol::proto_005_2::rights::{BakingRights, EndorsingRight};
 
 use crate::services::protocol::ContextProtocolParam;

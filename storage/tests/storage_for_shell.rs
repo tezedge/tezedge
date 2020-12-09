@@ -44,8 +44,8 @@ fn test_storage() -> Result<(), Error> {
         ],
         version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
         protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
         },
         enable_testchain: true,
         patch_context_genesis_parameters: None,

@@ -6,6 +6,7 @@ use hex::FromHexError;
 
 use crypto::base58::FromBase58CheckError;
 
+pub mod rpc_support;
 pub mod signature_public_key;
 pub mod signature_public_key_hash;
 

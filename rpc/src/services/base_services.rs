@@ -1,10 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use shell::mempool_prevalidator::MempoolPrevalidatorMsg;
-use riker::actors::ActorRef;
 use riker::actors::BasicActorRef;
-use std::convert::TryInto;
 
 use failure::bail;
 use riker::actor::ActorReference;
@@ -19,8 +16,7 @@ use storage::merkle_storage::StringTree;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, MempoolOperationsQuery, MonitorRpc, get_action_types, get_context_hash, MonitorHeadStream, NodeVersion, Protocols};
-use crate::rpc_actor::RpcCollectedStateRef;
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, MempoolOperationsQuery, MonitorRpc, get_context_hash, MonitorHeadStream, NodeVersion, Protocols};
 use crate::server::RpcServiceEnvironment;
 
 pub type BlockOperations = Vec<String>;
@@ -53,11 +49,6 @@ pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServi
     }))
 }
 
-/// Get information about block
-pub(crate) fn get_full_block(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Option<FullBlockInfo>, failure::Error> {
-    Ok(get_block_by_block_id(chain_id, block_hash, persistent_storage)?)
-}
-
 /// Get information about current head monitor header as a stream of Json strings
 pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<MonitorHeadStream>, failure::Error> {
 
@@ -77,20 +68,10 @@ pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnviron
     }))
 }
 
-/// Get information about current head
-pub(crate) fn get_current_head_metadata(chain_id: &ChainId, state: &RpcCollectedStateRef) -> Result<Option<BlockMetadata>, failure::Error> {
-    let state = state.read().unwrap();
-    let current_head = state.current_head().as_ref().map(|current_head| {
-        FullBlockInfo::new(current_head, chain_id_to_b58_string(chain_id))
-    });
-
-    Ok(Some(current_head.unwrap().metadata))
-}
-
 /// Get block metadata
 pub(crate) fn get_block_metadata(chain_id: &ChainId, block_hash: &BlockHash, env: &RpcServiceEnvironment) -> Result<Option<BlockMetadata>, failure::Error> {
-    let block = get_full_block(chain_id, block_hash, env.persistent_storage())?.unwrap();
-    Ok(Some(block.metadata))
+    get_block(chain_id, block_hash, env.persistent_storage())
+        .map(|block| block.map(|b| b.metadata))
 }
 
 /// Get information about block header
@@ -190,7 +171,7 @@ pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Result<Vec<Preva
 
 /// Extract the current_protocol and the next_protocol from the block metadata
 pub(crate) fn get_block_protocols(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Protocols, failure::Error> {
-    if let Some(block_info) = get_block_by_block_id(chain_id, &block_hash, persistent_storage)? {
+    if let Some(block_info) = get_block(chain_id, &block_hash, persistent_storage)? {
         Ok(Protocols::new(
             block_info.metadata["protocol"].to_string().replace("\"", ""),
             block_info.metadata["next_protocol"].to_string().replace("\"", ""),
@@ -202,7 +183,7 @@ pub(crate) fn get_block_protocols(chain_id: &ChainId, block_hash: &BlockHash, pe
 
 /// Returns the chain id for the requested chain
 pub(crate) fn get_block_operation_hashes(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Vec<BlockOperations>, failure::Error> {
-    if let Some(block_info) = get_block_by_block_id(chain_id, block_hash, persistent_storage)? {
+    if let Some(block_info) = get_block(chain_id, block_hash, persistent_storage)? {
         let operations = block_info.operations.into_iter()
             .map(|op_group| op_group.into_iter()
                 .map(|op| op["hash"].to_string().replace("\"", ""))
@@ -218,17 +199,12 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeV
     Ok(NodeVersion::new(network_version))
 }
 
-pub(crate) fn get_block_by_block_id(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Option<FullBlockInfo>, failure::Error> {
+pub(crate) fn get_block(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Option<FullBlockInfo>, failure::Error> {
     Ok(
         BlockStorage::new(persistent_storage)
             .get_with_json_data(&block_hash)?
             .map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &chain_id))
     )
-}
-
-// TODO: This requires further investigation, for now, just mock an empty vector for python tests' sake
-pub(crate) fn get_user_activated_upgrades(_env: &RpcServiceEnvironment) -> Result<Vec<String>, failure::Error> {
-    Ok(vec![])
 }
 
 #[inline]

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::{collections::{HashMap, HashSet}, convert::TryFrom};
-use std::convert::TryInto;
 use std::ops::Neg;
 use std::pin::Pin;
 
@@ -18,7 +17,7 @@ use slog::Logger;
 use tokio::time::{Delay, delay_until};
 use tokio::time::{Duration, Instant};
 
-use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, ContextHash, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, ContextHash, HashType};
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
