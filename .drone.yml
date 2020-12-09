@@ -151,6 +151,7 @@ steps:
     - cp /tmp/tezos-src/modified/python-tests/daemons/node.py /tmp/tezos-src/tezos/tests_python/daemons/node.py
     - cp /tmp/tezos-src/modified/python-tests/daemons/baker.py /tmp/tezos-src/tezos/tests_python/daemons/baker.py
     - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/tezos/tests_python/launchers/sandbox.py
+    - cp /tmp/tezos-src/modified/python-tests/client/client.py /tmp/tezos-src/tezos/tests_python/client/client.py
     - cp /tmp/tezos-src/modified/python-tests/tests/test_basic.py /tmp/tezos-src/tezos/tests_python/tests/test_basic.py
     - cp /tmp/tezos-src/modified/python-tests/tests/test_mempool.py /tmp/tezos-src/tezos/tests_python/tests/test_mempool.py
     - cp /tmp/tezos-src/modified/python-tests/tests/test_baker_endorser.py /tmp/tezos-src/tezos/tests_python/tests/test_baker_endorser.py
