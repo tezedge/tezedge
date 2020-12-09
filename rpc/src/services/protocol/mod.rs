@@ -19,6 +19,7 @@ use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, context_key, num_from_slice};
 use storage::context::ContextApi;
 use tezos_api::ffi::{ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest};
+use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
     proto_001 as proto_001_constants,
@@ -29,7 +30,6 @@ use tezos_messages::protocol::{
     proto_005_2 as proto_005_2_constants,
     proto_006 as proto_006_constants,
     proto_007 as proto_007_constants,
-    RpcJsonMap,
 };
 
 use crate::helpers::get_context_hash;

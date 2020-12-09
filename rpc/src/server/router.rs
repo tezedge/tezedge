@@ -38,6 +38,8 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     routes.handle(Method::GET, "/chains/:chain_id/blocks/:block_id/metadata", shell_handler::chains_block_id_metadata);
     routes.handle(Method::POST, "/injection/operation", shell_handler::inject_operation);
     routes.handle(Method::GET, "/workers/prevalidators", shell_handler::worker_prevalidators);
+    routes.handle(Method::GET, "/config/network/user_activated_upgrades", shell_handler::config_user_activated_upgrades);
+    routes.handle(Method::GET, "/config/network/user_activated_protocol_overrides", shell_handler::config_user_activated_protocol_overrides);
     // TODO: TE-174: just for sandbox
     if is_sandbox {
         routes.handle(Method::POST, "/injection/block", shell_handler::inject_block);
@@ -64,8 +66,6 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<Handler> {
     routes.handle(Method::GET, "/stats/memory", dev_handler::dev_stats_memory);
     routes.handle(Method::GET, "/stats/database_mem", dev_handler::database_memstats);
     //routes.handle(Method::GET, "/stats/storage", dev_handler::dev_stats_storage);
-
-    routes.handle(Method::GET, "config/network/user_activated_upgrades", shell_handler::config_user_activated_upgrades);
 
     // DEPRECATED in ocaml but still used by python tests
     routes.handle(Method::GET, "/network/version", shell_handler::node_version);

@@ -11,7 +11,7 @@ use storage::context_action_storage::{ContextActionFilters, ContextActionJson, c
 use storage::merkle_storage::MerkleStorageStats;
 use storage::persistent::PersistentStorage;
 use tezos_context::channel::ContextAction;
-use tezos_messages::protocol::UniversalValue;
+use tezos_messages::base::rpc_support::UniversalValue;
 
 use crate::helpers::{get_action_types, PagedResult};
 use crate::server::RpcServiceEnvironment;
