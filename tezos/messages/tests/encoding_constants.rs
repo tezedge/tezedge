@@ -8,7 +8,8 @@ use failure::Error;
 use serde_json::{json, Value};
 
 use crypto::hash::{HashType, ProtocolHash};
-use tezos_messages::protocol::*;
+use tezos_messages::base::rpc_support::{ToRpcJsonMap, UniversalValue};
+use tezos_messages::protocol::{get_constants_for_rpc, proto_005_2, proto_006, proto_007};
 
 #[test]
 fn can_deserialize_constants_005_2() -> Result<(), Error> {

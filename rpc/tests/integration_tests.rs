@@ -30,11 +30,15 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
+    // lets run rpsc, which doeas not depend on block/level
+    test_rpc_compare_json("chains/main/blocks/genesis/header").await;
+    test_rpc_compare_json("config/network/user_activated_upgrades").await;
+    test_rpc_compare_json("config/network/user_activated_protocol_overrides").await;
+
     // lets iterate whole rps'c
     for level in from_block..to_block + 1 {
         if level <= 0 {
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
-            test_rpc_compare_json("chains/main/blocks/genesis/header").await;
             println!("Genesis with level: {:?} - skipping another rpc comparisons for this block", level);
             continue;
         }

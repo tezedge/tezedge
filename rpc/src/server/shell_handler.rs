@@ -24,7 +24,7 @@ use crate::{
     ServiceResult,
     services,
 };
-use crate::helpers::{MempoolOperationsQuery, create_rpc_request, parse_block_hash, parse_chain_id};
+use crate::helpers::{create_rpc_request, MempoolOperationsQuery, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::base_services;
 
@@ -111,7 +111,7 @@ pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: Rp
 
     use crate::encoding::chain::BlockInfo;
     result_option_to_json_response(
-        base_services::get_full_block(
+        base_services::get_block(
             &chain_id,
             &block_hash,
             env.persistent_storage(),
@@ -338,7 +338,14 @@ pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcService
 
 pub async fn config_user_activated_upgrades(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
-        services::base_services::get_user_activated_upgrades(&env),
+        Ok(env.tezos_environment().protocol_overrides.user_activated_upgrades_to_rpc_json()),
+        env.log(),
+    )
+}
+
+pub async fn config_user_activated_protocol_overrides(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+    result_to_json_response(
+        Ok(env.tezos_environment().protocol_overrides.user_activated_protocol_overrides_to_rpc_json()),
         env.log(),
     )
 }
