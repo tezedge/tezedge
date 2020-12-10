@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use riker::actors::BasicActorRef;
-
 use failure::bail;
 use riker::actor::ActorReference;
 use serde::Serialize;
@@ -16,7 +14,7 @@ use storage::merkle_storage::StringTree;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, MempoolOperationsQuery, MonitorRpc, get_context_hash, MonitorHeadStream, NodeVersion, Protocols};
+use crate::helpers::{BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo, get_context_hash, NodeVersion, Protocols};
 use crate::server::RpcServiceEnvironment;
 
 pub type BlockOperations = Vec<String>;
@@ -29,43 +27,6 @@ pub(crate) fn get_blocks(chain_id: ChainId, block_hash: BlockHash, every_nth_lev
         None => block_storage.get_multiple_with_json_data(&block_hash, limit),
     }?.into_iter().map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &chain_id)).collect();
     Ok(blocks)
-}
-
-/// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Result<Option<MonitorHeadStream>, failure::Error> {
-
-    // create and return the a new stream on rpc call 
-    Ok(Some(MonitorHeadStream {
-        chain_id: chain_id.clone(),
-        state: env.state().clone(),
-        protocol: protocol.clone(),
-        last_polled_timestamp: None,
-        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
-        log: env.log().clone(),
-        query: None,
-        rpc_type: MonitorRpc::Head,
-        streamed_operations: None,
-        delay: None,
-    }))
-}
-
-/// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<MonitorHeadStream>, failure::Error> {
-
-    println!("Q: {:?}", mempool_operaions_query);
-    // create and return the a new stream on rpc call 
-    Ok(Some(MonitorHeadStream {
-        chain_id: chain_id.clone(),
-        state: env.state().clone(),
-        protocol: None,
-        last_polled_timestamp: None,
-        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
-        log: env.log().clone(),
-        query: mempool_operaions_query,
-        rpc_type: MonitorRpc::MempoolOperations,
-        streamed_operations: None,
-        delay: None,
-    }))
 }
 
 /// Get block metadata
@@ -143,28 +104,25 @@ pub(crate) struct Prevalidator {
 }
 
 // TODO: implement the json structure form ocaml's RPC 
-pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
-    
-    let prevalidation_actors = env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").collect::<Vec<BasicActorRef>>();
-
-    if prevalidation_actors.is_empty() {
-        Ok(vec![])
+pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Vec<Prevalidator> {
+    if env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").next().is_none() {
+        vec![]
     } else {
         let rpc_state = env.state().read().unwrap();
         let current_mempool = if let Some(mempool_state) = rpc_state.current_mempool_state(){
             mempool_state.read().unwrap()
         } else {
-            return Ok(vec![])
+            return vec![]
         };
         let chain_id = if let Some(chain_id) = &current_mempool.chain_id {
             chain_id
         } else {
-            return Ok(vec![])
+            return vec![]
         };
-        Ok(vec![Prevalidator {
+        vec![Prevalidator {
             chain_id: chain_id_to_b58_string(&chain_id),
             since: env.sys().start_date().to_rfc3339(),
-        }])
+        }]
     }
 
 }
@@ -195,8 +153,8 @@ pub(crate) fn get_block_operation_hashes(chain_id: &ChainId, block_hash: &BlockH
     }
 }
 
-pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeVersion, failure::Error> {
-    Ok(NodeVersion::new(network_version))
+pub(crate) fn get_node_version(network_version: &NetworkVersion) -> NodeVersion {
+    NodeVersion::new(network_version)
 }
 
 pub(crate) fn get_block(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Option<FullBlockInfo>, failure::Error> {

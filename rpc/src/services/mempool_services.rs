@@ -42,7 +42,7 @@ pub struct InjectedBlockWithOperations {
 pub fn get_pending_operations(
     _chain_id: &ChainId,
     state: &RpcCollectedStateRef,
-) -> Result<MempoolOperations, failure::Error> {
+) -> Result<(MempoolOperations, ProtocolHash), failure::Error> {
 
     // get actual known state of mempool
     let state = state.read().unwrap();
@@ -57,15 +57,15 @@ pub fn get_pending_operations(
                 None => return Err(format_err!("missing protocol for mempool current state"))
             };
 
-            Ok(MempoolOperations {
+            Ok((MempoolOperations {
                 applied: convert_applied(&mempool.result.applied, &mempool.operations)?,
                 refused: convert_errored(&mempool.result.refused, &mempool.operations, &protocol)?,
                 branch_refused: convert_errored(&mempool.result.branch_refused, &mempool.operations, &protocol)?,
                 branch_delayed: convert_errored(&mempool.result.branch_delayed, &mempool.operations, &protocol)?,
                 unprocessed: vec![],
-            })
+            }, protocol.to_vec()))
         }
-        None => Ok(MempoolOperations::default())
+        None => Ok((MempoolOperations::default(), Vec::default()))
     }
 }
 
