@@ -587,7 +587,7 @@ impl MerkleStorage {
                 self.staged[idx].1 += 1;
             },
             None => {
-                return Err(MerkleError::EntryNotFoundInStaging { hash: HashType::ContextHash.bytes_to_string(hash) });
+                return Err(MerkleError::EntryNotFoundInStaging { hash: HashType::ContextHash.hash_to_b58check(hash) });
             }
         }
         Ok(())
@@ -1052,7 +1052,7 @@ impl MerkleStorage {
         let entry_bytes = self.db.get(hash)?;
         match entry_bytes {
             None => {
-                Err(MerkleError::EntryNotFound { hash: HashType::ContextHash.bytes_to_string(hash) })
+                Err(MerkleError::EntryNotFound { hash: HashType::ContextHash.hash_to_b58check(hash) })
             }
             Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
         }
