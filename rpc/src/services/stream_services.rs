@@ -16,7 +16,6 @@ use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType, Protoco
 use shell::shell_channel::BlockApplied;
 
 use crate::rpc_actor::RpcCollectedStateRef;
-use crate::server::RpcServiceEnvironment;
 use crate::services::mempool_services::get_pending_operations;
 use crate::helpers::{BlockHeaderInfo, FullBlockInfo};
 
@@ -63,7 +62,6 @@ pub struct HeadMonitorStream {
     pub chain_id: ChainId,
     pub state: RpcCollectedStateRef,
     pub last_checked_head: Option<BlockHash>,
-    pub log: Logger,
     pub delay: Option<Delay>,
     pub protocol: Option<ProtocolHash>,
 }
@@ -79,12 +77,12 @@ pub struct OperationMonitorStream {
 }
 
 impl OperationMonitorStream {
-    pub fn new(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Self {
+    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, log: Logger, last_checked_head: Option<BlockHash>, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Self {
         Self {
-            chain_id: chain_id.clone(),
-            state: env.state().clone(),
-            last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
-            log: env.log().clone(),
+            chain_id,
+            state,
+            last_checked_head,
+            log,
             delay: None,
             query: mempool_operaions_query,
             streamed_operations: None,
@@ -190,14 +188,13 @@ impl OperationMonitorStream {
 }
 
 impl HeadMonitorStream {
-    pub fn new(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<ProtocolHash>) -> Self {
+    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, last_checked_head: Option<BlockHash>, protocol: Option<ProtocolHash>) -> Self {
         Self {
-            chain_id: chain_id.clone(),
-            state: env.state().clone(),
-            last_checked_head: None,
-            log: env.log().clone(),
-            delay: None,
+            chain_id,
+            state,
             protocol,
+            last_checked_head,
+            delay: None,
         }
     }
 
