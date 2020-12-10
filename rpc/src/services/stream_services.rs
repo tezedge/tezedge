@@ -46,34 +46,34 @@ pub struct MempoolOperationsQuery {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MonitoredOperation {
-    pub signature: String,
-    pub branch: String,
-    pub contents: Value,
+    signature: String,
+    branch: String,
+    contents: Value,
 
     #[serde(skip_deserializing)]
-    pub protocol: Option<String>,
+    protocol: Option<String>,
     #[serde(skip_serializing)]
-    pub hash: String,
+    hash: String,
     #[serde(skip_serializing)]
-    pub error: Option<Value>,
+    error: Option<Value>,
 }
 
 pub struct HeadMonitorStream {
-    pub chain_id: ChainId,
-    pub state: RpcCollectedStateRef,
-    pub last_checked_head: Option<BlockHash>,
-    pub delay: Option<Delay>,
-    pub protocol: Option<ProtocolHash>,
+    chain_id: ChainId,
+    state: RpcCollectedStateRef,
+    last_checked_head: Option<BlockHash>,
+    delay: Option<Delay>,
+    protocol: Option<ProtocolHash>,
 }
 
 pub struct OperationMonitorStream {
-    pub chain_id: ChainId,
-    pub state: RpcCollectedStateRef,
-    pub last_checked_head: BlockHash,
-    pub log: Logger,
-    pub delay: Option<Delay>,
-    pub streamed_operations: Option<HashSet<String>>,
-    pub query: MempoolOperationsQuery,
+    chain_id: ChainId,
+    state: RpcCollectedStateRef,
+    last_checked_head: BlockHash,
+    log: Logger,
+    delay: Option<Delay>,
+    streamed_operations: Option<HashSet<String>>,
+    query: MempoolOperationsQuery,
 }
 
 impl OperationMonitorStream {
