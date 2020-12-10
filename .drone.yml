@@ -160,8 +160,6 @@ steps:
     - cp /tmp/tezos-src/modified/python-tests/test-parameters.json /tmp/tezos-src/tezos/src/proto_alpha/parameters/test-parameters.json
     - cp /tmp/sandbox/sandbox-patch-context.json /tmp/tezos-src/tezos/sandbox-patch-context.json
     # copy binaries to the test 
-    - cp /tmp/tezos-src/modified/python-tests/bin/tezos-client /tmp/tezos-src/tezos
-    - cp /tmp/tezos-src/modified/python-tests/bin/tezos-admin-client /tmp/tezos-src/tezos
     - cp /artifacts/light-node /tmp/tezos-src/tezos/
     - cp /artifacts/protocol-runner /tmp/tezos-src/tezos/
     - cp /artifacts/ffi/libtezos.so /tmp/tezos-src/tezos/
