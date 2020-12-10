@@ -30,6 +30,7 @@ help() {
 
 build_all() {
   # cargo build profile commandline argument
+  SANITIZE_ARG=""
   case $1 in
     debug)
       # nothing to do here
@@ -37,6 +38,10 @@ build_all() {
       ;;
     release)
       CARGO_PROFILE_ARG="--release"
+      shift
+      ;;
+    sanitize)
+      SANITIZE_ARG="-Zbuild-std --target x86_64-unknown-linux-gnu"
       shift
       ;;
     *)
@@ -47,7 +52,7 @@ build_all() {
 
   # this is required for the most linux distributions
   export SODIUM_USE_PKG_CONFIG=1
-  cargo build $CARGO_PROFILE_ARG || exit 1
+  cargo build $SANITIZE_ARG $CARGO_PROFILE_ARG || exit 1
 }
 
 run_node() {
@@ -69,15 +74,21 @@ run_node() {
 
 
   # set compilation profile and cargo commandline argument
-  PROFILE=""
+  SANITIZE_ARG=""
+  TARGET_PATH=""
   case $1 in
     debug)
-      PROFILE="debug"
+      TARGET_PATH="target/debug"
       shift
       ;;
     release)
       CARGO_PROFILE_ARG="--release"
-      PROFILE="release"
+      TARGET_PATH="target/release"
+      shift
+      ;;
+    sanitize)
+      SANITIZE_ARG="-Zbuild-std --target=x86_64-unknown-linux-gnu"
+      TARGET_PATH="target/x86_64-unknown-linux-gnu/debug"
       shift
       ;;
     *)
@@ -144,15 +155,15 @@ run_node() {
   fi
 
   # protocol_runner needs 'libtezos.so' to run
-  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/$TARGET_PATH"
   # start node
-  cargo run $CARGO_PROFILE_ARG --bin light-node -- \
+  cargo run $CARGO_PROFILE_ARG $SANITIZE_ARG --bin light-node -- \
                                 --config-file "$CONFIG_FILE" \
                                 --tezos-data-dir "$TEZOS_DIR" \
                                 --identity-file "$IDENTITY_FILE" \
                                 --bootstrap-db-path "$BOOTSTRAP_DIR" \
                                 --network "$NETWORK" \
-                                --protocol-runner "./target/$PROFILE/protocol-runner" "${args[@]}"
+                                --protocol-runner "./$TARGET_PATH/protocol-runner" "${args[@]}"
 }
 
 run_docker() {
@@ -214,6 +225,16 @@ case $1 in
     printf "\033[1;37mRunning Tezedge node in DEBUG mode\e[0m\n"
     build_all "debug"
     run_node "debug" "$@"
+    ;;
+
+  asan)
+    warn_if_not_using_recommended_rust
+    printf "\033[1;37mRunning Tezedge node in DEBUG mode with address sanitizer\e[0m\n"
+    export RUSTFLAGS="-Zsanitizer=address"
+    export ASAN_OPTIONS="suppressions=sanitize_config/asan.supp"
+    # export RUST_BACKTRACE=1
+    build_all "sanitize"
+    run_node "sanitize" "$@"
     ;;
 
   release)
