@@ -12,7 +12,7 @@ use slog::{Logger, warn};
 use tokio::time::{Delay, delay_until};
 use tokio::time::{Duration, Instant};
 
-use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType};
+use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType, ProtocolHash};
 use shell::shell_channel::BlockApplied;
 
 use crate::rpc_actor::RpcCollectedStateRef;
@@ -65,7 +65,7 @@ pub struct HeadMonitorStream {
     pub last_checked_head: Option<BlockHash>,
     pub log: Logger,
     pub delay: Option<Delay>,
-    pub protocol: Option<String>,
+    pub protocol: Option<ProtocolHash>,
 }
 
 pub struct OperationMonitorStream {
@@ -79,7 +79,19 @@ pub struct OperationMonitorStream {
 }
 
 impl OperationMonitorStream {
-    fn yield_operations(&mut self) -> Poll<Option<Result<String, serde_json::Error>>> {
+    pub fn new(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Self {
+        Self {
+            chain_id: chain_id.clone(),
+            state: env.state().clone(),
+            last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
+            log: env.log().clone(),
+            delay: None,
+            query: mempool_operaions_query,
+            streamed_operations: None,
+        }
+    }
+
+    fn yield_operations(&mut self) -> Poll<Option<Result<String, failure::Error>>> {
         let (pending_operations, protocol) = if let Ok(ops) = get_pending_operations(&self.chain_id, &self.state) {
             ops
         } else {
@@ -178,7 +190,18 @@ impl OperationMonitorStream {
 }
 
 impl HeadMonitorStream {
-    fn yield_head(&self, current_head: Option<BlockApplied>) -> Result<Option<String>, serde_json::Error> {
+    pub fn new(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<ProtocolHash>) -> Self {
+        Self {
+            chain_id: chain_id.clone(),
+            state: env.state().clone(),
+            last_checked_head: None,
+            log: env.log().clone(),
+            delay: None,
+            protocol,
+        }
+    }
+
+    fn yield_head(&self, current_head: Option<BlockApplied>) -> Result<Option<String>, failure::Error> {
         // get the desired structure of the
         let current_head_header = current_head.as_ref().map(|current_head| {
             let chain_id = chain_id_to_b58_string(&self.chain_id);
@@ -195,7 +218,7 @@ impl HeadMonitorStream {
             } else {
                 return Ok(None)
             };
-            if &block_next_protocol != protocol {
+            if &HashType::ProtocolHash.b58check_to_hash(&block_next_protocol)? != protocol {
                 return Ok(None)
             }
         }
@@ -212,9 +235,9 @@ impl HeadMonitorStream {
 
 
 impl Stream for HeadMonitorStream {
-    type Item = Result<String, serde_json::Error>;
+    type Item = Result<String, failure::Error>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, serde_json::Error>>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, failure::Error>>> {
         // Note: the stream only ends on the client dropping the connection
 
         // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
@@ -279,9 +302,9 @@ impl Stream for HeadMonitorStream {
 }
 
 impl Stream for OperationMonitorStream {
-    type Item = Result<String, serde_json::Error>;
+    type Item = Result<String, failure::Error>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, serde_json::Error>>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, failure::Error>>> {
         // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
         let delay = self.delay.get_or_insert_with(|| {
             let when = Instant::now() + Duration::from_millis(MONITOR_TIMER_MILIS);
@@ -339,32 +362,3 @@ impl Stream for OperationMonitorStream {
         }
     }
 }
-
-/// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Option<HeadMonitorStream> {
-
-    // create and return the a new stream on rpc call 
-    Some(HeadMonitorStream {
-        chain_id: chain_id.clone(),
-        state: env.state().clone(),
-        last_checked_head: None,
-        log: env.log().clone(),
-        delay: None,
-        protocol,
-    })
-}
-
-/// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Option<OperationMonitorStream> {
-    // create and return the a new stream on rpc call 
-    Some(OperationMonitorStream {
-        chain_id: chain_id.clone(),
-        state: env.state().clone(),
-        last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
-        log: env.log().clone(),
-        delay: None,
-        query: mempool_operaions_query,
-        streamed_operations: None,
-    })
-}
-
