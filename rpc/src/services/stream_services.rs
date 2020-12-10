@@ -69,15 +69,15 @@ pub struct HeadMonitorStream {
 pub struct OperationMonitorStream {
     pub chain_id: ChainId,
     pub state: RpcCollectedStateRef,
-    pub last_checked_head: Option<BlockHash>,
+    pub last_checked_head: BlockHash,
     pub log: Logger,
     pub delay: Option<Delay>,
     pub streamed_operations: Option<HashSet<String>>,
-    pub query: Option<MempoolOperationsQuery>,
+    pub query: MempoolOperationsQuery,
 }
 
 impl OperationMonitorStream {
-    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, log: Logger, last_checked_head: Option<BlockHash>, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Self {
+    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, log: Logger, last_checked_head: BlockHash, mempool_operaions_query: MempoolOperationsQuery) -> Self {
         Self {
             chain_id,
             state,
@@ -90,24 +90,21 @@ impl OperationMonitorStream {
     }
 
     fn yield_operations(&mut self) -> Poll<Option<Result<String, failure::Error>>> {
-        let (pending_operations, protocol) = if let Ok(ops) = get_pending_operations(&self.chain_id, &self.state) {
+        let OperationMonitorStream { 
+            chain_id,
+            state,
+            log,
+            query,
+            streamed_operations,
+            ..
+        } = self;
+
+        let (pending_operations, protocol) = if let Ok(ops) = get_pending_operations(&chain_id, &state) {
             ops
         } else {
             return Poll::Ready(None)
         };
         let mut requested_ops: HashMap<String, Value> = HashMap::new();
-
-        // no querry means all ops
-        let query = if let Some(q) = self.query {
-            q
-        } else {
-            MempoolOperationsQuery{
-                applied: true,
-                refused: true,
-                branch_delayed: true,
-                branch_refused :true,
-            }
-        };
 
         // fill in the resulting vector according to the querry
         if query.applied {
@@ -135,7 +132,7 @@ impl OperationMonitorStream {
             requested_ops.extend(refused);
         }
 
-        if let Some(streamed_operations) = &mut self.streamed_operations {
+        if let Some(streamed_operations) = streamed_operations {
             let to_yield: Vec<MonitoredOperation> = requested_ops.clone().into_iter()
                 .filter(|(k, _)| !streamed_operations.contains(k))
                 .map(|(_, v)| {
@@ -158,6 +155,7 @@ impl OperationMonitorStream {
                 Poll::Ready(Some(Ok(to_yield_string)))
             }
         } else {
+            // first poll, yield the operations in mempool, or an empty vector if mempool is empty
             let mut streamed_operations = HashSet::<String>::new();
             let to_yield: Vec<MonitoredOperation> = requested_ops.into_iter()
                 .map(|(k, v)| {
@@ -167,7 +165,7 @@ impl OperationMonitorStream {
                             json_value
                         }
                         Err(e) => {
-                            warn!(self.log, "Wont yield errored op: {}", e);
+                            warn!(log, "Wont yield errored op: {}", e);
                             return Err(e)
                         }
                     };
@@ -188,26 +186,27 @@ impl OperationMonitorStream {
 }
 
 impl HeadMonitorStream {
-    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, last_checked_head: Option<BlockHash>, protocol: Option<ProtocolHash>) -> Self {
+    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, protocol: Option<ProtocolHash>) -> Self {
         Self {
             chain_id,
             state,
             protocol,
-            last_checked_head,
+            last_checked_head: None,
             delay: None,
         }
     }
 
     fn yield_head(&self, current_head: Option<BlockApplied>) -> Result<Option<String>, failure::Error> {
-        // get the desired structure of the
+        let HeadMonitorStream { chain_id, protocol, ..} = self; 
+
         let current_head_header = current_head.as_ref().map(|current_head| {
             let chain_id = chain_id_to_b58_string(&self.chain_id);
             BlockHeaderInfo::new(current_head, chain_id).to_monitor_header(current_head)
         });
 
-        if let Some(protocol) = &self.protocol {
+        if let Some(protocol) = &protocol {
             let block_info = current_head.as_ref().map(|current_head| {
-                let chain_id = chain_id_to_b58_string(&self.chain_id);
+                let chain_id = chain_id_to_b58_string(&chain_id);
                 FullBlockInfo::new(current_head, chain_id)
             });
             let block_next_protocol = if let Some(block_info) = block_info {
@@ -223,13 +222,12 @@ impl HeadMonitorStream {
         // serialize the struct to a json string to yield by the stream
         let mut head_string = serde_json::to_string(&current_head_header.unwrap())?;
 
-        // push a newline character to the stream to imrove readability
-        head_string.push('\n');
+        // push a newline character to the stream
+        head_string.push('\n'); 
 
         Ok(Some(head_string))
     }
 }
-
 
 impl Stream for HeadMonitorStream {
     type Item = Result<String, failure::Error>;
@@ -263,7 +261,7 @@ impl Stream for HeadMonitorStream {
                 // TODO: refactor this drop (remove if possible)
                 drop(state);
 
-                // if last_checked_head is none, this is the first poll, yield the current_head
+                // if last_checked_head is None, this is the first poll, yield the current_head
                 let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
                     head_hash
                 } else {
@@ -328,14 +326,8 @@ impl Stream for OperationMonitorStream {
                 // TODO: refactor this drop (remove if possible)
                 drop(state);
 
-                let last_checked_head = if let Some(head_hash) = &self.last_checked_head {
-                    head_hash
-                } else {
-                    return Poll::Ready(None)
-                };
-
                 if let Some(current_head) = current_head {
-                    if last_checked_head == &current_head.header().hash {
+                    if self.last_checked_head == current_head.header().hash {
                         // current head not changed, check for new operations
                         let yielded = self.yield_operations();
                         match yielded {
@@ -359,3 +351,5 @@ impl Stream for OperationMonitorStream {
         }
     }
 }
+
+// TODO: add tests for both Streams!

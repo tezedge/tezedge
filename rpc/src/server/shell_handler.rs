@@ -69,9 +69,13 @@ pub async fn valid_blocks(_: Request<Body>, _: Params, _: Query, _: RpcServiceEn
 
 pub async fn head_chain(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let protocol = HashType::ProtocolHash.b58check_to_hash(query.get_str("next_protocol").unwrap()).ok();
+    let protocol = if let Some(protocol) = query.get_str("next_protocol") {
+        HashType::ProtocolHash.b58check_to_hash(protocol).ok()
+    } else {
+        None
+    };
 
-    make_json_stream_response(stream_services::HeadMonitorStream::new(chain_id, env.state().clone(), None, protocol))
+    make_json_stream_response(stream_services::HeadMonitorStream::new(chain_id, env.state().clone(), protocol))
 }
 
 pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -90,7 +94,7 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
     };
 
     let last_checked_head = env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone();
-    make_json_stream_response(stream_services::OperationMonitorStream::new(chain_id, env.state().clone(), env.log().clone(), Some(last_checked_head), Some(mempool_query)))
+    make_json_stream_response(stream_services::OperationMonitorStream::new(chain_id, env.state().clone(), env.log().clone(), last_checked_head, mempool_query))
 }
 
 pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
