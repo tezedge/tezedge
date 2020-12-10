@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use riker::actors::BasicActorRef;
 use failure::bail;
 use riker::actor::ActorReference;
 use serde::Serialize;
@@ -105,28 +104,25 @@ pub(crate) struct Prevalidator {
 }
 
 // TODO: implement the json structure form ocaml's RPC 
-pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Result<Vec<Prevalidator>, failure::Error> {
-    
-    let prevalidation_actors = env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").collect::<Vec<BasicActorRef>>();
-
-    if prevalidation_actors.is_empty() {
-        Ok(vec![])
+pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Vec<Prevalidator> {
+    if env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").next().is_none() {
+        vec![]
     } else {
         let rpc_state = env.state().read().unwrap();
         let current_mempool = if let Some(mempool_state) = rpc_state.current_mempool_state(){
             mempool_state.read().unwrap()
         } else {
-            return Ok(vec![])
+            return vec![]
         };
         let chain_id = if let Some(chain_id) = &current_mempool.chain_id {
             chain_id
         } else {
-            return Ok(vec![])
+            return vec![]
         };
-        Ok(vec![Prevalidator {
+        vec![Prevalidator {
             chain_id: chain_id_to_b58_string(&chain_id),
             since: env.sys().start_date().to_rfc3339(),
-        }])
+        }]
     }
 
 }
@@ -157,8 +153,8 @@ pub(crate) fn get_block_operation_hashes(chain_id: &ChainId, block_hash: &BlockH
     }
 }
 
-pub(crate) fn get_node_version(network_version: &NetworkVersion) -> Result<NodeVersion, failure::Error> {
-    Ok(NodeVersion::new(network_version))
+pub(crate) fn get_node_version(network_version: &NetworkVersion) -> NodeVersion {
+    NodeVersion::new(network_version)
 }
 
 pub(crate) fn get_block(chain_id: &ChainId, block_hash: &BlockHash, persistent_storage: &PersistentStorage) -> Result<Option<FullBlockInfo>, failure::Error> {

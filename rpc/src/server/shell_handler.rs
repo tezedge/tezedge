@@ -70,7 +70,7 @@ pub async fn valid_blocks(_: Request<Body>, _: Params, _: Query, _: RpcServiceEn
 pub async fn head_chain(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
     let protocol = query.get_str("next_protocol");
-    make_json_stream_response(stream_services::get_current_head_monitor_header(&chain_id, &env, protocol.map(|s| s.to_string()))?.unwrap())
+    make_json_stream_response(stream_services::get_current_head_monitor_header(&chain_id, &env, protocol.map(|s| s.to_string())).unwrap())
 }
 
 pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -88,7 +88,7 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
         refused: refused == Some("yes"),
     };
 
-    make_json_stream_response(stream_services::get_operations_monitor(&chain_id, &env, Some(mempool_query))?.unwrap())
+    make_json_stream_response(stream_services::get_operations_monitor(&chain_id, &env, Some(mempool_query)).unwrap())
 }
 
 pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -152,7 +152,7 @@ pub async fn chains_block_id_metadata(_: Request<Body>, params: Params, _: Query
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
     let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
 
-    result_option_to_json_response(base_services::get_block_metadata(&chain_id, &block_hash, &env).map(|res| res), env.log())
+    result_option_to_json_response(base_services::get_block_metadata(&chain_id, &block_hash, &env), env.log())
 }
 
 pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -312,13 +312,11 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
     match services::protocol::preapply_block(chain_id_param, chain_id, block_hash, rpc_request, &env) {
         Ok(resp) => result_to_json_response(Ok(resp), env.log()),
         Err(e) => {
-            if let Some(err) = e.as_fail().downcast_ref::<ProtocolServiceError>() {
-                if let ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc(message) } } = err {
-                    return make_json_response(&ErrorMessage {
-                        error_type: "ocaml".to_string(),
-                        message: message.to_string(),
-                    });
-                }
+            if let Some(ProtocolServiceError::ProtocolError { reason: ProtocolError::ProtocolRpcError { reason: ProtocolRpcError::FailedToCallProtocolRpc(message) } }) = e.as_fail().downcast_ref::<ProtocolServiceError>() {
+                return make_json_response(&ErrorMessage {
+                    error_type: "ocaml".to_string(),
+                    message: message.to_string(),
+                });
             }
             empty()
         }
@@ -327,7 +325,7 @@ pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: R
 
 pub async fn node_version(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
-        base_services::get_node_version(env.network_version()),
+        Ok(base_services::get_node_version(env.network_version())),
         env.log(),
     )
 }
@@ -349,7 +347,7 @@ pub async fn config_user_activated_protocol_overrides(_: Request<Body>, _: Param
 // TODO: remove. This is a 'fake it till you make it' handler
 /// Handler mockin the describe routes in ocaml to be compatible with tezoses python test framework
 pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let path: Vec<String> = req.uri().path().split("/").skip(2).map(|v| v.to_string()).collect();
+    let path: Vec<String> = req.uri().path().split('/').skip(2).map(|v| v.to_string()).collect();
 
     let service_fields = serde_json::json!({
         "meth": method.as_str(),
@@ -402,7 +400,7 @@ pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, e
 
 pub async fn worker_prevalidators(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
-        base_services::get_prevalidators(&env),
+        Ok(base_services::get_prevalidators(&env)),
         env.log(),
     )
 }

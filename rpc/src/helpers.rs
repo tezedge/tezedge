@@ -308,7 +308,7 @@ impl NodeVersion {
     pub fn new(network_version: &NetworkVersion) -> Self {
         let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
-        let version: Vec<String> = version_env.split(".").map(|v| v.to_string()).collect();
+        let version: Vec<String> = version_env.split('.').map(|v| v.to_string()).collect();
 
         Self {
             version: Version {
@@ -480,7 +480,7 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
 
 #[inline]
 pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
-    action_types.split(",")
+    action_types.split(',')
         .filter_map(|x: &str| x.parse().ok())
         .collect()
 }
@@ -511,7 +511,7 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
 
     Ok(RpcRequest {
         body,
-        context_path: String::from(context_path.trim_end_matches("/")),
+        context_path: String::from(context_path.trim_end_matches('/')),
         meth,
         content_type,
         accept,

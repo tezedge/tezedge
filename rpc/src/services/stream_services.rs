@@ -152,7 +152,7 @@ impl OperationMonitorStream {
             let to_yield: Vec<MonitoredOperation> = requested_ops.into_iter()
                 .map(|(k, v)| {
                     streamed_operations.insert(k);
-                    let mut monitor_op: MonitoredOperation = match serde_json::from_value(v.clone()) {
+                    let mut monitor_op: MonitoredOperation = match serde_json::from_value(v) {
                         Ok(json_value) => {
                             json_value
                         }
@@ -230,7 +230,7 @@ impl Stream for HeadMonitorStream {
         // poll the delay future
         match pinned_mut.poll(cx) {
             Poll::Pending => {
-                return Poll::Pending
+                Poll::Pending
             },
             _ => {
                 // get rid of the used delay
@@ -253,7 +253,7 @@ impl Stream for HeadMonitorStream {
                         let head_string_result = self.yield_head(Some(current_head));
                         return Poll::Ready(head_string_result.transpose())
                     } else {
-                        // No head current found, storage not ready yet
+                        // No current head found, storage not ready yet
                         return Poll::Ready(None)
                     }
                 };
@@ -262,19 +262,19 @@ impl Stream for HeadMonitorStream {
                     if last_checked_head == &current_head.header().hash {
                         // current head not changed, yield nothing
                         cx.waker().wake_by_ref();
-                        return Poll::Pending
+                        Poll::Pending
                     } else {
                         // Head change, yield new head
                         self.last_checked_head = Some(current_head.header().hash.clone());
                         let head_string_result = self.yield_head(Some(current_head));
-                        return Poll::Ready(head_string_result.transpose())
+                        Poll::Ready(head_string_result.transpose())
                     }
                 } else {
-                    // No head current found, storage not ready yet
-                    return Poll::Ready(None)
+                    // No current head found, storage not ready yet
+                    Poll::Ready(None)
                 }
             }
-        };
+        }
     }
 }
 
@@ -295,7 +295,7 @@ impl Stream for OperationMonitorStream {
         // poll the delay future
         match pinned_mut.poll(cx) {
             Poll::Pending => {
-                return Poll::Pending
+                Poll::Pending
             },
             _ => {
                 // get rid of the used delay
@@ -321,43 +321,43 @@ impl Stream for OperationMonitorStream {
                         match yielded {
                             Poll::Pending => {
                                 cx.waker().wake_by_ref();
-                                return Poll::Pending
+                                Poll::Pending
                             },
                             _ => {
-                                return yielded
+                                yielded
                             },
                         }
                     } else {
                         // Head change, end stream
-                        return Poll::Ready(None)
+                        Poll::Ready(None)
                     }
                 } else {
-                    // No head current found, storage not ready yet 
-                    return Poll::Ready(None)
+                    // No current head found, storage not ready yet 
+                    Poll::Ready(None)
                 }
             }
-        };
+        }
     }
 }
 
 /// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Result<Option<HeadMonitorStream>, failure::Error> {
+pub(crate) fn get_current_head_monitor_header(chain_id: &ChainId, env: &RpcServiceEnvironment, protocol: Option<String>) -> Option<HeadMonitorStream> {
 
     // create and return the a new stream on rpc call 
-    Ok(Some(HeadMonitorStream {
+    Some(HeadMonitorStream {
         chain_id: chain_id.clone(),
         state: env.state().clone(),
         last_checked_head: None,
         log: env.log().clone(),
         delay: None,
-        protocol: protocol.clone(),
-    }))
+        protocol,
+    })
 }
 
 /// Get information about current head monitor header as a stream of Json strings
-pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Result<Option<OperationMonitorStream>, failure::Error> {
+pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnvironment, mempool_operaions_query: Option<MempoolOperationsQuery>) -> Option<OperationMonitorStream> {
     // create and return the a new stream on rpc call 
-    Ok(Some(OperationMonitorStream {
+    Some(OperationMonitorStream {
         chain_id: chain_id.clone(),
         state: env.state().clone(),
         last_checked_head: Some(env.state().read().unwrap().current_head().as_ref().unwrap().header().hash.clone()),
@@ -365,6 +365,6 @@ pub(crate) fn get_operations_monitor(chain_id: &ChainId, env: &RpcServiceEnviron
         delay: None,
         query: mempool_operaions_query,
         streamed_operations: None,
-    }))
+    })
 }
 
