@@ -18,9 +18,6 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::encoding::base_types::TimeStamp;
-// TODO: move this fn
-use crate::services::stream_services::current_time_timestamp;
 use crate::server::{RpcServiceEnvironment, spawn_server};
 
 
@@ -37,8 +34,6 @@ pub struct RpcCollectedState {
     current_head: Option<BlockApplied>,
     #[get = "pub(crate)"]
     current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
-    #[get = "pub(crate)"]
-    head_update_time: TimeStamp,
     #[get_copy = "pub(crate)"]
     is_sandbox: bool,
     #[get_copy = "pub(crate)"]
@@ -74,7 +69,6 @@ impl RpcServer {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(persistent_storage, &init_storage_data.chain_id, &sys.log()),
             current_mempool_state: None,
-            head_update_time: current_time_timestamp(),
             is_sandbox,
             disable_mempool,
         }));
@@ -143,7 +137,6 @@ impl Receive<ShellChannelMsg> for RpcServer {
             ShellChannelMsg::NewCurrentHead(_, block) => {
                 let current_head_ref = &mut *self.state.write().unwrap();
                 current_head_ref.current_head = Some(block);
-                current_head_ref.head_update_time = current_time_timestamp();
             }
             ShellChannelMsg::MempoolStateChanged(result) => {
                 let current_state = &mut *self.state.write().unwrap();

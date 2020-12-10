@@ -3,7 +3,6 @@
 use std::{collections::{HashMap, HashSet}};
 use std::pin::Pin;
 
-use chrono::Utc;
 use futures::Stream;
 use futures::task::{Context, Poll};
 use std::future::Future;
@@ -16,7 +15,6 @@ use tokio::time::{Duration, Instant};
 use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType};
 use shell::shell_channel::BlockApplied;
 
-use crate::encoding::base_types::TimeStamp;
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::server::RpcServiceEnvironment;
 use crate::services::mempool_services::get_pending_operations;
@@ -340,10 +338,6 @@ impl Stream for OperationMonitorStream {
             }
         };
     }
-}
-
-pub(crate) fn current_time_timestamp() -> TimeStamp {
-    TimeStamp::Integral(Utc::now().timestamp())
 }
 
 /// Get information about current head monitor header as a stream of Json strings
