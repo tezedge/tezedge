@@ -143,10 +143,6 @@ pub fn inject_operation(
 
     let state = state.read().unwrap();
 
-    if state.disable_mempool() {
-        bail!("Cannot inject operation, mempool is disabled")
-    }
-
     // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
     let operation_hash = operation.message_hash()?;
@@ -269,7 +265,6 @@ pub fn inject_block(
 }
 
 pub fn request_operations(
-    _data: &str,
     env: &RpcServiceEnvironment,
     shell_channel: ShellChannelRef) -> Result<HashMap<String, String>, failure::Error> {
     let state = env.state();
