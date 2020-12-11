@@ -769,7 +769,7 @@ impl ChainManager {
                                 let header: &BlockHeader = &message.header().header;
                                 let chain_id = chain_state.get_chain_id();
 
-                                let block_hash: BlockHash = header.message_hash()?;
+                                let block_hash: BlockHash = message.header().hash.clone();
                                 for (_, peer) in peers {
                                     tell_peer(
                                         CurrentBranchMessage::new(

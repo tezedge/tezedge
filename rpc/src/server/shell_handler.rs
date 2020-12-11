@@ -236,14 +236,11 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
     )
 }
 
-pub async fn mempool_request_operations(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let body = hyper::body::to_bytes(req.into_body()).await?;
-    let body = String::from_utf8(body.to_vec())?;
-
+pub async fn mempool_request_operations(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let shell_channel = env.shell_channel();
 
     result_to_json_response(
-        services::mempool_services::request_operations(&body, &env, shell_channel.clone()),
+        services::mempool_services::request_operations(&env, shell_channel.clone()),
         env.log(),
     )
 }
