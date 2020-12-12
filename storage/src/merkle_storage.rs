@@ -755,7 +755,7 @@ impl MerkleStorage {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::{env, fs};
+    use std::fs;
     use std::path::{Path, PathBuf};
 
     use rocksdb::{DB, Options};
@@ -772,7 +772,7 @@ mod tests {
     }
 
     pub fn out_dir_path(dir_name: &str) -> PathBuf {
-        let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
+        let out_dir = String::from("/tmp"); // env::var("OUT_DIR").expect("OUT_DIR is not defined");
         let path = Path::new(out_dir.as_str())
             .join(Path::new(dir_name))
             .to_path_buf();
