@@ -3,20 +3,18 @@
 
 //! Shell channel is used to transmit high level shell messages.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
-use tezos_api::ffi::{ApplyBlockRequest, ValidateOperationResult};
+use tezos_api::ffi::ApplyBlockRequest;
 use tezos_messages::Head;
-use tezos_messages::p2p::encoding::block_header::Fitness;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, Path};
+use tezos_messages::p2p::encoding::prelude::{BlockHeader, Mempool, Operation, Path};
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -55,22 +53,11 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
-// Notify actors that operations should by validated by mempool
+/// Notify actors that operations should by validated by mempool
 #[derive(Clone, Debug)]
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
     pub operation_type: MempoolOperationType,
-}
-
-#[derive(Clone, Debug)]
-pub struct CurrentMempoolState {
-    pub chain_id: Option<ChainId>,
-    pub head: Option<BlockHash>,
-    pub protocol: Option<ProtocolHash>,
-    pub fitness: Option<Fitness>,
-    pub result: ValidateOperationResult,
-    pub operations: HashMap<OperationHash, Operation>,
-    pub pending: HashSet<OperationHash>,
 }
 
 #[derive(Clone, Debug)]
@@ -92,7 +79,7 @@ pub enum ShellChannelMsg {
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
-    MempoolStateChanged(Arc<RwLock<CurrentMempoolState>>),
+    AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
     InjectBlock(InjectBlock),
     RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
@@ -113,12 +100,6 @@ impl From<BlockApplied> for ShellChannelMsg {
 impl From<MempoolOperationReceived> for ShellChannelMsg {
     fn from(msg: MempoolOperationReceived) -> Self {
         ShellChannelMsg::MempoolOperationReceived(msg)
-    }
-}
-
-impl From<CurrentMempoolState> for ShellChannelMsg {
-    fn from(msg: CurrentMempoolState) -> Self {
-        ShellChannelMsg::MempoolStateChanged(Arc::new(RwLock::new(msg)))
     }
 }
 

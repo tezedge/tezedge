@@ -10,8 +10,8 @@
 //!     - is used by rpc_actor to show current mempool state - pending_operations
 //!     - is used by chain_manager to send new current head with current mempool to inform other peers throught P2P
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender};
 use std::thread;
@@ -26,13 +26,14 @@ use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError, St
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use tezos_api::ffi::{BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest, ValidateOperationResult};
+use tezos_api::ffi::{Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
-use tezos_messages::p2p::encoding::prelude::Operation;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::shell_channel::{CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::mempool::mempool_state::collect_mempool;
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -62,6 +63,7 @@ impl MempoolPrevalidator {
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
+        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         init_storage_data: &StorageInitInfo,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         log: Logger) -> Result<MempoolPrevalidatorRef, CreateError> {
@@ -87,6 +89,7 @@ impl MempoolPrevalidator {
                                 &block_storage,
                                 &chain_meta_storage,
                                 &mempool_storage,
+                                current_mempool_state_storage.clone(),
                                 &chain_id,
                                 &validator_run,
                                 &shell_channel,
@@ -121,7 +124,7 @@ impl MempoolPrevalidator {
 
     /// The `MempoolPrevalidator` is intended to serve as a singleton actor so that's why
     /// we won't support multiple names per instance.
-    fn name() -> &'static str {
+    pub fn name() -> &'static str {
         "mempool-prevalidator"
     }
 
@@ -194,100 +197,6 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
     }
 }
 
-/// Mempool state is defined with mempool and validation_result attriibutes, which are in sync:
-/// - `validation_result`
-///     - contains results of all validated operations
-///     - also contains `known_valid` operations, which where validated as `applied`
-/// - `pending`
-///     - operations, which where not validated yet or endorsements (`branch_refused`, `branched_delay`, `refused`?)
-///     - are being processed sequentially, after validation, they are moved to `validation_result`
-/// - `operations`
-///     - kind of cache, contains operation data
-#[derive(Clone, Debug)]
-pub struct MempoolState {
-    /// Original tezos prevalidator has prevalidator.fitness which is used for set_head comparision
-    /// So, we keep it in-memory here
-    prevalidator: Option<PrevalidatorWrapper>,
-    predecessor: Option<BlockHash>,
-
-    /// Actual cumulated operation results
-    validation_result: ValidateOperationResult,
-
-    /// In-memory store of actual operations
-    operations: HashMap<OperationHash, Operation>,
-    // TODO: pendings limit
-    // TODO: pendings as vec and order
-    pending: HashSet<OperationHash>,
-}
-
-impl MempoolState {
-    fn new(prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<BlockHash>, pending_operations: HashMap<OperationHash, Operation>) -> MempoolState {
-        MempoolState {
-            prevalidator,
-            predecessor,
-            pending: pending_operations.keys().cloned().collect(),
-            validation_result: ValidateOperationResult::default(),
-            operations: pending_operations,
-        }
-    }
-
-    /// Reinitialize state for new prevalidator and head, returns unneeded operation hashes
-    fn reinit(&mut self, prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<BlockHash>) -> Vec<OperationHash> {
-
-        // we want to validate pending operations with new prevalidator, so other "already_validated" can be removed
-        let unneeded_operations: Vec<OperationHash> = self.operations
-            .keys()
-            .filter(|&key| !self.pending.contains(key))
-            .cloned()
-            .collect();
-
-        // remove unneeded
-        for oph in &unneeded_operations {
-            self.operations.remove(oph);
-        }
-        self.predecessor = predecessor;
-        self.prevalidator = prevalidator;
-        self.validation_result = ValidateOperationResult::default();
-
-        unneeded_operations
-    }
-
-    fn add_result(&mut self, new_result: ValidateOperationResult) -> bool {
-        self.validation_result.merge(new_result)
-    }
-
-    fn add_to_pending(&mut self, operation_hash: OperationHash, operation: Operation) {
-        self.operations.insert(operation_hash.clone(), operation);
-        let _ = self.pending.insert(operation_hash);
-    }
-
-    fn remove_from_pending(&mut self, operation_hash: &OperationHash) -> bool {
-        self.pending.remove(operation_hash)
-    }
-
-    /// Indicates, that pending operations can be handled
-    fn can_handle_pending(&self) -> bool {
-        !self.pending.is_empty() && self.prevalidator.is_some()
-    }
-
-    /// Indicates, that the operation was already validated and is in the mempool
-    fn is_already_validated(&self, operation_hash: &OperationHash) -> bool {
-        if self.validation_result.applied.iter().any(|op| op.hash.eq(operation_hash)) {
-            return true;
-        }
-        if self.validation_result.branch_delayed.iter().any(|op| op.hash.eq(operation_hash)) {
-            return true;
-        }
-        if self.validation_result.branch_refused.iter().any(|op| op.hash.eq(operation_hash)) {
-            return true;
-        }
-        if self.validation_result.refused.iter().any(|op| op.hash.eq(operation_hash)) {
-            return true;
-        }
-        false
-    }
-}
-
 /// Possible errors for prevalidation
 #[derive(Debug, Fail)]
 pub enum PrevalidationError {
@@ -295,9 +204,13 @@ pub enum PrevalidationError {
     StorageError {
         error: StorageError
     },
-    #[fail(display = "Protocol service error error! Reason: {:?}", error)]
+    #[fail(display = "Protocol service error! Reason: {:?}", error)]
     ProtocolServiceError {
         error: ProtocolServiceError
+    },
+    #[fail(display = "Current mempool storage lock error! Reason: {:?}", reason)]
+    CurrentMempoolStorageLockError {
+        reason: String,
     },
 }
 
@@ -313,10 +226,19 @@ impl From<StorageError> for PrevalidationError {
     }
 }
 
+impl<T> From<PoisonError<T>> for PrevalidationError {
+    fn from(pe: PoisonError<T>) -> Self {
+        PrevalidationError::CurrentMempoolStorageLockError {
+            reason: format!("{}", pe)
+        }
+    }
+}
+
 fn process_prevalidation(
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
     mempool_storage: &MempoolStorage,
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
     chain_id: &ChainId,
     validator_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
@@ -327,11 +249,12 @@ fn process_prevalidation(
     info!(log, "Mempool prevalidator started processing");
 
     // hydrate state
-    let mut state = hydrate_state(
+    hydrate_state(
         &shell_channel,
         block_storage,
         chain_meta_storage,
         mempool_storage,
+        current_mempool_state_storage.clone(),
         &protocol_controller,
         &chain_id,
         &log,
@@ -350,10 +273,7 @@ fn process_prevalidation(
                     let (prevalidator, head) = begin_construction(&protocol_controller, &chain_id, header_hash, header, &log)?;
 
                     // reinitialize state for new prevalidator and head
-                    let operations_to_delete = state.reinit(prevalidator, head);
-
-                    // notify other actors
-                    notify_mempool_changed(&shell_channel, &state);
+                    let operations_to_delete = current_mempool_state_storage.write()?.reinit(prevalidator, head);
 
                     // clear unneeded operations from mempool storage
                     operations_to_delete
@@ -367,14 +287,13 @@ fn process_prevalidation(
                 Event::ValidateOperation(oph, mempool_operation_type) => {
                     // TODO: handling when operation not exists - can happen?
                     if let Some(operation) = mempool_storage.get(mempool_operation_type, oph.clone())? {
-
                         // TODO: handle and validate pre_filter with operation?
 
-                        if state.is_already_validated(&oph) {
-                            debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
-                        } else {
-                            // just add operations to pendings
-                            state.add_to_pending(oph, operation.into());
+                        // try to add to pendings
+                        // let mut state = current_mempool_state_storage.write()?;
+                        let was_added_to_pending = current_mempool_state_storage.write()?.add_to_pending(&oph, operation.into());
+                        if !was_added_to_pending {
+                            trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
@@ -387,7 +306,7 @@ fn process_prevalidation(
         }
 
         // 2. lets handle pending operations (if any)
-        handle_pending_operations(&shell_channel, &protocol_controller, &mut state, &log);
+        handle_pending_operations(&shell_channel, &protocol_controller, current_mempool_state_storage.clone(), &log)?;
     }
 
     Ok(())
@@ -398,9 +317,10 @@ fn hydrate_state(
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
     mempool_storage: &MempoolStorage,
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
     protocol_controller: &ProtocolController,
     chain_id: &ChainId,
-    log: &Logger) -> Result<MempoolState, PrevalidationError> {
+    log: &Logger) -> Result<(), PrevalidationError> {
 
     // load current head
     let current_head = match chain_meta_storage.get_current_head(&chain_id)? {
@@ -415,21 +335,23 @@ fn hydrate_state(
     };
 
     // read from Mempool_storage (just pending) -> add to queue for validation -> pending
-    let pending = mempool_storage.iter()?
-        .into_iter()
-        .map(|(key, value)| (key, value.operation().clone()))
-        .collect();
+    let pending = mempool_storage.iter()?;
 
-    // internal mempool state
-    let mut state = MempoolState::new(prevalidator, head, pending);
+    // initialize internal mempool state (write lock)
+    let mut state = current_mempool_state_storage.write()?;
 
-    // TODO: do we need this?
-    // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
-    if state.can_handle_pending() {
-        handle_pending_operations(&shell_channel, &protocol_controller, &mut state, &log);
+    // reinit + add old unprocessed pendings
+    let _ = state.reinit(prevalidator, head);
+    for (oph, op) in pending {
+        let _ = state.add_to_pending(&oph, op.into());
     }
+    // drop write lock
+    drop(state);
 
-    Ok(state)
+    // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
+    handle_pending_operations(&shell_channel, &protocol_controller, current_mempool_state_storage, &log)?;
+
+    Ok(())
 }
 
 fn begin_construction(protocol_controller: &ProtocolController,
@@ -458,30 +380,34 @@ fn begin_construction(protocol_controller: &ProtocolController,
     Ok(result)
 }
 
-fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controller: &ProtocolController, state: &mut MempoolState, log: &Logger) {
-    debug!(log, "Mempool - handle_pending_operations"; "pendings" => state.pending.len(), "can_handle" => state.can_handle_pending());
+fn handle_pending_operations(
+    shell_channel: &ShellChannelRef,
+    protocol_controller: &ProtocolController,
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    log: &Logger,
+) -> Result<(), PrevalidationError> {
 
-    if !state.can_handle_pending() {
-        trace!(log, "Mempool - handle_pending_operations - nothing to handle");
-        return;
-    }
+    // check if we can handle something
+    let mut state = current_mempool_state_storage.write()?;
 
-    let prevalidator = if let Some(prevalidator) = &state.prevalidator {
-        prevalidator.clone()
-    } else {
-        // no prevalidator, means nothing to do
-        return;
+    // this destruct mempool_state to be modified under write lock
+    let (prevalidator, head, pendings, operations, validation_result) = match state.can_handle_pending() {
+        Some((prevalidator, head, pendings, operations, validation_result)) => {
+            debug!(log, "Mempool - handle_pending_operations"; "pendings" => pendings.len());
+            (prevalidator, head, pendings, operations, validation_result)
+        }
+        None => {
+            trace!(log, "Mempool - handle_pending_operations - nothing to handle or no prevalidator");
+            return Ok(());
+        }
     };
 
-    // TODO: verify - probably does not needed 'state_changed'
-    let mut state_changed = false;
     // lets iterate pendings and validate them
-    let mut pending_ops = state.pending.clone();
-    pending_ops
+    pendings
         .drain()
         .for_each(|pending_op| {
             // handle validation
-            match state.operations.get(&pending_op) {
+            match operations.get(&pending_op) {
                 Some(operation) => {
                     trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op));
 
@@ -493,11 +419,10 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                         }
                     ) {
                         Ok(response) => {
-                            let result = response.result;
-                            debug!(log, "Mempool - validate operation response finished with success"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "result" => format!("{:?}", result));
+                            debug!(log, "Mempool - validate operation response finished with success"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "result" => format!("{:?}", response.result));
 
                             // merge new result with existing one
-                            state_changed |= state.add_result(result);
+                            let _ = validation_result.merge(response.result);
 
                             // TODO: handle Duplicate/ Outdated - if result is empty
                             // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
@@ -511,78 +436,39 @@ fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controlle
                 }
                 None => warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op))
             }
-
-            // remove from pendings
-            state_changed |= state.remove_from_pending(&pending_op);
         });
 
-    // lets notify actors about changed mempool
-    if state_changed {
-        notify_mempool_changed(&shell_channel, &state);
-    }
+    advertise_new_mempool(
+        &shell_channel,
+        prevalidator,
+        head,
+        (&validation_result.applied, &pendings),
+    );
+
+    Ok(())
 }
 
 /// Notify other actors that mempool state changed
-fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &MempoolState) {
-    let (protocol, fitness, chain_id) = if let Some(prevalidator) = &mempool_state.prevalidator {
-        (Some(prevalidator.protocol.clone()), prevalidator.context_fitness.clone(), Some(prevalidator.chain_id.clone()))
-    } else {
-        (None, None, None)
-    };
+fn advertise_new_mempool(
+    shell_channel: &ShellChannelRef,
+    prevalidator: &PrevalidatorWrapper,
+    head: &BlockHash,
+    (applied, pending): (&Vec<Applied>, &HashSet<OperationHash>)) {
+
+    // we advertise new mempool, only if we have new applied operations
+    if applied.is_empty() {
+        return;
+    }
 
     shell_channel.tell(
         Publish {
-            msg: CurrentMempoolState {
-                chain_id,
-                head: mempool_state.predecessor.clone(),
-                result: mempool_state.validation_result.clone(),
-                operations: mempool_state.operations.clone(),
-                protocol,
-                fitness,
-                pending: mempool_state.pending.clone(),
-            }.into(),
+            msg: ShellChannelMsg::AdvertiseToP2pNewMempool(
+                Arc::new(prevalidator.chain_id.clone()),
+                Arc::new(head.clone()),
+                Arc::new(collect_mempool(applied, pending)),
+            ),
             topic: ShellChannelTopic::ShellEvents.into(),
         },
         None,
     );
-}
-
-
-#[cfg(test)]
-mod tests {
-    use tezos_messages::p2p::binary_message::BinaryMessage;
-
-    use super::*;
-
-    #[test]
-    fn test_state_reinit() -> Result<(), failure::Error> {
-        let op_hash1 = HashType::OperationHash.b58check_to_hash("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?;
-        let op_hash2 = HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?;
-
-        // init state
-        let mut operations = HashMap::new();
-        operations.insert(
-            op_hash1.clone(),
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
-        );
-        operations.insert(
-            op_hash2.clone(),
-            Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
-        );
-        let mut state = MempoolState::new(None, None, operations);
-        assert_eq!(2, state.pending.len());
-        assert_eq!(2, state.operations.len());
-
-        // remove from pending
-        state.remove_from_pending(&op_hash1);
-
-        // reinit state
-        let unneeded = state.reinit(None, None);
-        assert_eq!(1, state.pending.len());
-        assert_eq!(1, state.operations.len());
-        assert!(state.pending.contains(&op_hash2));
-        assert!(unneeded.contains(&op_hash1));
-
-        Ok(())
-    }
 }

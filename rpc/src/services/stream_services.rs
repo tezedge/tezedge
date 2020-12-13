@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 use std::{collections::{HashMap, HashSet}};
+use std::future::Future;
 use std::pin::Pin;
 
 use futures::Stream;
 use futures::task::{Context, Poll};
-use std::future::Future;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::{Logger, warn};
@@ -13,11 +13,12 @@ use tokio::time::{Delay, delay_until};
 use tokio::time::{Duration, Instant};
 
 use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType, ProtocolHash};
+use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::BlockApplied;
 
+use crate::helpers::{BlockHeaderInfo, FullBlockInfo};
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
-use crate::helpers::{BlockHeaderInfo, FullBlockInfo};
 
 pub const MONITOR_TIMER_MILIS: u64 = 500;
 
@@ -68,6 +69,7 @@ pub struct HeadMonitorStream {
 
 pub struct OperationMonitorStream {
     chain_id: ChainId,
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
     state: RpcCollectedStateRef,
     last_checked_head: BlockHash,
     log: Logger,
@@ -77,9 +79,17 @@ pub struct OperationMonitorStream {
 }
 
 impl OperationMonitorStream {
-    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, log: Logger, last_checked_head: BlockHash, mempool_operaions_query: MempoolOperationsQuery) -> Self {
+    pub fn new(
+        chain_id: ChainId,
+        current_mempool_state_storage: CurrentMempoolStateStorageRef,
+        state: RpcCollectedStateRef,
+        log: Logger,
+        last_checked_head: BlockHash,
+        mempool_operaions_query: MempoolOperationsQuery,
+    ) -> Self {
         Self {
             chain_id,
+            current_mempool_state_storage,
             state,
             last_checked_head,
             log,
@@ -90,17 +100,17 @@ impl OperationMonitorStream {
     }
 
     fn yield_operations(&mut self) -> Poll<Option<Result<String, failure::Error>>> {
-        let OperationMonitorStream { 
+        let OperationMonitorStream {
             chain_id,
-            state,
+            current_mempool_state_storage,
             log,
             query,
             streamed_operations,
             ..
         } = self;
 
-        let (pending_operations, protocol) = if let Ok(ops) = get_pending_operations(&chain_id, &state) {
-            ops
+        let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) = get_pending_operations(&chain_id, current_mempool_state_storage.clone()) {
+            (ops, protocol_hash)
         } else {
             return Poll::Ready(None)
         };
@@ -108,25 +118,25 @@ impl OperationMonitorStream {
 
         // fill in the resulting vector according to the querry
         if query.applied {
-            let applied: HashMap<_, _> = pending_operations.applied.into_iter()
+            let applied: HashMap<_, _> = mempool_operations.applied.into_iter()
                 .map(|v| (v["hash"].to_string(), serde_json::to_value(v).unwrap()))
                 .collect();
             requested_ops.extend(applied);
         }
         if query.branch_delayed {
-            let branch_delayed: HashMap<_, _> = pending_operations.branch_delayed.into_iter()
+            let branch_delayed: HashMap<_, _> = mempool_operations.branch_delayed.into_iter()
                 .map(|v| (v["hash"].to_string(), v))
                 .collect();
             requested_ops.extend(branch_delayed);
         }
         if query.branch_refused {
-            let branch_refused: HashMap<_, _> = pending_operations.branch_refused.into_iter()
+            let branch_refused: HashMap<_, _> = mempool_operations.branch_refused.into_iter()
                 .map(|v| (v["hash"].to_string(), v))
                 .collect();
             requested_ops.extend(branch_refused);
         }
         if query.refused {
-            let refused: HashMap<_, _> = pending_operations.refused.into_iter()
+            let refused: HashMap<_, _> = mempool_operations.refused.into_iter()
                 .map(|v| (v["hash"].to_string(), v))
                 .collect();
             requested_ops.extend(refused);
@@ -137,7 +147,7 @@ impl OperationMonitorStream {
                 .filter(|(k, _)| !streamed_operations.contains(k))
                 .map(|(_, v)| {
                     let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
-                    monitor_op.protocol = Some(HashType::ProtocolHash.hash_to_b58check(&protocol));
+                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
                     monitor_op
                 })
                 .collect();
@@ -169,13 +179,13 @@ impl OperationMonitorStream {
                             return Err(e)
                         }
                     };
-                    monitor_op.protocol = Some(HashType::ProtocolHash.hash_to_b58check(&protocol));
+                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
                     Ok(monitor_op)
                 })
                 .filter_map(Result::ok)
                 .collect();
 
-                
+
             self.streamed_operations = Some(streamed_operations);
             let mut to_yield_string = serde_json::to_string(&to_yield)?;
             to_yield_string = to_yield_string.replace("\\", "");
@@ -197,7 +207,7 @@ impl HeadMonitorStream {
     }
 
     fn yield_head(&self, current_head: Option<BlockApplied>) -> Result<Option<String>, failure::Error> {
-        let HeadMonitorStream { chain_id, protocol, ..} = self; 
+        let HeadMonitorStream { chain_id, protocol, .. } = self;
 
         let current_head_header = current_head.as_ref().map(|current_head| {
             let chain_id = chain_id_to_b58_string(&self.chain_id);
@@ -223,7 +233,7 @@ impl HeadMonitorStream {
         let mut head_string = serde_json::to_string(&current_head_header.unwrap())?;
 
         // push a newline character to the stream
-        head_string.push('\n'); 
+        head_string.push('\n');
 
         Ok(Some(head_string))
     }

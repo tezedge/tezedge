@@ -10,16 +10,16 @@ use slog::{Logger, warn};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::persistent::PersistentStorage;
+use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::context::TezedgeContext;
+use storage::persistent::PersistentStorage;
 use storage::StorageInitInfo;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::server::{RpcServiceEnvironment, spawn_server};
-
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -32,12 +32,8 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<BlockApplied>,
-    #[get = "pub(crate)"]
-    current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
     #[get_copy = "pub(crate)"]
     is_sandbox: bool,
-    #[get_copy = "pub(crate)"]
-    disable_mempool: bool,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -57,6 +53,7 @@ impl RpcServer {
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
+        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
@@ -65,12 +62,10 @@ impl RpcServer {
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
         is_sandbox: bool,
-        disable_mempool: bool) -> Result<RpcServerRef, CreateError> {
+    ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(persistent_storage, &init_storage_data.chain_id, &sys.log()),
-            current_mempool_state: None,
             is_sandbox,
-            disable_mempool,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
@@ -86,6 +81,7 @@ impl RpcServer {
                 tezos_env,
                 network_version,
                 persistent_storage,
+                current_mempool_state_storage,
                 tezedge_context,
                 tezos_readonly_api,
                 tezos_readonly_prevalidation_api,
@@ -137,10 +133,6 @@ impl Receive<ShellChannelMsg> for RpcServer {
             ShellChannelMsg::NewCurrentHead(_, block) => {
                 let current_head_ref = &mut *self.state.write().unwrap();
                 current_head_ref.current_head = Some(block);
-            }
-            ShellChannelMsg::MempoolStateChanged(result) => {
-                let current_state = &mut *self.state.write().unwrap();
-                current_state.current_mempool_state = Some(result);
             }
             _ => (/* Not yet implemented, do nothing */),
         }

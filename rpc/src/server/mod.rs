@@ -14,6 +14,7 @@ use riker::actors::ActorSystem;
 use slog::{error, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
+use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::ShellChannelRef;
 use storage::context::TezedgeContext;
 use storage::persistent::PersistentStorage;
@@ -38,6 +39,8 @@ pub struct RpcServiceEnvironment {
     actor: RpcServerRef,
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
+    #[get = "pub(crate)"]
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
     #[get = "pub(crate)"]
     tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
@@ -72,6 +75,7 @@ impl RpcServiceEnvironment {
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
+        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
@@ -87,6 +91,7 @@ impl RpcServiceEnvironment {
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),
+            current_mempool_state_storage,
             tezedge_context: tezedge_context.clone(),
             main_chain_id,
             main_chain_genesis_hash,

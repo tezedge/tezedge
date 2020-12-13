@@ -13,7 +13,7 @@
 
 use std::cmp;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use failure::{Error, format_err};
@@ -39,7 +39,9 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::{PeerConnectionThreshold, validation};
-use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, CurrentMempoolState, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::mempool::mempool_state::MempoolState;
+use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, MempoolOperationReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::block_state::{BlockAcceptanceResult, BlockchainState, HeadResult, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
 use crate::subscription::*;
@@ -52,8 +54,6 @@ const BLOCK_OPERATIONS_BATCH_SIZE: usize = 10;
 const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = 10;
 /// How often to check chain completeness
 const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(30);
-/// How often to ask all connected peers for current branch
-const ASK_CURRENT_BRANCH_INTERVAL: Duration = Duration::from_secs(600);
 /// How often to ask all connected peers for current head
 const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
 /// Initial delay to ask the peers for current head
@@ -192,10 +192,13 @@ pub struct ChainManager {
     peers: HashMap<ActorUri, PeerState>,
     /// Current head information
     current_head: CurrentHead,
-    // current last known mempool state
-    current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
     /// Internal stats
     stats: Stats,
+
+    /// Holds ref to global current shared mempool state
+    current_mempool_state: CurrentMempoolStateStorageRef,
+    /// Indicates if mempool is disabled to propagate to p2p
+    p2p_disable_mempool: bool,
 
     /// Indicates that system is shutting down
     shutting_down: bool,
@@ -221,8 +224,10 @@ impl ChainManager {
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-        chain_id: &ChainId,
+        chain_id: ChainId,
         is_sandbox: bool,
+        current_mempool_state: CurrentMempoolStateStorageRef,
+        p2p_disable_mempool: bool,
         peers_threshold: &PeerConnectionThreshold,
         identity: Arc<Identity>) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
@@ -232,8 +237,10 @@ impl ChainManager {
                 shell_channel,
                 persistent_storage.clone(),
                 tezos_readonly_prevalidation_api,
-                chain_id.clone(),
+                chain_id,
                 is_sandbox,
+                current_mempool_state,
+                p2p_disable_mempool,
                 peers_threshold.num_of_peers_for_bootstrap_threshold(),
                 identity.peer_id(),
             )),
@@ -287,7 +294,7 @@ impl ChainManager {
                 .for_each(|peer| {
                     let mut missing_blocks = chain_state.drain_missing_blocks(peer.available_block_queue_capacity(), peer.current_head_level.unwrap());
 
-                    if !missing_blocks.is_empty() && current_head.local.is_some(){
+                    if !missing_blocks.is_empty() && current_head.local.is_some() {
                         let queued_blocks = missing_blocks.drain(..)
                             .filter_map(|missing_block| {
                                 let missing_block_hash = missing_block.block_hash.clone();
@@ -486,8 +493,13 @@ impl ChainManager {
                                             if let Some(current_head) = block_storage.get(current_head_local.block_hash())? {
                                                 let msg = CurrentHeadMessage::new(
                                                     chain_state.get_chain_id().clone(),
-                                                    (*current_head.header).clone(),
-                                                    resolve_mempool_to_send_to_peer(&peer, &self.current_mempool_state, &current_head_local),
+                                                    current_head.header.as_ref().clone(),
+                                                    Self::resolve_mempool_to_send_to_peer(
+                                                        &peer,
+                                                        self.p2p_disable_mempool,
+                                                        self.current_mempool_state.clone(),
+                                                        &current_head_local,
+                                                    )?,
                                                 );
                                                 tell_peer(msg.into(), peer);
                                             }
@@ -614,7 +626,7 @@ impl ChainManager {
                                             // ask current_branch from peer
                                             tell_peer(
                                                 GetCurrentBranchMessage::new(message.chain_id().clone()).into(),
-                                                peer
+                                                peer,
                                             );
                                         }
                                         BlockAcceptanceResult::MutlipassValidationError(error) => {
@@ -661,7 +673,7 @@ impl ChainManager {
                                                 chain_state.get_chain_id(),
                                                 &operation_hash,
                                                 &operation,
-                                                &self.current_mempool_state,
+                                                self.current_mempool_state.clone(),
                                                 &self.tezos_readonly_prevalidation_api.pool.get()?.api,
                                                 block_storage,
                                                 block_meta_storage,
@@ -736,10 +748,14 @@ impl ChainManager {
                 // - reset mempool_prevalidator
 
                 // we try to set it as "new current head", if some means set, if none means just ignore block
-                if let Some((new_head, new_head_result)) = self.chain_state.try_update_new_current_head(&message, &self.current_head.local, &self.current_mempool_state)? {
+                if let Some((new_head, new_head_result)) = self.chain_state.try_update_new_current_head(
+                    &message,
+                    &self.current_head.local,
+                    self.current_mempool_state.clone())? {
                     debug!(ctx.system.log(), "New current head";
                                              "block_header_hash" => HashType::BlockHash.hash_to_b58check(new_head.block_hash()),
                                              "level" => new_head.level(),
+                                             "is_bootstrapped" => self.is_bootstrapped,
                                              "result" => format!("{}", new_head_result)
                     );
 
@@ -760,49 +776,18 @@ impl ChainManager {
                     if self.is_bootstrapped {
                         match new_head_result {
                             HeadResult::BranchSwitch => {
-                                let ChainManager {
-                                    peers,
-                                    chain_state,
-                                    identity_peer_id,
-                                    ..
-                                } = self;
-                                let header: &BlockHeader = &message.header().header;
-                                let chain_id = chain_state.get_chain_id();
-
-                                let block_hash: BlockHash = message.header().hash.clone();
-                                for (_, peer) in peers {
-                                    tell_peer(
-                                        CurrentBranchMessage::new(
-                                            chain_id.clone(),
-                                            CurrentBranch::new(
-                                                (*header).clone(),
-                                                // calculate history for each peer
-                                                chain_state.get_history(
-                                                    &block_hash,
-                                                    &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key_hash),
-                                                )?
-                                            )
-                                        ).into(),
-                                        peer
-                                    )
-                                }
+                                self.advertise_current_branch_to_p2p(
+                                    self.chain_state.get_chain_id(),
+                                    message.header()
+                                )?;
                             }
                             HeadResult::HeadIncrement => {
-                                // send new current_head to peers
-                                let header: &BlockHeader = &message.header().header;
-                                let chain_id = self.chain_state.get_chain_id();
-
-                                self.peers.iter()
-                                    .for_each(|(_, peer)| {
-                                        tell_peer(
-                                            CurrentHeadMessage::new(
-                                                chain_id.clone(),
-                                                header.clone(),
-                                                Mempool::default(),
-                                            ).into(),
-                                            peer,
-                                        )
-                                    });
+                                self.advertise_current_head_to_p2p(
+                                    self.chain_state.get_chain_id(),
+                                    message.header().header.clone(),
+                                    Mempool::default(),
+                                    false,
+                                );
                             }
                         }
                     }
@@ -811,44 +796,17 @@ impl ChainManager {
                 // check successors, if can be applied
                 self.check_successors_for_apply(ctx, &message.header().hash)?;
             }
-            ShellChannelMsg::MempoolStateChanged(new_mempool_state) => {
-                // set current mempool state
-                self.current_mempool_state = Some(new_mempool_state);
-
-                // prepare mempool/header to send to peers
-                let (mempool_to_send, header_to_send) = if let Some(mempool_state) = &self.current_mempool_state {
-                    let mempool_state = mempool_state.read().unwrap();
-                    match &mempool_state.head {
-                        Some(head_hash) => {
-                            if let Some(header) = self.block_storage.get(&head_hash)? {
-                                (resolve_mempool_to_send(&mempool_state), Some((*header.header).clone()))
-                            } else {
-                                (Mempool::default(), None)
-                            }
-                        }
-                        None => (Mempool::default(), None)
-                    }
+            ShellChannelMsg::AdvertiseToP2pNewMempool(chain_id, block_hash, new_mempool) => {
+                // get header and send it to p2p
+                if let Some(header) = self.block_storage.get(&block_hash)? {
+                    self.advertise_current_head_to_p2p(
+                        &chain_id,
+                        header.header,
+                        new_mempool.as_ref().clone(),
+                        true,
+                    );
                 } else {
-                    (Mempool::default(), None)
-                };
-
-                // send CurrentHead, only if we have anything in mempool (just to peers with enabled mempool)
-                if let Some(header_to_send) = header_to_send {
-                    if !mempool_to_send.is_empty() {
-                        let ChainManager { peers, chain_state, .. } = self;
-                        peers.iter_mut()
-                            .filter(|(_, peer)| peer.mempool_enabled)
-                            .for_each(|(_, peer)| {
-                                tell_peer(
-                                    CurrentHeadMessage::new(
-                                        chain_state.get_chain_id().clone(),
-                                        header_to_send.clone(),
-                                        mempool_to_send.clone(),
-                                    ).into(),
-                                    peer,
-                                )
-                            });
-                    }
+                    return Err(format_err!("BlockHeader ({}) was not found!", HashType::BlockHash.hash_to_b58check(&block_hash)));
                 }
             }
             ShellChannelMsg::InjectBlock(inject_data) => {
@@ -1152,12 +1110,112 @@ impl ChainManager {
             }
         )
     }
+
+    /// Send CurrentBranch message to the p2p
+    fn advertise_current_branch_to_p2p(&self, chain_id: &ChainId, block_header: &BlockHeaderWithHash) -> Result<(), StorageError> {
+        let ChainManager {
+            peers,
+            chain_state,
+            identity_peer_id,
+            ..
+        } = self;
+
+        for (_, peer) in peers {
+            tell_peer(
+                CurrentBranchMessage::new(
+                    chain_id.clone(),
+                    CurrentBranch::new(
+                        block_header.header.as_ref().clone(),
+                        // calculate history for each peer
+                        chain_state.get_history(
+                            &block_header.hash,
+                            &Seed::new(&identity_peer_id, &peer.peer_id.peer_public_key_hash),
+                        )?,
+                    ),
+                ).into(),
+                peer,
+            )
+        }
+
+        Ok(())
+    }
+
+    /// Send CurrentHead message to the p2p
+    ///
+    /// `ignore_msg_with_empty_mempool` - if true means: send CurrentHead, only if we have anything in mempool (just to peers with enabled mempool)
+    fn advertise_current_head_to_p2p(&self, chain_id: &ChainId, block_header: Arc<BlockHeader>, mempool: Mempool, ignore_msg_with_empty_mempool: bool) {
+
+        // message to peers with enabled mempool
+        let msg_for_mempool_enabled = CurrentHeadMessage::new(
+            chain_id.clone(),
+            block_header.as_ref().clone(),
+            {
+                // we must check, if we have allowed mempool
+                if self.p2p_disable_mempool {
+                    Mempool::default()
+                } else {
+                    mempool
+                }
+            },
+        );
+        // message to peers with disabled mempool
+        let msg_for_mempool_disabled = CurrentHeadMessage::new(
+            chain_id.clone(),
+            block_header.as_ref().clone(),
+            Mempool::default(),
+        );
+
+        // send messsages
+        self.peers.iter()
+            .for_each(|(_, peer)| {
+                let msg = if peer.mempool_enabled {
+                    msg_for_mempool_enabled.clone()
+                } else {
+                    msg_for_mempool_disabled.clone()
+                };
+
+                let can_send_msg = if ignore_msg_with_empty_mempool && msg.current_mempool().is_empty() {
+                    false
+                } else {
+                    true
+                };
+
+                if can_send_msg {
+                    tell_peer(
+                        msg.into(),
+                        peer,
+                    )
+                }
+            });
+    }
+
+    fn resolve_mempool_to_send_to_peer(peer: &PeerState, p2p_disable_mempool: bool, current_mempool_state: CurrentMempoolStateStorageRef, current_head: &Head) -> Result<Mempool, failure::Error> {
+        if p2p_disable_mempool {
+            return Ok(Mempool::default());
+        }
+        if !peer.mempool_enabled {
+            return Ok(Mempool::default());
+        }
+
+        let mempool_state = current_mempool_state.read()
+            .map_err(|e| format_err!("Failed to lock for read, reason: {}", e))?;
+        if let Some(mempool_head_hash) = mempool_state.head() {
+            if mempool_head_hash == current_head.block_hash() {
+                let mempool_state: &MempoolState = &mempool_state;
+                Ok(mempool_state.into())
+            } else {
+                Ok(Mempool::default())
+            }
+        } else {
+            Ok(Mempool::default())
+        }
+    }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize, CryptoboxPublicKeyHash)> for ChainManager {
+impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, CurrentMempoolStateStorageRef, bool, usize, CryptoboxPublicKeyHash)> for ChainManager {
     fn create_args(
-        (network_channel, shell_channel, persistent_storage, tezos_readonly_prevalidation_api, chain_id, is_sandbox, num_of_peers_for_bootstrap_threshold, identity_peer_id):
-        (NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, usize, CryptoboxPublicKeyHash)) -> Self {
+        (network_channel, shell_channel, persistent_storage, tezos_readonly_prevalidation_api, chain_id, is_sandbox, current_mempool_state, p2p_disable_mempool, num_of_peers_for_bootstrap_threshold, identity_peer_id):
+        (NetworkChannelRef, ShellChannelRef, PersistentStorage, Arc<TezosApiConnectionPool>, ChainId, bool, CurrentMempoolStateStorageRef, bool, usize, CryptoboxPublicKeyHash)) -> Self {
         ChainManager {
             network_channel,
             shell_channel,
@@ -1173,7 +1231,6 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ar
                 local: None,
                 remote: None,
             },
-            current_mempool_state: None,
             shutting_down: false,
             stats: Stats {
                 unseen_block_count: 0,
@@ -1186,6 +1243,8 @@ impl ActorFactoryArgs<(NetworkChannelRef, ShellChannelRef, PersistentStorage, Ar
             is_sandbox,
             identity_peer_id,
             is_bootstrapped: false,
+            current_mempool_state,
+            p2p_disable_mempool,
             num_of_peers_for_bootstrap_threshold,
             tezos_readonly_prevalidation_api,
         }
@@ -1546,35 +1605,6 @@ fn tell_peer(msg: PeerMessageResponse, peer: &PeerState) {
     peer.peer_id.peer_ref.tell(SendMessage::new(msg), None);
 }
 
-fn resolve_mempool_to_send(mempool_state: &CurrentMempoolState) -> Mempool {
-    // collect for mempool
-    let known_valid = mempool_state.result.applied.iter().map(|a| a.hash.clone()).collect::<Vec<OperationHash>>();
-    let pending = mempool_state.pending.iter().cloned().collect::<Vec<OperationHash>>();
-
-    Mempool::new(known_valid, pending)
-}
-
-fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>, current_head: &Head) -> Mempool {
-    if !peer.mempool_enabled {
-        return Mempool::default();
-    }
-
-    if let Some(mempool_state) = mempool_state {
-        let mempool_state = mempool_state.read().unwrap();
-        if let Some(mempool_head_hash) = &mempool_state.head {
-            if mempool_head_hash == current_head.block_hash() {
-                resolve_mempool_to_send(&mempool_state)
-            } else {
-                Mempool::default()
-            }
-        } else {
-            Mempool::default()
-        }
-    } else {
-        Mempool::default()
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use std::net::SocketAddr;
@@ -1591,6 +1621,7 @@ pub mod tests {
     use tezos_wrapper::service::ProtocolEndpointConfiguration;
     use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
+    use crate::mempool::init_mempool_state_storage;
     use crate::shell_channel::{ShellChannel, ShuttingDown};
 
     use super::*;
@@ -1694,6 +1725,8 @@ pub mod tests {
             storage.storage().clone(),
             pool,
             chain_id,
+            false,
+            init_mempool_state_storage(),
             false,
             1,
             tezos_identity::Identity::generate(0f64).peer_id(),
