@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use failure::bail;
-use riker::actor::ActorReference;
-use serde::Serialize;
 
 use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType};
 use shell::shell_channel::BlockApplied;
@@ -95,36 +93,6 @@ pub(crate) fn get_context_raw_bytes(
 
     let ctx_hash = get_context_hash(block_hash, env)?;
     Ok(env.tezedge_context().get_context_tree_by_prefix(&ctx_hash, &key_prefix)?)
-}
-
-#[derive(Serialize, Debug)]
-pub(crate) struct Prevalidator {
-    chain_id: String,
-    since: String,
-}
-
-// TODO: implement the json structure form ocaml's RPC 
-pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment) -> Vec<Prevalidator> {
-    if env.sys().user_root().children().filter(|actor_ref| actor_ref.name() == "mempool-prevalidator").next().is_none() {
-        vec![]
-    } else {
-        let rpc_state = env.state().read().unwrap();
-        let current_mempool = if let Some(mempool_state) = rpc_state.current_mempool_state(){
-            mempool_state.read().unwrap()
-        } else {
-            return vec![]
-        };
-        let chain_id = if let Some(chain_id) = &current_mempool.chain_id {
-            chain_id
-        } else {
-            return vec![]
-        };
-        vec![Prevalidator {
-            chain_id: chain_id_to_b58_string(&chain_id),
-            since: env.sys().start_date().to_rfc3339(),
-        }]
-    }
-
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata

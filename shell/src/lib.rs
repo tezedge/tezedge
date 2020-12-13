@@ -13,8 +13,8 @@ pub mod chain_feeder;
 pub mod context_listener;
 pub mod chain_manager;
 pub mod peer_manager;
-pub mod mempool_prevalidator;
 pub mod validation;
+pub mod mempool;
 
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]

@@ -19,7 +19,8 @@ use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
-use shell::mempool_prevalidator::MempoolPrevalidator;
+use shell::mempool::init_mempool_state_storage;
+use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::{block_storage, BlockMetaStorage, BlockStorage, ChainMetaStorage, check_database_compatibility, context_action_storage, ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage, resolve_storage_init_chain_data, StorageInitInfo, SystemStorage};
@@ -262,6 +263,8 @@ fn block_on_actors(
         Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => "apply_blocks_protocol_runner_endpoint", "reason" => e), actor_system),
     };
 
+    let current_mempool_state_storage = init_mempool_state_storage();
+
     let mut tokio_runtime = create_tokio_runtime(&env);
 
     let network_channel = NetworkChannel::actor(&actor_system)
@@ -280,8 +283,10 @@ fn block_on_actors(
         shell_channel.clone(),
         &persistent_storage,
         tezos_readonly_prevalidation_api_pool.clone(),
-        &init_storage_data.chain_id,
+        init_storage_data.chain_id.clone(),
         is_sandbox,
+        current_mempool_state_storage.clone(),
+        env.p2p.disable_mempool,
         &env.p2p.peer_threshold,
         identity.clone(),
     ).expect("Failed to create chain manager");
@@ -294,12 +299,12 @@ fn block_on_actors(
             &actor_system,
             shell_channel.clone(),
             &persistent_storage,
+            current_mempool_state_storage.clone(),
             &init_storage_data,
             tezos_readonly_api_pool.clone(),
             log.clone(),
         ).expect("Failed to create mempool prevalidator");
     }
-
     // and than open p2p and others
     let _ = PeerManager::actor(
         &actor_system,
@@ -320,6 +325,7 @@ fn block_on_actors(
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,
+        current_mempool_state_storage,
         &tezedge_context,
         tezos_readonly_api_pool.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
@@ -328,7 +334,6 @@ fn block_on_actors(
         network_version,
         &init_storage_data,
         is_sandbox,
-        env.p2p.disable_mempool,
     ).expect("Failed to create RPC server");
 
     tokio_runtime.block_on(async move {

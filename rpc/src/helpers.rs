@@ -4,12 +4,14 @@
 use std::{collections::HashMap, convert::TryFrom};
 use std::ops::Neg;
 
-use failure::bail;
+use failure::{bail, format_err};
 use hyper::{Body, Request};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use riker::actor::ActorReference;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, ContextHash, HashType};
+use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::shell_channel::BlockApplied;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
@@ -20,8 +22,8 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::encoding::base_types::UniString;
-use crate::services::stream_services::BlockHeaderMonitorInfo;
 use crate::server::RpcServiceEnvironment;
+use crate::services::stream_services::BlockHeaderMonitorInfo;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -516,6 +518,57 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
         content_type,
         accept,
     })
+}
+
+#[derive(Serialize, Debug)]
+pub(crate) struct Prevalidator {
+    chain_id: String,
+    since: String,
+}
+
+/// Returns all prevalidator actors
+// TODO: implement the json structure form ocaml's RPC
+pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment, filter_by_chain_id: Option<&ChainId>) -> Result<Vec<Prevalidator>, failure::Error> {
+    // expecting max one prevalidator by name
+    let mempool_prevalidator = env.sys()
+        .user_root()
+        .children()
+        .filter(|actor_ref| actor_ref.name() == MempoolPrevalidator::name())
+        .next();
+
+    let prevalidators = match mempool_prevalidator {
+        Some(_mempool_prevalidator_actor) => {
+            let mempool_state = env.current_mempool_state_storage().read()
+                .map_err(|e| format_err!("Failed to obtain read lock, reson: {}", e))?;
+            let mempool_prevalidator = mempool_state.prevalidator();
+            match mempool_prevalidator {
+                Some(prevalidator) => {
+
+                    let accept_prevalidator = if let Some(chain_id) = filter_by_chain_id {
+                        prevalidator.chain_id == *chain_id
+                    } else {
+                        true
+                    };
+
+                    if accept_prevalidator {
+                        vec![
+                            Prevalidator {
+                                chain_id: chain_id_to_b58_string(&prevalidator.chain_id),
+                                // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
+                                since: env.sys().start_date().to_rfc3339(),
+                            }
+                        ]
+                    } else {
+                        vec![]
+                    }
+                }
+                None => vec![]
+            }
+        }
+        None => vec![]
+    };
+
+    Ok(prevalidators)
 }
 
 #[cfg(test)]
