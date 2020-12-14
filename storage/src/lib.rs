@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
 
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -59,6 +59,14 @@ impl BlockHeaderWithHash {
             hash: block_header.message_hash()?,
             header: Arc::new(block_header),
         })
+    }
+}
+
+impl TryFrom<BlockHeader> for BlockHeaderWithHash {
+    type Error = MessageHashError;
+
+    fn try_from(value: BlockHeader) -> Result<Self, Self::Error> {
+        BlockHeaderWithHash::new(value)
     }
 }
 
@@ -194,7 +202,7 @@ pub fn store_applied_block_result(
     block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
     block_result: ApplyBlockResponse,
-    block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
+    block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData, ContextHash), StorageError> {
 
     // store result data - json and additional data
     let block_json_data = BlockJsonDataBuilder::default()
@@ -218,7 +226,7 @@ pub fn store_applied_block_result(
     block_metadata.set_is_applied(true);
     block_meta_storage.put(&block_hash, &block_metadata)?;
 
-    Ok((block_json_data, block_additional_data))
+    Ok((block_json_data, block_additional_data, block_result.context_hash))
 }
 
 /// Stores commit_genesis result to storage and mark genesis block as applied, if everythnig is ok.

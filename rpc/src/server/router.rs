@@ -49,10 +49,10 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
     routes.handle(hash_set![Method::GET], "/chains/:chain_id/blocks/:block_id/context/raw/bytes", shell_handler::context_raw_bytes);
     routes.handle(hash_set![Method::GET], "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any", shell_handler::context_raw_bytes);
     routes.handle(hash_set![Method::GET], "/chains/:chain_id/blocks/:block_id/metadata", shell_handler::chains_block_id_metadata);
-    routes.handle(hash_set![Method::POST], "/injection/operation", shell_handler::inject_operation);
     routes.handle(hash_set![Method::GET], "/workers/prevalidators", shell_handler::worker_prevalidators);
     routes.handle(hash_set![Method::GET], "/config/network/user_activated_upgrades", shell_handler::config_user_activated_upgrades);
     routes.handle(hash_set![Method::GET], "/config/network/user_activated_protocol_overrides", shell_handler::config_user_activated_protocol_overrides);
+    routes.handle(hash_set![Method::POST], "/injection/operation", shell_handler::inject_operation);
     // TODO: TE-174: just for sandbox
     if is_sandbox {
         routes.handle(hash_set![Method::POST], "/injection/block", shell_handler::inject_block);

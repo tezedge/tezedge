@@ -261,15 +261,7 @@ class Client:
                           ) -> client_output.ActivationResult:
         assert os.path.isfile(parameter_file), f'{parameter_file} not a file'
         if timestamp is None:
-            # NOTE: Adding an additional 10 seconds to the first level timestamp will enable
-            # us to put a small delay after acttivation, to ensure the activation block
-            # propagation before a baker is started (the thezedge node is not fast
-            # enough for now to handle for the eye seemingless block propagation
-            # and application on level 1)
-            # The delay is also added here so the rights (and the timestamps in them!!) are
-            # computed in a way that "waits" for the baker - tests have 1s time betweend
-            # blocks
-            utc_now = datetime.datetime.utcnow() + datetime.timedelta(seconds=2)
+            utc_now = datetime.datetime.utcnow()
             timestamp = utc_now.strftime("%Y-%m-%dT%H:%M:%SZ")
         cmd = ['-block', 'genesis', 'activate', 'protocol', protocol, 'with',
                'fitness', str(fitness), 'and', 'key', key, 'and', 'parameters',

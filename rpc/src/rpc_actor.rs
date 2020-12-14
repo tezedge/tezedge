@@ -31,7 +31,7 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 #[derive(CopyGetters, Getters, Setters)]
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
-    current_head: Option<BlockApplied>,
+    current_head: Option<Arc<BlockApplied>>,
     #[get_copy = "pub(crate)"]
     is_sandbox: bool,
 }
@@ -140,7 +140,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId, log: &Logger) -> Option<BlockApplied> {
+fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId, log: &Logger) -> Option<Arc<BlockApplied>> {
     use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
     use storage::chain_meta_storage::ChainMetaStorageReader;
 
@@ -151,7 +151,7 @@ fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId,
                 .get_with_json_data(head.block_hash())
                 .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));
             match block_applied {
-                Ok(block) => Some(block),
+                Ok(block) => Some(Arc::new(block)),
                 Err(e) => {
                     warn!(log, "Error reading current head detail from database."; "reason" => format!("{}", e));
                     None
