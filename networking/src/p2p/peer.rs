@@ -138,8 +138,8 @@ pub struct SendMessage {
 }
 
 impl SendMessage {
-    pub fn new(msg: PeerMessageResponse) -> Self {
-        SendMessage { message: Arc::new(msg) }
+    pub fn new(message: Arc<PeerMessageResponse>) -> Self {
+        SendMessage { message }
     }
 }
 
@@ -315,7 +315,7 @@ impl Receive<SendMessage> for Peer {
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
-                let write_result = timeout(IO_TIMEOUT, tx.write_message(&*msg.message)).await;
+                let write_result = timeout(IO_TIMEOUT, tx.write_message(msg.message.as_ref())).await;
                 // release mutex as soon as possible
                 drop(tx_lock);
 
