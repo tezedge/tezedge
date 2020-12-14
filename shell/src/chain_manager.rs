@@ -778,7 +778,7 @@ impl ChainManager {
                             HeadResult::BranchSwitch => {
                                 self.advertise_current_branch_to_p2p(
                                     self.chain_state.get_chain_id(),
-                                    message.header()
+                                    message.header(),
                                 )?;
                             }
                             HeadResult::HeadIncrement => {
@@ -891,11 +891,11 @@ impl ChainManager {
             }
             ShellChannelMsg::RequestCurrentHead(_) => {
                 let ChainManager { peers, chain_state, .. } = self;
+                let msg: Arc<PeerMessageResponse> = GetCurrentHeadMessage::new(chain_state.get_chain_id().to_vec()).into();
                 peers.iter_mut()
-                    .filter(|(_, peer)| peer.mempool_enabled)
                     .for_each(|(_, peer)| {
                         tell_peer(
-                            GetCurrentHeadMessage::new(chain_state.get_chain_id().to_vec()).into(),
+                            msg.clone(),
                             peer,
                         )
                     });
@@ -1001,7 +1001,7 @@ impl ChainManager {
     /// "bootstrapped peer" means, that peer.current_level <= chain_manager.current_level
     fn resolve_is_bootstrapped(&mut self, log: &Logger) {
         if self.is_bootstrapped {
-            return ();
+            return;
         }
 
         // simple implementation:
@@ -1029,8 +1029,6 @@ impl ChainManager {
             self.is_bootstrapped = true;
             info!(log, "Chain manager is bootstrapped"; "num_of_peers_for_bootstrap_threshold" => self.num_of_peers_for_bootstrap_threshold, "num_of_bootstrapped_peers" => num_of_bootstrapped_peers, "reached_on_level" => chain_manager_current_level)
         }
-
-        ()
     }
     fn check_successors_for_apply(&mut self, ctx: &Context<ChainManagerMsg>, block: &BlockHash) -> Result<(), StorageError> {
         if let Some(metadata) = self.block_meta_storage.get(&block)? {
@@ -1120,7 +1118,7 @@ impl ChainManager {
             ..
         } = self;
 
-        for (_, peer) in peers {
+        for peer in peers.values() {
             tell_peer(
                 CurrentBranchMessage::new(
                     chain_id.clone(),
@@ -1145,44 +1143,49 @@ impl ChainManager {
     /// `ignore_msg_with_empty_mempool` - if true means: send CurrentHead, only if we have anything in mempool (just to peers with enabled mempool)
     fn advertise_current_head_to_p2p(&self, chain_id: &ChainId, block_header: Arc<BlockHeader>, mempool: Mempool, ignore_msg_with_empty_mempool: bool) {
 
+        // prepare messages to prevent unnecessesery cloning of messages
         // message to peers with enabled mempool
-        let msg_for_mempool_enabled = CurrentHeadMessage::new(
-            chain_id.clone(),
-            block_header.as_ref().clone(),
-            {
-                // we must check, if we have allowed mempool
-                if self.p2p_disable_mempool {
-                    Mempool::default()
-                } else {
-                    mempool
-                }
-            },
-        );
+        let (msg_for_mempool_enabled_is_mempool_empty, msg_for_mempool_enabled): (bool, Arc<PeerMessageResponse>) = {
+            let current_head_msg = CurrentHeadMessage::new(
+                chain_id.clone(),
+                block_header.as_ref().clone(),
+                {
+                    // we must check, if we have allowed mempool
+                    if self.p2p_disable_mempool {
+                        Mempool::default()
+                    } else {
+                        mempool
+                    }
+                },
+            );
+            (
+                current_head_msg.current_mempool().is_empty(),
+                current_head_msg.into(),
+            )
+        };
         // message to peers with disabled mempool
-        let msg_for_mempool_disabled = CurrentHeadMessage::new(
-            chain_id.clone(),
-            block_header.as_ref().clone(),
-            Mempool::default(),
+        let (msg_for_mempool_disabled_is_mempool_empty, msg_for_mempool_disabled): (bool, Arc<PeerMessageResponse>) = (
+            true,
+            CurrentHeadMessage::new(
+                chain_id.clone(),
+                block_header.as_ref().clone(),
+                Mempool::default(),
+            ).into(),
         );
 
         // send messsages
         self.peers.iter()
             .for_each(|(_, peer)| {
-                let msg = if peer.mempool_enabled {
-                    msg_for_mempool_enabled.clone()
+                let (msg, msg_is_mempool_empty) = if peer.mempool_enabled {
+                    (msg_for_mempool_enabled.clone(), msg_for_mempool_enabled_is_mempool_empty)
                 } else {
-                    msg_for_mempool_disabled.clone()
+                    (msg_for_mempool_disabled.clone(), msg_for_mempool_disabled_is_mempool_empty)
                 };
 
-                let can_send_msg = if ignore_msg_with_empty_mempool && msg.current_mempool().is_empty() {
-                    false
-                } else {
-                    true
-                };
-
+                let can_send_msg = !(ignore_msg_with_empty_mempool && msg_is_mempool_empty);
                 if can_send_msg {
                     tell_peer(
-                        msg.into(),
+                        msg,
                         peer,
                     )
                 }
@@ -1601,7 +1604,7 @@ impl PeerState {
     }
 }
 
-fn tell_peer(msg: PeerMessageResponse, peer: &PeerState) {
+fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerState) {
     peer.peer_id.peer_ref.tell(SendMessage::new(msg), None);
 }
 
@@ -1655,7 +1658,7 @@ pub mod tests {
             sys,
             network_channel,
             3011,
-            node_identity.clone(),
+            node_identity,
             Arc::new(NetworkVersion::new("testet".to_string(), 0, 0)),
             tokio_runtime.handle().clone(),
             &socket_address,

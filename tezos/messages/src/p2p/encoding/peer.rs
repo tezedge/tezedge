@@ -134,6 +134,12 @@ macro_rules! into_peer_message {
             }
         }
 
+        impl From<$m> for std::sync::Arc<PeerMessageResponse> {
+            fn from(msg: $m) -> Self {
+                std::sync::Arc::new(PeerMessage::$v(msg).into())
+            }
+        }
+
         impl From<$m> for PeerMessage {
             fn from(msg: $m) -> Self {
                 PeerMessage::$v(msg)
