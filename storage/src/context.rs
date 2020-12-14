@@ -10,7 +10,7 @@ use failure::Fail;
 
 use crypto::hash::{BlockHash, ContextHash, HashType};
 
-use crate::{BlockStorage, StorageError};
+use crate::{BlockStorage, BlockStorageReader, StorageError};
 use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTree};
 
 /// Abstraction on context manipulation
@@ -41,6 +41,10 @@ pub trait ContextApi {
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
     fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError>;
+
+    /// TODO: TE-203 - remove when context_listener will not be used
+    // check if context_hash is committed
+    fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
 }
 
 impl ContextApi for TezedgeContext {
@@ -160,6 +164,12 @@ impl ContextApi for TezedgeContext {
 
         Ok(stats)
     }
+
+    fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
+        self.block_storage
+            .contains_context_hash(context_hash)
+            .map_err(|e| ContextError::StorageError { error: e })
+    }
 }
 
 // context implementation using merkle-tree-like storage
@@ -207,6 +217,11 @@ pub enum ContextError {
     #[fail(display = "Failed to convert hash to array: {}", error)]
     HashConversionError {
         error: TryFromSliceError,
+    },
+    /// TODO: TE-203 - remove when context_listener will not be used
+    #[fail(display = "Storage error: {}", error)]
+    StorageError {
+        error: StorageError,
     },
 }
 

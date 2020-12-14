@@ -6,9 +6,9 @@ use std::ops::Neg;
 
 use failure::{bail, format_err};
 use hyper::{Body, Request};
+use riker::actor::ActorReference;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use riker::actor::ActorReference;
 
 use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, ContextHash, HashType};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
@@ -22,7 +22,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
 use crate::encoding::base_types::UniString;
-use crate::server::RpcServiceEnvironment;
+use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
 use crate::services::stream_services::BlockHeaderMonitorInfo;
 
 #[macro_export]
@@ -356,6 +356,14 @@ pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) 
             }
         }
     )
+}
+
+/// Parses [async] parameter from query
+pub(crate) fn parse_async(query: &Query, default: bool) -> bool {
+    match query.get_str("async") {
+        Some(value) => value.eq("true"),
+        None => default
+    }
 }
 
 fn split_block_id_param(block_id_param: &str, split_char: char, negate: bool) -> Result<(&str, Option<i32>), failure::Error> {

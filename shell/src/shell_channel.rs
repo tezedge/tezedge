@@ -12,9 +12,10 @@ use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::block_storage::BlockJsonData;
 use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
-use tezos_api::ffi::ApplyBlockRequest;
 use tezos_messages::Head;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Mempool, Operation, Path};
+use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
+
+use crate::ResultCallback;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -62,7 +63,7 @@ pub struct MempoolOperationReceived {
 
 #[derive(Clone, Debug)]
 pub struct InjectBlock {
-    pub block_header: BlockHeader,
+    pub block_header: Arc<BlockHeaderWithHash>,
     pub operations: Option<Vec<Vec<Operation>>>,
     pub operation_paths: Option<Vec<Path>>,
 }
@@ -71,29 +72,22 @@ pub struct InjectBlock {
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(Head, BlockApplied),
+    NewCurrentHead(Head, Arc<BlockApplied>),
     /// Chain_feeder propagates if block successfully validated and applied
     /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
-    BlockApplied(BlockApplied),
-    ApplyBlock(BlockHash, Arc<ApplyBlockRequest>),
+    BlockApplied(Arc<BlockApplied>),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
     AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
-    InjectBlock(InjectBlock),
+    InjectBlock(InjectBlock, ResultCallback),
     RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
 }
 
-impl From<InjectBlock> for ShellChannelMsg {
-    fn from(msg: InjectBlock) -> Self {
-        ShellChannelMsg::InjectBlock(msg)
-    }
-}
-
 impl From<BlockApplied> for ShellChannelMsg {
     fn from(msg: BlockApplied) -> Self {
-        ShellChannelMsg::BlockApplied(msg)
+        ShellChannelMsg::BlockApplied(Arc::new(msg))
     }
 }
 

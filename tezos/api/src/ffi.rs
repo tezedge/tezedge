@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
 use tezos_messages::base::rpc_support::{RpcJsonMap, UniversalValue};
+use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
@@ -764,6 +765,25 @@ impl From<CallError> for HelpersPreapplyError {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ComputePathRequest {
     pub operations: Vec<Vec<OperationHash>>,
+}
+
+impl TryFrom<&Vec<Vec<Operation>>> for ComputePathRequest {
+    type Error = MessageHashError;
+
+    fn try_from(ops: &Vec<Vec<Operation>>) -> Result<Self, Self::Error> {
+        let mut operation_hashes = Vec::with_capacity(ops.len());
+        for inner_ops in ops {
+            let mut iophs = Vec::with_capacity(inner_ops.len());
+            for op in inner_ops {
+                iophs.push(op.message_hash()?);
+            }
+            operation_hashes.push(iophs);
+        }
+
+        Ok(ComputePathRequest {
+            operations: operation_hashes,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

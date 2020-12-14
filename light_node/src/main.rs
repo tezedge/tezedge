@@ -275,10 +275,11 @@ fn block_on_actors(
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
     let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_block_protocol_events.expect("Context listener needs event server"), log.clone(), env.storage.store_context_actions)
         .expect("Failed to create context event listener");
-    let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
+    let block_applier = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_block_protocol_commands, log.clone())
         .expect("Failed to create chain feeder");
     let _ = ChainManager::actor(
         &actor_system,
+        block_applier,
         network_channel.clone(),
         shell_channel.clone(),
         &persistent_storage,

@@ -176,8 +176,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
                     let header = block_storage.get(head.block_hash()).expect("failed to read current head").expect("current head not found");
                     // TE-168: check if context is also asynchronously stored
                     let context_hash = header.header.context();
-                    let found_by_context_hash = block_storage.get_by_context_hash(&context_hash).expect("failed to read head");
-                    if found_by_context_hash.is_some() {
+                    if block_storage.contains_context_hash(&context_hash).expect("failed to read head") {
                         break Some(context_hash.clone());
                     }
                 }
