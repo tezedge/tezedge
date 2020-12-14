@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use bytes::buf::BufExt;
 use hyper::{Body, Method, Request};
 use serde::Serialize;
@@ -358,8 +361,17 @@ pub async fn config_user_activated_protocol_overrides(_: Request<Body>, _: Param
 
 // TODO: remove. This is a 'fake it till you make it' handler
 /// Handler mockin the describe routes in ocaml to be compatible with tezoses python test framework
-pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn describe(allowed_methods: Arc<HashSet<Method>>, req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let path: Vec<String> = req.uri().path().split('/').skip(2).map(|v| v.to_string()).collect();
+
+    // TODO: dyanmically get the method from a protocol call, for now, get the first element...
+    // NOTE: protocol rpcs are dynamically created and called trough the protocol,
+    // as a next step, we should somehow get the registreds paths method from the protocol
+    let method = if !allowed_methods.is_empty() {
+        allowed_methods.iter().next().unwrap()
+    } else {
+        return empty()
+    };
 
     let service_fields = serde_json::json!({
         "meth": method.as_str(),
@@ -386,7 +398,7 @@ pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, e
         },
     });
 
-    let describe_json = match method {
+    let describe_json = match *method {
         Method::GET => {
             serde_json::json!({
                 "static": {
@@ -398,6 +410,20 @@ pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, e
             serde_json::json!({
                 "static": {
                     "post_service": service_fields
+                },
+            })
+        }
+        Method::PUT => {
+            serde_json::json!({
+                "static": {
+                    "put_service": service_fields
+                },
+            })
+        }
+        Method::DELETE => {
+            serde_json::json!({
+                "static": {
+                    "delete_service": service_fields
                 },
             })
         }
