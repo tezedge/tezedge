@@ -11,19 +11,10 @@ use tezos_api::ffi::ProtocolRpcError;
 use tezos_messages::ts_to_rfc3339;
 use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
 
-use crate::{
-    empty,
-    encoding::{
-        base_types::*,
-        monitor::BootstrapInfo,
-    },
-    make_json_response,
-    make_json_stream_response,
-    result_option_to_json_response,
-    result_to_json_response,
-    ServiceResult,
-    services,
-};
+use crate::{empty, encoding::{
+    base_types::*,
+    monitor::BootstrapInfo,
+}, helpers, make_json_response, make_json_stream_response, result_option_to_json_response, result_to_empty_json_response, result_to_json_response, ServiceResult, services};
 use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
@@ -91,7 +82,7 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
     let branch_delayed = query.get_str("branch_delayed");
     let refused = query.get_str("refused");
 
-    let mempool_query = stream_services::MempoolOperationsQuery{
+    let mempool_query = stream_services::MempoolOperationsQuery {
         applied: applied == Some("yes"),
         branch_refused: branch_refused == Some("yes"),
         branch_delayed: branch_delayed == Some("yes"),
@@ -101,11 +92,21 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
     let RpcServiceEnvironment {
         state,
         log,
+        current_mempool_state_storage,
         ..
     } = env;
 
     let last_checked_head = state.read().unwrap().current_head().as_ref().unwrap().header().hash.clone();
-    make_json_stream_response(stream_services::OperationMonitorStream::new(chain_id, state, log, last_checked_head, mempool_query))
+    make_json_stream_response(
+        stream_services::OperationMonitorStream::new(
+            chain_id,
+            current_mempool_state_storage,
+            state,
+            log,
+            last_checked_head,
+            mempool_query,
+        )
+    )
 }
 
 pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -119,7 +120,6 @@ pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServ
     make_json_response(&vec![base_services::get_blocks(chain_id, head, None, length.parse::<usize>()?, env.persistent_storage())?.iter()
         .map(|block| block.hash.clone())
         .collect::<Vec<String>>()])
-
 }
 
 pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -189,9 +189,9 @@ pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: 
 
 pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let (pending_operations, _) =
-        services::mempool_services::get_pending_operations(&chain_id, env.state())?;
-    result_to_json_response(Ok(pending_operations), env.log())
+    let RpcServiceEnvironment { current_mempool_state_storage, log, .. } = env;
+    let (pending_operations, _) = services::mempool_services::get_pending_operations(&chain_id, current_mempool_state_storage)?;
+    result_to_json_response(Ok(pending_operations), &log)
 }
 
 pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
@@ -237,10 +237,8 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
 }
 
 pub async fn mempool_request_operations(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let shell_channel = env.shell_channel();
-
-    result_to_json_response(
-        services::mempool_services::request_operations(&env, shell_channel.clone()),
+    result_to_empty_json_response(
+        services::mempool_services::request_operations(env.shell_channel.clone()),
         env.log(),
     )
 }
@@ -414,7 +412,7 @@ pub async fn describe(method: Method, req: Request<Body>, _: Params, _: Query, e
 
 pub async fn worker_prevalidators(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     result_to_json_response(
-        Ok(base_services::get_prevalidators(&env)),
+        helpers::get_prevalidators(&env, None),
         env.log(),
     )
 }

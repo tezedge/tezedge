@@ -1,12 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Level, Logger};
+
+use crypto::hash::OperationHash;
+use tezos_messages::p2p::encoding::prelude::Operation;
 
 pub fn prepare_empty_dir(dir_name: &str) -> String {
     let path = test_storage_dir_path(dir_name);
@@ -64,6 +68,7 @@ pub struct NoopMessage;
 /// Module which runs actor's very similar than real node runs
 #[allow(dead_code)]
 pub mod infra {
+    use std::collections::HashSet;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,12 +80,13 @@ pub mod infra {
     use slog::{info, Level, Logger, warn};
     use tokio::runtime::Runtime;
 
-    use crypto::hash::{BlockHash, ContextHash, HashType};
+    use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
     use shell::context_listener::ContextListener;
-    use shell::mempool_prevalidator::MempoolPrevalidator;
+    use shell::mempool::{CurrentMempoolStateStorageRef, init_mempool_state_storage};
+    use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
     use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
@@ -96,6 +102,7 @@ pub mod infra {
     use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
 
     use crate::common;
+    use crate::common::contains_all_keys;
 
     pub struct NodeInfrastructure {
         name: String,
@@ -105,6 +112,7 @@ pub mod infra {
         pub network_channel: NetworkChannelRef,
         pub actor_system: ActorSystem,
         pub tmp_storage: TmpStorage,
+        pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
         pub tezos_env: TezosEnvironmentConfiguration,
         pub tokio_runtime: Runtime,
         apply_restarting_feature: Arc<AtomicBool>,
@@ -135,6 +143,7 @@ pub mod infra {
             } else {
                 context_db_path.to_string()
             };
+            let current_mempool_state_storage = init_mempool_state_storage();
 
             let context_db_path = PathBuf::from(context_db_path);
             let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &tmp_storage.path(), &context_db_path, &patch_context, &log)
@@ -212,8 +221,10 @@ pub mod infra {
                 network_channel.clone(), shell_channel.clone(),
                 &persistent_storage,
                 tezos_readonly_api.clone(),
-                &init_storage_data.chain_id,
+                init_storage_data.chain_id.clone(),
                 is_sandbox,
+                current_mempool_state_storage.clone(),
+                false,
                 &p2p_threshold,
                 identity.clone(),
             ).expect("Failed to create chain manager");
@@ -221,6 +232,7 @@ pub mod infra {
                 &actor_system,
                 shell_channel.clone(),
                 &persistent_storage,
+                current_mempool_state_storage.clone(),
                 &init_storage_data,
                 tezos_readonly_api,
                 log.clone(),
@@ -253,6 +265,7 @@ pub mod infra {
                     tokio_runtime,
                     actor_system,
                     tmp_storage,
+                    current_mempool_state_storage,
                     tezos_env: tezos_env.clone(),
                 }
             )
@@ -337,6 +350,53 @@ pub mod infra {
             result
         }
 
+        // TODO: refactor with async/condvar, not to block main thread
+        pub fn wait_for_mempool_on_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+            let tested_head = Some(tested_head).map(|th| HashType::BlockHash.hash_to_b58check(&th));
+
+            let result = loop {
+                let mempool_state = self.current_mempool_state_storage.read().expect("Failed to obtain lock");
+                let current_head = mempool_state.head()
+                    .map(|ch| HashType::BlockHash.hash_to_b58check(&ch));
+
+                if current_head.eq(&tested_head) {
+                    info!(self.log, "[NODE] Expected mempool head detected"; "head" => tested_head, "marker" => marker);
+                    break Ok(());
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    thread::sleep(delay);
+                } else {
+                    break Err(failure::format_err!("wait_for_mempool_on_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
+                }
+            };
+            result
+        }
+
+        // TODO: refactor with async/condvar, not to block main thread
+        pub fn wait_for_mempool_contains_operations(&self, marker: &str, expected_operations: &HashSet<OperationHash>, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+
+            let result = loop {
+                let mempool_state = self.current_mempool_state_storage.read().expect("Failed to obtain lock");
+                let operations = mempool_state.operations();
+                if contains_all_keys(operations, expected_operations) {
+                    info!(self.log, "[NODE] All expected operations found in mempool"; "marker" => marker);
+                    break Ok(());
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    thread::sleep(delay);
+                } else {
+                    break Err(failure::format_err!("wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
+                }
+            };
+            result
+        }
+
         pub fn whitelist_all(&self) {
             if let Some(peer_manager) = &self.peer_manager {
                 peer_manager.tell(WhitelistAllIpAddresses, None);
@@ -358,4 +418,14 @@ pub mod infra {
             .build()
             .expect("Failed to create tokio runtime")
     }
+}
+
+fn contains_all_keys(map: &HashMap<OperationHash, Operation>, keys: &HashSet<OperationHash>) -> bool {
+    let mut contains_counter = 0;
+    for key in keys {
+        if map.contains_key(key) {
+            contains_counter += 1;
+        }
+    }
+    contains_counter == keys.len()
 }

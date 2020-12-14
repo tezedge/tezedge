@@ -333,20 +333,21 @@ pub(crate) fn get_context_constants_just_for_rpc(
 }
 
 // TODO: TE-220, be more explicit about the kind of response from the RPC service
-fn handle_rpc_response(response: &ProtocolRpcResponse) -> Result<serde_json::value::Value, failure::Error> {
+fn handle_rpc_response(response: &ProtocolRpcResponse, context_path: String) -> Result<serde_json::value::Value, failure::Error> {
     match response {
         ProtocolRpcResponse::RPCOk(body) => Ok(serde_json::from_str(&body)?),
-        other => Err(failure::err_msg(format!("Got non-OK response from protocol-RPC service: {:?}", other))),
+        other => Err(failure::err_msg(format!("Got non-OK response from protocol-RPC service '{}', reason: {:?}", context_path, other))),
     }
 }
 
 pub(crate) fn call_protocol_rpc(chain_param: &str, chain_id: ChainId, block_hash: BlockHash, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
+    let context_path = rpc_request.context_path.clone();
     let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
     // TODO: retry?
     let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_rpc(request)?;
 
-    handle_rpc_response(&response)
+    handle_rpc_response(&response, context_path)
 }
 
 pub(crate) fn preapply_operations(chain_param: &str, chain_id: ChainId, block_hash: BlockHash, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {

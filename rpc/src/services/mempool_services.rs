@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use failure::{bail, format_err};
@@ -11,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic, RequestCurrentHead};
+use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::shell_channel::{InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelRef, ShellChannelTopic};
 use shell::validation;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
@@ -20,7 +20,7 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
-use crate::rpc_actor::{RpcCollectedState, RpcCollectedStateRef};
+use crate::helpers::get_prevalidators;
 use crate::server::RpcServiceEnvironment;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -41,32 +41,39 @@ pub struct InjectedBlockWithOperations {
 
 pub fn get_pending_operations(
     _chain_id: &ChainId,
-    state: &RpcCollectedStateRef,
-) -> Result<(MempoolOperations, ProtocolHash), failure::Error> {
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+) -> Result<(MempoolOperations, Option<ProtocolHash>), failure::Error> {
 
     // get actual known state of mempool
-    let state = state.read().unwrap();
-    let current_mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>> = state.current_mempool_state();
+    let current_mempool_state = current_mempool_state_storage
+        .read()
+        .map_err(|e| format_err!("Failed to obtain read lock, reson: {}", e))?;
 
-    // convert to rpc data
-    match current_mempool_state {
-        Some(mempool) => {
-            let mempool = mempool.read().unwrap();
-            let protocol = match &mempool.protocol {
-                Some(protocol) => protocol,
-                None => return Err(format_err!("missing protocol for mempool current state"))
-            };
-
-            Ok((MempoolOperations {
-                applied: convert_applied(&mempool.result.applied, &mempool.operations)?,
-                refused: convert_errored(&mempool.result.refused, &mempool.operations, &protocol)?,
-                branch_refused: convert_errored(&mempool.result.branch_refused, &mempool.operations, &protocol)?,
-                branch_delayed: convert_errored(&mempool.result.branch_delayed, &mempool.operations, &protocol)?,
-                unprocessed: vec![],
-            }, protocol.to_vec()))
+    // convert to rpc data - we need protocol_hash
+    let (mempool_operations, mempool_prevalidator_protocol) = match current_mempool_state.prevalidator() {
+        Some(prevalidator) => {
+            let result = current_mempool_state.result();
+            let operations = current_mempool_state.operations();
+            (
+                MempoolOperations {
+                    applied: convert_applied(&result.applied, &operations)?,
+                    refused: convert_errored(&result.refused, &operations, &prevalidator.protocol)?,
+                    branch_refused: convert_errored(&result.branch_refused, &operations, &prevalidator.protocol)?,
+                    branch_delayed: convert_errored(&result.branch_delayed, &operations, &prevalidator.protocol)?,
+                    unprocessed: vec![],
+                },
+                Some(prevalidator.protocol.clone()),
+            )
         }
-        None => Ok((MempoolOperations::default(), Vec::default()))
-    }
+        None => (MempoolOperations::default(), None)
+    };
+
+    Ok(
+        (
+            mempool_operations,
+            mempool_prevalidator_protocol
+        )
+    )
 }
 
 fn convert_applied(applied: &Vec<Applied>, operations: &HashMap<OperationHash, Operation>) -> Result<Vec<HashMap<String, Value>>, failure::Error> {
@@ -139,9 +146,11 @@ pub fn inject_operation(
     let persistent_storage = env.persistent_storage();
     let block_storage: Box<dyn BlockStorageReader> = Box::new(BlockStorage::new(persistent_storage));
     let block_meta_storage: Box<dyn BlockMetaStorageReader> = Box::new(BlockMetaStorage::new(persistent_storage));
-    let state = env.state();
 
-    let state = state.read().unwrap();
+    // find prevalidator for chain_id, if not found, then stop
+    if get_prevalidators(env, Some(&chain_id))?.is_empty() {
+        bail!("Prevalidator is not running, cannot inject the operation.");
+    }
 
     // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
@@ -152,7 +161,7 @@ pub fn inject_operation(
         &chain_id,
         &operation_hash,
         &operation,
-        state.current_mempool_state(),
+        env.current_mempool_state_storage().clone(),
         &env.tezos_readonly_prevalidation_api().pool.get()?.api,
         &block_storage,
         &block_meta_storage,
@@ -205,34 +214,14 @@ pub fn inject_block(
 
     // clean actual mempool_state - just applied should be enough
     if let Some(validation_passes) = &validation_passes {
-        let current_head_ref: &mut RpcCollectedState = &mut *env.state().write().unwrap();
-        if let Some(mempool) = current_head_ref.current_mempool_state() {
-            let mut mempool = mempool.write().unwrap();
-            for vps in validation_passes {
-                for vp in vps {
-                    let oph: OperationHash = vp.message_hash()?;
+        let mut current_mempool_state = env.current_mempool_state_storage()
+            .write()
+            .map_err(|e| format_err!("Failed to obtain write lock, reason: {}", e))?;
 
-                    // remove from applied
-                    if let Some(pos) = mempool.result.applied.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.applied.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                    // remove from branch_delayed
-                    if let Some(pos) = mempool.result.branch_delayed.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.branch_delayed.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                    // remove from branch_refused
-                    if let Some(pos) = mempool.result.branch_refused.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.branch_refused.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                    // remove from refused
-                    if let Some(pos) = mempool.result.refused.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.refused.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                }
+        for vps in validation_passes {
+            for vp in vps {
+                let oph: OperationHash = vp.message_hash()?;
+                current_mempool_state.remove_operation(oph);
             }
         }
     }
@@ -264,25 +253,14 @@ pub fn inject_block(
     Ok(block_hash)
 }
 
-pub fn request_operations(
-    env: &RpcServiceEnvironment,
-    shell_channel: ShellChannelRef) -> Result<HashMap<String, String>, failure::Error> {
-    let state = env.state();
-
-    let state = state.read().unwrap();
-
-    if state.disable_mempool() {
-        bail!("Cannot request operations, mempool is disabled")
-    }
-
+pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure::Error> {
     // request current head from the peers
     shell_channel.tell(
         Publish {
             msg: RequestCurrentHead.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
-
-    Ok(HashMap::new())
+    Ok(())
 }
 
 #[cfg(test)]

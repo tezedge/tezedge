@@ -6,7 +6,6 @@
 //! - to ensure consistency of chain
 //! - to support multipass validation
 
-use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use chrono::TimeZone;
@@ -16,12 +15,12 @@ use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::Head;
+use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
-use crate::shell_channel::CurrentMempoolState;
+use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::validation::fitness_comparator::FitnessWrapper;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
@@ -148,7 +147,7 @@ pub fn prevalidate_operation(
     chain_id: &ChainId,
     operation_hash: &OperationHash,
     operation: &Operation,
-    current_mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>,
+    current_mempool_state: CurrentMempoolStateStorageRef,
     api: &ProtocolController,
     block_storage: &Box<dyn BlockStorageReader>,
     block_meta_storage: &Box<dyn BlockMetaStorageReader>,
@@ -175,25 +174,19 @@ pub fn prevalidate_operation(
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
-    let mempool_head = if let Some(mempool_state) = current_mempool_state {
-        let mempool = mempool_state.read().unwrap();
-        match mempool.head.as_ref() {
-            Some(head) => match block_storage.get(head)? {
-                Some(head) => head,
-                None => return Err(PrevalidateOperationError::UnknownBranch {
-                    branch: HashType::BlockHash.hash_to_b58check(&head)
-                })
-            },
-            None => {
-                return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
-                    reason: "no head in mempool".to_string(),
-                });
-            }
+    let mempool_state = current_mempool_state.read().unwrap();
+    let mempool_head = match mempool_state.head().as_ref() {
+        Some(head) => match block_storage.get(head)? {
+            Some(head) => head,
+            None => return Err(PrevalidateOperationError::UnknownBranch {
+                branch: HashType::BlockHash.hash_to_b58check(&head)
+            })
+        },
+        None => {
+            return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
+                reason: "no head in mempool".to_string(),
+            });
         }
-    } else {
-        return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
-            reason: "no mempool state".to_string(),
-        });
     };
 
     // TODO: possible to add ffi to pre_filter

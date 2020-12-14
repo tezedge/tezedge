@@ -75,6 +75,20 @@ pub(crate) fn result_option_to_json_response<T: serde::Serialize>(res: Result<Op
     }
 }
 
+/// Returns result as a empty JSON response: `{}`.
+pub(crate) fn result_to_empty_json_response(res: Result<(), failure::Error>, log: &Logger) -> ServiceResult {
+    match res {
+        Ok(_) => {
+            let empty_json = serde_json::json!({});
+            make_json_response(&empty_json)
+        }
+        Err(err) => {
+            error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
+            error(err)
+        }
+    }
+}
+
 /// Generate empty response
 pub(crate) fn empty() -> ServiceResult {
     Ok(Response::builder()

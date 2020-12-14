@@ -5,7 +5,6 @@ use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, RwLock};
 
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -18,15 +17,17 @@ use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
+use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
 use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
-use tezos_messages::p2p::binary_message::MessageHash;
 
 use crate::collections::{BlockData, UniqueBlockData};
-use crate::shell_channel::{BlockApplied, CurrentMempoolState};
+use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::shell_channel::BlockApplied;
 use crate::validation;
+
 pub enum BlockAcceptanceResult {
     AcceptBlock,
     IgnoreBlock,
@@ -328,21 +329,17 @@ impl BlockchainState {
     /// Returns:
     /// - None, if head was not updated, means was ignored
     /// - Some(new_head, head_result)
-    pub fn try_update_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>) -> Result<Option<(Head, HeadResult)>, StorageError> {
+    pub fn try_update_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, current_mempool_state: CurrentMempoolStateStorageRef) -> Result<Option<(Head, HeadResult)>, StorageError> {
         if let Some(current_head) = current_head {
             // get fitness from mempool, if not, than use current_head.fitness
-            let current_context_fitness = match mempool_state {
-                Some(state) => {
-                    let mempool_state = state.read().unwrap();
-                    match mempool_state.fitness.as_ref() {
-                        Some(fitness) => fitness.clone(),
-                        None => {
-                            println!("[mempool-fitness] Context fitness is None -> setting fitness to current head");
-                            current_head.fitness().to_vec()
-                        }
-                    }
+            let mempool_state = current_mempool_state.read().unwrap();
+            let current_context_fitness = {
+                if let Some(Some(fitness)) = mempool_state.prevalidator().map(|p| p.context_fitness.as_ref()) {
+                    fitness
+                } else {
+                    println!("[mempool-fitness] Context fitness is None -> setting fitness to current head");
+                    current_head.fitness()
                 }
-                None => current_head.fitness().to_vec()
             };
             println!("[mempool-fitness] Potential new head -> Context fitness: {:?}, new_fitness: {:?}, current_head_fitness: {:?}", &current_context_fitness, &potential_new_head.header().header.fitness(), current_head.fitness());
             // need to check against current_head, if not accepted, just ignore potential head
