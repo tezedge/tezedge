@@ -47,7 +47,6 @@ pub(crate) fn make_json_stream_response<T: futures::Stream<Item=Result<String, f
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
-        // .header(hyper::header::TRANSFER_ENCODING, "chunked")
         .body(Body::wrap_stream(content))?)
 }
 
