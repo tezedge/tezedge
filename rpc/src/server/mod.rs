@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -112,6 +112,19 @@ pub type HResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Sen
 
 pub type Handler = Arc<dyn Fn(Request<Body>, Params, Query, RpcServiceEnvironment) -> Box<dyn Future<Output=HResult> + Send> + Send + Sync>;
 
+pub struct MethodHandler {
+    allowed_methods: Arc<HashSet<Method>>,
+    handler: Handler,
+}
+
+impl MethodHandler {
+    pub fn new(allowed_methods: Arc<HashSet<Method>>, handler: Handler) -> Self {
+        Self {
+            allowed_methods,
+            handler,
+        }
+    }
+}
 
 /// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), hyper::Error>> {
@@ -129,28 +142,44 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
-                        if let Some((handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches("/")) {
-                            match *req.method() {
+                        if let Some((method_and_handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches("/")) {
+                            let MethodHandler {
+                                allowed_methods,
+                                handler,
+                            } = method_and_handler;
+
+                            let request_method = req.method();
+                            let log = env.log.clone();
+                            
+                            match *request_method {
                                 Method::OPTIONS => {
                                     // lets globaly handle options
                                     options()
                                 }
                                 _ => {
-                                    let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
-                                    let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
+                                    if allowed_methods.contains(request_method) {
+                                        let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
+                                        let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
 
-                                    let handler = handler.clone();
-                                    let log = env.log.clone();
-                                    let fut = handler(req, params, query, env);
-                                    match Pin::from(fut).await {
-                                        Ok(response) => Ok(response),
-                                        Err(e) => {
-                                            error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
-                                            error_with_message(format!("{:?}", e))
+                                        let handler = handler.clone();
+                                        let fut = handler(req, params, query, env);
+                                        match Pin::from(fut).await {
+                                            Ok(response) => Ok(response),
+                                            Err(e) => {
+                                                error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
+                                                error_with_message(format!("{:?}", e))
+                                            }
                                         }
+                                    } else {
+                                        let error_message = format!("Failed to execute RPC function - Method {} not registered for this RPC function", request_method);
+                                        error!(log, "{}", error_message);
+                                        error_with_message(format!("{:?}", error_message))
                                     }
                                 }
                             }
+
+                            
+
                         } else {
                             not_found()
                         }
