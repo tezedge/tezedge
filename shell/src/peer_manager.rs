@@ -20,12 +20,12 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
+use crypto::hash::HashType;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated};
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use networking::PeerId;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
-use crypto::hash::HashType;
 
 use crate::PeerConnectionThreshold;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
@@ -173,8 +173,9 @@ impl PeerManager {
                 self.potential_peers.extend(&self.initial_peers);
             }
         } else {
+            let msg: Arc<PeerMessageResponse> = Arc::new(PeerMessage::Bootstrap.into());
             self.peers.values()
-                .for_each(|peer_state| peer_state.peer_ref.tell(SendMessage::new(PeerMessage::Bootstrap.into()), None));
+                .for_each(|peer_state| peer_state.peer_ref.tell(SendMessage::new(msg.clone()), None));
         }
     }
 
@@ -242,7 +243,7 @@ impl PeerManager {
         );
     }
 
-    fn process_shell_channel_message(&mut self, ctx: &Context<PeerManagerMsg>, msg: ShellChannelMsg) -> Result<(), failure::Error> {
+    fn process_shell_channel_message(&mut self, ctx: &Context<PeerManagerMsg>, msg: ShellChannelMsg) {
         match msg {
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
@@ -250,8 +251,6 @@ impl PeerManager {
             }
             _ => ()
         }
-
-        Ok(())
     }
 
     fn trigger_check_peer_count(&mut self, ctx: &Context<PeerManagerMsg>) {
@@ -339,7 +338,7 @@ impl Actor for PeerManager {
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         if !self.initial_peers.is_empty() {
             info!(ctx.system.log(), "Connecting to defined peers");
-            self.initial_peers.drain().for_each(|address| ctx.myself().tell(ConnectToPeer { address: address.clone() }, ctx.myself().into()));
+            self.initial_peers.drain().for_each(|address| ctx.myself().tell(ConnectToPeer { address }, ctx.myself().into()));
         }
     }
 
@@ -373,10 +372,7 @@ impl Receive<ShellChannelMsg> for PeerManager {
     type Msg = PeerManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match self.process_shell_channel_message(ctx, msg) {
-            Ok(_) => (),
-            Err(e) => warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e)),
-        }
+        self.process_shell_channel_message(ctx, msg);
     }
 }
 
@@ -454,8 +450,8 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                                 .filter(|peer_state| peer_state.peer_ref != received.peer)
                                 .map(|peer_state| peer_state.address)
                                 .collect::<Vec<_>>();
-                            let msg = AdvertiseMessage::new(&addresses);
-                            received.peer.tell(SendMessage::new(PeerMessage::Advertise(msg).into()), None);
+                            let msg = Arc::new(AdvertiseMessage::new(&addresses).into());
+                            received.peer.tell(SendMessage::new(msg), None);
                         }
                         _ => {}
                     });
