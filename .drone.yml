@@ -511,6 +511,115 @@ depends_on:
   - build-and-tests
 
 ##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-ocaml-reference
+
+clone:
+  disable: true
+
+steps:
+- name: baker-endorser-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
+
+- name: test-many-nodes
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_nodes.py
+
+- name: test-many-bakers
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_bakers.py
+
+- name: test-multinode
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_multinode.py
+
+- name: mempool-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
+
+- name: fork-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
+
+- name: basic-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
+
+volumes:
+  - name: build
+    host:
+      path: /etc/tezedge-ci-build/
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build-and-tests
+
+##############################################################################################################
 # This pipeline test the sandbox and its rpc sercver
 ##############################################################################################################
 ---
