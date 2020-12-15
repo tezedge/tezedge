@@ -393,6 +393,7 @@ clone:
 steps:
 - name: baker-endorser-test
   image: simplestakingcom/tezedge-ci-builder:appuser
+  failure: ignore
   user: root
   volumes:
     - name: build
@@ -407,6 +408,7 @@ steps:
 
 - name: test-many-nodes
   image: simplestakingcom/tezedge-ci-builder:appuser
+  failure: ignore
   user: root
   volumes:
     - name: build
@@ -421,6 +423,7 @@ steps:
 
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:appuser
+  failure: ignore
   user: root
   volumes:
     - name: build
@@ -435,6 +438,7 @@ steps:
 
 - name: test-multinode
   image: simplestakingcom/tezedge-ci-builder:appuser
+  failure: ignore
   user: root
   volumes:
     - name: build
