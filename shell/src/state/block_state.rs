@@ -17,7 +17,6 @@ use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_messages::Head;
-use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
 use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
@@ -77,7 +76,7 @@ impl BlockchainState {
 
         if let Some(current_head) = current_head.as_ref() {
             // (only_if_fitness_increases) we can accept branch if increases fitness
-            if validation::is_fitness_increases_or_same(current_head, branch.current_branch().current_head().fitness()) {
+            if validation::is_fitness_increases(current_head, branch.current_branch().current_head().fitness()) {
                 return true;
             }
 
@@ -112,13 +111,11 @@ impl BlockchainState {
 
             // (future block)
             if validation::is_future_block(&validated_header)? {
-                println!("HEADER: {} - Future block - Ignoring", HashType::BlockHash.hash_to_b58check(&validated_header.message_hash()?));
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
             // (only_if_fitness_increases) we can accept head if increases fitness
             if !validation::is_fitness_increases_or_same(current_head, validated_header.fitness()) {
-                println!("HEADER: {} - No fitness increase - Ignoring", HashType::BlockHash.hash_to_b58check(&validated_header.message_hash()?));
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
@@ -127,7 +124,6 @@ impl BlockchainState {
 
             // if missing predecessor
             if missing_predecessor {
-                println!("HEADER: {} - No fitness increase - Unknow Branch", HashType::BlockHash.hash_to_b58check(&validated_header.message_hash()?));
                 return Ok(BlockAcceptanceResult::UnknownBranch);
             }
 
@@ -148,11 +144,9 @@ impl BlockchainState {
                 }
             } else {
                 // if not, we cannot trigger validation, so we just ignore head
-                println!("HEADER: {} - No protocol - Ignoring", HashType::BlockHash.hash_to_b58check(&validated_header.message_hash()?));
                 Ok(BlockAcceptanceResult::IgnoreBlock)
             }
         } else {
-            println!("HEADER: {} - No current head set - Ignoring", HashType::BlockHash.hash_to_b58check(&validated_header.message_hash()?));
             Ok(BlockAcceptanceResult::IgnoreBlock)
         }
     }
@@ -337,15 +331,12 @@ impl BlockchainState {
                 if let Some(Some(fitness)) = mempool_state.prevalidator().map(|p| p.context_fitness.as_ref()) {
                     fitness
                 } else {
-                    println!("[mempool-fitness] Context fitness is None -> setting fitness to current head");
                     current_head.fitness()
                 }
             };
-            println!("[mempool-fitness] Potential new head -> Context fitness: {:?}, new_fitness: {:?}, current_head_fitness: {:?}", &current_context_fitness, &potential_new_head.header().header.fitness(), current_head.fitness());
             // need to check against current_head, if not accepted, just ignore potential head
             if !validation::can_update_current_head(potential_new_head.header(), &current_head, &current_context_fitness) {
                 // just ignore
-                println!("[mempool-fitness] NewHead ignored");
                 return Ok(None);
             }
         }

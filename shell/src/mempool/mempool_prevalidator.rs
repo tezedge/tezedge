@@ -17,7 +17,7 @@ use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender}
 use std::thread;
 use std::thread::JoinHandle;
 
-use failure::{Error, Fail};
+use failure::{Error, Fail, format_err};
 use riker::actors::*;
 use slog::{debug, info, Logger, trace, warn};
 
@@ -35,6 +35,7 @@ use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::mempool::mempool_state::collect_mempool;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
+use crate::{handle_result_callback, ResultCallback};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -51,7 +52,7 @@ pub struct MempoolPrevalidator {
 
 enum Event {
     NewHead(BlockHash, Arc<BlockHeader>),
-    ValidateOperation(OperationHash, MempoolOperationType),
+    ValidateOperation(OperationHash, MempoolOperationType, ResultCallback),
     ShuttingDown,
 }
 
@@ -139,7 +140,7 @@ impl MempoolPrevalidator {
             ShellChannelMsg::MempoolOperationReceived(operation) => {
                 // add operation to queue for validation
                 self.validator_event_sender.lock().unwrap().send(
-                    Event::ValidateOperation(operation.operation_hash.clone(), operation.operation_type)
+                    Event::ValidateOperation(operation.operation_hash.clone(), operation.operation_type, operation.result_callback)
                 )?;
             }
             ShellChannelMsg::ShuttingDown(_) => {
@@ -284,7 +285,7 @@ fn process_prevalidation(
                             }
                         });
                 }
-                Event::ValidateOperation(oph, mempool_operation_type) => {
+                Event::ValidateOperation(oph, mempool_operation_type, result_callback) => {
                     // TODO: handling when operation not exists - can happen?
                     if let Some(operation) = mempool_storage.get(mempool_operation_type, oph.clone())? {
                         // TODO: handle and validate pre_filter with operation?
@@ -294,9 +295,13 @@ fn process_prevalidation(
                         let was_added_to_pending = current_mempool_state_storage.write()?.add_to_pending(&oph, operation.into());
                         if !was_added_to_pending {
                             trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
+                            handle_result_callback(result_callback, || Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", HashType::OperationHash.hash_to_b58check(&oph))), log)
+                        } else {
+                            handle_result_callback(result_callback, || Ok(()), log);
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
+                        handle_result_callback(result_callback, || Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", HashType::OperationHash.hash_to_b58check(&oph))), log)
                     }
                 }
                 Event::ShuttingDown => {

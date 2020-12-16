@@ -284,6 +284,7 @@ fn add_operations_to_mempool(request: &str, shell_channel: ShellChannelRef, memp
                     msg: MempoolOperationReceived {
                         operation_hash: operation_hash.clone(),
                         operation_type: MempoolOperationType::Pending,
+                        result_callback: None,
                     }.into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 },

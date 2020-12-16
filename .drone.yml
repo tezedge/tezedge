@@ -128,41 +128,8 @@ steps:
     - cp ./light_node/etc/drone/wait_file.sh /artifacts/ && chmod 755 /artifacts/wait_file.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
-    # collect modified python test files
+    # collect modified python test framework files
     - cp -R ./tezos/python-tests /tmp/tezos-src/modified
-
-- name: prepare-python-tests-modified-tests
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: sandbox-data
-      path: /tmp/sandbox
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-  commands:
-    # copy the tezos src file from the imgage to a shared volume
-    - cp -R /home/appuser/tezos-src/tezos /tmp/tezos-src/tezos
-    # prepare modified python files for tests (compatibility with tezedge node)
-    - cp /tmp/tezos-src/modified/python-tests/daemons/node.py /tmp/tezos-src/tezos/tests_python/daemons/node.py
-    - cp /tmp/tezos-src/modified/python-tests/daemons/baker.py /tmp/tezos-src/tezos/tests_python/daemons/baker.py
-    - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/tezos/tests_python/launchers/sandbox.py
-    - cp /tmp/tezos-src/modified/python-tests/client/client.py /tmp/tezos-src/tezos/tests_python/client/client.py
-    - cp /tmp/tezos-src/modified/python-tests/tests/test_basic.py /tmp/tezos-src/tezos/tests_python/tests/test_basic.py
-    - cp /tmp/tezos-src/modified/python-tests/tests/test_mempool.py /tmp/tezos-src/tezos/tests_python/tests/test_mempool.py
-    - cp /tmp/tezos-src/modified/python-tests/tests/test_baker_endorser.py /tmp/tezos-src/tezos/tests_python/tests/test_baker_endorser.py
-    - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/tezos/tests_python/tools/constants.py
-    - cp /tmp/tezos-src/modified/python-tests/tools/utils.py /tmp/tezos-src/tezos/tests_python/tools/utils.py
-    - cp /tmp/tezos-src/modified/python-tests/test-parameters.json /tmp/tezos-src/tezos/src/proto_alpha/parameters/test-parameters.json
-    - cp /tmp/sandbox/sandbox-patch-context.json /tmp/tezos-src/tezos/sandbox-patch-context.json
-    # copy binaries to the test 
-    - cp /artifacts/light-node /tmp/tezos-src/tezos/
-    - cp /artifacts/protocol-runner /tmp/tezos-src/tezos/
-    - cp /artifacts/ffi/libtezos.so /tmp/tezos-src/tezos/
 
 - name: prepare-python-tests-unmodified
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -186,9 +153,6 @@ steps:
     - cp /tmp/tezos-src/modified/python-tests/daemons/baker.py /tmp/tezos-src/unmodified/tezos/tests_python/daemons/baker.py
     - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/unmodified/tezos/tests_python/launchers/sandbox.py
     - cp /tmp/tezos-src/modified/python-tests/client/client.py /tmp/tezos-src/unmodified/tezos/tests_python/client/client.py
-    # - cp /tmp/tezos-src/modified/python-tests/tests/test_basic.py /tmp/tezos-src/unmodified/tezos/tests_python/tests/test_basic.py
-    # - cp /tmp/tezos-src/modified/python-tests/tests/test_mempool.py /tmp/tezos-src/unmodified/tezos/tests_python/tests/test_mempool.py
-    # - cp /tmp/tezos-src/modified/python-tests/tests/test_baker_endorser.py /tmp/tezos-src/unmodified/tezos/tests_python/tests/test_baker_endorser.py
     - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/constants.py
     - cp /tmp/tezos-src/modified/python-tests/tools/utils.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/utils.py
     - cp /tmp/tezos-src/modified/python-tests/test-parameters.json /tmp/tezos-src/unmodified/tezos/src/proto_alpha/parameters/test-parameters.json
@@ -433,136 +397,6 @@ trigger:
     - develop
 
 ##############################################################################################################
-# This pipeline runs the python test framwork modified (sleeps) tests from the tezos repository aginst tezedge nodes
-##############################################################################################################
----
-kind: pipeline
-name: tezos-python-tests-modified
-
-clone:
-  disable: true
-
-steps:
-- name: baker-endorser-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
-
-- name: test-many-nodes
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_nodes.py
-
-- name: test-many-bakers
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_bakers.py
-
-- name: test-multinode
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_multinode.py
-
-- name: mempool-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
-
-- name: fork-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
-
-- name: basic-test
-  image: simplestakingcom/tezedge-ci-builder:appuser
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
-
-volumes:
-  - name: build
-    host:
-      path: /etc/tezedge-ci-build/
-  - name: tezos-src
-    host:
-      path: /etc/tmp/tezos-src
-
-trigger:
-  branch:
-    - master
-    - develop
-
-depends_on:
-  - build-and-tests
-
-##############################################################################################################
 # This pipeline runs the python test framwork unmodified tests from the tezos repository aginst tezedge nodes
 ##############################################################################################################
 ---
@@ -575,7 +409,6 @@ clone:
 steps:
 - name: baker-endorser-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -586,11 +419,12 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_baker_endorser.py
 
 - name: test-many-nodes
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -601,11 +435,12 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_nodes.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_nodes.py
 
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -616,11 +451,12 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_bakers.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_bakers.py
 
 - name: test-multinode
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -631,11 +467,12 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_multinode.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_multinode.py
 
 - name: mempool-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -646,11 +483,12 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_mempool.py
 
 - name: fork-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -661,8 +499,62 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_fork.py
 
+- name: double-endorsement-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_double_endorsement.py
+
+- name: test-programs
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_programs.py
+
+- name: test-contract-annotations-test
+  image: simplestakingcom/tezedge-ci-builder:appuser
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_annotations.py
+
+# TODO - TE-220 - stop ignoring after resolving the rpc error handling
 - name: basic-test
   image: simplestakingcom/tezedge-ci-builder:appuser
   failure: ignore
@@ -677,7 +569,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_basic.py
 
 volumes:
   - name: build
@@ -696,7 +590,7 @@ depends_on:
   - build-and-tests
 
 ##############################################################################################################
-# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
+# This pipeline runs the python test framwork tests from the tezos repository against tezos ocaml nodes
 ##############################################################################################################
 ---
 kind: pipeline
@@ -716,7 +610,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_baker_endorser.py
 
 - name: test-many-nodes
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -728,7 +622,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_nodes.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_many_nodes.py
 
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -740,7 +634,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_bakers.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_many_bakers.py
 
 - name: test-multinode
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -752,7 +646,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_multinode.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_multinode.py
 
 - name: mempool-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -764,7 +658,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_mempool.py
 
 - name: fork-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -776,7 +670,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_fork.py
 
 - name: basic-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -789,7 +683,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_basic.py
 
 volumes:
   - name: build

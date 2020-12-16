@@ -197,18 +197,25 @@ pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Que
     result_to_json_response(Ok(pending_operations), &log)
 }
 
-pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn inject_operation(req: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let operation_data_raw = hyper::body::aggregate(req).await?;
     let operation_data: String = serde_json::from_reader(&mut operation_data_raw.reader())?;
 
     let shell_channel = env.shell_channel();
 
-    // TODO: TE-221 - add optional chain_id to params mapping
-    let chain_id_param = "main";
-    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    // defaults to "main"
+    let chain_id_query = if let Some(chain_id_query) = query.get_str("chain_id") {
+        chain_id_query
+    } else {
+        "main"
+    };
+
+    let chain_id = parse_chain_id(chain_id_query, &env)?;
+    let is_async = parse_async(&query, false);
 
     result_to_json_response(
         services::mempool_services::inject_operation(
+            is_async,
             chain_id,
             &operation_data,
             &env,
@@ -224,9 +231,14 @@ pub async fn inject_block(req: Request<Body>, _: Params, query: Query, env: RpcS
 
     let shell_channel = env.shell_channel();
 
-    // TODO: TE-221 - add optional chain_id to params mapping
-    let chain_id_param = "main";
-    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    // defaults to "main"
+    let chain_id_query = if let Some(chain_id_query) = query.get_str("chain_id") {
+        chain_id_query
+    } else {
+        "main"
+    };
+    
+    let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
@@ -370,7 +382,12 @@ pub async fn describe(allowed_methods: Arc<HashSet<Method>>, req: Request<Body>,
     // NOTE: protocol rpcs are dynamically created and called trough the protocol,
     // as a next step, we should somehow get the registreds paths method from the protocol
     let method = if !allowed_methods.is_empty() {
-        allowed_methods.iter().next().unwrap()
+        // TODO: same reasoning as above
+        if path.contains(&"injection".to_string()) || path.contains(&"forge".to_string()){
+            &Method::POST
+        } else {
+            allowed_methods.iter().next().unwrap()
+        }
     } else {
         return empty();
     };
