@@ -112,7 +112,7 @@ impl OperationMonitorStream {
         let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) = get_pending_operations(&chain_id, current_mempool_state_storage.clone()) {
             (ops, protocol_hash)
         } else {
-            return Poll::Ready(None)
+            return Poll::Pending
         };
         let mut requested_ops: HashMap<String, Value> = HashMap::new();
 
@@ -278,7 +278,8 @@ impl Stream for HeadMonitorStream {
                         return Poll::Ready(head_string_result.transpose())
                     } else {
                         // No current head found, storage not ready yet
-                        return Poll::Ready(None)
+                        cx.waker().wake_by_ref();
+                        return Poll::Pending
                     }
                 };
 
@@ -294,8 +295,9 @@ impl Stream for HeadMonitorStream {
                         Poll::Ready(head_string_result.transpose())
                     }
                 } else {
-                    // No current head found, storage not ready yet
-                    Poll::Ready(None)
+                    // No current head found, storage not ready yet, wait
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
                 }
             }
         }
@@ -351,7 +353,8 @@ impl Stream for OperationMonitorStream {
                     }
                 } else {
                     // No current head found, storage not ready yet 
-                    Poll::Ready(None)
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
                 }
             }
         }
