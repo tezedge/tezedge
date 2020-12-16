@@ -568,7 +568,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_baker_endorser.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_baker_endorser.py
 
 - name: test-many-nodes
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -583,7 +585,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_nodes.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_nodes.py
 
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -598,7 +602,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_many_bakers.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_bakers.py
 
 - name: test-multinode
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -613,7 +619,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_multinode.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_multinode.py
 
 - name: mempool-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -628,7 +636,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_mempool.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_mempool.py
 
 - name: fork-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -643,7 +653,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_fork.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_fork.py
 
 - name: double-endorsement-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -659,7 +671,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_double_endorsement.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_double_endorsement.py
 
 - name: test-programs
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -675,7 +689,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_programs.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_programs.py
 
 - name: test-contract-annotations-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -691,7 +707,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_contract_annotations.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_annotations.py
 
 - name: basic-test
   image: simplestakingcom/tezedge-ci-builder:appuser
@@ -707,7 +725,9 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python && poetry run pytest -s --log-dir=. tests/test_basic.py
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_basic.py
 
 volumes:
   - name: build
