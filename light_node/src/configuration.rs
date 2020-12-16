@@ -217,8 +217,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Flag for turn on/off logging in Tezos OCaml runtime"))
         .arg(Arg::with_name("disable-mempool")
             .long("disable-mempool")
-            .takes_value(true)
-            .value_name("BOOL")
             .help("Enable or disable mempool"))
         .arg(Arg::with_name("private-node")
             .long("private-node")
@@ -607,10 +605,8 @@ impl Environment {
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                disable_mempool: args.value_of("disable-mempool")
-                    .unwrap_or("false")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool"),
+                disable_mempool: args
+                    .is_present("disable-mempool")
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

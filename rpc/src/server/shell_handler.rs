@@ -370,7 +370,12 @@ pub async fn describe(allowed_methods: Arc<HashSet<Method>>, req: Request<Body>,
     // NOTE: protocol rpcs are dynamically created and called trough the protocol,
     // as a next step, we should somehow get the registreds paths method from the protocol
     let method = if !allowed_methods.is_empty() {
-        allowed_methods.iter().next().unwrap()
+        // TODO: same reasoning as above
+        if path.contains(&"injection".to_string()) || path.contains(&"forge".to_string()){
+            &Method::POST
+        } else {
+            allowed_methods.iter().next().unwrap()
+        }
     } else {
         return empty();
     };

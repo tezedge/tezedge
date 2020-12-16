@@ -103,9 +103,9 @@ impl<T, F> Routes<T> for PathTree<MethodHandler>
             }),
         ));
         self.insert(&format!("/describe{}", path), MethodHandler::new(
-            allowed_methods_arc.clone(),
+            Arc::new(hash_set![Method::GET]),
             Arc::new(move |req, params, query, env| {
-                Box::new(shell_handler::describe(Arc::new(hash_set![Method::GET]), req, params, query, env))
+                Box::new(shell_handler::describe(allowed_methods_arc.clone(), req, params, query, env))
             })
         ));
     }
