@@ -51,11 +51,9 @@ class TestRawContext:
     #     assert exc.value.client_output == 'No service found at this URL\n\n'
 
     def test_bake(self, client: Client):
-        time.sleep(3)
         client.bake('bootstrap4', BAKE_ARGS)
 
     def test_gen_keys(self, client: Client, session):
-        time.sleep(3)
         session['keys'] = ['foo', 'bar', 'boo']
         sigs = [None, 'secp256k1', 'ed25519']
         for key, sig in zip(session['keys'], sigs):
@@ -63,7 +61,6 @@ class TestRawContext:
             client.gen_key(key, args)
 
     def test_transfers(self, client: Client, session):
-        time.sleep(3)
         client.transfer(1000, 'bootstrap1',
                         session['keys'][0],
                         TRANSFER_ARGS)
@@ -83,7 +80,6 @@ class TestRawContext:
         assert client.get_balance(session['keys'][2]) == 3000
 
     def test_transfer_bar_foo(self, client: Client, session):
-        time.sleep(3)
         client.transfer(1000, session['keys'][1], session['keys'][0],
                         ['--fee', '0', '--force-low-fee'])
         client.bake('bootstrap1', BAKE_ARGS +
@@ -95,7 +91,6 @@ class TestRawContext:
         assert client.get_balance(session['keys'][1]) == 1000
 
     def test_transfer_foo_bar(self, client: Client, session):
-        time.sleep(3)
         client.transfer(1000, session['keys'][0],
                         session['keys'][1],
                         ['--fee', '0.05'])
@@ -106,12 +101,10 @@ class TestRawContext:
         assert client.get_balance(session['keys'][1]) == 2000
 
     def test_transfer_failure(self, client: Client, session):
-        time.sleep(3)
         with pytest.raises(Exception):
             client.transfer(999.95, session['keys'][0], session['keys'][1])
 
     def test_originate_contract_noop(self, client: Client):
-        time.sleep(3)
         contract = path.join(CONTRACT_PATH, 'opcodes', 'noop.tz')
         client.remember('noop', contract)
         # client.typecheck(contract)
@@ -121,13 +114,11 @@ class TestRawContext:
         client.bake('bootstrap1', BAKE_ARGS)
 
     def test_transfer_to_noop(self, client: Client):
-        time.sleep(3)
         client.transfer(10, 'bootstrap1', 'noop',
                         ['--arg', 'Unit'])
         client.bake('bootstrap1', BAKE_ARGS)
 
     def test_contract_hardlimit(self, client: Client):
-        time.sleep(3)
         contract = path.join(CONTRACT_PATH, 'mini_scenarios', 'hardlimit.tz')
         client.originate('hardlimit',
                          1000, 'bootstrap1',
@@ -145,7 +136,6 @@ class TestRawContext:
         client.bake('bootstrap1', BAKE_ARGS)
 
     def test_transfers_bootstraps5_bootstrap1(self, client: Client):
-        time.sleep(3)
         assert client.get_balance('bootstrap5') == 4000000
         client.transfer(400000, 'bootstrap5',
                         'bootstrap1',
@@ -160,7 +150,6 @@ class TestRawContext:
         assert client.get_balance('bootstrap5') == 4000000
 
     def test_activate_accounts(self, client: Client, session):
-        time.sleep(3)
         account = f"{ACCOUNT_PATH}/king_commitment.json"
         session['keys'] += ['king', 'queen']
         client.activate_account(session['keys'][3], account)
@@ -172,13 +161,11 @@ class TestRawContext:
         assert client.get_balance(session['keys'][4]) == 72954577.464032
 
     def test_transfer_king_queen(self, client: Client, session):
-        time.sleep(3)
         keys = session['keys']
         client.transfer(10, keys[3], keys[4], TRANSFER_ARGS)
         client.bake('bootstrap1', BAKE_ARGS)
 
     def test_duplicate_alias(self, client: Client):
-        time.sleep(3)
         client.add_address("baz", "foo", force=True)
         show_foo = client.show_address("foo", show_secret=True)
         assert show_foo.secret_key is not None

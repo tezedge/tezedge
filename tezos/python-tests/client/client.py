@@ -269,7 +269,7 @@ class Client:
             # The delay is also added here so the rights (and the timestamps in them!!) are
             # computed in a way that "waits" for the baker - tests have 1s time betweend
             # blocks
-            utc_now = datetime.datetime.utcnow() + datetime.timedelta(seconds=10)
+            utc_now = datetime.datetime.utcnow() + datetime.timedelta(seconds=2)
             timestamp = utc_now.strftime("%Y-%m-%dT%H:%M:%SZ")
         cmd = ['-block', 'genesis', 'activate', 'protocol', protocol, 'with',
                'fitness', str(fitness), 'and', 'key', key, 'and', 'parameters',
