@@ -70,7 +70,6 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
 
     // Other Protocol rpcs - routed through ffi calls
     routes.handle(hash_set![Method::GET, Method::POST, Method::OPTIONS, Method::PUT], "/chains/:chain_id/blocks/:block_id/*any", protocol_handler::call_protocol_rpc);
-    routes.handle(hash_set![Method::GET, Method::POST, Method::OPTIONS, Method::PUT], "/describe/chains/:chain_id/blocks/:block_id/*any", protocol_handler::call_protocol_rpc);
 
     // Tezedge dev and support rpcs
     routes.handle(hash_set![Method::GET], "/dev/chains/main/blocks", dev_handler::dev_blocks);
@@ -103,14 +102,11 @@ impl<T, F> Routes<T> for PathTree<MethodHandler>
                 Box::new(f(req, params, query, env))
             }),
         ));
-        // ignore protocol rpc descriptions (they are routed through ff)
-        if !path.contains("describe") {
-            self.insert(&format!("/describe{}", path), MethodHandler::new(
-                allowed_methods_arc.clone(),
-                Arc::new(move |req, params, query, env| {
-                    Box::new(shell_handler::describe(allowed_methods_arc.clone(), req, params, query, env))
-                })
-            ));
-        }
+        self.insert(&format!("/describe{}", path), MethodHandler::new(
+            allowed_methods_arc.clone(),
+            Arc::new(move |req, params, query, env| {
+                Box::new(shell_handler::describe(Arc::new(hash_set![Method::GET]), req, params, query, env))
+            })
+        ));
     }
 }

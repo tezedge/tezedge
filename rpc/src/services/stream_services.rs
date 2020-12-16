@@ -20,7 +20,7 @@ use crate::helpers::{BlockHeaderInfo, FullBlockInfo};
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
 
-pub const MONITOR_TIMER_MILIS: u64 = 500;
+pub const MONITOR_TIMER_MILIS: u64 = 100;
 
 /// Object containing information to recreate the block header shell information
 #[derive(Serialize, Debug, Clone)]

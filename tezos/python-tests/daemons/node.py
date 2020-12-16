@@ -151,8 +151,8 @@ class Node:
         self._process = subprocess.Popen(self._node_run, stdout=stdout,
                                          stderr=stderr, env=self._new_env)
         self._run_called_before = True
-        print("Sleeping")
-        time.sleep(5)
+        # print("Sleeping")
+        # time.sleep(5)
 
     def init_config(self):
         # TODO: whitch between tezos and tezedge nodes

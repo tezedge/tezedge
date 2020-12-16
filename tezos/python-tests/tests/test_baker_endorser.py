@@ -37,7 +37,7 @@ class TestAllDaemonsWithOperations:
     def test_setup_network(self, sandbox: Sandbox):
         parameters = dict(constants.PARAMETERS)
         # each priority has a delay of 1 sec
-        parameters["time_between_blocks"] = ["10"]
+        parameters["time_between_blocks"] = ["1"]
         for i in range(NUM_NODES):
             sandbox.add_node(i, params=constants.NODE_PARAMS)
         utils.activate_alpha(sandbox.client(0), parameters)
