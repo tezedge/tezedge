@@ -143,7 +143,7 @@ fn test_storage() -> Result<(), Error> {
         forking_testchain: false,
         forking_testchain_data: None,
     };
-    let (block_json_data, block_additional_data) = store_applied_block_result(
+    let (block_json_data, block_additional_data, new_context_hash) = store_applied_block_result(
         &block_storage,
         &block_meta_storage,
         &block.hash,
@@ -181,6 +181,7 @@ fn test_storage() -> Result<(), Error> {
     assert_eq!(block_json_data.block_header_proto_json(), &apply_result.block_header_proto_json);
     assert_eq!(block_json_data.block_header_proto_metadata_json(), &apply_result.block_header_proto_metadata_json);
     assert_eq!(block_json_data.operations_proto_metadata_json(), &apply_result.operations_proto_metadata_json);
+    assert_eq!(&new_context_hash, &apply_result.context_hash);
 
     // load current head - should be changed
     assert_eq!(

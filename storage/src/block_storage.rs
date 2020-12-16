@@ -63,6 +63,8 @@ pub trait BlockStorageReader: Sync + Send {
     fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
+
+    fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 }
 
 impl BlockStorage {
@@ -241,6 +243,11 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
+        self.by_context_hash_index.contains(context_hash)
+    }
+
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.primary_index.contains(block_hash)
     }
@@ -391,6 +398,11 @@ impl BlockByContextHashIndex {
 
     fn get(&self, context_hash: &ContextHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
         self.kv.get(context_hash).map_err(StorageError::from)
+    }
+
+    fn contains(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
+        self.kv.contains(context_hash)
+            .map_err(StorageError::from)
     }
 }
 

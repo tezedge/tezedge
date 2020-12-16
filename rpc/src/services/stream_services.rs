@@ -206,31 +206,27 @@ impl HeadMonitorStream {
         }
     }
 
-    fn yield_head(&self, current_head: Option<BlockApplied>) -> Result<Option<String>, failure::Error> {
+    fn yield_head(&self, current_head: &BlockApplied) -> Result<Option<String>, failure::Error> {
         let HeadMonitorStream { chain_id, protocol, .. } = self;
 
-        let current_head_header = current_head.as_ref().map(|current_head| {
+        let current_head_header = {
             let chain_id = chain_id_to_b58_string(&self.chain_id);
             BlockHeaderInfo::new(current_head, chain_id).to_monitor_header(current_head)
-        });
+        };
 
         if let Some(protocol) = &protocol {
-            let block_info = current_head.as_ref().map(|current_head| {
+            let block_info = {
                 let chain_id = chain_id_to_b58_string(&chain_id);
                 FullBlockInfo::new(current_head, chain_id)
-            });
-            let block_next_protocol = if let Some(block_info) = block_info {
-                block_info.metadata["next_protocol"].to_string().replace("\"", "")
-            } else {
-                return Ok(None)
             };
+            let block_next_protocol = block_info.metadata["next_protocol"].to_string().replace("\"", "");
             if &HashType::ProtocolHash.b58check_to_hash(&block_next_protocol)? != protocol {
                 return Ok(None)
             }
         }
 
         // serialize the struct to a json string to yield by the stream
-        let mut head_string = serde_json::to_string(&current_head_header.unwrap())?;
+        let mut head_string = serde_json::to_string(&current_head_header)?;
 
         // push a newline character to the stream
         head_string.push('\n');
@@ -278,7 +274,7 @@ impl Stream for HeadMonitorStream {
                     // first poll
                     if let Some(current_head) = current_head {
                         self.last_checked_head = Some(current_head.header().hash.clone());
-                        let head_string_result = self.yield_head(Some(current_head));
+                        let head_string_result = self.yield_head(&current_head);
                         return Poll::Ready(head_string_result.transpose())
                     } else {
                         // No current head found, storage not ready yet
@@ -294,7 +290,7 @@ impl Stream for HeadMonitorStream {
                     } else {
                         // Head change, yield new head
                         self.last_checked_head = Some(current_head.header().hash.clone());
-                        let head_string_result = self.yield_head(Some(current_head));
+                        let head_string_result = self.yield_head(&current_head);
                         Poll::Ready(head_string_result.transpose())
                     }
                 } else {

@@ -99,9 +99,6 @@ def client(sandbox: Sandbox) -> Iterator[Client]:
     sandbox.add_node(0, params=constants.NODE_PARAMS)
     client = sandbox.client(0)
     utils.activate_alpha(client)
-    # TEZEDGE
-    # This is the minimum wait time for the node to start up. 
-    time.sleep(1)
     yield client
 
 

@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use bytes::buf::BufExt;
+use failure::format_err;
 use hyper::{Body, Method, Request};
 use serde::Serialize;
 
@@ -18,7 +19,7 @@ use crate::{empty, encoding::{
     base_types::*,
     monitor::BootstrapInfo,
 }, helpers, make_json_response, make_json_stream_response, result_option_to_json_response, result_to_empty_json_response, result_to_json_response, ServiceResult, services};
-use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
+use crate::helpers::{create_rpc_request, parse_async, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
 
@@ -33,15 +34,14 @@ pub async fn bootstrapped(_: Request<Body>, _: Params, _: Query, env: RpcService
 
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
-            let current_head: BlockApplied = current_head.clone();
-            let block = HashType::BlockHash.hash_to_b58check(&current_head.header().hash);
+            let current_head: &BlockApplied = &current_head;
             let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
-            BootstrapInfo::new(block.into(), TimeStamp::Rfc(timestamp))
+            Ok(BootstrapInfo::new(&current_head.header().hash, TimeStamp::Rfc(timestamp)))
         }
-        None => BootstrapInfo::new(String::new().into(), TimeStamp::Integral(0))
+        None => Err(format_err!("No current head"))
     };
 
-    make_json_response(&bootstrap_info)
+    result_to_json_response(bootstrap_info, env.log())
 }
 
 pub async fn commit_hash(_: Request<Body>, _: Params, _: Query, _: RpcServiceEnvironment) -> HResult {
@@ -218,7 +218,7 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
     )
 }
 
-pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn inject_block(req: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
 
@@ -227,9 +227,11 @@ pub async fn inject_block(req: Request<Body>, _: Params, _: Query, env: RpcServi
     // TODO: TE-221 - add optional chain_id to params mapping
     let chain_id_param = "main";
     let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let is_async = parse_async(&query, false);
 
     result_to_json_response(
         services::mempool_services::inject_block(
+            is_async,
             chain_id,
             &body,
             &env,
@@ -370,7 +372,7 @@ pub async fn describe(allowed_methods: Arc<HashSet<Method>>, req: Request<Body>,
     let method = if !allowed_methods.is_empty() {
         allowed_methods.iter().next().unwrap()
     } else {
-        return empty()
+        return empty();
     };
 
     let service_fields = serde_json::json!({

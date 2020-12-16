@@ -90,7 +90,7 @@ pub mod infra {
     use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
     use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::{BlockStorage, ChainMetaStorage, context_key, resolve_storage_init_chain_data};
+    use storage::{BlockStorage, ChainMetaStorage, resolve_storage_init_chain_data};
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
@@ -215,9 +215,10 @@ pub mod infra {
             let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
             let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
             let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
-            let _ = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
+            let block_applier = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
             let _ = ChainManager::actor(
                 &actor_system,
+                block_applier,
                 network_channel.clone(), shell_channel.clone(),
                 &persistent_storage,
                 tezos_readonly_api.clone(),
@@ -330,12 +331,10 @@ pub mod infra {
                 self.tmp_storage.storage().merkle(),
             );
 
-            let protocol_key = context_key!("protocol");
-
             // try checkout context
             let result = loop {
                 // if success, than ok
-                if let Ok(Some(_)) = context.get_key_from_history(&context_hash, &protocol_key) {
+                if let Ok(true) = context.is_committed(&context_hash) {
                     info!(self.log, "[NODE] Expected context found"; "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash), "marker" => marker);
                     break Ok(());
                 }

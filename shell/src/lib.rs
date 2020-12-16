@@ -4,6 +4,10 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
+use std::sync::{Arc, Condvar, Mutex};
+
+use slog::{Logger, warn};
+
 mod collections;
 mod state;
 
@@ -15,6 +19,27 @@ pub mod chain_manager;
 pub mod peer_manager;
 pub mod validation;
 pub mod mempool;
+
+/// Simple condvar synchronized result callback
+pub type ResultCallback = Option<Arc<(Mutex<Option<Result<(), failure::Error>>>, Condvar)>>;
+
+fn handle_result_callback<R>(result_callback: ResultCallback, result: R, log: &Logger)
+    where R: FnOnce() -> Result<(), failure::Error>
+{
+    if let Some(result_callback) = result_callback {
+        let &(ref lock, ref cvar) = &*result_callback;
+        match lock.lock() {
+            Ok(mut result_guard) => {
+                *result_guard = Some(result());
+                cvar.notify_all();
+            }
+            Err(e) => {
+                warn!(log, "Failed to lock result_callback"; "reason" => format!("{}", e));
+                cvar.notify_all();
+            }
+        }
+    }
+}
 
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
@@ -34,7 +59,7 @@ impl PeerConnectionThreshold {
     /// `low` cannot be bigger than `high`, otherwise function will panic
     pub fn new(low: usize, high: usize, peers_for_bootstrap_threshold: Option<usize>) -> Self {
         assert!(low <= high, "low must be less than or equal to high");
-        PeerConnectionThreshold { low, high, peers_for_bootstrap_threshold}
+        PeerConnectionThreshold { low, high, peers_for_bootstrap_threshold }
     }
 
     /// Threshold for minimal count of bootstrapped peers
@@ -52,7 +77,7 @@ impl PeerConnectionThreshold {
             // since we define the low and high bound, calculate the expected connections
             // see [node_shared_arg.ml]
             let expected_connections = 2 * self.high / 3;
-            
+
             // never yield 0!
             std::cmp::max(1, expected_connections / 4)
         }

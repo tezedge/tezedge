@@ -2,26 +2,31 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime};
 
 use failure::{bail, format_err};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use slog::info;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
+use shell::{ResultCallback, validation};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::shell_channel::{InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelRef, ShellChannelTopic};
-use shell::validation;
-use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
+use shell::shell_channel::{InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
-use tezos_api::ffi::{Applied, ComputePathRequest, Errored};
+use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
 use crate::helpers::get_prevalidators;
 use crate::server::RpcServiceEnvironment;
+
+const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct MempoolOperations {
@@ -192,17 +197,24 @@ pub fn inject_operation(
 }
 
 pub fn inject_block(
+    is_async: bool,
     _chain_id: ChainId,
     injection_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
+    shell_channel: &ShellChannelRef, ) -> Result<String, failure::Error> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
 
-    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?;
-    let block_hash = HashType::BlockHash.hash_to_b58check(&header.message_hash()?);
+    let start_request = SystemTime::now();
+
+    let header: BlockHeaderWithHash = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?.try_into()?;
+    info!(env.log(),
+          "Block injection requested";
+          "block_hash" => HashType::BlockHash.hash_to_b58check(&header.hash),
+          "is_async" => is_async,
+    );
 
     // special case for block on level 1 - has 0 validation passes
-    let validation_passes: Option<Vec<Vec<Operation>>> = if header.validation_pass() > 0 {
+    let validation_passes: Option<Vec<Vec<Operation>>> = if header.header.validation_pass() > 0 {
         Some(block_with_op.operations.into_iter()
             .map(|validation_pass| validation_pass.into_iter()
                 .map(|op| op.into())
@@ -227,30 +239,78 @@ pub fn inject_block(
     }
 
     // compute the paths for each validation passes
-    let paths = if let Some(vps) = validation_passes.clone() {
-        let request = ComputePathRequest {
-            operations: vps.iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
-        };
-
-        let response = env.tezos_without_context_api().pool.get()?.api.compute_path(request)?;
+    let paths = if let Some(vps) = validation_passes.as_ref() {
+        let response = env.tezos_without_context_api().pool.get()?.api.compute_path(vps.try_into()?)?;
         Some(response.operations_hashes_path)
     } else {
         None
     };
 
+    // callback will wait all the asynchonous processing to finish, and then returns rpc response
+    let result_callback: ResultCallback = if is_async {
+        // if async no wait
+        None
+    } else {
+        // if not async, means sync and we wait
+        Some(Arc::new((Mutex::new(None), Condvar::new())))
+    };
+
+    let start_async = SystemTime::now();
+
     // notify other actors, that a block was injected
+    let header = Arc::new(header);
     shell_channel.tell(
         Publish {
-            msg: InjectBlock {
-                block_header: header,
-                operations: validation_passes,
-                operation_paths: paths,
-            }.into(),
+            msg: ShellChannelMsg::InjectBlock(
+                InjectBlock {
+                    block_header: header.clone(),
+                    operations: validation_passes,
+                    operation_paths: paths,
+                },
+                result_callback.clone(),
+            ),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
 
+    // wait for result
+    if let Some(result_callback) = result_callback {
+        let &(ref lock, ref cvar) = &*result_callback;
+        let lock = lock
+            .lock()
+            .map_err(|e| format_err!("Block injection - lock error, block_hash: {}, reason: {}!", HashType::BlockHash.hash_to_b58check(&header.hash), e))?;
+        match cvar.wait_timeout(lock, INJECT_BLOCK_WAIT_TIMEOUT) {
+            Ok((result, timeout)) => {
+                // process timeout
+                if timeout.timed_out() {
+                    return Err(format_err!("Block injection - reached timeout: '{:?}'!, block_hash: {}!", INJECT_BLOCK_WAIT_TIMEOUT, HashType::BlockHash.hash_to_b58check(&header.hash)));
+                }
+
+                // process result
+                match result.as_ref() {
+                    Some(result) => {
+                        if let Err(e) = result {
+                            return Err(format_err!("Block injection - error received, block_hash: {}, reason: {}!", HashType::BlockHash.hash_to_b58check(&header.hash), e));
+                        }
+                        info!(env.log(),
+                              "Block injected";
+                              "block_hash" => HashType::BlockHash.hash_to_b58check(&header.hash),
+                              "elapsed" => format!("{:?}", start_request.elapsed()?),
+                              "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+                        );
+                    }
+                    None => {
+                        return Err(format_err!("Block injection - no result received, block_hash: {}!", HashType::BlockHash.hash_to_b58check(&header.hash)));
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format_err!("Block injection - lock/condvar error, timeout: '{:?}' block_hash: {}, reason: {}!", INJECT_BLOCK_WAIT_TIMEOUT, HashType::BlockHash.hash_to_b58check( & header.hash), e));
+            }
+        }
+    }
+
     // return the block hash to the caller
-    Ok(block_hash)
+    Ok(HashType::BlockHash.hash_to_b58check(&header.hash))
 }
 
 pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure::Error> {
