@@ -59,6 +59,7 @@ pub struct AllBlockOperationsReceived {
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
     pub operation_type: MempoolOperationType,
+    pub result_callback: ResultCallback,
 }
 
 #[derive(Clone, Debug)]

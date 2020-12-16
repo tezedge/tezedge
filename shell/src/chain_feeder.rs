@@ -350,13 +350,17 @@ fn feed_chain_to_protocol(
                                 Ok((block_json_data, _, context_hash)) => {
                                     // now everythings stored, we are done
 
-                                    // if we need to wait for result, we need to also check and wait for context_hash
-                                    if result_callback.is_some() {
+                                    // we need to also check and wait for context_hash
+                                    // @adonagy - Note: We need to wait for the context to be resolved, if not, it can lead to race conditions
+                                    // e.g: test_many_bakers.py -> start 10 nodes, activate protocol on 0, launch bakers on 5 nodes
+                                    // The problem is that the baker deamon 'monitors' the chain for new current_heads and when the node
+                                    // claims it has a new current head, its context is not neceserally resolved(especially true for a block with new
+                                    // protocol activation). So when the bakers sees the new current head, it requests /chains/main/blocks/head/context/constants,
+                                    // the rpc tries to get the context for the block (so it can return the constants) from the context storage, but it is not yet resolved so it returns a 
+                                    // UnknownContextHashError crashning the baker daemon
+                                    let context_result = wait_for_context(context, &context_hash);
+                                    handle_result_callback(result_callback, || context_result, log);
 
-                                        // wait for context
-                                        let context_result = wait_for_context(context, &context_hash);
-                                        handle_result_callback(result_callback, || context_result, log);
-                                    }
                                     block_json_data
                                 }
                                 Err(e) => {

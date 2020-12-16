@@ -144,10 +144,14 @@ fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, O
 }
 
 pub fn inject_operation(
+    is_async: bool,
     chain_id: ChainId,
     operation_data: &str,
     env: &RpcServiceEnvironment,
     shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
+    
+    let start_request = SystemTime::now();
+
     let persistent_storage = env.persistent_storage();
     let block_storage: Box<dyn BlockStorageReader> = Box::new(BlockStorage::new(persistent_storage));
     let block_meta_storage: Box<dyn BlockMetaStorageReader> = Box::new(BlockMetaStorage::new(persistent_storage));
@@ -183,15 +187,64 @@ pub fn inject_operation(
     let ttl = SystemTime::now() + Duration::from_secs(60);
     mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
 
+    // callback will wait all the asynchonous processing to finish, and then returns rpc response
+    let result_callback: ResultCallback = if is_async {
+        // if async no wait
+        None
+    } else {
+        // if not async, means sync and we wait
+        Some(Arc::new((Mutex::new(None), Condvar::new())))
+    };
+
+    let start_async = SystemTime::now();
+
     // ping mempool with new operation for mempool validation
     shell_channel.tell(
         Publish {
             msg: MempoolOperationReceived {
                 operation_hash,
                 operation_type: MempoolOperationType::Pending,
+                result_callback: result_callback.clone(),
             }.into(),
             topic: ShellChannelTopic::ShellEvents.into(),
         }, None);
+
+    // wait for result
+    if let Some(result_callback) = result_callback {
+        let &(ref lock, ref cvar) = &*result_callback;
+        let lock = lock
+            .lock()
+            .map_err(|e| format_err!("Operation injection - lock error, operation_hash: {}, reason: {}!", &operation_hash_as_string, e))?;
+        match cvar.wait_timeout(lock, INJECT_BLOCK_WAIT_TIMEOUT) {
+            Ok((result, timeout)) => {
+                // process timeout
+                if timeout.timed_out() {
+                    return Err(format_err!("Operation injection - reached timeout: '{:?}'!, operation_hash: {}!", INJECT_BLOCK_WAIT_TIMEOUT, &operation_hash_as_string));
+                }
+
+                // process result
+                match result.as_ref() {
+                    Some(result) => {
+                        if let Err(e) = result {
+                            return Err(format_err!("Operation injection - error received, operation_hash: {}, reason: {}!", &operation_hash_as_string, e));
+                        }
+                        info!(env.log(),
+                              "Operation injected";
+                              "operation_hash" => &operation_hash_as_string,
+                              "elapsed" => format!("{:?}", start_request.elapsed()?),
+                              "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+                        );
+                    }
+                    None => {
+                        return Err(format_err!("Operation injection - no result received, operation_hash: {}!", &operation_hash_as_string));
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format_err!("Operation injection - lock/condvar error, timeout: '{:?}' operation_hash: {}, reason: {}!", INJECT_BLOCK_WAIT_TIMEOUT, &operation_hash_as_string, e));
+            }
+        }
+    }
 
     Ok(operation_hash_as_string)
 }

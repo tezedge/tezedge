@@ -63,7 +63,7 @@ def check_mempool_contains_operations(client: Client,
     return set(operation_hashes).issubset(res)
 
 
-@retry(timeout=1., attempts=100)
+@retry(timeout=1., attempts=20)
 def check_protocol(client: Client, proto: str,
                    params: List[str] = None) -> bool:
     res = client.rpc('get', '/chains/main/blocks/head/metadata', params=params)
@@ -80,7 +80,7 @@ def check_two_chains(client: Client) -> bool:
         return False
 
 
-@retry(timeout=2., attempts=20)
+@retry(timeout=2., attempts=10)
 def check_level(client: Client, level, chain: str = 'main') -> bool:
     return client.get_level(chain=chain) == level
 
