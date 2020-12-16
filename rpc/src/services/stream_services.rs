@@ -274,8 +274,14 @@ impl Stream for HeadMonitorStream {
                     // first poll
                     if let Some(current_head) = current_head {
                         self.last_checked_head = Some(current_head.header().hash.clone());
-                        let head_string_result = self.yield_head(&current_head);
-                        return Poll::Ready(head_string_result.transpose())
+                        // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+                        // would end the stream, in this case, we need to Pend. 
+                        if let Some(head_string_result) = self.yield_head(&current_head).transpose(){
+                            return Poll::Ready(Some(head_string_result))
+                        } else {
+                            cx.waker().wake_by_ref();
+                            return Poll::Pending
+                        };
                     } else {
                         // No current head found, storage not ready yet
                         cx.waker().wake_by_ref();
@@ -291,8 +297,14 @@ impl Stream for HeadMonitorStream {
                     } else {
                         // Head change, yield new head
                         self.last_checked_head = Some(current_head.header().hash.clone());
-                        let head_string_result = self.yield_head(&current_head);
-                        Poll::Ready(head_string_result.transpose())
+                        // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
+                        // would end the stream, in this case, we need to Pend. 
+                        if let Some(head_string_result) = self.yield_head(&current_head).transpose(){
+                            return Poll::Ready(Some(head_string_result))
+                        } else {
+                            cx.waker().wake_by_ref();
+                            return Poll::Pending
+                        };
                     }
                 } else {
                     // No current head found, storage not ready yet, wait
