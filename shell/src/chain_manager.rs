@@ -717,6 +717,7 @@ impl ChainManager {
                                                     msg: MempoolOperationReceived {
                                                         operation_hash,
                                                         operation_type,
+                                                        result_callback: None,
                                                     }.into(),
                                                     topic: ShellChannelTopic::ShellEvents.into(),
                                                 }, Some(ctx.myself().into()));

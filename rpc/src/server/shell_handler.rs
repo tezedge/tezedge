@@ -197,7 +197,7 @@ pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Que
     result_to_json_response(Ok(pending_operations), &log)
 }
 
-pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn inject_operation(req: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     let operation_data_raw = hyper::body::aggregate(req).await?;
     let operation_data: String = serde_json::from_reader(&mut operation_data_raw.reader())?;
 
@@ -206,9 +206,11 @@ pub async fn inject_operation(req: Request<Body>, _: Params, _: Query, env: RpcS
     // TODO: TE-221 - add optional chain_id to params mapping
     let chain_id_param = "main";
     let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let is_async = parse_async(&query, false);
 
     result_to_json_response(
         services::mempool_services::inject_operation(
+            is_async,
             chain_id,
             &operation_data,
             &env,
