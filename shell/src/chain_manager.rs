@@ -1511,7 +1511,6 @@ fn resolve_mempool_to_send_to_peer(peer: &PeerState, mempool_state: &Option<Arc<
 #[cfg(test)]
 pub mod tests {
     use std::net::SocketAddr;
-    use std::thread;
 
     use slog::{Drain, Level, Logger};
 
@@ -1521,7 +1520,7 @@ pub mod tests {
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
     use tezos_api::ffi::TezosRuntimeConfiguration;
-    use tezos_wrapper::service::ProtocolEndpointConfiguration;
+    use tezos_wrapper::ProtocolEndpointConfiguration;
     use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
     use crate::shell_channel::{ShellChannel, ShuttingDown};
@@ -1586,7 +1585,7 @@ pub mod tests {
         let log = create_logger(Level::Debug);
         let storage = TmpStorage::create_to_out_dir("__test_resolve_is_bootstrapped")?;
 
-        let tokio_runtime = create_tokio_runtime();
+        let mut tokio_runtime = create_tokio_runtime();
         let actor_system = SystemBuilder::new().name("test_actors_apply_blocks_and_check_context").log(log.clone()).create().expect("Failed to create actor system");
         let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
@@ -1684,8 +1683,7 @@ pub mod tests {
                 topic: ShellChannelTopic::ShellCommands.into(),
             }, None,
         );
-        thread::sleep(Duration::from_secs(1));
-        let _ = actor_system.shutdown();
+        let _ = tokio_runtime.block_on(actor_system.shutdown());
 
         Ok(())
     }

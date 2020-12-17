@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use riker::actors::*;
 use rocksdb::Cache;
-use slog::{crit, debug, Drain, error, info, Logger};
+use slog::{crit, debug, Drain, error, info, warn, Logger};
 
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
@@ -33,7 +33,9 @@ use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
-use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+use tezos_wrapper::ProtocolEndpointConfiguration;
+use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
+use tezos_wrapper::service::ProtocolRunnerEndpoint;
 
 use crate::configuration::LogFormat;
 
@@ -250,7 +252,6 @@ fn block_on_actors(
     );
     let (apply_blocks_protocol_runner_endpoint_run_feature, apply_block_protocol_events, apply_block_protocol_commands) = match apply_blocks_protocol_runner_endpoint.start_in_restarting_mode() {
         Ok(run_feature) => {
-            info!(log, "Protocol runner started successfully"; "endpoint" => apply_blocks_protocol_runner_endpoint.name);
             let ProtocolRunnerEndpoint {
                 events: apply_block_protocol_events,
                 commands: apply_block_protocol_commands,
@@ -258,7 +259,7 @@ fn block_on_actors(
             } = apply_blocks_protocol_runner_endpoint;
             (run_feature, apply_block_protocol_events, apply_block_protocol_commands)
         }
-        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => apply_blocks_protocol_runner_endpoint.name, "reason" => e), actor_system),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to spawn protocol runner process"; "name" => "apply_blocks_protocol_runner_endpoint", "reason" => e), actor_system),
     };
 
     let mut tokio_runtime = create_tokio_runtime(&env);
@@ -328,9 +329,11 @@ fn block_on_actors(
         use tokio::signal;
 
         signal::ctrl_c().await.expect("Failed to listen for ctrl-c event");
-        info!(log, "ctrl-c received!");
+        info!(log, "Ctrl-c or SIGINT received!");
 
         // disable/stop protocol runner for applying blocks feature
+        let (apply_blocks_protocol_runner_endpoint_run_feature, apply_blocks_protocol_runner_endpoint_watchdog_thread) = apply_blocks_protocol_runner_endpoint_run_feature;
+        // stop restarting feature
         apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
         info!(log, "Sending shutdown notification to actors");
@@ -354,7 +357,12 @@ fn block_on_actors(
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
-        debug!(log, "Shutdown tezos_readonly_api complete");
+        if let Ok(mut protocol_runner_process) = apply_blocks_protocol_runner_endpoint_watchdog_thread.join() {
+            if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(&mut protocol_runner_process, Duration::from_secs(2)) {
+                warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
+            }
+        };
+        debug!(log, "Protocol runners completed");
 
         info!(log, "Flushing databases");
         drop(persistent_storage);

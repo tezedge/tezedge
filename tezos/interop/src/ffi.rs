@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
 
 use ocaml_interop::{
@@ -64,12 +65,17 @@ mod tezos_ffi {
     }
 }
 
+/// Bool for detecting, if runtime was initialized, we you just one caml_startup, so we expect on caml_shutdown
+/// Used for gracefull shutdown
+static OCAML_RUNTIME_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
 /// Initializes the ocaml runtime and the tezos-ffi callback mechanism.
 pub fn setup() {
     static INIT: Once = Once::new();
 
     INIT.call_once(|| {
         ocaml_interop::OCamlRuntime::init_persistent();
+        OCAML_RUNTIME_INITIALIZED.store(true, Ordering::Release);
         tezos_interop_callback::initialize_callbacks();
     });
 }
@@ -78,7 +84,10 @@ pub fn setup() {
 ///
 /// https://caml.inria.fr/pub/docs/manual-ocaml/intfc.html#sec467
 pub fn shutdown() {
-    ocaml_interop::OCamlRuntime::shutdown_persistent()
+    if OCAML_RUNTIME_INITIALIZED.load(Ordering::Acquire) {
+        OCAML_RUNTIME_INITIALIZED.store(false, Ordering::Release);
+        ocaml_interop::OCamlRuntime::shutdown_persistent();
+    }
 }
 
 pub fn change_runtime_configuration(

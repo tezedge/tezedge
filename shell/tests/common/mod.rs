@@ -65,9 +65,11 @@ pub struct NoopMessage;
 #[allow(dead_code)]
 pub mod infra {
     use std::path::PathBuf;
-    use std::sync::Arc;
+    use std::process::Child;
+    use std::sync::{Arc, Mutex};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
+    use std::thread::JoinHandle;
     use std::time::{Duration, SystemTime};
 
     use riker::actors::*;
@@ -93,7 +95,9 @@ pub mod infra {
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::version::NetworkVersion;
     use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
-    use tezos_wrapper::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+    use tezos_wrapper::ProtocolEndpointConfiguration;
+    use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
+    use tezos_wrapper::service::ProtocolRunnerEndpoint;
 
     use crate::common;
 
@@ -107,7 +111,9 @@ pub mod infra {
         pub tmp_storage: TmpStorage,
         pub tezos_env: TezosEnvironmentConfiguration,
         pub tokio_runtime: Runtime,
-        apply_restarting_feature: Arc<AtomicBool>,
+
+        apply_block_restarting_feature: Arc<AtomicBool>,
+        apply_block_restarting_thread: Arc<Mutex<Option<JoinHandle<Child>>>>,
     }
 
     impl NodeInfrastructure {
@@ -246,7 +252,8 @@ pub mod infra {
                 NodeInfrastructure {
                     name: String::from(name),
                     log,
-                    apply_restarting_feature,
+                    apply_block_restarting_feature: apply_restarting_feature.0,
+                    apply_block_restarting_thread: Arc::new(Mutex::new(Some(apply_restarting_feature.1))),
                     peer_manager,
                     shell_channel,
                     network_channel,
@@ -259,23 +266,46 @@ pub mod infra {
         }
 
         pub fn stop(&mut self) {
-            warn!(self.log, "[NODE] Stopping node infrastructure"; "name" => self.name.clone());
+            let NodeInfrastructure {
+                log,
+                apply_block_restarting_feature,
+                apply_block_restarting_thread,
+                shell_channel,
+                actor_system,
+                tokio_runtime,
+                ..
+            } = self;
+            warn!(log, "[NODE] Stopping node infrastructure"; "name" => self.name.clone());
 
             // clean up
             // shutdown events listening
-            self.apply_restarting_feature.store(false, Ordering::Release);
+            // disable/stop protocol runner for applying blocks feature
+            // let (apply_blocks_protocol_runner_endpoint_run_feature, apply_blocks_protocol_runner_endpoint_watchdog_thread) = apply_restarting_feature;
+            // stop restarting feature
+            apply_block_restarting_feature.store(false, Ordering::Release);
 
-            thread::sleep(Duration::from_secs(3));
-            self.shell_channel.tell(
+            shell_channel.tell(
                 Publish {
                     msg: ShuttingDown.into(),
                     topic: ShellChannelTopic::ShellCommands.into(),
                 }, None,
             );
-            thread::sleep(Duration::from_secs(2));
 
-            let _ = self.actor_system.shutdown();
-            warn!(self.log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
+            let apply_restarting_feature = apply_block_restarting_thread
+                .lock()
+                .expect("Failed to lock mutex")
+                .take()
+                .expect("JoinHandle is None");
+
+            if let Ok(mut protocol_runner_process) = apply_restarting_feature.join() {
+                if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(&mut protocol_runner_process, Duration::from_secs(2)) {
+                    warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
+                }
+            };
+
+            let _ = tokio_runtime.block_on(actor_system.shutdown());
+
+            warn!(log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
         }
 
         // TODO: refactor with async/condvar, not to block main thread

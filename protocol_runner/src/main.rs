@@ -14,7 +14,7 @@ use slog::*;
 
 use tezos_context::channel;
 
-fn create_logger(log_level: Level) -> Logger {
+fn create_logger(log_level: Level, endpoint_name: String) -> Logger {
     let drain = slog_async::Async::new(
         slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
             .build()
@@ -24,7 +24,7 @@ fn create_logger(log_level: Level) -> Logger {
     .filter_level(log_level)
     .fuse();
 
-    Logger::root(drain, slog::o!())
+    Logger::root(drain, slog::o!("endpoint" => endpoint_name))
 }
 
 fn main() {
@@ -85,18 +85,28 @@ fn main() {
         .parse::<slog::Level>()
         .expect("Was expecting one value from slog::Level");
 
-    let log = create_logger(log_level);
+    let log = create_logger(log_level, endpoint_name);
+
+    let shutdown_callback = |log: &Logger| {
+        debug!(log, "Shutting down ocaml runtime");
+        match std::panic::catch_unwind(|| {
+            tezos_client::client::shutdown_runtime();
+        }) {
+            Ok(_) => debug!(log, "Ocaml runtime shutdown was successful"),
+            Err(e) => {
+                warn!(log, "Shutting down ocaml runtime failed (check running sub-process for this endpoint or `[protocol-runner] <defunct>`, and and terminate/kill manually)!"; "reason" => format!("{:?}", e))
+            }
+        }
+    };
 
     {
         let log = log.clone();
-        let endpoint_name = endpoint_name.clone();
+        // do nothing and wait for parent process to send termination command
+        // this is just fallback, if ProtocolController.shutdown will fail or if we need to kill sub-process manually
         ctrlc::set_handler(move || {
-            // do nothing and wait for parent process to send termination command
-            debug!(log, "Shutting down ocaml runtime"; "endpoint" => &endpoint_name);
-            tezos_client::client::shutdown_runtime();
-            debug!(log, "Ocaml runtime shutdown complete"; "endpoint" => &endpoint_name);
-        })
-        .expect("Error setting Ctrl-C handler");
+            shutdown_callback(&log);
+            warn!(log, "Protocol runner was terminated/killed/ctrl-c - please, check running sub-processes for `[protocol-runner] <defunct>`, and terminate/kill manually!");
+        }).expect("Error setting Ctrl-C handler");
     }
 
     // Spawn a new event processing thread (if condigured evt_socket_path).
@@ -106,14 +116,13 @@ fn main() {
         Some(evt_socket_path) => Some({
             let evt_socket_path = evt_socket_path.to_string();
             let log = log.clone();
-            let endpoint_name = endpoint_name.clone();
             channel::enable_context_channel();
             thread::spawn(move || {
                 for _ in 0..5 {
                     match tezos_wrapper::service::process_protocol_events(&evt_socket_path) {
                         Ok(()) => break,
                         Err(err) => {
-                            warn!(log, "Error while processing protocol events"; "endpoint" => &endpoint_name, "reason" => format!("{:?}", err));
+                            warn!(log, "Error while processing protocol events";  "reason" => format!("{:?}", err));
                             thread::sleep(Duration::from_secs(1));
                         }
                     }
@@ -127,14 +136,20 @@ fn main() {
     if let Err(err) = tezos_wrapper::service::process_protocol_commands::<
         crate::tezos::NativeTezosLib,
         _,
-    >(cmd_socket_path)
+        _,
+    >(cmd_socket_path, &log, shutdown_callback)
     {
-        error!(log, "Error while processing protocol commands"; "endpoint" => &endpoint_name, "reason" => format!("{:?}", err));
+        error!(log, "Error while processing protocol commands"; "reason" => format!("{:?}", err));
+        shutdown_callback(&log);
     }
 
     if let Some(event_thread) = event_thread {
-        event_thread.join().expect("Failed to join event thread");
+        if let Err(e) = event_thread.join() {
+            error!(log, "Failed to join event thread"; "reason" => format!("{:?}", e));
+        }
     }
+
+    info!(log, "Protocol runner finished gracefully");
 }
 
 mod tezos {

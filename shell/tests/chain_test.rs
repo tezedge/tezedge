@@ -10,10 +10,14 @@ extern crate test;
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime};
 
 use lazy_static::lazy_static;
+use rand::Rng;
+use rand::seq::SliceRandom;
 use serial_test::serial;
+use sysinfo::{ProcessExt, System, SystemExt, Signal, Process};
 
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
@@ -411,6 +415,66 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist() -> Resu
     Ok(())
 }
 
+fn process_bootstrap_level1324_and_mempool_for_level1325(name: &str, current_head_wait_timeout: (Duration, Duration)) -> Result<(), failure::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level);
+
+    let db = test_cases_data::current_branch_on_level_1324::init_data(&log);
+
+    // start node
+    let node = common::infra::NodeInfrastructure::start(
+        TmpStorage::create(common::prepare_empty_dir("__test_05"))?,
+        &common::prepare_empty_dir("__test_05_context"),
+        name,
+        &db.tezos_env,
+        None,
+        Some(NODE_P2P_CFG.clone()),
+        NODE_IDENTITY.clone(),
+        (log, log_level),
+    )?;
+
+    // wait for storage initialization to genesis
+    node.wait_for_new_current_head("genesis", node.tezos_env.genesis_header_hash()?, (Duration::from_secs(5), Duration::from_millis(250)))?;
+
+    // connect mocked node peer with test data set
+    let clocks = Instant::now();
+    let mut mocked_peer_node = test_node_peer::TestNodePeer::connect(
+        "TEST_PEER_NODE",
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
+        tezos_identity::Identity::generate(0f64),
+        node.log.clone(),
+        &node.tokio_runtime,
+        test_cases_data::current_branch_on_level_1324::serve_data,
+    );
+
+    // wait for current head on level 1324
+    node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
+    let current_head_reached = SystemTime::now();
+    println!("\nProcessed current_branch[1324] in {:?}!\n", clocks.elapsed());
+
+    // check context stored for all blocks
+    node.wait_for_context("ctx_1324", db.context_hash(1324)?, (Duration::from_secs(30), Duration::from_millis(150)))?;
+    println!("\nApplied current_head[1324] vs finished context[1324] diff {:?}!\n", current_head_reached.elapsed());
+
+    // stop nodes
+    drop(node);
+    drop(mocked_peer_node);
+
+    Ok(())
+}
+
+#[ignore]
+#[test]
+#[serial]
+fn test_process_bootstrap_level1324_and_mempool_for_level1325() -> Result<(), failure::Error> {
+    process_bootstrap_level1324_and_mempool_for_level1325(
+        "process_bootstrap_level1324_and_mempool_for_level1325",
+        (Duration::from_secs(90), Duration::from_millis(500)),
+    )
+}
+
 /// Stored first cca first 1300 apply block data
 mod test_data {
     use std::collections::HashMap;
@@ -580,6 +644,23 @@ mod test_cases_data {
 
         pub fn serve_data(message: PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error> {
             full_data(message, Some(3), &super::DB_1326_CARTHAGENET)
+        }
+    }
+
+    pub mod current_branch_on_level_1324 {
+        use slog::Logger;
+
+        use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
+
+        use crate::test_cases_data::{full_data, init_data_db_1326_carthagenet};
+        use crate::test_data::Db;
+
+        pub fn init_data(log: &Logger) -> &'static Db {
+            init_data_db_1326_carthagenet(log)
+        }
+
+        pub fn serve_data(message: PeerMessageResponse) -> Result<Vec<PeerMessageResponse>, failure::Error> {
+            full_data(message, Some(1324), &super::DB_1326_CARTHAGENET)
         }
     }
 
@@ -763,7 +844,7 @@ mod test_node_peer {
     use std::time::{Duration, SystemTime};
 
     use futures::lock::Mutex;
-    use slog::{crit, debug, error, info, Logger, warn};
+    use slog::{crit, debug, error, info, Logger, trace, warn};
     use tokio::net::TcpStream;
     use tokio::runtime::{Handle, Runtime};
     use tokio::time::timeout;
@@ -876,12 +957,12 @@ mod test_node_peer {
                     Ok(res) => match res {
                         Ok(msg) => {
                             let msg_type = msg_type(&msg);
-                            info!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
+                            trace!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
 
                             // apply callback
                             match handle_message_callback(msg) {
                                 Ok(responses) => {
-                                    info!(log, "[{}] Message handled({})", name, !responses.is_empty(); "msg_type" => msg_type);
+                                    trace!(log, "[{}] Message handled({})", name, !responses.is_empty(); "msg_type" => msg_type);
                                     for response in responses {
                                         // send back response
                                         let mut tx_lock = tx.lock().await;

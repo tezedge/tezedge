@@ -71,6 +71,7 @@ impl ContextListener {
                     }
                 }
 
+                info!(log, "Context listener thread finished");
                 Ok(())
             })
         };
@@ -150,7 +151,9 @@ fn listen_protocol_events(
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
-            Ok(ContextAction::Shutdown) => break,
+            Ok(ContextAction::Shutdown) => {
+                apply_block_run.store(false, Ordering::Release);
+            },
             Ok(msg) => {
                 if event_count % 100 == 0 {
                     debug!(

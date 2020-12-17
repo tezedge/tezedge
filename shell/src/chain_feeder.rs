@@ -21,7 +21,7 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
-use tezos_wrapper::service::{IpcCmdServer, ProtocolController, ProtocolServiceError};
+use tezos_wrapper::service::{handle_protocol_service_error, IpcCmdServer, ProtocolController, ProtocolServiceError};
 
 use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
@@ -317,10 +317,11 @@ fn feed_chain_to_protocol(
                                     }, None);
                             }
                         }
-                        Err(err) => {
-                            warn!(log, "Failed to apply block";
-                                       "block" => HashType::BlockHash.hash_to_b58check(&block_hash),
-                                       "reason" => format!("{:?}", err));
+                        Err(pse) => {
+                            handle_protocol_service_error(
+                                pse,
+                                |e| warn!(log, "Failed to apply block"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash), "reason" => format!("{:?}", e)),
+                            )?;
                         }
                     }
                 }
