@@ -47,22 +47,21 @@ use std::collections::hash_map::Entry as MapEntry;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
-use std::sync::Arc;
 use std::time::Instant;
+use std::sync::Arc;
+use hex;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
-use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch};
+use failure::{Fail, Error};
 use serde::Deserialize;
 use serde::Serialize;
 
 use crypto::hash::HashType;
 
-use crate::persistent;
-use crate::persistent::database::RocksDBStats;
+use crate::in_memory::{KVStore, KVStoreWriteBatch, KVStoreError};
 use crate::persistent::BincodeEncoded;
-use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::context_action_storage::{ContextAction, ContextActionStorage};
 
 const HASH_LEN: usize = 32;
 
@@ -126,7 +125,9 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+// TODO: create `KVStore` trait to better abstract things
+pub type MerkleStorageKVStore = KVStore<EntryHash, Vec<u8>>;
+pub type MerkleStorageKVStoreError = KVStoreError;
 
 pub type RefCnt = usize;
 
@@ -134,7 +135,7 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: Arc<MerkleStorageKV>,
+    db: MerkleStorageKVStore,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -149,10 +150,8 @@ pub struct MerkleStorage {
 #[derive(Debug, Fail)]
 pub enum MerkleError {
     /// External libs errors
-    #[fail(display = "RocksDB error: {:?}", error)]
-    DBError {
-        error: persistent::database::DBError,
-    },
+    #[fail(display = "KVStore error: {:?}", error)]
+    DBError { error: MerkleStorageKVStoreError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
 
@@ -185,8 +184,8 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
 }
 
-impl From<persistent::database::DBError> for MerkleError {
-    fn from(error: persistent::database::DBError) -> Self {
+impl From<MerkleStorageKVStoreError> for MerkleError {
+    fn from(error: MerkleStorageKVStoreError) -> Self {
         MerkleError::DBError { error }
     }
 }
@@ -242,28 +241,10 @@ pub struct MerklePerfStats {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
-    rocksdb_stats: RocksDBStats,
     pub perf_stats: MerklePerfStats,
 }
 
 impl BincodeEncoded for EntryHash {}
-
-impl KeyValueSchema for MerkleStorage {
-    // keys is hash of Entry
-    type Key = EntryHash;
-    // Entry (serialized)
-    type Value = Vec<u8>;
-
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let cf_opts = default_table_options(cache);
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
-        "merkle_storage"
-    }
-}
 
 // Tree in String form needed for JSON RPCs
 pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
@@ -347,7 +328,7 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Arc<MerkleStorageKV>) -> Self {
+    pub fn new(db: MerkleStorageKVStore) -> Self {
         MerkleStorage {
             db,
             staged: Vec::new(),
@@ -361,6 +342,62 @@ impl MerkleStorage {
             },
             actions: Arc::new(Vec::new()),
         }
+    }
+
+    /// if `MerkleStorage` is not persisted, restore it from `ContextActionStorage`.
+    /// TODO: modify general `Error` with `MerkleError`
+    pub fn apply_context_actions_from_store(&mut self, ctx_action_storage: &ContextActionStorage) -> Result<(), Error> {
+        let it = ctx_action_storage.get_by_mut_action_types()?
+            .into_iter()
+            .map(|x| x.action);
+        self.apply_context_actions(it)?;
+        Ok(())
+    }
+
+    pub fn apply_context_actions<I>(&mut self, it: I) -> Result<(), MerkleError>
+    where I: IntoIterator<Item = ContextAction>,
+    {
+        for context_action in it {
+            self.apply_context_action(&context_action)?;
+        }
+        Ok(())
+    }
+
+    pub fn apply_context_action(&mut self, context_action: &ContextAction) -> Result<(), MerkleError> {
+        match context_action {
+            ContextAction::Set { key, value, ignored, .. } => {
+                if !ignored {
+                    self.set(&key, &value)?;
+                }
+            },
+            ContextAction::Copy { to_key, from_key, ignored, .. } => {
+                if !ignored {
+                    self.copy(&from_key, &to_key)?;
+                }
+            },
+            ContextAction::Delete { key, ignored, .. } => {
+                if !ignored {
+                    self.delete(&key)?;
+                }
+            },
+            ContextAction::RemoveRecursively { key, ignored, .. } => {
+                if !ignored {
+                    self.delete(&key)?;
+                }
+            },
+            ContextAction::Commit { author, message, date, .. } => {
+                self.commit(*date as u64, author.to_string(), message.to_string())?;
+            },
+            ContextAction::Checkout { context_hash, .. } => {
+                self.checkout(context_hash.as_slice().try_into()?)?;
+            },
+            _ => (),
+        };
+        Ok(())
+    }
+
+    pub fn is_persisted(&self) -> bool {
+        true
     }
 
     /// Get value from current staged root
@@ -1139,8 +1176,9 @@ impl MerkleStorage {
     }
 
     /// Persists an entry and its descendants from staged area to database on disk.
-    fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+    fn persist_staged_entry_to_db(&mut self, entry: &Entry) -> Result<(), MerkleError> {
+        // batch containing DB key values to persist
+        let mut batch = KVStoreWriteBatch::new();
 
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
@@ -1155,11 +1193,13 @@ impl MerkleStorage {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        batch: &mut WriteBatch,
+        batch: &mut KVStoreWriteBatch<EntryHash, Vec<u8>>,
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+        self.db.put_batch(
+            batch,
+            self.hash_entry(entry)?,
+            bincode::serialize(entry)?)?;
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1310,8 +1350,6 @@ impl MerkleStorage {
 
     /// Get various merkle storage statistics
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        let db_stats = self.db.get_mem_use_stats()?;
-
         // calculate average values for global stats
         let mut perf = self.perf_stats.clone();
         for (_, stat) in perf.global.iter_mut() {
@@ -1331,10 +1369,7 @@ impl MerkleStorage {
                 }
             }
         }
-        Ok(MerkleStorageStats {
-            rocksdb_stats: db_stats,
-            perf_stats: perf,
-        })
+        Ok(MerkleStorageStats { perf_stats: perf })
     }
 
     /// Update global and per-path execution stats. Pass Instant with operation execution time
@@ -1398,49 +1433,16 @@ impl MerkleStorage {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    // use hex;
     use assert_json_diff::assert_json_eq;
-    use rocksdb::{Options, DB};
-    use std::path::{Path, PathBuf};
-    use std::{env, fs};
 
     use super::*;
+    use crate::in_memory::KVStore;
 
-    /// Open DB at path, used in tests
-    fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
-        let mut db_opts = Options::default();
-        db_opts.create_if_missing(true);
-        db_opts.create_missing_column_families(true);
-
-        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
-    }
-
-    pub fn out_dir_path(dir_name: &str) -> PathBuf {
-        let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-        Path::new(out_dir.as_str()).join(Path::new(dir_name))
-    }
-
-    fn get_db_name(db_name: &str) -> PathBuf {
-        out_dir_path(db_name)
-    }
-
-    fn get_db(db_name: &str, cache: &Cache) -> DB {
-        open_db(get_db_name(db_name), &cache)
-    }
-
-    fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
-        MerkleStorage::new(Arc::new(get_db(dn_name, &cache)))
-    }
-
-    fn clean_db(db_name: &str) {
-        let _ = DB::destroy(&Options::default(), get_db_name(db_name));
-        let _ = fs::remove_dir_all(get_db_name(db_name));
-    }
+    fn get_empty_storage() -> MerkleStorage { MerkleStorage::new(KVStore::new()) }
 
     #[test]
     fn test_duplicate_entry_in_staging() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_duplicate_entry", &cache);
+        let mut storage = get_empty_storage();
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
@@ -1665,8 +1667,7 @@ mod tests {
 
     #[test]
     fn test_tree_hash() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_tree_hash", &cache);
+        let mut storage = get_empty_storage();
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
@@ -1689,8 +1690,7 @@ mod tests {
 
     #[test]
     fn test_commit_hash() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_commit_hash", &cache);
+        let mut storage = get_empty_storage();
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
@@ -1716,10 +1716,7 @@ mod tests {
 
     #[test]
     fn test_examples_from_article_about_storage() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db_name = "test_examples_from_article_about_storage";
-        clean_db(db_name);
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
 
         storage.set(&vec!["a".to_string()], &vec![1]);
         storage.apply_actions_to_staging_area();
@@ -1765,9 +1762,9 @@ mod tests {
 
     #[test]
     fn test_multiple_commit_hash() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_multiple_commit_hash", &cache);
-        let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+        let mut storage = get_empty_storage();
+        let _commit = storage.commit(
+            0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
             &vec!["data".to_string(), "a".to_string(), "x".to_string()],
@@ -1785,21 +1782,14 @@ mod tests {
 
     #[test]
     fn test_get() {
-        let db_name = "ms_get_test";
-        clean_db(db_name);
-
-        let commit1;
-        let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         let key_eab: &ContextKey = &vec!["e".to_string(), "a".to_string(), "b".to_string()];
         let key_az: &ContextKey = &vec!["a".to_string(), "z".to_string()];
         let key_d: &ContextKey = &vec!["d".to_string()];
 
-        {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
-
+        let mut storage = get_empty_storage();
+        let (commit1, commit2) = {
             let res = storage.get(&vec![]);
             assert_eq!(res.unwrap().is_empty(), true);
             let res = storage.get(&vec!["a".to_string()]);
@@ -1809,7 +1799,7 @@ mod tests {
             storage.set(key_abx, &vec![3u8]);
             assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
             assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+            let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
             storage.set(key_az, &vec![4u8]);
             storage.set(key_abx, &vec![5u8]);
@@ -1819,11 +1809,10 @@ mod tests {
             assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
             assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
             assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
-            commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
+            let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+            (commit1, commit2)
+        };
 
         assert_eq!(
             storage.get_history(&commit1, key_abc).unwrap(),
@@ -1838,14 +1827,10 @@ mod tests {
 
     #[test]
     fn test_mem() {
-        let db_name = "ms_test_mem";
-        clean_db(db_name);
-
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
         storage.set(key_abc, &vec![1u8, 2u8]);
@@ -1861,15 +1846,11 @@ mod tests {
 
     #[test]
     fn test_dirmem() {
-        let db_name = "ms_test_dirmem";
-        clean_db(db_name);
-
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
         let key_a: &ContextKey = &vec!["a".to_string()];
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
@@ -1885,11 +1866,7 @@ mod tests {
 
     #[test]
     fn test_copy() {
-        let db_name = "ms_test_copy";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
@@ -1905,11 +1882,7 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let db_name = "ms_test_delete";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -1922,11 +1895,7 @@ mod tests {
 
     #[test]
     fn test_deleted_entry_available() {
-        let db_name = "ms_test_deleted_entry_available";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1938,11 +1907,7 @@ mod tests {
 
     #[test]
     fn test_delete_in_separate_commit() {
-        let db_name = "ms_test_delete_in_separate_commit";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -1957,28 +1922,18 @@ mod tests {
 
     #[test]
     fn test_checkout() {
-        let db_name = "ms_test_checkout";
-        clean_db(db_name);
-
-        let commit1;
-        let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
-            storage.set(key_abc, &vec![1u8]).unwrap();
-            storage.set(key_abx, &vec![2u8]).unwrap();
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        let mut storage = get_empty_storage();
+        storage.set(key_abc, &vec![1u8]).unwrap();
+        storage.set(key_abx, &vec![2u8]).unwrap();
+        let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(key_abc, &vec![3u8]).unwrap();
-            storage.set(key_abx, &vec![4u8]).unwrap();
-            commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
+        storage.set(key_abc, &vec![3u8]).unwrap();
+        storage.set(key_abx, &vec![4u8]).unwrap();
+        let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
         storage.checkout(&commit1);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
@@ -1990,55 +1945,9 @@ mod tests {
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
     }
 
-    #[test]
-    fn test_persistence_over_reopens() {
-        let db_name = "ms_test_persistence_over_reopens";
-        {
-            clean_db(db_name);
-        }
-
-        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let commit1;
-        {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
-            let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-            storage.set(key_abc, &vec![2_u8]).unwrap();
-            storage.set(key_abx, &vec![3_u8]).unwrap();
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
-        assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
-    }
-
-    // Test a DB error by writing into a read-only database.
-    #[test]
-    fn test_db_error() {
-        let db_name = "ms_test_db_error";
-        {
-            clean_db(db_name);
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            get_storage(db_name, &cache);
-        }
-
-        let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Arc::new(db));
-        storage.set(&vec!["a".to_string()], &vec![1u8]);
-        let res = storage.commit(0, "".to_string(), "".to_string());
-
-        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
-    }
-
     // Test getting entire tree in string format for JSON RPC
     #[test]
     fn test_get_context_tree_by_prefix() {
-        let db_name = "ms_test_get_context_tree_by_prefix";
-        {
-            clean_db(db_name);
-        }
-
         let all_json = serde_json::json!(
             {
                 "adata": {
@@ -2079,8 +1988,7 @@ mod tests {
             }
         );
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_empty_storage();
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(

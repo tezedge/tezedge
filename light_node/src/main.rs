@@ -529,7 +529,6 @@ fn main() {
         context_action_storage::ContextActionByContractIndex::descriptor(&cache),
         context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
         ContextActionStorage::descriptor(&cache),
-        MerkleStorage::descriptor(&cache),
         SystemStorage::descriptor(&cache),
         Sequences::descriptor(&cache),
         MempoolStorage::descriptor(&cache),
@@ -570,6 +569,17 @@ fn main() {
         };
 
         let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
+        // restore merkle tree from persistant store if it isn't persisted.
+        {
+            let merkle_lock = persistent_storage.merkle();
+            let mut merkle = merkle_lock.write().unwrap();
+            if !merkle.is_persisted() {
+                merkle.apply_context_actions_from_store(
+                    &ContextActionStorage::new(&persistent_storage),
+                ).expect("Failed to restore merkle from context action storage");
+            }
+        }
+
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),

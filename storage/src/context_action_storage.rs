@@ -12,7 +12,7 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
-use tezos_context::channel::ContextAction;
+pub use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
@@ -188,6 +188,17 @@ impl ContextActionStorage {
         self.context_by_contract_index
             .get_by_contract_address(contract_address, from_id, limit)
             .and_then(|idx| self.load_indexes(idx.into_iter()))
+    }
+
+    #[inline]
+    pub fn get_by_action_types(&self, action_types: &[ContextActionType]) -> Result<Vec<ContextActionRecordValue>, StorageError> {
+        self.context_by_type_index.get_by_action_types_iterator(action_types, None)
+            .and_then(|idx| self.load_indexes(idx.into_iter()))
+    }
+
+    #[inline]
+    pub fn get_by_mut_action_types(&self) -> Result<Vec<ContextActionRecordValue>, StorageError> {
+        self.get_by_action_types(&CONTEXT_MUT_ACTION_TYPES)
     }
 
     fn load_indexes<'a, Idx: Iterator<Item = u64> + 'a>(
@@ -825,6 +836,16 @@ impl Encoder for ContextActionByTypeIndexKey {
         Ok(result)
     }
 }
+
+/// action types which mutate the state
+const CONTEXT_MUT_ACTION_TYPES: [ContextActionType; 6] = [
+    ContextActionType::Set,
+    ContextActionType::Copy,
+    ContextActionType::Delete,
+    ContextActionType::RemoveRecursively,
+    ContextActionType::Commit,
+    ContextActionType::Checkout,
+];
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]

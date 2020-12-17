@@ -31,7 +31,6 @@ pub use crate::context_action_storage::{
     ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
 };
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
-use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
