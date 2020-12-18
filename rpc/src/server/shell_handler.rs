@@ -203,9 +203,14 @@ pub async fn inject_operation(req: Request<Body>, _: Params, query: Query, env: 
 
     let shell_channel = env.shell_channel();
 
-    // TODO: TE-221 - add optional chain_id to params mapping
-    let chain_id_param = "main";
-    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    // defaults to "main"
+    let chain_id_query = if let Some(chain_id_query) = query.get_str("chain_id") {
+        chain_id_query
+    } else {
+        "main"
+    };
+
+    let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
@@ -226,9 +231,14 @@ pub async fn inject_block(req: Request<Body>, _: Params, query: Query, env: RpcS
 
     let shell_channel = env.shell_channel();
 
-    // TODO: TE-221 - add optional chain_id to params mapping
-    let chain_id_param = "main";
-    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    // defaults to "main"
+    let chain_id_query = if let Some(chain_id_query) = query.get_str("chain_id") {
+        chain_id_query
+    } else {
+        "main"
+    };
+    
+    let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
