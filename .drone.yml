@@ -557,7 +557,6 @@ clone:
 steps:
 - name: baker-endorser-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -574,7 +573,6 @@ steps:
 
 - name: test-many-nodes
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -591,7 +589,6 @@ steps:
 
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -608,7 +605,6 @@ steps:
 
 - name: test-multinode
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -625,7 +621,6 @@ steps:
 
 - name: mempool-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -642,7 +637,6 @@ steps:
 
 - name: fork-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -659,7 +653,6 @@ steps:
 
 - name: double-endorsement-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   pull: if-not-exists
   user: root
   volumes:
@@ -677,7 +670,6 @@ steps:
 
 - name: test-programs
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   pull: if-not-exists
   user: root
   volumes:
@@ -695,7 +687,6 @@ steps:
 
 - name: test-contract-annotations-test
   image: simplestakingcom/tezedge-ci-builder:appuser
-  failure: ignore
   pull: if-not-exists
   user: root
   volumes:
@@ -711,6 +702,7 @@ steps:
     - mkdir $${DRONE_STEP_NAME}_logs
     - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_annotations.py
 
+# TODO - TE-220 - stop ignoring after resolving the rpc error handling
 - name: basic-test
   image: simplestakingcom/tezedge-ci-builder:appuser
   failure: ignore
