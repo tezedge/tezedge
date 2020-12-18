@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime};
 use failure::{Error, format_err};
 use itertools::Itertools;
 use riker::actors::*;
-use slog::{crit, debug, info, Logger, trace, warn};
+use slog::{debug, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
 use crypto::seeded_step::Seed;
@@ -404,7 +404,6 @@ impl ChainManager {
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
-                                    crit!(log, "current branch: {:?}", message);
                                     // at first, check if we can accept branch or just ignore it
                                     if !chain_state.can_accept_branch(&message, &current_head.local) {
                                         let head = message.current_branch().current_head();
