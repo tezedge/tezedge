@@ -76,7 +76,7 @@ impl BlockchainState {
 
         if let Some(current_head) = current_head.as_ref() {
             // (only_if_fitness_increases) we can accept branch if increases fitness
-            if validation::is_fitness_increases_or_same(current_head, branch.current_branch().current_head().fitness()) {
+            if validation::is_fitness_increases(current_head, branch.current_branch().current_head().fitness()) {
                 return true;
             }
 
