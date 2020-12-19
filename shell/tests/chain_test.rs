@@ -9,19 +9,16 @@ extern crate test;
 /// Runs like: `PROTOCOL_RUNNER=./target/release/protocol-runner cargo test --release -- --ignored`
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use lazy_static::lazy_static;
-use rand::seq::SliceRandom;
-use rand::Rng;
 use serial_test::serial;
-use sysinfo::{Process, ProcessExt, Signal, System, SystemExt};
 
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
+use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
 use tezos_messages::p2p::encoding::prelude::Mempool;
@@ -57,13 +54,16 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     let log = common::create_logger(log_level);
 
     let db = test_cases_data::current_branch_on_level_3::init_data(&log);
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&db.tezos_env)
+        .expect("no environment configuration");
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
         TmpStorage::create(common::prepare_empty_dir("__test_01"))?,
         &common::prepare_empty_dir("__test_01_context"),
         "test_process_current_branch_on_level3_then_current_head_level4",
-        &db.tezos_env,
+        &tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -154,6 +154,9 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         let (db, patch_context) = test_cases_data::sandbox_branch_1_level3::init_data(&log);
         (db.tezos_env, patch_context)
     };
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&tezos_env)
+        .expect("no environment configuration");
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
@@ -296,13 +299,16 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
     let log = common::create_logger(log_level);
 
     let db = test_cases_data::dont_serve_current_branch_messages::init_data(&log);
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&db.tezos_env)
+        .expect("no environment configuration");
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
         TmpStorage::create(common::prepare_empty_dir("__test_03"))?,
         &common::prepare_empty_dir("__test_03_context"),
         "test_process_current_heads_to_level3",
-        &db.tezos_env,
+        &tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -400,13 +406,16 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     let log = common::create_logger(log_level);
 
     let db = test_cases_data::current_branch_on_level_3::init_data(&log);
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&db.tezos_env)
+        .expect("no environment configuration");
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
         TmpStorage::create(common::prepare_empty_dir("__test_04"))?,
         &common::prepare_empty_dir("__test_04_context"),
         "test_process_current_head_with_malformed_blocks_and_check_blacklist",
-        &db.tezos_env,
+        &tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -532,13 +541,16 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     let log = common::create_logger(log_level);
 
     let db = test_cases_data::current_branch_on_level_1324::init_data(&log);
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&db.tezos_env)
+        .expect("no environment configuration");
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
         TmpStorage::create(common::prepare_empty_dir("__test_05"))?,
         &common::prepare_empty_dir("__test_05_context"),
         name,
-        &db.tezos_env,
+        &tezos_env,
         None,
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
@@ -554,7 +566,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 
     // connect mocked node peer with test data set
     let clocks = Instant::now();
-    let mut mocked_peer_node = test_node_peer::TestNodePeer::connect(
+    let mocked_peer_node = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
@@ -1289,7 +1301,6 @@ mod test_actor {
     use std::time::{Duration, SystemTime};
 
     use riker::actors::*;
-    use slog::warn;
 
     use crypto::hash::{CryptoboxPublicKeyHash, HashType};
     use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
@@ -1345,12 +1356,7 @@ mod test_actor {
         type Msg = NetworkChannelListenerMsg;
 
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
-            match self.process_network_channel_message(ctx, msg) {
-                Ok(_) => (),
-                Err(e) => {
-                    warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e))
-                }
-            }
+            self.process_network_channel_message(ctx, msg)
         }
     }
 
@@ -1374,7 +1380,7 @@ mod test_actor {
             &mut self,
             _: &Context<NetworkChannelListenerMsg>,
             msg: NetworkChannelMsg,
-        ) -> Result<(), failure::Error> {
+        ) {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
                 NetworkChannelMsg::PeerCreated(_) => {}
@@ -1393,7 +1399,6 @@ mod test_actor {
                 }
                 _ => (),
             }
-            Ok(())
         }
 
         pub fn verify_connected(

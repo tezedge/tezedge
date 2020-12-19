@@ -79,8 +79,11 @@ const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(60);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
 const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
 
-/// After this interval we will rehydrate state if no new blocks are applied
-const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
+/// After this interval we will trigger rehydrate state
+const REHYDRATE_STATE_INTERVAL: Duration = Duration::from_secs(240);
+/// (TODO: deprecated - see RehydrateState) <_0> - timeout for last applied block, <_1> - timeout for last downloaded block
+const REHYDRATE_STATE_STALLED_CHAIN_COMPLETENESS_TIMEOUT: (Duration, Duration) =
+    (Duration::from_secs(240), Duration::from_secs(30));
 
 /// Mempool operation time to live
 const MEMPOOL_OPERATION_TTL: Duration = Duration::from_secs(60);
@@ -131,6 +134,11 @@ impl ProcessValidatedBlock {
         }
     }
 }
+
+/// TODO: This will be removed, when correct bootstrap pipeline process will be done
+/// Message commands [`ChainManager`] to re-hydrate state.
+#[derive(Clone, Debug)]
+pub struct RehydrateState;
 
 /// Message commands [`ChainManager`] to ask all connected peers for their current branch.
 #[derive(Clone, Debug)]
@@ -193,7 +201,7 @@ impl CurrentHead {
 struct Stats {
     /// Count of received blocks
     unseen_block_count: usize,
-    /// Lest time when previously not seen block was received
+    /// Last time when previously not seen block was received
     unseen_block_last: Instant,
     /// Last time when previously unseen operations were received
     unseen_block_operations_last: Instant,
@@ -250,7 +258,8 @@ impl Stats {
     ShellChannelMsg,
     SystemEvent,
     DeadLetter,
-    ProcessValidatedBlock
+    ProcessValidatedBlock,
+    RehydrateState
 )]
 pub struct ChainManager {
     /// Chain feeder - actor, which is responsible to apply_block to context
@@ -383,12 +392,11 @@ impl ChainManager {
     }
 
     /// Check for missing blocks in local chain copy, and schedule downloading for those blocks
-    fn check_chain_completeness(&mut self, ctx: &Context<ChainManagerMsg>) -> Result<(), Error> {
+    fn check_chain_completeness(&mut self) {
         let ChainManager {
             peers,
             chain_state,
             operations_state,
-            stats,
             current_head,
             ..
         } = self;
@@ -482,23 +490,6 @@ impl ChainManager {
                     }
                 });
         }
-
-        if let (Some(applied_block_last), Some(hydrated_state_last)) =
-            (stats.applied_block_last, stats.hydrated_state_last)
-        {
-            if (applied_block_last.elapsed() > STALLED_CHAIN_COMPLETENESS_TIMEOUT)
-                && (hydrated_state_last.elapsed() > STALLED_CHAIN_COMPLETENESS_TIMEOUT)
-            {
-                self.hydrate_state(ctx);
-            }
-        }
-
-        if let Some(current_head_local) = self.current_head.local.as_ref() {
-            let block_hash = current_head_local.block_hash().clone();
-            self.check_successors_for_apply(ctx, &block_hash)?;
-        }
-
-        Ok(())
     }
 
     fn process_network_channel_message(
@@ -1419,21 +1410,36 @@ impl ChainManager {
     }
 
     fn hydrate_state(&mut self, ctx: &Context<ChainManagerMsg>) {
-        info!(ctx.system.log(), "Loading current head");
-        self.current_head.local = self
+        info!(ctx.system.log(), "Hydrating/loading current head");
+        match self
             .chain_meta_storage
             .get_current_head(self.chain_state.get_chain_id())
-            .expect("Failed to load current head");
+        {
+            Ok(last_known_current_head) => self.current_head.local = last_known_current_head,
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to load current head (lets wait for new peers and bootstrap process)"; "reason" => e)
+            }
+        }
 
         info!(ctx.system.log(), "Hydrating block state");
-        self.chain_state
-            .hydrate()
-            .expect("Failed to hydrate chain state");
+        if let Err(e) = self.chain_state.hydrate() {
+            warn!(ctx.system.log(), "Failed to hydrate chain state (lets wait for new peers and bootstrap process)"; "reason" => e);
+        }
 
         info!(ctx.system.log(), "Hydrating operations state");
-        self.operations_state
-            .hydrate()
-            .expect("Failed to hydrate operations state");
+        if let Err(e) = self.operations_state.hydrate() {
+            warn!(ctx.system.log(), "Failed to hydrate operations state (lets wait for new peers and bootstrap process)"; "reason" => e);
+        }
+
+        info!(
+            ctx.system.log(),
+            "Hydrating/checking current head successors (if can be applied)"
+        );
+        if let Some(current_head_local) = self.current_head.local.as_ref() {
+            if let Err(e) = self.check_successors_for_apply(ctx, current_head_local.block_hash()) {
+                warn!(ctx.system.log(), "Failed to hydrate/check successors for apply (lets wait for new peers and bootstrap process)"; "reason" => e);
+            }
+        }
 
         let (local_head, local_head_level, local_fitness) = self.current_head.local_debug_info();
         info!(
@@ -1445,6 +1451,7 @@ impl ChainManager {
             "missing_blocks" => self.chain_state.missing_blocks_count(),
             "missing_block_operations" => self.operations_state.missing_block_operations_count(),
         );
+
         self.stats.hydrated_state_last = Some(Instant::now());
     }
 
@@ -1495,14 +1502,14 @@ impl ChainManager {
             info!(log, "Chain manager is bootstrapped"; "num_of_peers_for_bootstrap_threshold" => self.num_of_peers_for_bootstrap_threshold, "num_of_bootstrapped_peers" => num_of_bootstrapped_peers, "reached_on_level" => chain_manager_current_level)
         }
     }
+
     fn check_successors_for_apply(
-        &mut self,
+        &self,
         ctx: &Context<ChainManagerMsg>,
         block: &BlockHash,
     ) -> Result<(), StorageError> {
         if let Some(metadata) = self.block_meta_storage.get(&block)? {
             for successor in metadata.successors() {
-                // check if block can be applied
                 if let Some(successor_metadata) = self.block_meta_storage.get(&successor)? {
                     if self
                         .chain_state
@@ -1842,6 +1849,13 @@ impl Actor for ChainManager {
             None,
             LogStats.into(),
         );
+        ctx.schedule::<Self::Msg, _>(
+            REHYDRATE_STATE_INTERVAL,
+            REHYDRATE_STATE_INTERVAL,
+            ctx.myself(),
+            None,
+            RehydrateState.into(),
+        );
 
         let silent_peer_timeout = if self.is_sandbox {
             SILENT_PEER_TIMEOUT_SANDBOX
@@ -2066,17 +2080,11 @@ impl Receive<CheckMempoolCompleteness> for ChainManager {
 impl Receive<CheckChainCompleteness> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
+    fn receive(&mut self, _: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
         if self.shutting_down {
             return;
         }
-
-        match self.check_chain_completeness(ctx) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to check chain completeness"; "reason" => format!("{:?}", e))
-            }
-        }
+        self.check_chain_completeness()
     }
 }
 
@@ -2105,6 +2113,31 @@ impl Receive<NetworkChannelMsg> for ChainManager {
             Ok(_) => (),
             Err(e) => {
                 warn!(ctx.system.log(), "Failed to process network channel message"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
+impl Receive<RehydrateState> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: RehydrateState, _sender: Sender) {
+        if self.shutting_down {
+            return;
+        }
+
+        if let (Some(applied_block_last), unseen_block_last) =
+            (self.stats.applied_block_last, self.stats.unseen_block_last)
+        {
+            // TODO: all this RehydrateState event will be removed
+            let last_applied_block_timeout_elapsed =
+                applied_block_last.elapsed() > REHYDRATE_STATE_STALLED_CHAIN_COMPLETENESS_TIMEOUT.0;
+            let last_downloaded_block_timeout_elapsed =
+                unseen_block_last.elapsed() > REHYDRATE_STATE_STALLED_CHAIN_COMPLETENESS_TIMEOUT.1;
+
+            // we rehydrate state, only if we "did not apply block for a long time" and "did not download block for a long time"
+            if last_applied_block_timeout_elapsed && last_downloaded_block_timeout_elapsed {
+                self.hydrate_state(ctx);
             }
         }
     }

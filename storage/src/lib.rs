@@ -4,7 +4,7 @@
 #![feature(const_fn)]
 
 use std::convert::{TryInto, TryFrom};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use failure::Fail;
@@ -174,8 +174,8 @@ pub struct StorageInitInfo {
 
 /// Resolve main chain id and genesis header from configuration
 pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration,
-                                       storage_db_path: &PathBuf,
-                                       context_db_path: &PathBuf,
+                                       storage_db_path: &Path,
+                                       context_db_path: &Path,
                                        patch_context: &Option<PatchContext>,
                                        log: &Logger) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
@@ -396,6 +396,7 @@ pub mod tests_common {
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
         path: PathBuf,
+        remove_on_destroy: bool,
     }
 
     impl TmpStorage {
@@ -407,9 +408,13 @@ pub mod tests_common {
         }
 
         pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+            Self::initialize(path, true, true)
+        }
+
+        pub fn initialize<P: AsRef<Path>>(path: P, remove_if_exists: bool, remove_on_destroy: bool) -> Result<Self, Error> {
             let path = path.as_ref().to_path_buf();
             // remove previous data if exists
-            if Path::new(&path).exists() {
+            if Path::new(&path).exists() && remove_if_exists {
                 fs::remove_dir_all(&path).unwrap();
             }
 
@@ -446,6 +451,7 @@ pub mod tests_common {
             Ok(Self {
                 persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
                 path,
+                remove_on_destroy,
             })
         }
 
@@ -461,7 +467,9 @@ pub mod tests_common {
     impl Drop for TmpStorage {
         fn drop(&mut self) {
             let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
-            let _ = fs::remove_dir_all(&self.path);
+            if self.remove_on_destroy {
+                let _ = fs::remove_dir_all(&self.path);
+            }
         }
     }
 }
