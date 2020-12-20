@@ -24,7 +24,6 @@ use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::context::TezedgeContext;
-use storage::merkle_storage::MerkleStorage;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, open_kv, CommitLogSchema, KeyValueSchema, PersistentStorage};
 use storage::{

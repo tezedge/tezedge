@@ -1,106 +1,36 @@
 use std::collections::{BTreeMap, btree_map::Entry};
-use failure::Fail;
 
-pub trait WriteBatch {
-    type Key;
-    type Value;
+use crate::kv_store::{
+    BasicWriteBatch, BasicWriteBatchOp,
+    KVStore as KVStoreTrait, ApplyBatch,
+    KVStoreError};
 
-    fn put(&mut self, key: Self::Key, value: Self::Value);
-    fn merge(&mut self, key: Self::Key, value: Self::Value);
-    fn delete(&mut self, key: Self::Key);
-}
-
-#[derive(Debug)]
-pub enum KVStoreWriteBatchOp<K, V> {
-    Put { key: K, value: V },
-    Merge { key: K, value: V },
-    Delete { key: K },
-}
-
-#[derive(Debug)]
-pub struct KVStoreWriteBatch<K, V> {
-    ops: Vec<KVStoreWriteBatchOp<K, V>>
-}
-
-impl<K, V> KVStoreWriteBatch<K, V> {
-    pub fn new() -> Self {
-        Self { ops: Vec::new() }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.ops.is_empty()
-    }
-}
-
-impl<K, V> Default for KVStoreWriteBatch<K, V> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<K, V> WriteBatch for KVStoreWriteBatch<K, V> {
-    type Key = K;
-    type Value = V;
-
-    fn put(&mut self, key: Self::Key, value: Self::Value) {
-        self.ops.push(KVStoreWriteBatchOp::Put { key, value });
-    }
-
-    fn merge(&mut self, key: Self::Key, value: Self::Value) {
-        self.ops.push(KVStoreWriteBatchOp::Merge { key, value });
-    }
-
-    fn delete(&mut self, key: Self::Key) {
-        self.ops.push(KVStoreWriteBatchOp::Delete { key });
-    }
-}
-
-impl<K, V> IntoIterator for KVStoreWriteBatch<K, V> {
-    type Item = KVStoreWriteBatchOp<K, V>;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.ops.into_iter()
-    }
-}
-
-
-#[derive(Debug, Fail)]
-pub enum KVStoreError {
-    #[fail(display = "Entry with key already exists")]
-    EntryOccupied,
-}
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
-pub struct KVStore<K, V>
-where K: Ord,
-      V: Clone,
-{
+pub struct KVStore<K: Ord, V> {
     kv_map: BTreeMap<K, V>,
 }
 
-impl<K, V> Default for KVStore<K, V>
-where K: Clone + Ord,
-      V: Clone,
-{
+impl<K: Ord, V> Default for KVStore<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K, V> KVStore<K, V>
-where K: Clone + Ord,
+impl<K, V> KVStoreTrait for KVStore<K, V>
+where K: Ord,
       V: Clone,
 {
-    pub fn new() -> Self {
-        Self {
-            kv_map: BTreeMap::new(),
-        }
-    }
+    type Error = KVStoreError;
+    type Key = K;
+    type Value = V;
+
+    #[inline]
+    fn is_persisted(&self) -> bool { false }
 
     /// put kv in map if key doesn't exist. If it does then error.
-    pub fn put(&mut self, key: K, value: V) -> Result<(), KVStoreError> {
+    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         match self.kv_map.entry(key) {
             Entry::Vacant(entry) => {
                 entry.insert(value);
@@ -111,34 +41,28 @@ where K: Clone + Ord,
         }
     }
 
-    pub fn merge(&mut self, key: K, value: V) -> Result<Option<V>, KVStoreError> {
+    fn merge(&mut self, key: Self::Key, value: Self::Value) -> Result<Option<Self::Value>, Self::Error> {
         Ok(self.kv_map.insert(key, value))
     }
 
-    pub fn delete(&mut self, key: &K) -> Result<Option<V>, KVStoreError> {
+    fn delete(&mut self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
         Ok(self.kv_map.remove(key))
     }
 
-    pub fn get(&self, key: &K) -> Result<Option<V>, KVStoreError> {
+    fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
         Ok(self.kv_map.get(key).cloned())
     }
 
-    pub fn contains(&self, key: &K) -> Result<bool, KVStoreError> {
+    fn contains(&self, key: &Self::Key) -> Result<bool, Self::Error> {
         Ok(self.kv_map.contains_key(key))
     }
+}
 
-    pub fn put_batch(
-        &self,
-        batch: &mut KVStoreWriteBatch<K, V>,
-        key: K,
-        value: V
-    ) -> Result<(), KVStoreError> {
-        batch.put(key, value);
-        Ok(())
-    }
-
-    /// atomic batch write
-    pub fn write_batch(&mut self, batch: KVStoreWriteBatch<K, V>) -> Result<(), KVStoreError> {
+impl<K, V> ApplyBatch<BasicWriteBatch<K, V>, KVStoreError> for KVStore<K, V>
+where K: Ord + Clone,
+      V: Clone,
+{
+    fn apply_batch(&mut self, batch: BasicWriteBatch<K, V>) -> Result<(), KVStoreError> {
         if batch.is_empty() {
             return Ok(());
         }
@@ -146,15 +70,15 @@ where K: Clone + Ord,
         let result = batch.into_iter()
             .map(|op| {
                 Ok(match op {
-                    KVStoreWriteBatchOp::Put { key, value } => (
+                    BasicWriteBatchOp::Put { key, value } => (
                         key.clone(),
                         self.put(key, value).and(Ok(None))?,
                     ),
-                    KVStoreWriteBatchOp::Merge { key, value } => (
+                    BasicWriteBatchOp::Merge { key, value } => (
                         key.clone(),
                         self.merge(key, value)?,
                     ),
-                    KVStoreWriteBatchOp::Delete { key } => {
+                    BasicWriteBatchOp::Delete { key } => {
                         let deleted = self.delete(&key)?;
                         (key, deleted)
                     },
@@ -182,7 +106,18 @@ where K: Clone + Ord,
         }
         Ok(())
     }
+}
 
+
+impl<K: Ord, V> KVStore<K, V> {
+    pub fn new() -> Self {
+        Self {
+            kv_map: BTreeMap::new(),
+        }
+    }
+}
+
+impl<K: Ord, V: Clone> KVStore<K, V> {
     fn rollback_changes(
         &mut self,
         prev_values: BTreeMap<K, Option<V>>,
@@ -213,7 +148,7 @@ mod tests {
     // fn same_key_multiple_batch_ops_rolls_back_to_initial_value() {
     //     let mut kv_store = KVStore::new();
 
-    //     let mut wt_batch = KVStoreWriteBatch::new();
+    //     let mut wt_batch = BasicWriteBatchOp::new();
     //     wt_batch.put("a", 1);
     //     wt_batch.merge("a", 2);
     //     wt_batch.put("a", 3); // should fail
