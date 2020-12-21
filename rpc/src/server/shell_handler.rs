@@ -18,8 +18,8 @@ use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
 use crate::{empty, encoding::{
     base_types::*,
     monitor::BootstrapInfo,
-}, helpers, make_json_response, make_json_stream_response, result_option_to_json_response, result_to_empty_json_response, result_to_json_response, ServiceResult, services};
-use crate::helpers::{create_rpc_request, parse_async, parse_block_hash, parse_chain_id};
+}, helpers, make_json_response, make_json_stream_response, required_param, result_option_to_json_response, result_to_empty_json_response, result_to_json_response, ServiceResult, services};
+use crate::helpers::{create_rpc_request, MAIN_CHAIN_ID, parse_async, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, HResult, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
 
@@ -62,7 +62,7 @@ pub async fn valid_blocks(_: Request<Body>, _: Params, _: Query, _: RpcServiceEn
 }
 
 pub async fn head_chain(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let protocol = if let Some(protocol) = query.get_str("next_protocol") {
         HashType::ProtocolHash.b58check_to_hash(protocol).ok()
     } else {
@@ -78,7 +78,7 @@ pub async fn head_chain(_: Request<Body>, params: Params, query: Query, env: Rpc
 }
 
 pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
     let applied = query.get_str("applied");
     let branch_refused = query.get_str("branch_refused");
@@ -113,8 +113,9 @@ pub async fn mempool_monitor_operations(_: Request<Body>, params: Params, query:
 }
 
 pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let length = query.get_str("length").unwrap_or("0");
+    // TODO: mutliparameter
     let head = parse_block_hash(&chain_id, query.get_str("head").unwrap(), &env)?;
     // TODO: implement min_date query arg
 
@@ -126,8 +127,8 @@ pub async fn blocks(_: Request<Body>, params: Params, query: Query, env: RpcServ
 }
 
 pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     use crate::encoding::chain::BlockInfo;
     result_option_to_json_response(
@@ -141,8 +142,8 @@ pub async fn chains_block_id(_: Request<Body>, params: Params, _: Query, env: Rp
 }
 
 pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_option_to_json_response(
         base_services::get_block_header(
@@ -155,8 +156,8 @@ pub async fn chains_block_id_header(_: Request<Body>, params: Params, _: Query, 
 }
 
 pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_option_to_json_response(
         base_services::get_block_shell_header(
@@ -169,15 +170,15 @@ pub async fn chains_block_id_header_shell(_: Request<Body>, params: Params, _: Q
 }
 
 pub async fn chains_block_id_metadata(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_option_to_json_response(base_services::get_block_metadata(&chain_id, &block_hash, &env), env.log())
 }
 
 pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
     let prefix = params.get_str("any");
 
     result_to_json_response(
@@ -191,7 +192,7 @@ pub async fn context_raw_bytes(_: Request<Body>, params: Params, _: Query, env: 
 }
 
 pub async fn mempool_pending_operations(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let RpcServiceEnvironment { current_mempool_state_storage, log, .. } = env;
     let (pending_operations, _) = services::mempool_services::get_pending_operations(&chain_id, current_mempool_state_storage)?;
     result_to_json_response(Ok(pending_operations), &log)
@@ -203,13 +204,7 @@ pub async fn inject_operation(req: Request<Body>, _: Params, query: Query, env: 
 
     let shell_channel = env.shell_channel();
 
-    // defaults to "main"
-    let chain_id_query = if let Some(chain_id_query) = query.get_str("chain_id") {
-        chain_id_query
-    } else {
-        "main"
-    };
-
+    let chain_id_query = query.get_str("chain_id").unwrap_or(MAIN_CHAIN_ID);
     let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
@@ -231,13 +226,7 @@ pub async fn inject_block(req: Request<Body>, _: Params, query: Query, env: RpcS
 
     let shell_channel = env.shell_channel();
 
-    // defaults to "main"
-    let chain_id_query = if let Some(chain_id_query) = query.get_str("chain_id") {
-        chain_id_query
-    } else {
-        "main"
-    };
-    
+    let chain_id_query = query.get_str("chain_id").unwrap_or(MAIN_CHAIN_ID);
     let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
@@ -261,8 +250,8 @@ pub async fn mempool_request_operations(_: Request<Body>, _: Params, _: Query, e
 }
 
 pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
         base_services::get_block_protocols(
@@ -275,8 +264,8 @@ pub async fn get_block_protocols(_: Request<Body>, params: Params, _: Query, env
 }
 
 pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
         Ok(HashType::BlockHash.hash_to_b58check(&block_hash)),
@@ -285,7 +274,7 @@ pub async fn get_block_hash(_: Request<Body>, params: Params, _: Query, env: Rpc
 }
 
 pub async fn get_chain_id(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
     result_to_json_response(
         Ok(chain_id_to_b58_string(&chain_id)),
@@ -294,8 +283,8 @@ pub async fn get_chain_id(_: Request<Body>, params: Params, _: Query, env: RpcSe
 }
 
 pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
         base_services::get_block_operation_hashes(
@@ -308,8 +297,8 @@ pub async fn get_block_operation_hashes(_: Request<Body>, params: Params, _: Que
 }
 
 pub async fn live_blocks(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
         services::base_services::live_blocks(chain_id, block_hash, &env),
@@ -318,9 +307,9 @@ pub async fn live_blocks(_: Request<Body>, params: Params, _: Query, env: RpcSer
 }
 
 pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id_param = params.get_str("chain_id").unwrap();
+    let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let rpc_request = create_rpc_request(req).await?;
 
@@ -331,9 +320,9 @@ pub async fn preapply_operations(req: Request<Body>, params: Params, _: Query, e
 }
 
 pub async fn preapply_block(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id_param = params.get_str("chain_id").unwrap();
+    let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let rpc_request = create_rpc_request(req).await?;
 

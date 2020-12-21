@@ -6,6 +6,7 @@ use slog::warn;
 
 use crate::{
     result_to_json_response,
+    required_param,
     ServiceResult,
     services,
 };
@@ -13,8 +14,8 @@ use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 
 pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
         services::protocol::get_context_constants_just_for_rpc(
@@ -26,8 +27,8 @@ pub async fn context_constants(_: Request<Body>, params: Params, _: Query, env: 
 }
 
 pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let max_priority = query.get_str("max_priority");
     let level = query.get_str("level");
@@ -51,8 +52,8 @@ pub async fn baking_rights(_: Request<Body>, params: Params, query: Query, env: 
 }
 
 pub async fn endorsing_rights(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let level = query.get_str("level");
     let cycle = query.get_str("cycle");
@@ -75,8 +76,8 @@ pub async fn endorsing_rights(_: Request<Body>, params: Params, query: Query, en
 }
 
 pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id = parse_chain_id(params.get_str("chain_id").unwrap(), &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
         services::protocol::get_votes_listings(
@@ -88,9 +89,9 @@ pub async fn votes_listings(_: Request<Body>, params: Params, _: Query, env: Rpc
 }
 
 pub async fn call_protocol_rpc(req: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let chain_id_param = params.get_str("chain_id").unwrap();
+    let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_id").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let json_request = create_rpc_request(req).await?;
 

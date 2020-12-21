@@ -36,6 +36,16 @@ macro_rules! merge_slices {
     }}
 }
 
+#[macro_export]
+macro_rules! required_param {
+    ($params:expr, $param_name:expr) => {{
+        match $params.get_str($param_name) {
+            Some(param_value) => Ok(param_value),
+            None => Err(failure::format_err!("Missing parameter '{}'", $param_name))
+        }
+    }}
+}
+
 pub type BlockMetadata = HashMap<String, Value>;
 
 /// Object containing information to recreate the full block information
@@ -327,12 +337,15 @@ impl NodeVersion {
     }
 }
 
+pub const MAIN_CHAIN_ID: &'static str = "main";
+pub const TEST_CHAIN_ID: &'static str = "test";
+
 /// Parses [ChainId] from chain_id url param
 pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) -> Result<ChainId, failure::Error> {
     Ok(
         match chain_id_param {
-            "main" => env.main_chain_id().clone(),
-            "test" => {
+            MAIN_CHAIN_ID => env.main_chain_id().clone(),
+            TEST_CHAIN_ID => {
                 // find test chain for main chain
                 let chain_meta_storage = ChainMetaStorage::new(env.persistent_storage());
                 let test_chain = match chain_meta_storage.get_test_chain_id(env.main_chain_id())? {

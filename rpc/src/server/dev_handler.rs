@@ -4,14 +4,14 @@
 use hyper::{Body, Request};
 use slog::warn;
 
-use crate::{empty, make_json_response, result_to_json_response, ServiceResult};
-use crate::helpers::{parse_block_hash, parse_chain_id};
+use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
+use crate::helpers::{parse_block_hash, parse_chain_id, MAIN_CHAIN_ID};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, dev_services};
 
 pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
     // TODO: TE-221 - add optional chain_id to params mapping
-    let chain_id_param = "main";
+    let chain_id_param = MAIN_CHAIN_ID;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
 
     // get block from params or fallback to current_head/genesis
@@ -51,9 +51,9 @@ pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServi
 #[allow(dead_code)]
 pub async fn dev_block_actions(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
     // TODO: TE-221 - add optional chain_id to params mapping
-    let chain_id_param = "main";
+    let chain_id_param = MAIN_CHAIN_ID;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
-    let block_hash = parse_block_hash(&chain_id, params.get_str("block_hash").unwrap(), &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_hash")?, &env)?;
     result_to_json_response(
         dev_services::get_block_actions(
             block_hash,
@@ -64,7 +64,7 @@ pub async fn dev_block_actions(_: Request<Body>, params: Params, _: Query, env: 
 
 #[allow(dead_code)]
 pub async fn dev_contract_actions(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
-    let contract_id = params.get_str("contract_address").unwrap();
+    let contract_id = required_param!(params, "contract_address")?;
     let from_id = query.get_u64("from_id");
     let limit = query.get_usize("limit").unwrap_or(50);
     result_to_json_response(dev_services::get_contract_actions(contract_id, from_id, limit, env.persistent_storage()), env.log())
@@ -74,9 +74,10 @@ pub async fn dev_action_cursor(_: Request<Body>, params: Params, query: Query, e
     let cursor_id = query.get_u64("cursor_id");
     let limit = query.get_u64("limit").map(|limit| limit as usize);
     let action_types = query.get_str("action_types");
+
     result_to_json_response(if let Some(block_hash_param) = params.get_str("block_hash") {
         // TODO: TE-221 - add optional chain_id to params mapping
-        let chain_id_param = "main";
+        let chain_id_param = MAIN_CHAIN_ID;
         let chain_id = parse_chain_id(chain_id_param, &env)?;
         let block_hash = parse_block_hash(&chain_id, block_hash_param, &env)?;
 
