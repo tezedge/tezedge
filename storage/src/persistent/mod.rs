@@ -11,6 +11,7 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
+pub use sled_error::SledError;
 
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
@@ -21,6 +22,8 @@ pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
+pub mod kv_store;
+pub mod sled_error;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -127,9 +130,10 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(kv: Arc<DB>, sled_db: Arc<sled::Db>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
-        let merkle = MerkleStorage::new(Box::new(in_memory::KVStore::new()));
+        let merkle_db = sled_db.open_tree("merkle").unwrap();
+        let merkle = MerkleStorage::new(Box::new(crate::persistent::kv_store::KVStore::new(merkle_db)));
         Self {
             clog,
             kv: kv.clone(),

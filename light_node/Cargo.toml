@@ -29,3 +29,4 @@ storage = { path = "../storage" }
 shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }
 rpc = { path = "../rpc" }
+sled = "0.34.6"

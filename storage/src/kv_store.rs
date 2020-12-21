@@ -1,9 +1,30 @@
-use failure::Fail;
+use failure::{Fail, Error};
+
+use crate::persistent::SchemaError;
+use crate::persistent::SledError;
 
 #[derive(Debug, Fail)]
 pub enum KVStoreError {
     #[fail(display = "Entry with key already exists")]
     EntryOccupied,
+    #[fail(display = "Schema error: {}", error)]
+    SchemaError {
+        error: SchemaError,
+    },
+    #[fail(display = "Sled error: {}", error)]
+    SledError { error: SledError },
+}
+
+impl From<SchemaError> for KVStoreError {
+    fn from(error: SchemaError) -> Self {
+        KVStoreError::SchemaError { error }
+    }
+}
+
+impl<E: Into<SledError>> From<E> for KVStoreError {
+    fn from(error: E) -> Self {
+        KVStoreError::SledError { error: error.into() }
+    }
 }
 
 pub trait WriteBatch {
@@ -20,7 +41,7 @@ pub trait KVStore {
     type Key;
     type Value;
 
-    fn is_persisted(&self) -> bool { false }
+    fn is_persisted(&self) -> bool;
 
     /// put kv in map if key doesn't exist. If it does then fail.
     fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error>;
@@ -62,6 +83,10 @@ impl<K, V> BasicWriteBatch<K, V> {
     pub fn is_empty(&self) -> bool {
         self.ops.is_empty()
     }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, BasicWriteBatchOp<K, V>> {
+        self.into_iter()
+    }
 }
 
 impl<K, V> Default for BasicWriteBatch<K, V> {
@@ -93,5 +118,14 @@ impl<K, V> IntoIterator for BasicWriteBatch<K, V> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.ops.into_iter()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a BasicWriteBatch<K, V> {
+    type Item = &'a BasicWriteBatchOp<K, V>;
+    type IntoIter = std::slice::Iter<'a, BasicWriteBatchOp<K, V>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.ops.iter()
     }
 }

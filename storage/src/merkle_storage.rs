@@ -423,8 +423,9 @@ impl MerkleStorage {
         Ok(())
     }
 
+    #[inline]
     pub fn is_persisted(&self) -> bool {
-        true
+        self.db.is_persisted()
     }
 
     /// Get value from current staged root

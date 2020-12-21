@@ -22,6 +22,7 @@ crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
+sled = "0.34.6"
 
 [[bench]]
 name = "predecessor_benchmarks"

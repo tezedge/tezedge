@@ -542,6 +542,10 @@ fn main() {
             actor_system
         ),
     };
+    let sled_db = match sled::open(&env.storage.db_path) {
+        Ok(db) => Arc::new(db),
+        Err(e) => shutdown_and_exit!(error!(log, "Failed to create Sled database at '{:?}', reason: {:?}", &env.storage.db_path, e;), actor_system)
+    };
     debug!(log, "Loaded RocksDB database");
 
     match check_database_compatibility(rocks_db.clone(), DATABASE_VERSION, &tezos_env, &log) {
