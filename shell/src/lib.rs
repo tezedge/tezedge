@@ -4,10 +4,6 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
-use std::sync::{Arc, Condvar, Mutex};
-
-use slog::{Logger, warn};
-
 mod collections;
 mod state;
 
@@ -19,27 +15,7 @@ pub mod chain_manager;
 pub mod peer_manager;
 pub mod validation;
 pub mod mempool;
-
-/// Simple condvar synchronized result callback
-pub type ResultCallback = Option<Arc<(Mutex<Option<Result<(), failure::Error>>>, Condvar)>>;
-
-fn handle_result_callback<R>(result_callback: ResultCallback, result: R, log: &Logger)
-    where R: FnOnce() -> Result<(), failure::Error>
-{
-    if let Some(result_callback) = result_callback {
-        let &(ref lock, ref cvar) = &*result_callback;
-        match lock.lock() {
-            Ok(mut result_guard) => {
-                *result_guard = Some(result());
-                cvar.notify_all();
-            }
-            Err(e) => {
-                warn!(log, "Failed to lock result_callback"; "reason" => format!("{}", e));
-                cvar.notify_all();
-            }
-        }
-    }
-}
+pub mod utils;
 
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]

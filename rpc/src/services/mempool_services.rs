@@ -13,9 +13,10 @@ use serde_json::Value;
 use slog::info;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
-use shell::{ResultCallback, validation};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use shell::utils::try_wait_for_condvar_result;
+use shell::validation;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
 use tezos_api::ffi::{Applied, Errored};
@@ -27,6 +28,7 @@ use crate::helpers::get_prevalidators;
 use crate::server::RpcServiceEnvironment;
 
 const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
+const INJECT_OPERATION_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct MempoolOperations {
@@ -149,7 +151,6 @@ pub fn inject_operation(
     operation_data: &str,
     env: &RpcServiceEnvironment,
     shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
-    
     let start_request = SystemTime::now();
 
     let persistent_storage = env.persistent_storage();
@@ -183,12 +184,12 @@ pub fn inject_operation(
 
     // store operation in mempool storage
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
-    let operation_hash_as_string = HashType::OperationHash.hash_to_b58check(&operation_hash);
+    let operation_hash_b58check_string = HashType::OperationHash.hash_to_b58check(&operation_hash);
     let ttl = SystemTime::now() + Duration::from_secs(60);
     mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
-    let result_callback: ResultCallback = if is_async {
+    let result_callback = if is_async {
         // if async no wait
         None
     } else {
@@ -211,42 +212,24 @@ pub fn inject_operation(
 
     // wait for result
     if let Some(result_callback) = result_callback {
-        let &(ref lock, ref cvar) = &*result_callback;
-        let lock = lock
-            .lock()
-            .map_err(|e| format_err!("Operation injection - lock error, operation_hash: {}, reason: {}!", &operation_hash_as_string, e))?;
-        match cvar.wait_timeout(lock, INJECT_BLOCK_WAIT_TIMEOUT) {
-            Ok((result, timeout)) => {
-                // process timeout
-                if timeout.timed_out() {
-                    return Err(format_err!("Operation injection - reached timeout: '{:?}'!, operation_hash: {}!", INJECT_BLOCK_WAIT_TIMEOUT, &operation_hash_as_string));
-                }
-
-                // process result
-                match result.as_ref() {
-                    Some(result) => {
-                        if let Err(e) = result {
-                            return Err(format_err!("Operation injection - error received, operation_hash: {}, reason: {}!", &operation_hash_as_string, e));
-                        }
-                        info!(env.log(),
-                              "Operation injected";
-                              "operation_hash" => &operation_hash_as_string,
-                              "elapsed" => format!("{:?}", start_request.elapsed()?),
-                              "elapsed_async" => format!("{:?}", start_async.elapsed()?),
-                        );
-                    }
-                    None => {
-                        return Err(format_err!("Operation injection - no result received, operation_hash: {}!", &operation_hash_as_string));
-                    }
-                }
+        let wait_result = try_wait_for_condvar_result(result_callback, INJECT_OPERATION_WAIT_TIMEOUT)
+            .map_err(|e| format_err!("Operation injection - failed to inject, operation_hash: {}, reason: {:?}!", &operation_hash_b58check_string, e))?;
+        match wait_result {
+            Ok(_) => {
+                info!(env.log(),
+                  "Operation injected";
+                  "operation_hash" => &operation_hash_b58check_string,
+                  "elapsed" => format!("{:?}", start_request.elapsed()?),
+                  "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+            );
             }
             Err(e) => {
-                return Err(format_err!("Operation injection - lock/condvar error, timeout: '{:?}' operation_hash: {}, reason: {}!", INJECT_BLOCK_WAIT_TIMEOUT, &operation_hash_as_string, e));
+                return Err(format_err!("Operation injection - error received, operation_hash: {}, reason: {}!", &operation_hash_b58check_string, e));
             }
-        }
+        };
     }
 
-    Ok(operation_hash_as_string)
+    Ok(operation_hash_b58check_string)
 }
 
 pub fn inject_block(
@@ -260,9 +243,10 @@ pub fn inject_block(
     let start_request = SystemTime::now();
 
     let header: BlockHeaderWithHash = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?.try_into()?;
+    let block_hash_b58check_string = HashType::BlockHash.hash_to_b58check(&header.hash);
     info!(env.log(),
           "Block injection requested";
-          "block_hash" => HashType::BlockHash.hash_to_b58check(&header.hash),
+          "block_hash" => block_hash_b58check_string.clone(),
           "is_async" => is_async,
     );
 
@@ -300,7 +284,7 @@ pub fn inject_block(
     };
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
-    let result_callback: ResultCallback = if is_async {
+    let result_callback = if is_async {
         // if async no wait
         None
     } else {
@@ -327,43 +311,25 @@ pub fn inject_block(
 
     // wait for result
     if let Some(result_callback) = result_callback {
-        let &(ref lock, ref cvar) = &*result_callback;
-        let lock = lock
-            .lock()
-            .map_err(|e| format_err!("Block injection - lock error, block_hash: {}, reason: {}!", HashType::BlockHash.hash_to_b58check(&header.hash), e))?;
-        match cvar.wait_timeout(lock, INJECT_BLOCK_WAIT_TIMEOUT) {
-            Ok((result, timeout)) => {
-                // process timeout
-                if timeout.timed_out() {
-                    return Err(format_err!("Block injection - reached timeout: '{:?}'!, block_hash: {}!", INJECT_BLOCK_WAIT_TIMEOUT, HashType::BlockHash.hash_to_b58check(&header.hash)));
-                }
-
-                // process result
-                match result.as_ref() {
-                    Some(result) => {
-                        if let Err(e) = result {
-                            return Err(format_err!("Block injection - error received, block_hash: {}, reason: {}!", HashType::BlockHash.hash_to_b58check(&header.hash), e));
-                        }
-                        info!(env.log(),
-                              "Block injected";
-                              "block_hash" => HashType::BlockHash.hash_to_b58check(&header.hash),
-                              "elapsed" => format!("{:?}", start_request.elapsed()?),
-                              "elapsed_async" => format!("{:?}", start_async.elapsed()?),
-                        );
-                    }
-                    None => {
-                        return Err(format_err!("Block injection - no result received, block_hash: {}!", HashType::BlockHash.hash_to_b58check(&header.hash)));
-                    }
-                }
+        let wait_result = try_wait_for_condvar_result(result_callback, INJECT_BLOCK_WAIT_TIMEOUT)
+            .map_err(|e| format_err!("Block injection - failed to inject, block_hash: {}, reason: {:?}!", &block_hash_b58check_string, e))?;
+        match wait_result {
+            Ok(_) => {
+                info!(env.log(),
+                  "Block injected";
+                  "block_hash" => block_hash_b58check_string.clone(),
+                  "elapsed" => format!("{:?}", start_request.elapsed()?),
+                  "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+            );
             }
             Err(e) => {
-                return Err(format_err!("Block injection - lock/condvar error, timeout: '{:?}' block_hash: {}, reason: {}!", INJECT_BLOCK_WAIT_TIMEOUT, HashType::BlockHash.hash_to_b58check( & header.hash), e));
+                return Err(format_err!("Block injection - error received, block_hash: {}, reason: {}!", &block_hash_b58check_string, e));
             }
-        }
+        };
     }
 
     // return the block hash to the caller
-    Ok(HashType::BlockHash.hash_to_b58check(&header.hash))
+    Ok(block_hash_b58check_string)
 }
 
 pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure::Error> {

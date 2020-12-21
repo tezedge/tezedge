@@ -15,7 +15,7 @@ use storage::mempool_storage::MempoolOperationType;
 use tezos_messages::Head;
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 
-use crate::ResultCallback;
+use crate::utils::CondvarResult;
 
 /// Message informing actors about successful block application by protocol
 #[derive(Clone, Debug, Getters)]
@@ -59,7 +59,7 @@ pub struct AllBlockOperationsReceived {
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
     pub operation_type: MempoolOperationType,
-    pub result_callback: ResultCallback,
+    pub result_callback: Option<CondvarResult<(), failure::Error>>,
 }
 
 #[derive(Clone, Debug)]
@@ -81,7 +81,7 @@ pub enum ShellChannelMsg {
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
     AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
-    InjectBlock(InjectBlock, ResultCallback),
+    InjectBlock(InjectBlock, Option<CondvarResult<(), failure::Error>>),
     RequestCurrentHead(RequestCurrentHead),
     ShuttingDown(ShuttingDown),
 }

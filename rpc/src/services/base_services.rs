@@ -8,7 +8,7 @@ use shell::shell_channel::BlockApplied;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, context_key};
 use storage::block_storage::BlockJsonData;
 use storage::context::ContextApi;
-use storage::merkle_storage::StringTree;
+use storage::merkle_storage::StringTreeEntry;
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
@@ -80,7 +80,8 @@ pub(crate) fn live_blocks(_: ChainId, block_hash: BlockHash, env: &RpcServiceEnv
 pub(crate) fn get_context_raw_bytes(
     block_hash: &BlockHash,
     prefix: Option<&str>,
-    env: &RpcServiceEnvironment) -> Result<StringTree, failure::Error> {
+    depth: Option<usize>,
+    env: &RpcServiceEnvironment) -> Result<StringTreeEntry, failure::Error> {
 
     // we assume that root is at "/data"
     let mut key_prefix = context_key!("data");
@@ -92,7 +93,7 @@ pub(crate) fn get_context_raw_bytes(
     };
 
     let ctx_hash = get_context_hash(block_hash, env)?;
-    Ok(env.tezedge_context().get_context_tree_by_prefix(&ctx_hash, &key_prefix)?)
+    Ok(env.tezedge_context().get_context_tree_by_prefix(&ctx_hash, &key_prefix, depth)?)
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata

@@ -38,7 +38,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::{handle_result_callback, PeerConnectionThreshold, ResultCallback, validation};
+use crate::{PeerConnectionThreshold, validation};
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef};
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::mempool::mempool_state::MempoolState;
@@ -46,6 +46,7 @@ use crate::shell_channel::{AllBlockOperationsReceived, BlockReceived, InjectBloc
 use crate::state::block_state::{BlockAcceptanceResult, BlockchainState, HeadResult, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
 use crate::subscription::*;
+use crate::utils::{CondvarResult, dispatch_condvar_result};
 
 /// Limit to how many blocks to request in a batch
 const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
@@ -89,7 +90,7 @@ pub struct CheckMempoolCompleteness;
 #[derive(Clone, Debug)]
 pub struct ApplyCompletedBlock {
     block_hash: BlockHash,
-    result_callback: ResultCallback,
+    result_callback: Option<CondvarResult<(), failure::Error>>,
 }
 
 /// Message commands [`ChainManager`] to ask all connected peers for their current branch.
@@ -892,7 +893,7 @@ impl ChainManager {
         Ok(())
     }
 
-    fn process_injected_block(&mut self, injected_block: InjectBlock, result_callback: ResultCallback, ctx: &Context<ChainManagerMsg>) -> Result<(), Error> {
+    fn process_injected_block(&mut self, injected_block: InjectBlock, result_callback: Option<CondvarResult<(), failure::Error>>, ctx: &Context<ChainManagerMsg>) -> Result<(), Error> {
         let InjectBlock { block_header: block_header_with_hash, operations, operation_paths } = injected_block;
         let log = ctx.system.log().new(slog::o!("block" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)));
 
@@ -906,11 +907,13 @@ impl ChainManager {
                 }) {
                 Ok(data) => data,
                 Err(e) => {
-                    handle_result_callback(
+                    if let Err(e) = dispatch_condvar_result(
                         result_callback,
                         || Err(format_err!("Failed to store injected block, block_hash: {}, reason: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), e)),
-                        &log,
-                    );
+                        true,
+                    ) {
+                        warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                    }
                     return Err(e.into());
                 }
             };
@@ -936,22 +939,26 @@ impl ChainManager {
                 let operations = match operations {
                     Some(operations) => operations,
                     None => {
-                        handle_result_callback(
+                        if let Err(e) = dispatch_condvar_result(
                             result_callback,
                             || Err(format_err!("Missing operations in request, block_hash: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash))),
-                            &log,
-                        );
+                            true,
+                        ) {
+                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        }
                         return Err(format_err!("Missing operations in request, block_hash: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)));
                     }
                 };
                 let op_paths = match operation_paths {
                     Some(op_paths) => op_paths,
                     None => {
-                        handle_result_callback(
+                        if let Err(e) = dispatch_condvar_result(
                             result_callback,
                             || Err(format_err!("Missing operation paths in request, block_hash: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash))),
-                            &log,
-                        );
+                            true,
+                        ) {
+                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        }
                         return Err(format_err!("Missing operation paths in request, block_hash: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)));
                     }
                 };
@@ -965,11 +972,13 @@ impl ChainManager {
                     let operation_hashes_path = match op_paths.get(idx) {
                         Some(path) => path.to_owned(),
                         None => {
-                            handle_result_callback(
+                            if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || Err(format_err!("Missing operation paths in request for index: {}, block_hash: {}", idx, HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash))),
-                                &log,
-                            );
+                                true,
+                            ) {
+                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            }
                             return Err(format_err!("Missing operation paths in request for index: {}, block_hash: {}", idx, HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)));
                         }
                     };
@@ -1000,11 +1009,13 @@ impl ChainManager {
                             all_operations_received
                         }
                         Err(e) => {
-                            handle_result_callback(
+                            if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || Err(format_err!("Failed to store injected block operations, block_hash: {}, reason: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), e)),
-                                &log,
-                            );
+                                true,
+                            ) {
+                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            }
                             return Err(e.into());
                         }
                     };
@@ -1026,29 +1037,35 @@ impl ChainManager {
                         warn!(log, "Injected block cannot be applied - will be ignored!";
                                    "block_predecessor" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.header.predecessor()),
                                    "are_operations_complete" => are_operations_complete);
-                        handle_result_callback(
+                        if let Err(e) = dispatch_condvar_result(
                             result_callback,
                             || Err(format_err!("Injected block cannot be applied - will be ignored!, block_hash: {}, are_operations_complete: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), are_operations_complete)),
-                            &log,
-                        );
+                            true,
+                        ) {
+                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        }
                     }
                 }
                 Err(e) => {
-                    handle_result_callback(
+                    if let Err(e) = dispatch_condvar_result(
                         result_callback,
                         || Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), e)),
-                        &log,
-                    );
+                        true,
+                    ) {
+                        warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                    }
                     return Err(e.into());
                 }
             };
         } else {
             warn!(log, "Injected duplicated block - will be ignored!");
-            handle_result_callback(
+            if let Err(e) = dispatch_condvar_result(
                 result_callback,
                 || Err(format_err!("Injected duplicated block - will be ignored!, block_hash: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash))),
-                &log,
-            );
+                true,
+            ) {
+                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+            }
         }
 
         Ok(())
