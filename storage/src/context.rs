@@ -11,7 +11,7 @@ use failure::Fail;
 use crypto::hash::{BlockHash, ContextHash, HashType};
 
 use crate::{BlockStorage, BlockStorageReader, StorageError};
-use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTree};
+use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTreeEntry};
 
 /// Abstraction on context manipulation
 pub trait ContextApi {
@@ -35,7 +35,7 @@ pub trait ContextApi {
     // get a list of all key-values under a certain key prefix
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError>;
     // get entire context tree in string form for JSON RPC
-    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError>;
+    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError>;
 
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
@@ -147,10 +147,10 @@ impl ContextApi for TezedgeContext {
         merkle.get_key_values_by_prefix(&context_hash_arr, prefix)
     }
 
-    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError> {
+    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
         let merkle = self.merkle.read().expect("lock poisoning");
-        merkle.get_context_tree_by_prefix(&context_hash_arr, prefix)
+        merkle.get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
     }
 
     fn get_last_commit_hash(&self) -> Option<Vec<u8>> {

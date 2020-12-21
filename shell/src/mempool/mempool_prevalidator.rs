@@ -35,7 +35,7 @@ use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::mempool::mempool_state::collect_mempool;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
-use crate::{handle_result_callback, ResultCallback};
+use crate::utils::{CondvarResult, dispatch_condvar_result};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -52,7 +52,7 @@ pub struct MempoolPrevalidator {
 
 enum Event {
     NewHead(BlockHash, Arc<BlockHeader>),
-    ValidateOperation(OperationHash, MempoolOperationType, ResultCallback),
+    ValidateOperation(OperationHash, MempoolOperationType, Option<CondvarResult<(), failure::Error>>),
     ShuttingDown,
 }
 
@@ -295,13 +295,27 @@ fn process_prevalidation(
                         let was_added_to_pending = current_mempool_state_storage.write()?.add_to_pending(&oph, operation.into());
                         if !was_added_to_pending {
                             trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
-                            handle_result_callback(result_callback, || Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", HashType::OperationHash.hash_to_b58check(&oph))), log)
+                            if let Err(e) = dispatch_condvar_result(
+                                result_callback,
+                                || Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", HashType::OperationHash.hash_to_b58check(&oph))),
+                                true,
+                            ) {
+                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            }
                         } else {
-                            handle_result_callback(result_callback, || Ok(()), log);
+                            if let Err(e) = dispatch_condvar_result(result_callback, || Ok(()), true) {
+                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            }
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
-                        handle_result_callback(result_callback, || Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", HashType::OperationHash.hash_to_b58check(&oph))), log)
+                        if let Err(e) = dispatch_condvar_result(
+                            result_callback,
+                            || Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", HashType::OperationHash.hash_to_b58check(&oph))),
+                            true,
+                        ) {
+                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        }
                     }
                 }
                 Event::ShuttingDown => {

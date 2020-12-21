@@ -198,13 +198,15 @@ impl KeyValueSchema for MerkleStorage {
 }
 
 // Tree in String form needed for JSON RPCs
-pub type StringTree = BTreeMap<String, StringTreeEntry>;
+pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
 
+/// Tree in String form needed for JSON RPCs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StringTreeEntry {
-    Tree(StringTree),
+    Tree(StringTreeMap),
     Blob(String),
+    Null,
 }
 
 impl MerkleStorage {
@@ -297,7 +299,11 @@ impl MerkleStorage {
 
     /// Go recursively down the tree from Entry, build string tree and return it
     /// (or return hex value if Blob)
-    fn get_context_recursive(&self, path: &str, entry: &Entry) -> Result<StringTreeEntry, MerkleError> {
+    fn get_context_recursive(&self, path: &str, entry: &Entry, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
+        if let Some(0) = depth {
+            return Ok(StringTreeEntry::Null)
+        }
+
         match entry {
             Entry::Blob(blob) => {
                 Ok(StringTreeEntry::Blob(hex::encode(blob).to_string()))
@@ -305,11 +311,12 @@ impl MerkleStorage {
             Entry::Tree(tree) => {
                 // Go through all descendants and gather errors. Remap error if there is a failure
                 // anywhere in the recursion paths. TODO: is revert possible?
-                let mut new_tree = StringTree::new();
+                let mut new_tree = StringTreeMap::new();
                 for (key, child_node) in tree.iter() {
                     let fullpath = path.to_owned() + "/" + key;
                     let e = self.get_entry(&child_node.entry_hash)?;
-                    new_tree.insert(key.to_owned(), self.get_context_recursive(&fullpath, &e)?);
+                    let rdepth = depth.map(|d| d-1);
+                    new_tree.insert(key.to_owned(), self.get_context_recursive(&fullpath, &e, rdepth)?);
                 }
                 Ok(StringTreeEntry::Tree(new_tree))
             }
@@ -321,8 +328,13 @@ impl MerkleStorage {
     }
 
     /// Get context tree under given prefix in string form (for JSON)
-    pub fn get_context_tree_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey) -> Result<StringTree, MerkleError> {
-        let mut out = StringTree::new();
+    /// depth - None returns full tree
+    pub fn get_context_tree_by_prefix(&self, context_hash: &EntryHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
+        if let Some(0) = depth {
+            return Ok(StringTreeEntry::Null)
+        }
+
+        let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
         let prefixed_tree = self.find_tree(&root_tree, prefix)?;
@@ -338,10 +350,11 @@ impl MerkleStorage {
 
             // construct full path as Tree key is only one chunk of it
             let fullpath = self.key_to_string(prefix) + delimiter + key;
-            out.insert(key.to_owned(), self.get_context_recursive(&fullpath, &entry)?);
+            let rdepth = depth.map(|d| d-1);
+            out.insert(key.to_owned(), self.get_context_recursive(&fullpath, &entry, rdepth)?);
         }
 
-        Ok(out)
+        Ok(StringTreeEntry::Tree(out))
     }
 
     /// Construct Vec of all context key-values under given prefix
@@ -758,6 +771,7 @@ mod tests {
     use std::{env, fs};
     use std::path::{Path, PathBuf};
 
+    use assert_json_diff::assert_json_eq;
     use rocksdb::{DB, Options};
 
     use super::*;
@@ -1050,12 +1064,45 @@ mod tests {
         let db_name = "ms_test_get_context_tree_by_prefix";
         { clean_db(db_name); }
 
-        let all_json = "{\"adata\":{\"b\":{\"x\":{\"y\":\"090a\"}}},\
-                        \"data\":{\"a\":{\"x\":{\"y\":\"0506\"}},\
-                        \"b\":{\"x\":{\"y\":\"0708\"}},\"c\":\"0102\"}}";
-        let data_json = "{\
-                        \"a\":{\"x\":{\"y\":\"0506\"}},\
-                        \"b\":{\"x\":{\"y\":\"0708\"}},\"c\":\"0102\"}";
+        let all_json = serde_json::json!(
+            {
+                "adata": {
+                    "b": {
+                            "x": {
+                                    "y":"090a"
+                            }
+                    }
+                },
+                "data": {
+                    "a": {
+                            "x": {
+                                    "y":"0506"
+                            }
+                    },
+                    "b": {
+                            "x": {
+                                    "y":"0708"
+                            }
+                    },
+                    "c":"0102"
+                }
+            }
+        );
+        let data_json = serde_json::json!(
+            {
+                "a": {
+                        "x": {
+                                "y":"0506"
+                        }
+                },
+                "b": {
+                        "x": {
+                                "y":"0708"
+                        }
+                },
+                "c":"0102"
+            }
+        );
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
@@ -1074,9 +1121,53 @@ mod tests {
         //data-c[1,2]
         //adata-b-x-y[9,10]
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
-        let rv_all = storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec![]).unwrap();
-        let rv_data = storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec!["data".to_string()]).unwrap();
-        assert_eq!(all_json, serde_json::to_string(&rv_all).unwrap());
-        assert_eq!(data_json, serde_json::to_string(&rv_data).unwrap());
+
+        // without depth
+        let rv_all = storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec![], None).unwrap();
+        assert_json_eq!(all_json, serde_json::to_value(&rv_all).unwrap());
+
+        let rv_data = storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec!["data".to_string()], None).unwrap();
+        assert_json_eq!(data_json, serde_json::to_value(&rv_data).unwrap());
+
+        // with depth 0
+        assert_json_eq!(
+            serde_json::json!(
+                null
+            ),
+            serde_json::to_value(
+                storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec![], Some(0)).unwrap()
+            ).unwrap()
+        );
+
+        // with depth 1
+        assert_json_eq!(
+            serde_json::json!(
+                {
+                    "adata": null,
+                    "data": null
+                }
+            ),
+            serde_json::to_value(
+                storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec![], Some(1)).unwrap()
+            ).unwrap()
+        );
+        // with depth 2
+        assert_json_eq!(
+            serde_json::json!(
+                {
+                    "adata": {
+                        "b" : null
+                    },
+                    "data": {
+                        "a" : null,
+                        "b" : null,
+                        "c" : null,
+                    },
+                }
+            ),
+            serde_json::to_value(
+                storage.get_context_tree_by_prefix(&commit.as_ref().unwrap(), &vec![], Some(2)).unwrap()
+            ).unwrap()
+        );
     }
 }

@@ -202,7 +202,7 @@ pub fn store_applied_block_result(
     block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
     block_result: ApplyBlockResponse,
-    block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData, ContextHash), StorageError> {
+    block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
 
     // store result data - json and additional data
     let block_json_data = BlockJsonDataBuilder::default()
@@ -226,7 +226,7 @@ pub fn store_applied_block_result(
     block_metadata.set_is_applied(true);
     block_meta_storage.put(&block_hash, &block_metadata)?;
 
-    Ok((block_json_data, block_additional_data, block_result.context_hash))
+    Ok((block_json_data, block_additional_data))
 }
 
 /// Stores commit_genesis result to storage and mark genesis block as applied, if everythnig is ok.

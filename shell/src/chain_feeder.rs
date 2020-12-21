@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime};
 
 use failure::{Error, Fail, format_err};
 use riker::actors::*;
-use slog::{debug, info, Logger, trace, warn};
+use slog::{debug, error, info, Logger, trace, warn};
 
 use crypto::hash::{BlockHash, ContextHash, HashType};
 use storage::{BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, initialize_storage_with_genesis_block, OperationsMetaStorage, StorageError, StorageInitInfo, store_applied_block_result, store_commit_genesis_result};
@@ -25,9 +25,9 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_wrapper::service::{handle_protocol_service_error, IpcCmdServer, ProtocolController, ProtocolServiceError};
 
-use crate::{handle_result_callback, ResultCallback};
 use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::subscription::subscribe_to_shell_events;
+use crate::utils::{CondvarResult, dispatch_condvar_result};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -37,11 +37,11 @@ pub struct ApplyBlock {
     block_hash: BlockHash,
     request: Arc<ApplyBlockRequest>,
     /// Callback can be used to wait for apply block result
-    result_callback: ResultCallback,
+    result_callback: Option<CondvarResult<(), failure::Error>>,
 }
 
 impl ApplyBlock {
-    pub(crate) fn new(block_hash: BlockHash, request: ApplyBlockRequest, result_callback: ResultCallback) -> Self {
+    pub(crate) fn new(block_hash: BlockHash, request: ApplyBlockRequest, result_callback: Option<CondvarResult<(), failure::Error>>) -> Self {
         ApplyBlock {
             block_hash,
             request: Arc::new(request),
@@ -223,7 +223,9 @@ impl Receive<ApplyBlock> for ChainFeeder {
         let result_callback = msg.result_callback.clone();
         if let Err(e) = self.send_to_queue(msg.into()) {
             warn!(ctx.system.log(), "Failed to send `apply block request` to queue"; "reason" => format!("{}", e));
-            handle_result_callback(result_callback, || Err(e), &ctx.system.log());
+            if let Err(e) = dispatch_condvar_result(result_callback, || Err(e), true) {
+                warn!(ctx.system.log(), "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+            }
         }
     }
 }
@@ -244,6 +246,10 @@ impl Receive<ShellChannelMsg> for ChainFeeder {
 pub enum FeedChainError {
     #[fail(display = "Cannot resolve current head, no genesis was commited")]
     UnknownCurrentHeadError,
+    #[fail(display = "Context is not stored, context_hash: {}", context_hash)]
+    MissingContextError {
+        context_hash: String,
+    },
     #[fail(display = "Storage read/write error! Reason: {:?}", error)]
     StorageError {
         error: StorageError
@@ -318,14 +324,18 @@ fn feed_chain_to_protocol(
                             if meta.is_applied() {
                                 // block already applied - ok, doing nothing
                                 debug!(log, "Block is already applied (feeder)"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash));
-                                handle_result_callback(result_callback, || Err(format_err!("Block is already applied")), log);
+                                if let Err(e) = dispatch_condvar_result(result_callback, || Err(format_err!("Block is already applied")), true) {
+                                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                }
                                 continue;
                             }
                             meta
                         }
                         None => {
                             warn!(log, "Block metadata not found (feeder)"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash));
-                            handle_result_callback(result_callback, || Err(format_err!("Block metadata not found")), log);
+                            if let Err(e) = dispatch_condvar_result(result_callback, || Err(format_err!("Block metadata not found")), true) {
+                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            }
                             continue;
                         }
                     };
@@ -338,6 +348,25 @@ fn feed_chain_to_protocol(
                                 "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
                                 "validation_result_message" => &apply_block_result.validation_result_message);
 
+                            // we need to check and wait for context_hash to be 100% sure, that everything is ok
+                            if let Err(e) = wait_for_context(context, &apply_block_result.context_hash) {
+                                error!(log,
+                                      "Failed to wait for context";
+                                      "block" => HashType::BlockHash.hash_to_b58check(&block_hash),
+                                      "context" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
+                                      "reason" => format!("{}", e)
+                                );
+                                if let Err(e) = dispatch_condvar_result(
+                                    result_callback,
+                                    || Err(format_err!("Failed to wait for context, context_hash: {}, reason: {}", HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash), e)
+                                    ), true) {
+                                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                }
+                                return Err(FeedChainError::MissingContextError {
+                                    context_hash: HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash)
+                                });
+                            }
+
                             // Lets mark header as applied and store result
                             // store success result
                             let block_json_data = match store_applied_block_result(
@@ -347,24 +376,20 @@ fn feed_chain_to_protocol(
                                 apply_block_result,
                                 &mut current_head_meta,
                             ) {
-                                Ok((block_json_data, _, context_hash)) => {
+                                Ok((block_json_data, _)) => {
                                     // now everythings stored, we are done
 
-                                    // we need to also check and wait for context_hash
-                                    // @adonagy - Note: We need to wait for the context to be resolved, if not, it can lead to race conditions
-                                    // e.g: test_many_bakers.py -> start 10 nodes, activate protocol on 0, launch bakers on 5 nodes
-                                    // The problem is that the baker deamon 'monitors' the chain for new current_heads and when the node
-                                    // claims it has a new current head, its context is not neceserally resolved(especially true for a block with new
-                                    // protocol activation). So when the bakers sees the new current head, it requests /chains/main/blocks/head/context/constants,
-                                    // the rpc tries to get the context for the block (so it can return the constants) from the context storage, but it is not yet resolved so it returns a 
-                                    // UnknownContextHashError crashning the baker daemon
-                                    let context_result = wait_for_context(context, &context_hash);
-                                    handle_result_callback(result_callback, || context_result, log);
+                                    // notify condvar
+                                    if let Err(e) = dispatch_condvar_result(result_callback, || Ok(()), true) {
+                                        warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                    }
 
                                     block_json_data
                                 }
                                 Err(e) => {
-                                    handle_result_callback(result_callback, || Err(format_err!("Failed to store applied result, reason: {}", e)), log);
+                                    if let Err(e) = dispatch_condvar_result(result_callback, || Err(format_err!("Failed to store applied result, reason: {}", e)), true) {
+                                        warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                    }
                                     return Err(e.into());
                                 }
                             };
@@ -382,11 +407,13 @@ fn feed_chain_to_protocol(
                             }
                         }
                         Err(pse) => {
+                            if let Err(e) = dispatch_condvar_result(result_callback, || Err(format_err!("{}", pse)), true) {
+                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            }
                             handle_protocol_service_error(
                                 pse,
                                 |e| warn!(log, "Failed to apply block"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash), "reason" => format!("{:?}", e)),
                             )?;
-                            handle_result_callback(result_callback, || Err(Error::from(pse)), log);
                         }
                     }
                 }

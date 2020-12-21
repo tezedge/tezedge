@@ -95,9 +95,9 @@ impl<T, F> Routes<T> for PathTree<MethodHandler>
         F: Future<Output=HResult> + Send + 'static
 {
     fn handle(&mut self, allowed_methods: HashSet<Method>, path: &str, f: T) {
-        let allowed_methods_arc = Arc::new(allowed_methods);
+        let allowed_methods = Arc::new(allowed_methods);
         self.insert(path, MethodHandler::new(
-            allowed_methods_arc.clone(),
+            allowed_methods.clone(),
             Arc::new(move |req, params, query, env| {
                 Box::new(f(req, params, query, env))
             }),
@@ -105,7 +105,7 @@ impl<T, F> Routes<T> for PathTree<MethodHandler>
         self.insert(&format!("/describe{}", path), MethodHandler::new(
             Arc::new(hash_set![Method::GET]),
             Arc::new(move |req, params, query, env| {
-                Box::new(shell_handler::describe(allowed_methods_arc.clone(), req, params, query, env))
+                Box::new(shell_handler::describe(allowed_methods.clone(), req, params, query, env))
             })
         ));
     }

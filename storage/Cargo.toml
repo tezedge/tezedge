@@ -26,6 +26,7 @@ tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 
 [dev-dependencies]
+assert-json-diff = "1.0.0"
 hex = "0.4"
 maplit = "1.0"
 rand = "0.7.3"
