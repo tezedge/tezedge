@@ -16,6 +16,7 @@ use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema,
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
+pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
@@ -29,12 +30,13 @@ pub trait BlockMetaStorageReader: Sync + Send {
 
 #[derive(Clone)]
 pub struct BlockMetaStorage {
-    kv: Arc<BlockMetaStorageKV>
+    kv: Arc<BlockMetaStorageKV>,
+    predecessors_index: Arc<PredecessorsIndexStorageKV>,
 }
 
 impl BlockMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        BlockMetaStorage { kv: persistent_storage.kv() }
+        BlockMetaStorage { kv: persistent_storage.kv(), predecessors_index: persistent_storage.kv() }
     }
 
 
@@ -304,6 +306,16 @@ impl Meta {
             chain_id: genesis_chain_id.clone(),
         }
     }
+
+    pub fn new(is_applied: bool, predecessor: Option<BlockHash>, level: Level, chain_id: ChainId) -> Self {
+        Self {
+            is_applied,
+            predecessor,
+            successors: vec![],
+            level,
+            chain_id,
+        }
+    }
 }
 
 /// Codec for `Meta`
@@ -444,8 +456,11 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::collections::HashSet;
+    use std::convert::TryInto;
 
     use failure::Error;
+    use rand::Rng;
 
     use crypto::hash::HashType;
 

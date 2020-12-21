@@ -3075,6 +3075,7 @@ dependencies = [
  "blake2",
  "bytes 0.5.6",
  "commitlog",
+ "criterion",
  "crypto",
  "derive_builder",
  "failure",
