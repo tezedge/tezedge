@@ -9,7 +9,7 @@ default-run = "sandbox"
 clap = "2.33"
 failure = "0.1"
 itertools = "0.9"
-nix = "0.17"
+nix = "0.19"
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"

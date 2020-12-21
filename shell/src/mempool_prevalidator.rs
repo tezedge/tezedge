@@ -29,7 +29,7 @@ use storage::persistent::PersistentStorage;
 use tezos_api::ffi::{BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest, ValidateOperationResult};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::prelude::Operation;
-use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
+use tezos_wrapper::service::{handle_protocol_service_error, ProtocolController, ProtocolServiceError};
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::shell_channel::{CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -320,7 +320,7 @@ fn process_prevalidation(
     chain_id: &ChainId,
     validator_run: &AtomicBool,
     shell_channel: &ShellChannelRef,
-    protocol_controller: &ProtocolController,
+    api: &ProtocolController,
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), PrevalidationError> {
@@ -332,7 +332,7 @@ fn process_prevalidation(
         block_storage,
         chain_meta_storage,
         mempool_storage,
-        &protocol_controller,
+        &api,
         &chain_id,
         &log,
     )?;
@@ -347,7 +347,7 @@ fn process_prevalidation(
                                 "received_block_hash" => HashType::BlockHash.hash_to_b58check(&header_hash));
 
                     // try to begin construction new context
-                    let (prevalidator, head) = begin_construction(&protocol_controller, &chain_id, header_hash, header, &log)?;
+                    let (prevalidator, head) = begin_construction(&api, &chain_id, header_hash, header, &log)?;
 
                     // reinitialize state for new prevalidator and head
                     let operations_to_delete = state.reinit(prevalidator, head);
@@ -387,7 +387,7 @@ fn process_prevalidation(
         }
 
         // 2. lets handle pending operations (if any)
-        handle_pending_operations(&shell_channel, &protocol_controller, &mut state, &log);
+        handle_pending_operations(&shell_channel, &api, &mut state, &log)?;
     }
 
     Ok(())
@@ -398,7 +398,7 @@ fn hydrate_state(
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
     mempool_storage: &MempoolStorage,
-    protocol_controller: &ProtocolController,
+    api: &ProtocolController,
     chain_id: &ChainId,
     log: &Logger) -> Result<MempoolState, PrevalidationError> {
 
@@ -410,7 +410,7 @@ fn hydrate_state(
 
     // begin construction for a current head
     let (prevalidator, head) = match current_head {
-        Some((head, header)) => begin_construction(protocol_controller, &chain_id, head.into(), header, &log)?,
+        Some((head, header)) => begin_construction(api, &chain_id, head.into(), header, &log)?,
         None => (None, None)
     };
 
@@ -426,20 +426,20 @@ fn hydrate_state(
     // TODO: do we need this?
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
     if state.can_handle_pending() {
-        handle_pending_operations(&shell_channel, &protocol_controller, &mut state, &log);
+        handle_pending_operations(&shell_channel, &api, &mut state, &log)?;
     }
 
     Ok(state)
 }
 
-fn begin_construction(protocol_controller: &ProtocolController,
+fn begin_construction(api: &ProtocolController,
                       chain_id: &ChainId,
                       block_hash: BlockHash,
                       block_header: Arc<BlockHeader>,
                       log: &Logger) -> Result<(Option<PrevalidatorWrapper>, Option<BlockHash>), PrevalidationError> {
 
     // try to begin construction
-    let result = match protocol_controller.begin_construction(
+    let result = match api.begin_construction(
         BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: (&*block_header).clone(),
@@ -450,76 +450,82 @@ fn begin_construction(protocol_controller: &ProtocolController,
             Some(prevalidator),
             Some(block_hash),
         ),
-        Err(err) => {
-            warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash), "error" => format!("{:?}", err));
+        Err(pse) => {
+            handle_protocol_service_error(
+                pse,
+                |e| warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash), "error" => format!("{:?}", e)),
+            )?;
             (None, None)
         }
     };
     Ok(result)
 }
 
-fn handle_pending_operations(shell_channel: &ShellChannelRef, protocol_controller: &ProtocolController, state: &mut MempoolState, log: &Logger) {
+fn handle_pending_operations(shell_channel: &ShellChannelRef, api: &ProtocolController, state: &mut MempoolState, log: &Logger) -> Result<(), ProtocolServiceError> {
     debug!(log, "Mempool - handle_pending_operations"; "pendings" => state.pending.len(), "can_handle" => state.can_handle_pending());
 
     if !state.can_handle_pending() {
         trace!(log, "Mempool - handle_pending_operations - nothing to handle");
-        return;
+        return Ok(());
     }
 
     let prevalidator = if let Some(prevalidator) = &state.prevalidator {
         prevalidator.clone()
     } else {
         // no prevalidator, means nothing to do
-        return;
+        return Ok(());
     };
 
     // TODO: verify - probably does not needed 'state_changed'
     let mut state_changed = false;
     // lets iterate pendings and validate them
     let mut pending_ops = state.pending.clone();
-    pending_ops
-        .drain()
-        .for_each(|pending_op| {
-            // handle validation
-            match state.operations.get(&pending_op) {
-                Some(operation) => {
-                    trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op));
+    for pending_op in pending_ops.drain().into_iter() {
+        // handle validation
+        match state.operations.get(&pending_op) {
+            Some(operation) => {
+                trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op));
 
-                    // lets validate throught protocol
-                    match protocol_controller.validate_operation(
-                        ValidateOperationRequest {
-                            prevalidator: prevalidator.clone(),
-                            operation: operation.clone(),
-                        }
-                    ) {
-                        Ok(response) => {
-                            let result = response.result;
-                            debug!(log, "Mempool - validate operation response finished with success"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "result" => format!("{:?}", result));
+                // lets validate throught protocol
+                match api.validate_operation(
+                    ValidateOperationRequest {
+                        prevalidator: prevalidator.clone(),
+                        operation: operation.clone(),
+                    }
+                ) {
+                    Ok(response) => {
+                        let result = response.result;
+                        debug!(log, "Mempool - validate operation response finished with success"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "result" => format!("{:?}", result));
 
-                            // merge new result with existing one
-                            state_changed |= state.add_result(result);
+                        // merge new result with existing one
+                        state_changed |= state.add_result(result);
 
-                            // TODO: handle Duplicate/ Outdated - if result is empty
-                            // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
-                        }
-                        Err(err) => {
-                            warn!(log, "Mempool - failed to validate operation message"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "error" => format!("{:?}", err));
-                            // TODO: create custom error and add to refused or just revalidate (retry algorithm?)
-                            // TODO: handle error?
-                        }
+                        // TODO: handle Duplicate/ Outdated - if result is empty
+                        // TODO: handle result like ocaml - branch_delayed (is_endorsement) add back to pending and so on - check handle_unprocessed
+                    }
+                    Err(pse) => {
+                        handle_protocol_service_error(
+                            pse,
+                            |e| warn!(log, "Mempool - failed to validate operation message"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "error" => format!("{:?}", e)),
+                        )?
+
+                        // TODO: create custom error and add to refused or just revalidate (retry algorithm?)
                     }
                 }
-                None => warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op))
             }
+            None => warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op))
+        }
 
-            // remove from pendings
-            state_changed |= state.remove_from_pending(&pending_op);
-        });
+        // remove from pendings
+        state_changed |= state.remove_from_pending(&pending_op);
+    }
 
     // lets notify actors about changed mempool
     if state_changed {
         notify_mempool_changed(&shell_channel, &state);
     }
+
+    Ok(())
 }
 
 /// Notify other actors that mempool state changed
@@ -545,7 +551,6 @@ fn notify_mempool_changed(shell_channel: &ShellChannelRef, mempool_state: &Mempo
         None,
     );
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -8,7 +8,7 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 libflate = "0.1.27"
-nix = "0.17"
+nix = "0.19"
 serde = { version = "1.0", features = ["derive"] }
 slog = "2.5"
 slog-json = "2.3"

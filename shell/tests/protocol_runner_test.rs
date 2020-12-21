@@ -4,7 +4,6 @@
 extern crate test;
 
 use std::path::PathBuf;
-use std::process::Child;
 use std::thread;
 use std::time::Duration;
 
@@ -15,7 +14,9 @@ use slog::{error, info, Level, Logger, warn};
 use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
-use tezos_wrapper::service::{ExecutableProtocolRunner, IpcCmdServer, ProtocolEndpointConfiguration, ProtocolRunnerEndpoint};
+use tezos_wrapper::ProtocolEndpointConfiguration;
+use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
+use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
 
 mod common;
 
@@ -39,7 +40,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
     let mut handles = Vec::new();
     for i in 0..number_of_endpoints {
         // create endpoint
-        let (mut protocol, child, endpoint_name) = create_endpoint(
+        let (mut protocol, child, endpoint_name) = create_endpoint::<ExecutableProtocolRunner>(
             log.clone(),
             log_level,
             format!("test_multiple_endpoint_{}", i),
@@ -91,18 +92,20 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
         }
     }
 
-    Ok(assert_eq!(number_of_endpoints, success_counter))
+    assert_eq!(number_of_endpoints, success_counter);
+
+    Ok(())
 }
 
-fn create_endpoint(log: Logger, log_level: Level, name: String, context_db_path: PathBuf) -> Result<(IpcCmdServer, Child, String), failure::Error> {
+fn create_endpoint<Runner: ProtocolRunner + 'static>(log: Logger, log_level: Level, endpoint_name: String, context_db_path: PathBuf) -> Result<(IpcCmdServer, Runner::Subprocess, String), failure::Error> {
 
     // environement
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
-    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
-        &name,
+    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<Runner>::new(
+        &endpoint_name,
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: common::is_ocaml_log_enabled(),
@@ -120,16 +123,15 @@ fn create_endpoint(log: Logger, log_level: Level, name: String, context_db_path:
     );
 
     // start subprocess
-    let (subprocess, protocol_commands, endpoint_name, ..) = match protocol_runner_endpoint.start() {
+    let (subprocess, protocol_commands) = match protocol_runner_endpoint.start() {
         Ok(subprocess) => {
             let ProtocolRunnerEndpoint {
                 commands,
-                name,
                 ..
             } = protocol_runner_endpoint;
-            (subprocess, commands, name)
+            (subprocess, commands)
         }
-        Err(e) => panic!("Error to start test_protocol_runner_endpoint: {} - error: {:?}", protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e)
+        Err(e) => return Err(format_err!("Error to start test_protocol_runner_endpoint: {} - error: {:?}", protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e))
     };
 
     Ok((protocol_commands, subprocess, endpoint_name))
@@ -154,20 +156,21 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     let protocol_runner = common::protocol_runner_executable_path();
 
     // at first we need to create one writerable context, because of creating new one - see feature AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
-    let (mut write_context_commands, ..) = create_endpoint(log.clone(), log_level, "test_one_writeable_endpoint".to_string(), context_db_path.clone())?;
+    let (mut write_context_commands, mut subprocess, ..) = create_endpoint::<ExecutableProtocolRunner>(log.clone(), log_level, "test_one_writeable_endpoint".to_string(), context_db_path.clone())?;
     let genesis_context_hash = write_context_commands
         .accept()?
         .init_protocol_for_write(true, &None)?
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
+    let _ = ExecutableProtocolRunner::wait_and_terminate_ref(&mut subprocess, Duration::from_secs(5));
 
     // cfg for pool
     let pool_cfg = TezosApiConnectionPoolConfiguration {
         min_connections: 0,
         max_connections: number_of_endpoints,
-        connection_timeout: Duration::from_secs(3),
-        max_lifetime: Duration::from_secs(60),
-        idle_timeout: Duration::from_secs(60),
+        connection_timeout: Duration::from_secs(1),
+        max_lifetime: Duration::from_secs(1),
+        idle_timeout: Duration::from_secs(1),
     };
 
     // cfg for protocol runner
@@ -186,8 +189,9 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     );
 
     // create pool
+    let pool_name = "test_pool_with_readonly_context";
     let pool_wrapper = TezosApiConnectionPool::new_with_readonly_context(
-        "test_pool_with_readonly_context".to_string(),
+        pool_name.to_string(),
         pool_cfg,
         endpoint_cfg,
         log,
@@ -235,11 +239,64 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     assert_eq!(3, pool.state().connections);
     assert_eq!(3, pool.state().idle_connections);
 
-    // acquire (reused and not release)
-    let api = &pool.get()?.api;
-    assert!(api.genesis_result_data(&genesis_context_hash).is_ok());
-    assert_eq!(3, pool.state().connections);
-    assert_eq!(2, pool.state().idle_connections);
+    {
+        // acquire (reused and not release)
+        let api = &pool.get()?.api;
+        assert!(api.genesis_result_data(&genesis_context_hash).is_ok());
+        assert_eq!(3, pool.state().connections);
+        assert_eq!(2, pool.state().idle_connections);
+    }
+
+    // use all and check
+    {
+        let expected_connection_names = vec![
+            format!("{}_{}", pool_name, 1),
+            format!("{}_{}", pool_name, 2),
+            format!("{}_{}", pool_name, 3),
+        ];
+
+        let con1 = pool.get()?;
+        assert!(expected_connection_names.contains(&con1.name));
+        let api1 = &con1.api;
+        assert!(api1.genesis_result_data(&genesis_context_hash).is_ok());
+
+        let con2 = pool.get()?;
+        assert!(expected_connection_names.contains(&con2.name));
+        let api2 = &con2.api;
+        assert!(api2.genesis_result_data(&genesis_context_hash).is_ok());
+
+        let con3 = pool.get()?;
+        assert!(expected_connection_names.contains(&con3.name));
+        let api3 = &con3.api;
+        assert!(api3.genesis_result_data(&genesis_context_hash).is_ok());
+    }
+
+    // wait 35 seconds: connections are recreated after: <max_lifetime + 30> seconds
+    thread::sleep(Duration::from_secs(40));
+
+    // use all (recreated)
+    {
+        let expected_connection_names = vec![
+            format!("{}_{}", pool_name, 4),
+            format!("{}_{}", pool_name, 5),
+            format!("{}_{}", pool_name, 6),
+        ];
+
+        let con1 = pool.get()?;
+        assert!(expected_connection_names.contains(&con1.name));
+        let api1 = &con1.api;
+        assert!(api1.genesis_result_data(&genesis_context_hash).is_ok());
+
+        let con2 = pool.get()?;
+        assert!(expected_connection_names.contains(&con2.name));
+        let api2 = &con2.api;
+        assert!(api2.genesis_result_data(&genesis_context_hash).is_ok());
+
+        let con3 = pool.get()?;
+        assert!(expected_connection_names.contains(&con3.name));
+        let api3 = &con3.api;
+        assert!(api3.genesis_result_data(&genesis_context_hash).is_ok());
+    }
 
     Ok(())
 }

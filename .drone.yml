@@ -269,6 +269,24 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
 
+- name: bootstrap-and-mempool-shell-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
+
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists

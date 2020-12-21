@@ -3,20 +3,18 @@
 
 use std::cell::RefCell;
 use std::convert::AsRef;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
-use std::{io, thread};
 
 use failure::Fail;
-use getset::{CopyGetters, Getters};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use slog::{crit, debug, info, Level, Logger};
+use slog::{crit, debug, info, warn, Logger};
 use strum_macros::IntoStaticStr;
-use wait_timeout::ChildExt;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
@@ -25,6 +23,8 @@ use tezos_api::ffi::*;
 use tezos_context::channel::{context_receive, context_send, ContextAction};
 
 use crate::protocol::*;
+use crate::runner::{ProtocolRunner, ProtocolRunnerError};
+use crate::ProtocolEndpointConfiguration;
 
 lazy_static! {
     /// Ww need to have multiple multiple FFI runtimes, and runtime needs to have initialized protocol context,
@@ -114,8 +114,10 @@ pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), Ipc
 
 /// Establish connection to existing IPC endpoint (which was created by tezedge node).
 /// Begin receiving commands from the tezedge node until `ShutdownCall` command is received.
-pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(
+pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Logger)>(
     socket_path: P,
+    log: &Logger,
+    shutdown_callback: SDC,
 ) -> Result<(), IpcError> {
     let ipc_client: IpcClient<ProtocolMessage, NodeMessage> = IpcClient::new(socket_path);
     let (mut rx, mut tx) = ipc_client.connect()?;
@@ -183,9 +185,21 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
             ProtocolMessage::ShutdownCall => {
-                context_send(ContextAction::Shutdown)
-                    .expect("Failed to send shutdown command to context channel");
-                tx.send(&NodeMessage::ShutdownResult)?;
+                if let Err(e) = context_send(ContextAction::Shutdown) {
+                    warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
+                }
+
+                // we trigger shutdown callback before, returning response
+                shutdown_callback(log);
+
+                // return result
+                if let Err(e) = tx.send(&NodeMessage::ShutdownResult) {
+                    warn!(log, "Failed to send shutdown response"; "reason" => format!("{}", e));
+                }
+
+                // drop socket
+                drop(tx);
+                drop(rx);
                 break;
             }
         }
@@ -239,12 +253,6 @@ pub enum ProtocolServiceError {
     /// Unexpected message was received from IPC channel
     #[fail(display = "Received unexpected message: {}", message)]
     UnexpectedMessage { message: &'static str },
-    /// Tezedge node failed to spawn new `protocol_runner` sub-process.
-    #[fail(
-        display = "Failed to spawn tezos protocol wrapper sub-process: {}",
-        reason
-    )]
-    SpawnError { reason: io::Error },
     /// Invalid data error
     #[fail(display = "Invalid data error: {}", message)]
     InvalidDataError { message: String },
@@ -276,43 +284,19 @@ impl From<ProtocolError> for ProtocolServiceError {
     }
 }
 
-/// Protocol configuration (transferred via IPC from tezedge node to protocol_runner.
-#[derive(Clone, Getters, CopyGetters)]
-pub struct ProtocolEndpointConfiguration {
-    #[get = "pub"]
-    runtime_configuration: TezosRuntimeConfiguration,
-    #[get = "pub"]
-    environment: TezosEnvironmentConfiguration,
-    #[get_copy = "pub"]
-    enable_testchain: bool,
-    #[get = "pub"]
-    data_dir: PathBuf,
-    #[get = "pub"]
-    executable_path: PathBuf,
-    #[get = "pub"]
-    log_level: Level,
-    #[get_copy = "pub"]
-    need_event_server: bool,
-}
-
-impl ProtocolEndpointConfiguration {
-    pub fn new<P: AsRef<Path>>(
-        runtime_configuration: TezosRuntimeConfiguration,
-        environment: TezosEnvironmentConfiguration,
-        enable_testchain: bool,
-        data_dir: P,
-        executable_path: P,
-        log_level: Level,
-        need_event_server: bool,
-    ) -> Self {
-        ProtocolEndpointConfiguration {
-            runtime_configuration,
-            environment,
-            enable_testchain,
-            data_dir: data_dir.as_ref().into(),
-            executable_path: executable_path.as_ref().into(),
-            log_level,
-            need_event_server,
+pub fn handle_protocol_service_error<LC: Fn(ProtocolServiceError)>(
+    error: ProtocolServiceError,
+    log_callback: LC,
+) -> Result<(), ProtocolServiceError> {
+    match error {
+        ProtocolServiceError::IpcError { .. } | ProtocolServiceError::UnexpectedMessage { .. } => {
+            // we need to refresh protocol runner endpoint, so propagate error
+            return Err(error);
+        }
+        _ => {
+            // just log error
+            log_callback(error);
+            Ok(())
         }
     }
 }
@@ -836,7 +820,6 @@ impl Drop for ProtocolController {
 
 /// Endpoint consists of a protocol runner and IPC communication (command and event channels).
 pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
-    pub name: String,
     runner: Runner,
     log: Logger,
 
@@ -846,7 +829,7 @@ pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     pub fn new(
-        name: &str,
+        endpoint_name: &str,
         configuration: ProtocolEndpointConfiguration,
         log: Logger,
     ) -> ProtocolRunnerEndpoint<Runner> {
@@ -861,12 +844,11 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
         };
 
         ProtocolRunnerEndpoint {
-            name: name.to_string(),
             runner: Runner::new(
                 configuration,
                 cmd_server.0.client().path(),
                 evt_server_path,
-                name.to_string(),
+                endpoint_name.to_string(),
             ),
             commands: cmd_server,
             events: evt_server,
@@ -875,153 +857,48 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     }
 
     /// Starts protocol runner sub-process just once and you can take care of it
-    pub fn start(&self) -> Result<Runner::Subprocess, ProtocolServiceError> {
-        info!(self.log, "Starting protocol runner process"; "endpoint" => self.name.clone());
+    pub fn start(&self) -> Result<Runner::Subprocess, ProtocolRunnerError> {
+        debug!(self.log, "Starting protocol runner process");
         self.runner.spawn()
     }
 
     /// Starts protocol runner sub-process and takes care of it automatically.
     /// If sub-process failed, it is automatically spawned another sub-process.
     /// Returns AtomicBool, if set to false, than terminates sub-process
-    pub fn start_in_restarting_mode(&mut self) -> Result<Arc<AtomicBool>, ProtocolServiceError> {
+    pub fn start_in_restarting_mode(
+        &mut self,
+    ) -> Result<(Arc<AtomicBool>, JoinHandle<Runner::Subprocess>), ProtocolRunnerError> {
         let run_restarting_feature = Arc::new(AtomicBool::new(true));
-        {
+        let watchdog_thread = {
             let log = self.log.clone();
             let run = run_restarting_feature.clone();
             let runner = self.runner.clone();
-            let name = self.name.clone();
             let mut protocol_runner_process = self.start()?;
+            info!(log, "Protocol runner started successfully");
 
             // watchdog thread, which checks if sub-process is running, if not, than starts new one
             thread::spawn(move || {
                 while run.load(Ordering::Acquire) {
                     if !Runner::is_running(&mut protocol_runner_process) {
-                        info!(log, "Restarting protocol runner process"; "endpoint" => name.clone());
+                        info!(log, "Restarting protocol runner process");
                         protocol_runner_process = match runner.spawn() {
                             Ok(process) => {
-                                info!(log, "Protocol runner restarted successfully"; "endpoint" => name.clone());
+                                info!(log, "Protocol runner restarted successfully");
                                 process
                             }
                             Err(e) => {
-                                crit!(log, "Failed to spawn protocol runner process"; "endpoint" => name.clone(), "reason" => e);
+                                crit!(log, "Failed to spawn protocol runner process"; "reason" => e);
                                 break;
                             }
                         };
                     }
                     thread::sleep(Duration::from_secs(1));
                 }
-                debug!(log, "Protocol runner stopped restarting_mode"; "endpoint" => name.clone());
-
-                if Runner::is_running(&mut protocol_runner_process) {
-                    Runner::terminate(protocol_runner_process);
-                }
+                info!(log, "Protocol runner (watchdog) stopped restarting_mode");
+                protocol_runner_process
             })
         };
 
-        Ok(run_restarting_feature)
+        Ok((run_restarting_feature, watchdog_thread))
     }
-}
-
-/// Control protocol runner sub-process.
-#[derive(Clone)]
-pub struct ExecutableProtocolRunner {
-    sock_cmd_path: PathBuf,
-    sock_evt_path: Option<PathBuf>,
-    executable_path: PathBuf,
-    endpoint_name: String,
-    log_level: Level,
-}
-
-impl ExecutableProtocolRunner {
-    const PROCESS_WAIT_TIMEOUT: Duration = Duration::from_secs(4);
-}
-
-impl ProtocolRunner for ExecutableProtocolRunner {
-    type Subprocess = Child;
-
-    fn new(
-        configuration: ProtocolEndpointConfiguration,
-        sock_cmd_path: &Path,
-        sock_evt_path: Option<PathBuf>,
-        endpoint_name: String,
-    ) -> Self {
-        ExecutableProtocolRunner {
-            sock_cmd_path: sock_cmd_path.to_path_buf(),
-            sock_evt_path,
-            executable_path: configuration.executable_path.clone(),
-            endpoint_name,
-            log_level: configuration.log_level,
-        }
-    }
-
-    fn spawn(&self) -> Result<Self::Subprocess, ProtocolServiceError> {
-        let process = match &self.sock_evt_path {
-            Some(sep) => Command::new(&self.executable_path)
-                .arg("--sock-cmd")
-                .arg(&self.sock_cmd_path)
-                .arg("--sock-evt")
-                .arg(&sep)
-                .arg("--endpoint")
-                .arg(&self.endpoint_name)
-                .arg("--log-level")
-                .arg(&self.log_level.as_str().to_lowercase())
-                .spawn()
-                .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?,
-            None => Command::new(&self.executable_path)
-                .arg("--sock-cmd")
-                .arg(&self.sock_cmd_path)
-                .arg("--endpoint")
-                .arg(&self.endpoint_name)
-                .arg("--log-level")
-                .arg(&self.log_level.as_str().to_lowercase())
-                .spawn()
-                .map_err(|err| ProtocolServiceError::SpawnError { reason: err })?,
-        };
-        Ok(process)
-    }
-
-    fn terminate(mut process: Self::Subprocess) {
-        match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
-            Some(_) => (),
-            None => {
-                // child hasn't exited yet
-                let _ = process.kill();
-            }
-        };
-    }
-
-    fn terminate_ref(process: &mut Self::Subprocess) {
-        match process.wait_timeout(Self::PROCESS_WAIT_TIMEOUT).unwrap() {
-            Some(_) => (),
-            None => {
-                // child hasn't exited yet
-                let _ = process.kill();
-            }
-        };
-    }
-
-    fn is_running(process: &mut Self::Subprocess) -> bool {
-        match process.try_wait() {
-            Ok(None) => true,
-            _ => false,
-        }
-    }
-}
-
-pub trait ProtocolRunner: Clone + Send + Sync {
-    type Subprocess: Send;
-
-    fn new(
-        configuration: ProtocolEndpointConfiguration,
-        sock_cmd_path: &Path,
-        sock_evt_path: Option<PathBuf>,
-        endpoint_name: String,
-    ) -> Self;
-
-    fn spawn(&self) -> Result<Self::Subprocess, ProtocolServiceError>;
-
-    fn terminate(process: Self::Subprocess);
-    fn terminate_ref(process: &mut Self::Subprocess);
-
-    fn is_running(process: &mut Self::Subprocess) -> bool;
 }

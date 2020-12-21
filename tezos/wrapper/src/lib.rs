@@ -4,19 +4,25 @@
 
 //! This crate provides core implementation for a protocol runner (both IPC server and client parts).
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use getset::{CopyGetters, Getters};
 use r2d2::{CustomizeConnection, Pool};
-use slog::Logger;
+use slog::{Level, Logger};
+
+use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_api::ffi::TezosRuntimeConfiguration;
 
 use crate::pool::{
     InitReadonlyContextProtocolRunnerConnectionCustomizer, NoopProtocolRunnerConnectionCustomizer,
     PoolError, ProtocolRunnerConnection, ProtocolRunnerManager, SlogErrorHandler,
 };
-use crate::service::{ExecutableProtocolRunner, ProtocolEndpointConfiguration};
+use crate::runner::ExecutableProtocolRunner;
 
 mod pool;
 pub mod protocol;
+pub mod runner;
 pub mod service;
 
 /// Configuration for tezos api pool
@@ -110,5 +116,46 @@ impl TezosApiConnectionPool {
 impl Drop for TezosApiConnectionPool {
     fn drop(&mut self) {
         // TODO: ensure all connections are dropped and protocol_runners are closed
+    }
+}
+
+/// Protocol configuration (transferred via IPC from tezedge node to protocol_runner.
+#[derive(Clone, Getters, CopyGetters)]
+pub struct ProtocolEndpointConfiguration {
+    #[get = "pub"]
+    runtime_configuration: TezosRuntimeConfiguration,
+    #[get = "pub"]
+    environment: TezosEnvironmentConfiguration,
+    #[get_copy = "pub"]
+    enable_testchain: bool,
+    #[get = "pub"]
+    data_dir: PathBuf,
+    #[get = "pub"]
+    executable_path: PathBuf,
+    #[get = "pub"]
+    log_level: Level,
+    #[get_copy = "pub"]
+    need_event_server: bool,
+}
+
+impl ProtocolEndpointConfiguration {
+    pub fn new<P: AsRef<Path>>(
+        runtime_configuration: TezosRuntimeConfiguration,
+        environment: TezosEnvironmentConfiguration,
+        enable_testchain: bool,
+        data_dir: P,
+        executable_path: P,
+        log_level: Level,
+        need_event_server: bool,
+    ) -> Self {
+        ProtocolEndpointConfiguration {
+            runtime_configuration,
+            environment,
+            enable_testchain,
+            data_dir: data_dir.as_ref().into(),
+            executable_path: executable_path.as_ref().into(),
+            log_level,
+            need_event_server,
+        }
     }
 }
