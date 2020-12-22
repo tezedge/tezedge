@@ -16,20 +16,16 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader, context_key, num_from_slice};
 use storage::context::ContextApi;
+use storage::{context_key, num_from_slice, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 use tezos_api::ffi::{ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest};
+use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
-    proto_001 as proto_001_constants,
-    proto_002 as proto_002_constants,
-    proto_003 as proto_003_constants,
-    proto_004 as proto_004_constants,
-    proto_005 as proto_005_constants,
-    proto_005_2 as proto_005_2_constants,
-    proto_006 as proto_006_constants,
-    proto_007 as proto_007_constants,
-    RpcJsonMap,
+    proto_001 as proto_001_constants, proto_002 as proto_002_constants,
+    proto_003 as proto_003_constants, proto_004 as proto_004_constants,
+    proto_005 as proto_005_constants, proto_005_2 as proto_005_2_constants,
+    proto_006 as proto_006_constants, proto_007 as proto_007_constants,
 };
 
 use crate::helpers::get_context_hash;
@@ -66,8 +62,8 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    env: &RpcServiceEnvironment) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
-
+    env: &RpcServiceEnvironment,
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     // get protocol and constants
     let context_proto_params = get_context_protocol_params(&block_hash, env)?;
 
@@ -152,7 +148,10 @@ pub(crate) fn check_and_get_baking_rights(
                 env.tezedge_context(),
             )
         }
-        _ => panic!("Missing baking rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+        _ => panic!(
+            "Missing baking rights implemetation for protocol: {}, protocol is not yet supported!",
+            hash
+        ),
     }
 }
 
@@ -177,8 +176,8 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    env: &RpcServiceEnvironment) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
-
+    env: &RpcServiceEnvironment,
+) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     // get protocol and constants
     let context_proto_params = get_context_protocol_params(&block_hash, env)?;
 
@@ -260,11 +259,17 @@ pub(crate) fn check_and_get_endorsing_rights(
     }
 }
 
-pub(crate) fn get_votes_listings(block_hash: BlockHash, env: &RpcServiceEnvironment) -> Result<Option<Vec<VoteListings>>, failure::Error> {
+pub(crate) fn get_votes_listings(
+    block_hash: BlockHash,
+    env: &RpcServiceEnvironment,
+) -> Result<Option<Vec<VoteListings>>, failure::Error> {
     let context_hash = get_context_hash(&block_hash, env)?;
 
     // filter out the listings data
-    let listings_data = if let Some(val) = env.tezedge_context().get_key_values_by_prefix(&context_hash, &context_key!("data/votes/listings"))? {
+    let listings_data = if let Some(val) = env
+        .tezedge_context()
+        .get_key_values_by_prefix(&context_hash, &context_key!("data/votes/listings"))?
+    {
         val
     } else {
         bail!("No listings found in context")
@@ -275,11 +280,15 @@ pub(crate) fn get_votes_listings(block_hash: BlockHash, env: &RpcServiceEnvironm
     for (key, value) in listings_data.into_iter() {
         // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
         let keystr = key.join("/");
-        let address = keystr.split("/").skip(4).take(6).join("");
-        let curve = keystr.split("/").skip(3).take(1).join("");
+        let address = keystr.split('/').skip(4).take(6).join("");
+        let curve = keystr.split('/').skip(3).take(1).join("");
 
-        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?.to_string();
-        listings.push(VoteListings::new(address_decoded, num_from_slice!(value, 0, i32)));
+        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?
+            .to_string_representation();
+        listings.push(VoteListings::new(
+            address_decoded,
+            num_from_slice!(value, 0, i32),
+        ));
     }
 
     // sort the vector in reverse ordering (as in ocaml node)
@@ -303,10 +312,7 @@ pub struct VoteListings {
 impl VoteListings {
     /// Simple constructor to construct VoteListings
     pub fn new(pkh: String, rolls: i32) -> Self {
-        Self {
-            pkh,
-            rolls,
-        }
+        Self { pkh, rolls }
     }
 }
 
@@ -322,56 +328,107 @@ impl VoteListings {
 /// * `state` - Current RPC collected state (head).
 pub(crate) fn get_context_constants_just_for_rpc(
     block_hash: &BlockHash,
-    env: &RpcServiceEnvironment) -> Result<Option<RpcJsonMap>, failure::Error> {
+    env: &RpcServiceEnvironment,
+) -> Result<Option<RpcJsonMap>, failure::Error> {
     let context_proto_params = get_context_protocol_params(block_hash, env)?;
-    Ok(
-        tezos_messages::protocol::get_constants_for_rpc(
-            &context_proto_params.constants_data,
-            context_proto_params.protocol_hash,
-        )?
-    )
+    Ok(tezos_messages::protocol::get_constants_for_rpc(
+        &context_proto_params.constants_data,
+        context_proto_params.protocol_hash,
+    )?)
 }
 
 // TODO: TE-220, be more explicit about the kind of response from the RPC service
-fn handle_rpc_response(response: &ProtocolRpcResponse) -> Result<serde_json::value::Value, failure::Error> {
+fn handle_rpc_response(
+    response: &ProtocolRpcResponse,
+    context_path: String,
+) -> Result<serde_json::value::Value, failure::Error> {
     match response {
         ProtocolRpcResponse::RPCOk(body) => Ok(serde_json::from_str(&body)?),
-        other => Err(failure::err_msg(format!("Got non-OK response from protocol-RPC service: {:?}", other))),
+        other => Err(failure::err_msg(format!(
+            "Got non-OK response from protocol-RPC service '{}', reason: {:?}",
+            context_path, other
+        ))),
     }
 }
 
-pub(crate) fn call_protocol_rpc(chain_param: &str, chain_id: ChainId, block_hash: BlockHash, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+pub(crate) fn call_protocol_rpc(
+    chain_param: &str,
+    chain_id: ChainId,
+    block_hash: BlockHash,
+    rpc_request: RpcRequest,
+    env: &RpcServiceEnvironment,
+) -> Result<serde_json::value::Value, failure::Error> {
+    let context_path = rpc_request.context_path.clone();
+    let request =
+        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
     // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.call_protocol_rpc(request)?;
+    let response = env
+        .tezos_readonly_api()
+        .pool
+        .get()?
+        .api
+        .call_protocol_rpc(request)?;
 
-    handle_rpc_response(&response)
+    handle_rpc_response(&response, context_path)
 }
 
-pub(crate) fn preapply_operations(chain_param: &str, chain_id: ChainId, block_hash: BlockHash, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+pub(crate) fn preapply_operations(
+    chain_param: &str,
+    chain_id: ChainId,
+    block_hash: BlockHash,
+    rpc_request: RpcRequest,
+    env: &RpcServiceEnvironment,
+) -> Result<serde_json::value::Value, failure::Error> {
+    let request =
+        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
     // TODO: retry?
-    let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_operations(request)?;
+    let response = env
+        .tezos_readonly_api()
+        .pool
+        .get()?
+        .api
+        .helpers_preapply_operations(request)?;
 
     Ok(serde_json::from_str(&response.body)?)
 }
 
-pub(crate) fn preapply_block(chain_param: &str, chain_id: ChainId, block_hash: BlockHash, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<serde_json::value::Value, failure::Error> {
-    let request = create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+pub(crate) fn preapply_block(
+    chain_param: &str,
+    chain_id: ChainId,
+    block_hash: BlockHash,
+    rpc_request: RpcRequest,
+    env: &RpcServiceEnvironment,
+) -> Result<serde_json::value::Value, failure::Error> {
+    let request =
+        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
     // TODO: TE-192 - refactor to protocol runner call
-    let response = env.tezos_readonly_api().pool.get()?.api.helpers_preapply_block(request)?;
+    let response = env
+        .tezos_readonly_api()
+        .pool
+        .get()?
+        .api
+        .helpers_preapply_block(request)?;
 
     Ok(serde_json::from_str(&response.body)?)
 }
 
-fn create_protocol_rpc_request(chain_param: &str, chain_id: ChainId, block_hash: BlockHash, rpc_request: RpcRequest, env: &RpcServiceEnvironment) -> Result<ProtocolRpcRequest, failure::Error> {
+fn create_protocol_rpc_request(
+    chain_param: &str,
+    chain_id: ChainId,
+    block_hash: BlockHash,
+    rpc_request: RpcRequest,
+    env: &RpcServiceEnvironment,
+) -> Result<ProtocolRpcRequest, failure::Error> {
     let block_storage = BlockStorage::new(env.persistent_storage());
     let block_header = match block_storage.get(&block_hash)? {
         Some(header) => header.header.as_ref().clone(),
-        None => bail!("No block header found for hash: {}", HashType::BlockHash.hash_to_b58check(&block_hash))
+        None => bail!(
+            "No block header found for hash: {}",
+            HashType::BlockHash.hash_to_b58check(&block_hash)
+        ),
     };
 
     // create request to ffi
@@ -395,7 +452,6 @@ pub enum ContextParamsError {
     NoProtocolForBlock(String),
     #[fail(display = "Protocol constants not found in context for block: {}", _0)]
     NoConstantsForBlock(String),
-
 }
 
 /// Get protocol and context constants as bytes from context list for desired block or level
@@ -414,7 +470,10 @@ pub(crate) fn get_context_protocol_params(
     // get block header
     let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
         Some(block) => block,
-        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.hash_to_b58check(block_hash)),
+        None => bail!(
+            "Block not found for block_hash: {}",
+            HashType::BlockHash.hash_to_b58check(block_hash)
+        ),
     };
 
     let protocol_hash: Vec<u8>;
@@ -423,16 +482,26 @@ pub(crate) fn get_context_protocol_params(
         let context = env.tezedge_context();
         let context_hash = block_header.header.context();
 
-        if let Some(data) = context.get_key_from_history(&context_hash, &context_key!("protocol"))? {
+        if let Some(data) =
+            context.get_key_from_history(&context_hash, &context_key!("protocol"))?
+        {
             protocol_hash = data;
         } else {
-            return Err(ContextParamsError::NoProtocolForBlock(HashType::BlockHash.hash_to_b58check(&block_hash)).into());
+            return Err(ContextParamsError::NoProtocolForBlock(
+                HashType::BlockHash.hash_to_b58check(&block_hash),
+            )
+            .into());
         }
 
-        if let Some(data) = context.get_key_from_history(&context_hash, &context_key!("data/v1/constants"))? {
+        if let Some(data) =
+            context.get_key_from_history(&context_hash, &context_key!("data/v1/constants"))?
+        {
             constants = data;
         } else {
-            return Err(ContextParamsError::NoConstantsForBlock(HashType::BlockHash.hash_to_b58check(&block_hash)).into());
+            return Err(ContextParamsError::NoConstantsForBlock(
+                HashType::BlockHash.hash_to_b58check(&block_hash),
+            )
+            .into());
         }
     };
 

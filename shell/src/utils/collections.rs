@@ -30,7 +30,10 @@ impl<T: BlockData + Ord> UniqueBlockData<T> {
     pub(crate) fn pop(&mut self) -> Option<T> {
         let item = self.binary_heap.pop();
         if let Some(item) = item.as_ref() {
-            assert!(self.hash_set.remove(item.block_hash()), "Relationship between the binary heap and teh hash set is corrupted");
+            assert!(
+                self.hash_set.remove(item.block_hash()),
+                "Relationship between the binary heap and teh hash set is corrupted"
+            );
         }
         item
     }

@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
 
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -59,6 +59,14 @@ impl BlockHeaderWithHash {
             hash: block_header.message_hash()?,
             header: Arc::new(block_header),
         })
+    }
+}
+
+impl TryFrom<BlockHeader> for BlockHeaderWithHash {
+    type Error = MessageHashError;
+
+    fn try_from(value: BlockHeader) -> Result<Self, Self::Error> {
+        BlockHeaderWithHash::new(value)
     }
 }
 

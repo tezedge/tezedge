@@ -20,7 +20,7 @@ pub enum SignaturePublicKey {
 
 impl SignaturePublicKey {
     #[inline]
-    pub fn to_string(&self) -> String {
+    pub fn to_string_representation(&self) -> String {
         match self {
             SignaturePublicKey::Ed25519(h) => HashType::PublicKeyEd25519.hash_to_b58check(h),
             SignaturePublicKey::Secp256k1(h) => HashType::PublicKeySecp256k1.hash_to_b58check(h),
@@ -166,7 +166,7 @@ mod tests {
             &"ed25519",
         )?;
         assert_eq!(
-            result.to_string().as_str(),
+            result.to_string_representation().as_str(),
             "edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP"
         );
 
@@ -175,7 +175,7 @@ mod tests {
             &"secp256k1",
         )?;
         assert_eq!(
-            result.to_string().as_str(),
+            result.to_string_representation().as_str(),
             "sppk7bn9MKAWDUFwqowcxA1zJgp12yn2kEnMQJP3WmqSZ4W8WQhLqJN"
         );
 
@@ -184,7 +184,7 @@ mod tests {
             &"p256",
         )?;
         assert_eq!(
-            result.to_string().as_str(),
+            result.to_string_representation().as_str(),
             "p2pk66G3vbHoscNYJdgQU72xSkrCWzoXNnFwroADcRTUtrHDvwnUNyW"
         );
 

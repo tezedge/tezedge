@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InvalidString {
@@ -14,12 +14,12 @@ impl InvalidString {
 }
 
 impl<T> From<T> for InvalidString
-    where
-        T: IntoIterator<Item=u8>
+where
+    T: IntoIterator<Item = u8>,
 {
     fn from(value: T) -> Self {
         Self {
-            content: value.into_iter().collect::<Vec<u8>>()
+            content: value.into_iter().collect::<Vec<u8>>(),
         }
     }
 }
@@ -47,8 +47,8 @@ impl UniString {
 }
 
 impl<T> From<T> for UniString
-    where
-        T: Into<String>
+where
+    T: Into<String>,
 {
     fn from(value: T) -> Self {
         Self::Valid(value.into())
@@ -75,7 +75,10 @@ mod tests {
 
         #[test]
         fn encoded_equals_decoded() -> Result<(), serde_json::Error> {
-            for expected in &[TimeStamp::Integral(10), TimeStamp::Rfc("1996-12-19T16:39:57-08:00".to_string())] {
+            for expected in &[
+                TimeStamp::Integral(10),
+                TimeStamp::Rfc("1996-12-19T16:39:57-08:00".to_string()),
+            ] {
                 let encoded = serde_json::to_string(expected)?;
                 let decoded: TimeStamp = serde_json::from_str(&encoded)?;
                 assert_eq!(expected, &decoded);
@@ -127,15 +130,26 @@ mod tests {
         #[test]
         fn decode_custom() -> Result<(), serde_json::Error> {
             let original: Vec<u8> = "InvalidString".bytes().collect();
-            let message = format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(original.iter()));
+            let message = format!(
+                "{{\"invalid_utf8_string\":{}}}",
+                iter_to_string(original.iter())
+            );
             custom_decoded(&message, InvalidString { content: original })
         }
 
         #[test]
         fn encode_custom() -> Result<(), serde_json::Error> {
             let message: Vec<u8> = "InvalidString".bytes().collect();
-            let original = InvalidString { content: message.clone() };
-            custom_encoded(original, &format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(message.iter())))
+            let original = InvalidString {
+                content: message.clone(),
+            };
+            custom_encoded(
+                original,
+                &format!(
+                    "{{\"invalid_utf8_string\":{}}}",
+                    iter_to_string(message.iter())
+                ),
+            )
         }
     }
 
@@ -144,7 +158,10 @@ mod tests {
 
         #[test]
         fn encoded_equals_decoded() -> Result<(), serde_json::Error> {
-            for expected in &[UniString::Valid("String".into()), UniString::Invalid(vec![32, 32].into())] {
+            for expected in &[
+                UniString::Valid("String".into()),
+                UniString::Invalid(vec![32, 32].into()),
+            ] {
                 let encoded = serde_json::to_string(&expected)?;
                 let decoded: UniString = serde_json::from_str(&encoded)?;
                 assert_eq!(expected, &decoded);
@@ -162,7 +179,10 @@ mod tests {
         #[test]
         fn decode_custom_invalid_string() -> Result<(), serde_json::Error> {
             let original_content: Vec<u8> = "UniString::InvalidString".bytes().collect();
-            let message = format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(original_content.iter()));
+            let message = format!(
+                "{{\"invalid_utf8_string\":{}}}",
+                iter_to_string(original_content.iter())
+            );
             custom_decoded(&message, UniString::Invalid(original_content.into()))
         }
 
@@ -177,7 +197,13 @@ mod tests {
         fn encode_custom_invalid_string() -> Result<(), serde_json::Error> {
             let message: Vec<u8> = "UniString::InvalidString".bytes().collect();
             let original = UniString::Invalid(message.clone().into());
-            custom_encoded(original, &format!("{{\"invalid_utf8_string\":{}}}", iter_to_string(message.iter())))
+            custom_encoded(
+                original,
+                &format!(
+                    "{{\"invalid_utf8_string\":{}}}",
+                    iter_to_string(message.iter())
+                ),
+            )
         }
     }
 }

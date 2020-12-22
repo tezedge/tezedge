@@ -138,8 +138,8 @@ pub fn init_protocol_context(
                 let protocol_overrides_tuple = to_ocaml!(
                     gc,
                     (
-                        protocol_overrides.forced_protocol_upgrades,
-                        protocol_overrides.voted_protocol_overrides,
+                        protocol_overrides.user_activated_upgrades,
+                        protocol_overrides.user_activated_protocol_overrides,
                     ),
                     protocol_overrides_tuple
                 );

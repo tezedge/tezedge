@@ -44,8 +44,8 @@ fn test_storage() -> Result<(), Error> {
         ],
         version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
         protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
         },
         enable_testchain: true,
         patch_context_genesis_parameters: None,
@@ -135,7 +135,7 @@ fn test_storage() -> Result<(), Error> {
     let apply_result = ApplyBlockResponse {
         last_allowed_fork_level: 5,
         max_operations_ttl: 6,
-        context_hash: HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?.clone(),
+        context_hash: HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
         block_header_proto_json: "{block_header_proto_json}".to_string(),
         block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
         operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),
@@ -199,10 +199,8 @@ fn make_test_block_header() -> Result<BlockHeaderWithHash, Error> {
 
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    let path = Path::new(out_dir.as_str())
+    Path::new(out_dir.as_str())
         .join(Path::new(dir_name))
-        .to_path_buf();
-    path
 }
 
 fn create_logger() -> Logger {

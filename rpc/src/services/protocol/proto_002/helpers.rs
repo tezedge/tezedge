@@ -4,13 +4,13 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
-use failure::{bail, Fail, format_err};
+use failure::{bail, format_err, Fail};
 use getset::Getters;
 
 use crypto::blake2b;
 use crypto::hash::ContextHash;
-use storage::{BlockHeaderWithHash, context_key, num_from_slice};
 use storage::context::{ContextApi, TezedgeContext};
+use storage::{context_key, num_from_slice, BlockHeaderWithHash};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
@@ -60,8 +60,13 @@ impl RightsConstants {
     ///
     /// * `context_proto_param`
     #[inline]
-    pub(crate) fn parse_rights_constants(context_proto_param: &ContextProtocolParam) -> Result<Self, failure::Error> {
-        let dynamic = tezos_messages::protocol::proto_002::constants::ParametricConstants::from_bytes(&context_proto_param.constants_data)?;
+    pub(crate) fn parse_rights_constants(
+        context_proto_param: &ContextProtocolParam,
+    ) -> Result<Self, failure::Error> {
+        let dynamic =
+            tezos_messages::protocol::proto_002::constants::ParametricConstants::from_bytes(
+                &context_proto_param.constants_data,
+            )?;
         // in proto 001, the constants are hard coded but a few exceptions modifiable in the context
         let dynamic_all = tezos_messages::protocol::proto_002::constants::ParametricConstants::create_with_default_and_merge(dynamic);
         let fixed = tezos_messages::protocol::proto_002::constants::FIXED;
@@ -113,7 +118,11 @@ impl RightsContextData {
     /// * `list` - Context list handler.
     ///
     /// Return RightsContextData.
-    pub(crate) fn prepare_context_data_for_rights(parameters: RightsParams, constants: RightsConstants, (ctx_hash, context): (&ContextHash, &TezedgeContext)) -> Result<Self, failure::Error> {
+    pub(crate) fn prepare_context_data_for_rights(
+        parameters: RightsParams,
+        constants: RightsConstants,
+        (ctx_hash, context): (&ContextHash, &TezedgeContext),
+    ) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
 
@@ -129,42 +138,52 @@ impl RightsContextData {
 
         // get index of roll snapshot
         let roll_snapshot: i16 = {
-            if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/roll_snapshot", requested_cycle))? {
+            if let Some(data) = context.get_key_from_history(
+                &ctx_hash,
+                &context_key!("data/cycle/{}/roll_snapshot", requested_cycle),
+            )? {
                 num_from_slice!(data, 0, i16)
-            } else { // key not found - prepare error for later processing
+            } else {
+                // key not found - prepare error for later processing
                 return Err(format_err!("roll_snapshot"));
             }
         };
 
         let random_seed = {
-            if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/random_seed", requested_cycle))? {
+            if let Some(data) = context.get_key_from_history(
+                &ctx_hash,
+                &context_key!("data/cycle/{}/random_seed", requested_cycle),
+            )? {
                 data
-            } else { // key not found - prepare error for later processing
+            } else {
+                // key not found - prepare error for later processing
                 return Err(format_err!("random_seed"));
             }
         };
 
         // Snapshots of last_roll are listed from 0 same as roll_snapshot.
         let last_roll = {
-            if let Some(data) = context.get_key_from_history(&ctx_hash, &context_key!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot))? {
+            if let Some(data) = context.get_key_from_history(
+                &ctx_hash,
+                &context_key!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot),
+            )? {
                 num_from_slice!(data, 0, i32)
-            } else { // key not found - prepare error for later processing
+            } else {
+                // key not found - prepare error for later processing
                 return Err(format_err!("last_roll"));
             }
         };
 
         // get list of rolls from context list
-        let context_rolls = if let Some(rolls) = Self::get_context_rolls((&ctx_hash, &context), requested_cycle, roll_snapshot)? {
+        let context_rolls = if let Some(rolls) =
+            Self::get_context_rolls((&ctx_hash, &context), requested_cycle, roll_snapshot)?
+        {
             rolls
         } else {
             return Err(format_err!("rolls"));
         };
 
-        Ok(Self::new(
-            random_seed.to_vec(),
-            last_roll,
-            context_rolls,
-        ))
+        Ok(Self::new(random_seed.to_vec(), last_roll, context_rolls))
     }
 
     /// get list of rollers from context list selected by snapshot level
@@ -174,8 +193,15 @@ impl RightsContextData {
     /// * `context` - context list HashMap from [get_context_as_hashmap](RightsContextData::get_context_as_hashmap)
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
-    fn get_context_rolls((ctx_hash, context): (&ContextHash, &TezedgeContext), cycle: i64, snapshot: i16) -> Result<Option<HashMap<i32, String>>, failure::Error> {
-        let rolls = if let Some(val) = context.get_key_values_by_prefix(&ctx_hash, &context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot))? {
+    fn get_context_rolls(
+        (ctx_hash, context): (&ContextHash, &TezedgeContext),
+        cycle: i64,
+        snapshot: i16,
+    ) -> Result<Option<HashMap<i32, String>>, failure::Error> {
+        let rolls = if let Some(val) = context.get_key_values_by_prefix(
+            &ctx_hash,
+            &context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
+        )? {
             val
         } else {
             bail!("No rolls found in context")
@@ -191,7 +217,8 @@ impl RightsContextData {
             let roll_num = key.last().unwrap();
 
             // the values are public keys
-            let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?.to_string();
+            let delegate = SignaturePublicKeyHash::from_tagged_bytes(value.clone())?
+                .to_string_representation();
             roll_owners.insert(roll_num.parse()?, delegate);
         }
         if roll_owners.is_empty() {
@@ -252,7 +279,8 @@ impl RightsParams {
         display_level: i64,
         timestamp_level: i64,
         max_priority: i64,
-        has_all: bool) -> Self {
+        has_all: bool,
+    ) -> Self {
         Self {
             block_level,
             block_timestamp,
@@ -309,7 +337,11 @@ impl RightsParams {
             Some(level) => {
                 let level = level.parse()?;
                 // check the bounds for the requested level (if it is in the previous/next preserved cycles)
-                Self::validate_cycle(cycle_from_level(level, blocks_per_cycle)?, current_cycle, preserved_cycles)?;
+                Self::validate_cycle(
+                    cycle_from_level(level, blocks_per_cycle)?,
+                    current_cycle,
+                    preserved_cycles,
+                )?;
                 // display level is always same as level requested
                 display_level = level;
                 // endorsing rights: to compute timestamp for level parameter there need to be taken timestamp of previous block
@@ -324,24 +356,30 @@ impl RightsParams {
                 }
             }
             // here is the main difference between endorsing and baking rights which data are loaded from context list based on level
-            None => if is_baking_rights {
-                display_level = block_level + 1;
-                block_level + 1
-            } else {
-                block_level
+            None => {
+                if is_baking_rights {
+                    display_level = block_level + 1;
+                    block_level + 1
+                } else {
+                    block_level
+                }
             }
         };
 
         // validate requested cycle
         let requested_cycle = match param_cycle {
-            Some(val) => Some(Self::validate_cycle(val.parse()?, current_cycle, preserved_cycles)?),
-            None => None
+            Some(val) => Some(Self::validate_cycle(
+                val.parse()?,
+                current_cycle,
+                preserved_cycles,
+            )?),
+            None => None,
         };
 
         // set max_priority from param value or default
         let max_priority = match param_max_priority {
             Some(val) => val.parse()?,
-            None => 64
+            None => 64,
         };
 
         Ok(Self::new(
@@ -350,7 +388,7 @@ impl RightsParams {
             param_delegate.map(String::from),
             requested_cycle,
             requested_level,
-            display_level, // endorsing rights only
+            display_level,   // endorsing rights only
             timestamp_level, // endorsing rights only
             max_priority,
             param_has_all,
@@ -366,13 +404,19 @@ impl RightsParams {
     ///
     /// If level is not provided [timestamp_level](`RightsParams.timestamp_level`) is used fro computation
     #[inline]
-    pub fn get_estimated_time(&self, constants: &RightsConstants, level: Option<i64>) -> Option<i64> {
+    pub fn get_estimated_time(
+        &self,
+        constants: &RightsConstants,
+        level: Option<i64>,
+    ) -> Option<i64> {
         // if is cycle then level is provided as parameter else use prepared timestamp_level
         let timestamp_level = level.unwrap_or(self.timestamp_level);
 
         //check if estimated time is computed and convert from raw epoch time to rfc3339 format
         if self.block_level <= timestamp_level {
-            let est_timestamp = ((timestamp_level - self.block_level).abs() as i64 * constants.time_between_blocks()[0]) + self.block_timestamp;
+            let est_timestamp = ((timestamp_level - self.block_level).abs() as i64
+                * constants.time_between_blocks()[0])
+                + self.block_timestamp;
             Some(est_timestamp)
         } else {
             None
@@ -381,7 +425,11 @@ impl RightsParams {
 
     /// Validate if cycle requested as url query parameter (cycle or level) is available in context list by checking preserved_cycles constant
     #[inline]
-    fn validate_cycle(requested_cycle: i64, current_cycle: i64, preserved_cycles: u8) -> Result<i64, failure::Error> {
+    fn validate_cycle(
+        requested_cycle: i64,
+        current_cycle: i64,
+        preserved_cycles: u8,
+    ) -> Result<i64, failure::Error> {
         if (requested_cycle - current_cycle).abs() <= (preserved_cycles as i64) {
             Ok(requested_cycle)
         } else {
@@ -405,10 +453,7 @@ pub struct EndorserSlots {
 impl EndorserSlots {
     /// Simple constructor that return EndorserSlots
     pub fn new(contract_id: String, slots: Vec<u16>) -> Self {
-        Self {
-            contract_id,
-            slots,
-        }
+        Self { contract_id, slots }
     }
 
     /// Push endorsing slot to slots
@@ -416,7 +461,6 @@ impl EndorserSlots {
         self.slots.push(slot);
     }
 }
-
 
 /// Return cycle in which is given level
 ///
@@ -451,7 +495,8 @@ pub fn level_position(level: i32, blocks_per_cycle: i32) -> Result<i32, failure:
         bail!("wrong value blocks_per_cycle={}", blocks_per_cycle);
     }
     let cycle_position = (level % blocks_per_cycle) - 1;
-    if cycle_position < 0 { //for last block
+    if cycle_position < 0 {
+        //for last block
         Ok(blocks_per_cycle - 1)
     } else {
         Ok(cycle_position)
@@ -462,9 +507,7 @@ pub fn level_position(level: i32, blocks_per_cycle: i32) -> Result<i32, failure:
 #[derive(Debug, Fail)]
 pub enum TezosPRNGError {
     #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
-    BoundNotCorrect {
-        bound: i32
-    },
+    BoundNotCorrect { bound: i32 },
 }
 
 type RandomSeedState = Vec<u8>;
@@ -483,7 +526,13 @@ pub type TezosPRNGResult = Result<(i32, RandomSeedState), TezosPRNGError>;
 ///
 /// Return first random sequence state to use in [get_prng_number](`get_prng_number`)
 #[inline]
-pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, use_string_bytes: &[u8], level: i32, offset: i32) -> Result<RandomSeedState, failure::Error> {
+pub fn init_prng(
+    cycle_data: &RightsContextData,
+    constants: &RightsConstants,
+    use_string_bytes: &[u8],
+    level: i32,
+    offset: i32,
+) -> Result<RandomSeedState, failure::Error> {
     // a safe way to convert betwwen types is to use try_from
     let nonce_size = usize::try_from(*constants.nonce_length())?;
     let blocks_per_cycle = *constants.blocks_per_cycle();
@@ -494,7 +543,13 @@ pub fn init_prng(cycle_data: &RightsContextData, constants: &RightsConstants, us
     let cycle_position: i32 = level_position(level, blocks_per_cycle)?;
 
     // take the state (initially the random seed), zero bytes, the use string and the blocks position in the cycle as bytes, merge them together and hash the result
-    let rd = blake2b::digest_256(&merge_slices!(&state, &zero_bytes, use_string_bytes, &cycle_position.to_be_bytes())).to_vec();
+    let rd = blake2b::digest_256(&merge_slices!(
+        &state,
+        &zero_bytes,
+        use_string_bytes,
+        &cycle_position.to_be_bytes()
+    ))
+    .to_vec();
 
     // take the 4 highest bytes and xor them with the priority/slot (offset)
     let higher = num_from_slice!(rd, 0, i32) ^ offset;
@@ -535,7 +590,7 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
         sequence = hashed;
         if r >= drop_if_over {
             continue;
-            // use the remainder(mod) operation to get a number from a desired interval
+        // use the remainder(mod) operation to get a number from a desired interval
         } else {
             v = r % bound;
             break;

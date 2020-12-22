@@ -3,18 +3,15 @@
 
 use std::{
     net::SocketAddr,
-    sync::{Arc, atomic::AtomicUsize},
+    sync::{atomic::AtomicUsize, Arc},
     thread::Builder,
 };
 
 use riker::actor::*;
-use slog::{info, Logger, warn};
+use slog::{info, warn, Logger};
 use ws::{Sender as WsSender, WebSocket};
 
-use crate::handlers::{
-    handler_messages::HandlerMessage,
-    ws_server::WsServer,
-};
+use crate::handlers::{handler_messages::HandlerMessage, ws_server::WsServer};
 
 #[actor(HandlerMessage)]
 pub struct WebsocketHandler {
@@ -29,12 +26,14 @@ impl WebsocketHandler {
         "websocket_handler"
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, address: SocketAddr, log: Logger) -> Result<WebsocketHandlerRef, CreateError> {
+    pub fn actor(
+        sys: &impl ActorRefFactory,
+        address: SocketAddr,
+        log: Logger,
+    ) -> Result<WebsocketHandlerRef, CreateError> {
         info!(log, "Starting websocket server"; "address" => address);
 
-        sys.actor_of_props::<WebsocketHandler>(
-            Self::name(),
-            Props::new_args(address))
+        sys.actor_of_props::<WebsocketHandler>(Self::name(), Props::new_args(address))
     }
 }
 
@@ -45,11 +44,15 @@ impl ActorFactoryArgs<SocketAddr> for WebsocketHandler {
             .expect("Unable to create websocket server");
         let broadcaster = ws_server.broadcaster();
 
-        Builder::new().name("ws_handler".to_string()).spawn(move || {
-            let socket = ws_server.bind(address)
-                .expect("Unable to bind websocket server");
-            socket.run().expect("Websocket failed unexpectedly");
-        }).expect("Failed to spawn websocket thread");
+        Builder::new()
+            .name("ws_handler".to_string())
+            .spawn(move || {
+                let socket = ws_server
+                    .bind(address)
+                    .expect("Unable to bind websocket server");
+                socket.run().expect("Websocket failed unexpectedly");
+            })
+            .expect("Failed to spawn websocket thread");
 
         Self {
             broadcaster,
@@ -74,10 +77,14 @@ impl Receive<HandlerMessage> for WebsocketHandler {
 
         if self.connected_clients.load(Ordering::Acquire) > 0 {
             match serde_json::to_string(&msg) {
-                Ok(serialized) => if let Err(err) = self.broadcaster.send(serialized) {
-                    warn!(ctx.system.log(), "Failed to broadcast message"; "message" => msg, "reason" => format!("{:?}", err));
+                Ok(serialized) => {
+                    if let Err(err) = self.broadcaster.send(serialized) {
+                        warn!(ctx.system.log(), "Failed to broadcast message"; "message" => msg, "reason" => format!("{:?}", err));
+                    }
                 }
-                Err(err) => warn!(ctx.system.log(), "Failed to serialize message"; "message" => msg, "reason" => format!("{:?}", err))
+                Err(err) => {
+                    warn!(ctx.system.log(), "Failed to serialize message"; "message" => msg, "reason" => format!("{:?}", err))
+                }
             }
         }
     }

@@ -2,26 +2,39 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::convert::TryInto;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime};
 
-use failure::format_err;
+use failure::{bail, format_err};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use slog::info;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
-use shell::shell_channel::{CurrentMempoolState, InjectBlock, MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
+use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::shell_channel::{
+    InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelMsg, ShellChannelRef,
+    ShellChannelTopic,
+};
+use shell::utils::try_wait_for_condvar_result;
 use shell::validation;
-use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, MempoolStorage};
 use storage::mempool_storage::MempoolOperationType;
-use tezos_api::ffi::{Applied, ComputePathRequest, Errored};
+use storage::{
+    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, MempoolStorage,
+};
+use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
-use crate::rpc_actor::{RpcCollectedState, RpcCollectedStateRef};
+use crate::helpers::get_prevalidators;
 use crate::server::RpcServiceEnvironment;
+
+const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
+const INJECT_OPERATION_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct MempoolOperations {
@@ -41,47 +54,69 @@ pub struct InjectedBlockWithOperations {
 
 pub fn get_pending_operations(
     _chain_id: &ChainId,
-    state: &RpcCollectedStateRef,
-) -> Result<MempoolOperations, failure::Error> {
-
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+) -> Result<(MempoolOperations, Option<ProtocolHash>), failure::Error> {
     // get actual known state of mempool
-    let state = state.read().unwrap();
-    let current_mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>> = state.current_mempool_state();
+    let current_mempool_state = current_mempool_state_storage
+        .read()
+        .map_err(|e| format_err!("Failed to obtain read lock, reson: {}", e))?;
 
-    // convert to rpc data
-    match current_mempool_state {
-        Some(mempool) => {
-            let mempool = mempool.read().unwrap();
-            let protocol = match &mempool.protocol {
-                Some(protocol) => protocol,
-                None => return Err(format_err!("missing protocol for mempool current state"))
-            };
-
-            Ok(MempoolOperations {
-                applied: convert_applied(&mempool.result.applied, &mempool.operations)?,
-                refused: convert_errored(&mempool.result.refused, &mempool.operations, &protocol)?,
-                branch_refused: convert_errored(&mempool.result.branch_refused, &mempool.operations, &protocol)?,
-                branch_delayed: convert_errored(&mempool.result.branch_delayed, &mempool.operations, &protocol)?,
-                unprocessed: vec![],
-            })
+    // convert to rpc data - we need protocol_hash
+    let (mempool_operations, mempool_prevalidator_protocol) = match current_mempool_state
+        .prevalidator()
+    {
+        Some(prevalidator) => {
+            let result = current_mempool_state.result();
+            let operations = current_mempool_state.operations();
+            (
+                MempoolOperations {
+                    applied: convert_applied(&result.applied, &operations)?,
+                    refused: convert_errored(&result.refused, &operations, &prevalidator.protocol)?,
+                    branch_refused: convert_errored(
+                        &result.branch_refused,
+                        &operations,
+                        &prevalidator.protocol,
+                    )?,
+                    branch_delayed: convert_errored(
+                        &result.branch_delayed,
+                        &operations,
+                        &prevalidator.protocol,
+                    )?,
+                    unprocessed: vec![],
+                },
+                Some(prevalidator.protocol.clone()),
+            )
         }
-        None => Ok(MempoolOperations::default())
-    }
+        None => (MempoolOperations::default(), None),
+    };
+
+    Ok((mempool_operations, mempool_prevalidator_protocol))
 }
 
-fn convert_applied(applied: &Vec<Applied>, operations: &HashMap<OperationHash, Operation>) -> Result<Vec<HashMap<String, Value>>, failure::Error> {
+fn convert_applied(
+    applied: &Vec<Applied>,
+    operations: &HashMap<OperationHash, Operation>,
+) -> Result<Vec<HashMap<String, Value>>, failure::Error> {
     let mut result: Vec<HashMap<String, Value>> = Vec::new();
     for a in applied {
         let operation_hash = HashType::OperationHash.hash_to_b58check(&a.hash);
         let protocol_data: HashMap<String, Value> = serde_json::from_str(&a.protocol_data_json)?;
         let operation = match operations.get(&a.hash) {
             Some(b) => b,
-            None => return Err(format_err!("missing operation data for operation_hash: {}", &operation_hash))
+            None => {
+                return Err(format_err!(
+                    "missing operation data for operation_hash: {}",
+                    &operation_hash
+                ))
+            }
         };
 
         let mut m = HashMap::new();
         m.insert(String::from("hash"), Value::String(operation_hash));
-        m.insert(String::from("branch"), Value::String(HashType::BlockHash.hash_to_b58check(&operation.branch())));
+        m.insert(
+            String::from("branch"),
+            Value::String(HashType::BlockHash.hash_to_b58check(&operation.branch())),
+        );
         m.extend(protocol_data);
         result.push(m);
     }
@@ -89,7 +124,11 @@ fn convert_applied(applied: &Vec<Applied>, operations: &HashMap<OperationHash, O
     Ok(result)
 }
 
-fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, Operation>, protocol: &ProtocolHash) -> Result<Vec<Value>, failure::Error> {
+fn convert_errored(
+    errored: &Vec<Errored>,
+    operations: &HashMap<OperationHash, Operation>,
+    protocol: &ProtocolHash,
+) -> Result<Vec<Value>, failure::Error> {
     let mut result: Vec<Value> = Vec::new();
     let protocol = HashType::ProtocolHash.hash_to_b58check(&protocol);
 
@@ -97,10 +136,19 @@ fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, O
         let operation_hash = HashType::OperationHash.hash_to_b58check(&e.hash);
         let operation = match operations.get(&e.hash) {
             Some(b) => b,
-            None => return Err(format_err!("missing operation data for operation_hash: {}", &operation_hash))
+            None => {
+                return Err(format_err!(
+                    "missing operation data for operation_hash: {}",
+                    &operation_hash
+                ))
+            }
         };
 
-        let protocol_data: HashMap<String, Value> = if e.protocol_data_json_with_error_json.protocol_data_json.is_empty() {
+        let protocol_data: HashMap<String, Value> = if e
+            .protocol_data_json_with_error_json
+            .protocol_data_json
+            .is_empty()
+        {
             HashMap::new()
         } else {
             serde_json::from_str(&e.protocol_data_json_with_error_json.protocol_data_json)?
@@ -114,44 +162,52 @@ fn convert_errored(errored: &Vec<Errored>, operations: &HashMap<OperationHash, O
 
         let mut m = HashMap::new();
         m.insert(String::from("protocol"), Value::String(protocol.clone()));
-        m.insert(String::from("branch"), Value::String(HashType::BlockHash.hash_to_b58check(&operation.branch())));
+        m.insert(
+            String::from("branch"),
+            Value::String(HashType::BlockHash.hash_to_b58check(&operation.branch())),
+        );
         m.extend(protocol_data);
         m.insert(String::from("error"), error);
 
-        result.push(
-            Value::Array(
-                vec![
-                    Value::String(operation_hash),
-                    serde_json::to_value(m)?,
-                ]
-            )
-        );
+        result.push(Value::Array(vec![
+            Value::String(operation_hash),
+            serde_json::to_value(m)?,
+        ]));
     }
 
     Ok(result)
 }
 
 pub fn inject_operation(
+    is_async: bool,
     chain_id: ChainId,
     operation_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
+    shell_channel: &ShellChannelRef,
+) -> Result<String, failure::Error> {
+    let start_request = SystemTime::now();
+
     let persistent_storage = env.persistent_storage();
-    let block_storage: Box<dyn BlockStorageReader> = Box::new(BlockStorage::new(persistent_storage));
-    let block_meta_storage: Box<dyn BlockMetaStorageReader> = Box::new(BlockMetaStorage::new(persistent_storage));
-    let state = env.state();
+    let block_storage: Box<dyn BlockStorageReader> =
+        Box::new(BlockStorage::new(persistent_storage));
+    let block_meta_storage: Box<dyn BlockMetaStorageReader> =
+        Box::new(BlockMetaStorage::new(persistent_storage));
+
+    // find prevalidator for chain_id, if not found, then stop
+    if get_prevalidators(env, Some(&chain_id))?.is_empty() {
+        bail!("Prevalidator is not running, cannot inject the operation.");
+    }
 
     // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
     let operation_hash = operation.message_hash()?;
-    let state = state.read().unwrap();
 
     // do prevalidation before add the operation to mempool
     let result = validation::prevalidate_operation(
         &chain_id,
         &operation_hash,
         &operation,
-        state.current_mempool_state(),
+        env.current_mempool_state_storage().clone(),
         &env.tezos_readonly_prevalidation_api().pool.get()?.api,
         &block_storage,
         &block_meta_storage,
@@ -159,14 +215,29 @@ pub fn inject_operation(
 
     // can accpect operation ?
     if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
-        return Err(format_err!("Operation from rpc ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.hash_to_b58check(&operation_hash), result));
+        return Err(format_err!(
+            "Operation from rpc ({}) was not added to mempool. Reason: {:?}",
+            HashType::OperationHash.hash_to_b58check(&operation_hash),
+            result
+        ));
     }
 
     // store operation in mempool storage
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
-    let operation_hash_as_string = HashType::OperationHash.hash_to_b58check(&operation_hash);
+    let operation_hash_b58check_string = HashType::OperationHash.hash_to_b58check(&operation_hash);
     let ttl = SystemTime::now() + Duration::from_secs(60);
     mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
+
+    // callback will wait all the asynchonous processing to finish, and then returns rpc response
+    let result_callback = if is_async {
+        // if async no wait
+        None
+    } else {
+        // if not async, means sync and we wait
+        Some(Arc::new((Mutex::new(None), Condvar::new())))
+    };
+
+    let start_async = SystemTime::now();
 
     // ping mempool with new operation for mempool validation
     shell_channel.tell(
@@ -174,93 +245,179 @@ pub fn inject_operation(
             msg: MempoolOperationReceived {
                 operation_hash,
                 operation_type: MempoolOperationType::Pending,
-            }.into(),
+                result_callback: result_callback.clone(),
+            }
+            .into(),
             topic: ShellChannelTopic::ShellEvents.into(),
-        }, None);
+        },
+        None,
+    );
 
-    Ok(operation_hash_as_string)
+    // wait for result
+    if let Some(result_callback) = result_callback {
+        let wait_result =
+            try_wait_for_condvar_result(result_callback, INJECT_OPERATION_WAIT_TIMEOUT).map_err(
+                |e| {
+                    format_err!(
+                        "Operation injection - failed to inject, operation_hash: {}, reason: {:?}!",
+                        &operation_hash_b58check_string,
+                        e
+                    )
+                },
+            )?;
+        match wait_result {
+            Ok(_) => {
+                info!(env.log(),
+                      "Operation injected";
+                      "operation_hash" => &operation_hash_b58check_string,
+                      "elapsed" => format!("{:?}", start_request.elapsed()?),
+                      "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+                );
+            }
+            Err(e) => {
+                return Err(format_err!(
+                    "Operation injection - error received, operation_hash: {}, reason: {}!",
+                    &operation_hash_b58check_string,
+                    e
+                ));
+            }
+        };
+    }
+
+    Ok(operation_hash_b58check_string)
 }
 
 pub fn inject_block(
+    is_async: bool,
     _chain_id: ChainId,
     injection_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: &ShellChannelRef) -> Result<String, failure::Error> {
+    shell_channel: &ShellChannelRef,
+) -> Result<String, failure::Error> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
 
-    let header: BlockHeader = BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?;
-    let block_hash = HashType::BlockHash.hash_to_b58check(&header.message_hash()?);
+    let start_request = SystemTime::now();
+
+    let header: BlockHeaderWithHash =
+        BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?.try_into()?;
+    let block_hash_b58check_string = HashType::BlockHash.hash_to_b58check(&header.hash);
+    info!(env.log(),
+          "Block injection requested";
+          "block_hash" => block_hash_b58check_string.clone(),
+          "is_async" => is_async,
+    );
 
     // special case for block on level 1 - has 0 validation passes
-    let validation_passes: Option<Vec<Vec<Operation>>> = if header.validation_pass() > 0 {
-        Some(block_with_op.operations.into_iter()
-            .map(|validation_pass| validation_pass.into_iter()
-                .map(|op| op.into())
-                .collect())
-            .collect())
+    let validation_passes: Option<Vec<Vec<Operation>>> = if header.header.validation_pass() > 0 {
+        Some(
+            block_with_op
+                .operations
+                .into_iter()
+                .map(|validation_pass| validation_pass.into_iter().map(|op| op.into()).collect())
+                .collect(),
+        )
     } else {
         None
     };
 
     // clean actual mempool_state - just applied should be enough
     if let Some(validation_passes) = &validation_passes {
-        let current_head_ref: &mut RpcCollectedState = &mut *env.state().write().unwrap();
-        if let Some(mempool) = current_head_ref.current_mempool_state() {
-            let mut mempool = mempool.write().unwrap();
-            for vps in validation_passes {
-                for vp in vps {
-                    let oph: OperationHash = vp.message_hash()?;
+        let mut current_mempool_state = env
+            .current_mempool_state_storage()
+            .write()
+            .map_err(|e| format_err!("Failed to obtain write lock, reason: {}", e))?;
 
-                    // remove from applied
-                    if let Some(pos) = mempool.result.applied.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.applied.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                    // remove from branch_delayed
-                    if let Some(pos) = mempool.result.branch_delayed.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.branch_delayed.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                    // remove from branch_refused
-                    if let Some(pos) = mempool.result.branch_refused.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.branch_refused.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                    // remove from refused
-                    if let Some(pos) = mempool.result.refused.iter().position(|x| oph.eq(&x.hash)) {
-                        mempool.result.refused.remove(pos);
-                        mempool.operations.remove(&oph);
-                    }
-                }
+        for vps in validation_passes {
+            for vp in vps {
+                let oph: OperationHash = vp.message_hash()?;
+                current_mempool_state.remove_operation(oph);
             }
         }
     }
 
     // compute the paths for each validation passes
-    let paths = if let Some(vps) = validation_passes.clone() {
-        let request = ComputePathRequest {
-            operations: vps.iter().map(|validation_pass| validation_pass.iter().map(|op| op.message_hash().unwrap()).collect()).collect(),
-        };
-
-        let response = env.tezos_without_context_api().pool.get()?.api.compute_path(request)?;
+    let paths = if let Some(vps) = validation_passes.as_ref() {
+        let response = env
+            .tezos_without_context_api()
+            .pool
+            .get()?
+            .api
+            .compute_path(vps.try_into()?)?;
         Some(response.operations_hashes_path)
     } else {
         None
     };
 
+    // callback will wait all the asynchonous processing to finish, and then returns rpc response
+    let result_callback = if is_async {
+        // if async no wait
+        None
+    } else {
+        // if not async, means sync and we wait
+        Some(Arc::new((Mutex::new(None), Condvar::new())))
+    };
+
+    let start_async = SystemTime::now();
+
     // notify other actors, that a block was injected
     shell_channel.tell(
         Publish {
-            msg: InjectBlock {
-                block_header: header,
-                operations: validation_passes,
-                operation_paths: paths,
-            }.into(),
+            msg: ShellChannelMsg::InjectBlock(
+                InjectBlock {
+                    block_header: Arc::new(header),
+                    operations: validation_passes,
+                    operation_paths: paths,
+                },
+                result_callback.clone(),
+            ),
             topic: ShellChannelTopic::ShellEvents.into(),
-        }, None);
+        },
+        None,
+    );
+
+    // wait for result
+    if let Some(result_callback) = result_callback {
+        let wait_result = try_wait_for_condvar_result(result_callback, INJECT_BLOCK_WAIT_TIMEOUT)
+            .map_err(|e| {
+            format_err!(
+                "Block injection - failed to inject, block_hash: {}, reason: {:?}!",
+                &block_hash_b58check_string,
+                e
+            )
+        })?;
+        match wait_result {
+            Ok(_) => {
+                info!(env.log(),
+                      "Block injected";
+                      "block_hash" => block_hash_b58check_string.clone(),
+                      "elapsed" => format!("{:?}", start_request.elapsed()?),
+                      "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+                );
+            }
+            Err(e) => {
+                return Err(format_err!(
+                    "Block injection - error received, block_hash: {}, reason: {}!",
+                    &block_hash_b58check_string,
+                    e
+                ));
+            }
+        };
+    }
 
     // return the block hash to the caller
-    Ok(block_hash)
+    Ok(block_hash_b58check_string)
+}
+
+pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure::Error> {
+    // request current head from the peers
+    shell_channel.tell(
+        Publish {
+            msg: RequestCurrentHead.into(),
+            topic: ShellChannelTopic::ShellEvents.into(),
+        },
+        None,
+    );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -333,7 +490,8 @@ mod tests {
             HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
         );
-        let protocol = HashType::ProtocolHash.b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
+        let protocol = HashType::ProtocolHash
+            .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
 
         let expected_json = json!(
                 [
@@ -379,7 +537,8 @@ mod tests {
             HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
         );
-        let protocol = HashType::ProtocolHash.b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
+        let protocol = HashType::ProtocolHash
+            .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
 
         let expected_json = json!(
                 [

@@ -60,7 +60,8 @@ impl BlocksMonitor {
 
             if i == self.downloading_group && blocks <= finished_blocks {
                 self.downloading_group += 1;
-                self.durations.push(Some(self.group_download_start.elapsed().as_secs_f32()));
+                self.durations
+                    .push(Some(self.group_download_start.elapsed().as_secs_f32()));
                 self.group_download_start = Instant::now();
             }
 
@@ -70,10 +71,22 @@ impl BlocksMonitor {
                 None
             };
 
-            payload.push(BlockMetrics::new(i as i32, blocks, finished_blocks, applied_blocks, download_duration));
+            payload.push(BlockMetrics::new(
+                i as i32,
+                blocks,
+                finished_blocks,
+                applied_blocks,
+                download_duration,
+            ));
         }
 
-        payload.push(BlockMetrics::new(group_count as i32, total_count, downloaded_count, applied_count, None));
+        payload.push(BlockMetrics::new(
+            group_count as i32,
+            total_count,
+            downloaded_count,
+            applied_count,
+            None,
+        ));
 
         payload
     }

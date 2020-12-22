@@ -9,22 +9,22 @@ use std::time::Duration;
 
 use failure::format_err;
 use serial_test::serial;
-use slog::{error, info, Level, Logger, warn};
+use slog::{error, info, warn, Level, Logger};
 
-use tezos_api::environment::{TEZOS_ENV, TezosEnvironmentConfiguration};
+use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
-use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
-use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
 use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
+use tezos_wrapper::ProtocolEndpointConfiguration;
+use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 mod common;
 
 #[ignore]
 #[test]
 #[serial]
-fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() -> Result<(), failure::Error> {
-
+fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
+) -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
     let log = common::create_logger(log_level);
@@ -34,7 +34,9 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
     // we need to ensure, that first is write context created
     let mut flags_readonly = test_data::init_flags_readonly(number_of_endpoints);
 
-    let context_db_path = PathBuf::from(common::prepare_empty_dir("__shell_test_mutliple_protocol_runners"));
+    let context_db_path = PathBuf::from(common::prepare_empty_dir(
+        "__shell_test_mutliple_protocol_runners",
+    ));
 
     // spawn thread for init_protocol_context for every endpoint
     let mut handles = Vec::new();
@@ -48,22 +50,26 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
         )?;
 
         // choose flag readonly
-        let flag_readonly = flags_readonly.pop_front().expect("Every thread should have defined flag!");
+        let flag_readonly = flags_readonly
+            .pop_front()
+            .expect("Every thread should have defined flag!");
 
         // spawn thread for every endpoint and try to initialize protocol context
-        let handle = thread::spawn(move || -> Result<InitProtocolContextResult, failure::Error> {
-            // init protocol read or write
-            match protocol.accept() {
-                Ok(proto) => Ok({
-                    if flag_readonly {
-                        proto.init_protocol_for_read()?
-                    } else {
-                        proto.init_protocol_for_write(false, &None)?
-                    }
-                }),
-                Err(e) => Err(format_err!("{:?}", e))
-            }
-        });
+        let handle = thread::spawn(
+            move || -> Result<InitProtocolContextResult, failure::Error> {
+                // init protocol read or write
+                match protocol.accept() {
+                    Ok(proto) => Ok({
+                        if flag_readonly {
+                            proto.init_protocol_for_read()?
+                        } else {
+                            proto.init_protocol_for_write(false, &None)?
+                        }
+                    }),
+                    Err(e) => Err(format_err!("{:?}", e)),
+                }
+            },
+        );
         handles.push((handle, child, endpoint_name, flag_readonly));
     }
 
@@ -76,7 +82,9 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
                 info!(log, "Init protocol context success"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly);
                 match child.kill() {
                     Ok(_) => (),
-                    Err(e) => warn!(log, "Failed to kill child process"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e))
+                    Err(e) => {
+                        warn!(log, "Failed to kill child process"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e))
+                    }
                 };
                 if !result.supported_protocol_hashes.is_empty() {
                     success_counter += 1;
@@ -86,7 +94,9 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
                 error!(log, "Init protocol context error"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e));
                 match child.kill() {
                     Ok(_) => (),
-                    Err(e) => warn!(log, "Failed to kill child process"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e))
+                    Err(e) => {
+                        warn!(log, "Failed to kill child process"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e))
+                    }
                 };
             }
         }
@@ -97,10 +107,16 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context() ->
     Ok(())
 }
 
-fn create_endpoint<Runner: ProtocolRunner + 'static>(log: Logger, log_level: Level, endpoint_name: String, context_db_path: PathBuf) -> Result<(IpcCmdServer, Runner::Subprocess, String), failure::Error> {
-
+fn create_endpoint<Runner: ProtocolRunner + 'static>(
+    log: Logger,
+    log_level: Level,
+    endpoint_name: String,
+    context_db_path: PathBuf,
+) -> Result<(IpcCmdServer, Runner::Subprocess, String), failure::Error> {
     // environement
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&test_data::TEZOS_NETWORK)
+        .expect("no environment configuration");
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
@@ -125,13 +141,16 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(log: Logger, log_level: Lev
     // start subprocess
     let (subprocess, protocol_commands) = match protocol_runner_endpoint.start() {
         Ok(subprocess) => {
-            let ProtocolRunnerEndpoint {
-                commands,
-                ..
-            } = protocol_runner_endpoint;
+            let ProtocolRunnerEndpoint { commands, .. } = protocol_runner_endpoint;
             (subprocess, commands)
         }
-        Err(e) => return Err(format_err!("Error to start test_protocol_runner_endpoint: {} - error: {:?}", protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e))
+        Err(e) => {
+            return Err(format_err!(
+                "Error to start test_protocol_runner_endpoint: {} - error: {:?}",
+                protocol_runner.as_os_str().to_str().unwrap_or("-none-"),
+                e
+            ))
+        }
     };
 
     Ok((protocol_commands, subprocess, endpoint_name))
@@ -147,22 +166,33 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     let number_of_endpoints = 3;
 
     // environement
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&test_data::TEZOS_NETWORK).expect("no environment configuration");
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&test_data::TEZOS_NETWORK)
+        .expect("no environment configuration");
 
     // storage
-    let context_db_path = PathBuf::from(common::prepare_empty_dir("__shell_test_readonly_protocol_runner_pool"));
+    let context_db_path = PathBuf::from(common::prepare_empty_dir(
+        "__shell_test_readonly_protocol_runner_pool",
+    ));
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
 
     // at first we need to create one writerable context, because of creating new one - see feature AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
-    let (mut write_context_commands, mut subprocess, ..) = create_endpoint::<ExecutableProtocolRunner>(log.clone(), log_level, "test_one_writeable_endpoint".to_string(), context_db_path.clone())?;
+    let (mut write_context_commands, mut subprocess, ..) =
+        create_endpoint::<ExecutableProtocolRunner>(
+            log.clone(),
+            log_level,
+            "test_one_writeable_endpoint".to_string(),
+            context_db_path.clone(),
+        )?;
     let genesis_context_hash = write_context_commands
         .accept()?
         .init_protocol_for_write(true, &None)?
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
-    let _ = ExecutableProtocolRunner::wait_and_terminate_ref(&mut subprocess, Duration::from_secs(5));
+    let _ =
+        ExecutableProtocolRunner::wait_and_terminate_ref(&mut subprocess, Duration::from_secs(5));
 
     // cfg for pool
     let pool_cfg = TezosApiConnectionPoolConfiguration {
@@ -205,7 +235,11 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     {
         {
             // acquire one
-            assert!(&pool.get()?.api.genesis_result_data(&genesis_context_hash).is_ok());
+            assert!(&pool
+                .get()?
+                .api
+                .genesis_result_data(&genesis_context_hash)
+                .is_ok());
             assert_eq!(1, pool.state().connections);
             // released1
         }

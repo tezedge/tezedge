@@ -1,31 +1,31 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, convert::TryFrom};
 use std::ops::Neg;
-use std::pin::Pin;
+use std::{collections::HashMap, convert::TryFrom};
 
-use chrono::Utc;
-use failure::bail;
-use futures::Stream;
-use futures::task::{Context, Poll};
+use failure::{bail, format_err};
 use hyper::{Body, Request};
+use riker::actor::ActorReference;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, ContextHash, HashType};
+use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash, HashType};
+use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::shell_channel::BlockApplied;
-use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context_action_storage::ContextActionType;
+use storage::{
+    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
+};
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::ts_to_rfc3339;
 
-use crate::encoding::base_types::{TimeStamp, UniString};
-use crate::rpc_actor::RpcCollectedStateRef;
-use crate::server::RpcServiceEnvironment;
+use crate::encoding::base_types::UniString;
+use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
+use crate::services::stream_services::BlockHeaderMonitorInfo;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -38,13 +38,25 @@ macro_rules! merge_slices {
     }}
 }
 
+#[macro_export]
+macro_rules! required_param {
+    ($params:expr, $param_name:expr) => {{
+        match $params.get_str($param_name) {
+            Some(param_value) => Ok(param_value),
+            None => Err(failure::format_err!("Missing parameter '{}'", $param_name)),
+        }
+    }};
+}
+
+pub type BlockMetadata = HashMap<String, Value>;
+
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
 pub struct FullBlockInfo {
     pub hash: String,
     pub chain_id: String,
     pub header: InnerBlockHeader,
-    pub metadata: HashMap<String, Value>,
+    pub metadata: BlockMetadata,
     pub operations: Vec<Vec<HashMap<String, Value>>>,
 }
 
@@ -110,83 +122,13 @@ pub struct BlockHeaderShellInfo {
     pub context: String,
 }
 
-/// Object containing information to recreate the block header shell information
-#[derive(Serialize, Debug, Clone)]
-pub struct BlockHeaderMonitorInfo {
-    pub hash: String,
-    pub level: i32,
-    pub proto: u8,
-    pub predecessor: String,
-    pub timestamp: String,
-    pub validation_pass: u8,
-    pub operations_hash: String,
-    pub fitness: Vec<String>,
-    pub context: String,
-    pub protocol_data: String,
-}
-
-pub struct MonitorHeadStream {
-    pub chain_id: ChainId,
-    pub state: RpcCollectedStateRef,
-    pub last_polled_timestamp: Option<TimeStamp>,
-}
-
-impl Stream for MonitorHeadStream {
-    type Item = Result<String, serde_json::Error>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, serde_json::Error>>> {
-        // Note: the stream only ends on the client dropping the connection
-
-        let state = self.state.read().unwrap();
-        let last_update = if let TimeStamp::Integral(timestamp) = state.head_update_time() {
-            *timestamp
-        } else {
-            cx.waker().wake_by_ref();
-            return Poll::Pending;
-        };
-        let current_head = state.current_head().clone();
-
-        // drop the immutable borrow so we can borrow self again as mutable
-        // TODO: refactor this drop (remove if possible)
-        drop(state);
-
-        if let Some(TimeStamp::Integral(poll_time)) = self.last_polled_timestamp {
-            if poll_time < last_update {
-                // get the desired structure of the
-                let current_head = current_head.as_ref().map(|current_head| {
-                    let chain_id = chain_id_to_b58_string(&self.chain_id);
-                    BlockHeaderInfo::new(current_head, chain_id).to_monitor_header(current_head)
-                });
-
-                // serialize the struct to a json string to yield by the stream
-                let mut head_string = serde_json::to_string(&current_head.unwrap())?;
-
-                // push a newline character to the stream to imrove readability
-                head_string.push('\n');
-
-                self.last_polled_timestamp = Some(current_time_timestamp());
-
-                // yield the serialized json
-                return Poll::Ready(Some(Ok(head_string)));
-            } else {
-                cx.waker().wake_by_ref();
-                return Poll::Pending;
-            }
-        } else {
-            self.last_polled_timestamp = Some(current_time_timestamp());
-
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
-    }
-}
-
 impl FullBlockInfo {
     pub fn new(val: &BlockApplied, chain_id: String) -> Self {
         let header: &BlockHeader = &val.header().header;
         let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash = HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
+        let operations_hash =
+            HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
         let context = HashType::ContextHash.hash_to_b58check(header.context());
         let hash = HashType::BlockHash.hash_to_b58check(&val.header().hash);
@@ -204,10 +146,13 @@ impl FullBlockInfo {
                 operations_hash,
                 fitness,
                 context,
-                protocol_data: serde_json::from_str(json_data.block_header_proto_json()).unwrap_or_default(),
+                protocol_data: serde_json::from_str(json_data.block_header_proto_json())
+                    .unwrap_or_default(),
             },
-            metadata: serde_json::from_str(json_data.block_header_proto_metadata_json()).unwrap_or_default(),
-            operations: serde_json::from_str(json_data.operations_proto_metadata_json()).unwrap_or_default(),
+            metadata: serde_json::from_str(json_data.block_header_proto_metadata_json())
+                .unwrap_or_default(),
+            operations: serde_json::from_str(json_data.operations_proto_metadata_json())
+                .unwrap_or_default(),
         }
     }
 }
@@ -217,17 +162,29 @@ impl BlockHeaderInfo {
         let header: &BlockHeader = &val.header().header;
         let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash = HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
+        let operations_hash =
+            HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
         let context = HashType::ContextHash.hash_to_b58check(header.context());
         let hash = HashType::BlockHash.hash_to_b58check(&val.header().hash);
-        let header_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_json()).unwrap_or_default();
-        let signature = header_data.get("signature").map(|val| val.as_str().unwrap().to_string());
+        let header_data: HashMap<String, Value> =
+            serde_json::from_str(val.json_data().block_header_proto_json()).unwrap_or_default();
+        let signature = header_data
+            .get("signature")
+            .map(|val| val.as_str().unwrap().to_string());
         let priority = header_data.get("priority").map(|val| val.as_i64().unwrap());
-        let proof_of_work_nonce = header_data.get("proof_of_work_nonce").map(|val| val.as_str().unwrap().to_string());
-        let seed_nonce_hash = header_data.get("seed_nonce_hash").map(|val| val.as_str().unwrap().to_string());
-        let proto_data: HashMap<String, Value> = serde_json::from_str(val.json_data().block_header_proto_metadata_json()).unwrap_or_default();
-        let protocol = proto_data.get("protocol").map(|val| val.as_str().unwrap().to_string());
+        let proof_of_work_nonce = header_data
+            .get("proof_of_work_nonce")
+            .map(|val| val.as_str().unwrap().to_string());
+        let seed_nonce_hash = header_data
+            .get("seed_nonce_hash")
+            .map(|val| val.as_str().unwrap().to_string());
+        let proto_data: HashMap<String, Value> =
+            serde_json::from_str(val.json_data().block_header_proto_metadata_json())
+                .unwrap_or_default();
+        let protocol = proto_data
+            .get("protocol")
+            .map(|val| val.as_str().unwrap().to_string());
 
         let mut content: Option<HeaderContent> = None;
         if let Some(header_content) = header_data.get("content") {
@@ -313,11 +270,15 @@ pub struct PagedResult<C: Serialize> {
 
 #[allow(dead_code)]
 impl<C> PagedResult<C>
-    where
-        C: Serialize
+where
+    C: Serialize,
 {
     pub fn new(data: C, next_id: Option<u64>, limit: usize) -> Self {
-        PagedResult { data, next_id, limit }
+        PagedResult {
+            data,
+            next_id,
+            limit,
+        }
     }
 }
 
@@ -381,7 +342,7 @@ impl NodeVersion {
     pub fn new(network_version: &NetworkVersion) -> Self {
         let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
-        let version: Vec<String> = version_env.split(".").map(|v| v.to_string()).collect();
+        let version: Vec<String> = version_env.split('.').map(|v| v.to_string()).collect();
 
         Self {
             version: Version {
@@ -398,50 +359,71 @@ impl NodeVersion {
     }
 }
 
-/// Parses [ChainId] from chain_id url param
-pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) -> Result<ChainId, failure::Error> {
-    Ok(
-        match chain_id_param {
-            "main" => env.main_chain_id().clone(),
-            "test" => {
-                // find test chain for main chain
-                let chain_meta_storage = ChainMetaStorage::new(env.persistent_storage());
-                let test_chain = match chain_meta_storage.get_test_chain_id(env.main_chain_id())? {
-                    Some(test_chain_id) => test_chain_id,
-                    None => bail!("No test chain activated for main_chain_id: {}", HashType::ChainId.hash_to_b58check(env.main_chain_id()))
-                };
+pub const MAIN_CHAIN_ID: &str = "main";
+pub const TEST_CHAIN_ID: &str = "test";
 
-                bail!("Test chains are not supported yet! main_chain_id: {}, test_chain_id: {}",
-                    HashType::ChainId.hash_to_b58check(env.main_chain_id()),
-                    HashType::ChainId.hash_to_b58check(&test_chain))
-            }
-            chain_id_hash => {
-                let chain_id = HashType::ChainId.b58check_to_hash(chain_id_hash)?;
-                if chain_id.eq(env.main_chain_id()) {
-                    chain_id
-                } else {
-                    bail!("Multiple chains are not supported yet! requested_chain_id: {} only main_chain_id: {}",
+/// Parses [ChainId] from chain_id url param
+pub(crate) fn parse_chain_id(
+    chain_id_param: &str,
+    env: &RpcServiceEnvironment,
+) -> Result<ChainId, failure::Error> {
+    Ok(match chain_id_param {
+        MAIN_CHAIN_ID => env.main_chain_id().clone(),
+        TEST_CHAIN_ID => {
+            // find test chain for main chain
+            let chain_meta_storage = ChainMetaStorage::new(env.persistent_storage());
+            let test_chain = match chain_meta_storage.get_test_chain_id(env.main_chain_id())? {
+                Some(test_chain_id) => test_chain_id,
+                None => bail!(
+                    "No test chain activated for main_chain_id: {}",
+                    HashType::ChainId.hash_to_b58check(env.main_chain_id())
+                ),
+            };
+
+            bail!(
+                "Test chains are not supported yet! main_chain_id: {}, test_chain_id: {}",
+                HashType::ChainId.hash_to_b58check(env.main_chain_id()),
+                HashType::ChainId.hash_to_b58check(&test_chain)
+            )
+        }
+        chain_id_hash => {
+            let chain_id = HashType::ChainId.b58check_to_hash(chain_id_hash)?;
+            if chain_id.eq(env.main_chain_id()) {
+                chain_id
+            } else {
+                bail!("Multiple chains are not supported yet! requested_chain_id: {} only main_chain_id: {}",
                         HashType::ChainId.hash_to_b58check(&chain_id),
                         HashType::ChainId.hash_to_b58check(env.main_chain_id()))
-                }
             }
         }
-    )
+    })
 }
 
-fn split_block_id_param(block_id_param: &str, split_char: char, negate: bool) -> Result<(&str, Option<i32>), failure::Error> {
+/// Parses [async] parameter from query
+pub(crate) fn parse_async(query: &Query, default: bool) -> bool {
+    match query.get_str("async") {
+        Some(value) => value.eq("true"),
+        None => default,
+    }
+}
+
+fn split_block_id_param(
+    block_id_param: &str,
+    split_char: char,
+    negate: bool,
+) -> Result<(&str, Option<i32>), failure::Error> {
     let splits: Vec<&str> = block_id_param.split(split_char).collect();
-    Ok(
-        match splits.len() {
-            1 => (splits[0], None),
-            2 => if negate {
+    Ok(match splits.len() {
+        1 => (splits[0], None),
+        2 => {
+            if negate {
                 (splits[0], Some(splits[1].parse::<i32>()?.neg()))
             } else {
                 (splits[0], Some(splits[1].parse::<i32>()?))
-            },
-            _ => bail!("Invalid block_id parameter: {}", block_id_param)
+            }
         }
-    )
+        _ => bail!("Invalid block_id parameter: {}", block_id_param),
+    })
 }
 
 /// Parses [BlockHash] from block_id url param
@@ -459,14 +441,18 @@ fn split_block_id_param(block_id_param: &str, split_char: char, negate: bool) ->
 /// - `<block>~<level>` - block can be: genesis/head/level/block_hash, e.g.: head~10 returns: the block which is 10 levels in the past from head)
 /// - `<block>-<level>` - block can be: genesis/head/level/block_hash, e.g.: head-10 returns: the block which is 10 levels in the past from head)
 /// - `<block>+<level>` - block can be: genesis/head/level/block_hash, e.g.: block_hash-10 returns: the block which is 10 levels after block_hash)
-pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &RpcServiceEnvironment) -> Result<BlockHash, failure::Error> {
+pub(crate) fn parse_block_hash(
+    chain_id: &ChainId,
+    block_id_param: &str,
+    env: &RpcServiceEnvironment,
+) -> Result<BlockHash, failure::Error> {
     // split header and optional offset (+, -, ~)
     let (block_param, offset_param) = {
         match block_id_param {
             bip if bip.contains('~') => split_block_id_param(block_id_param, '~', false)?,
             bip if bip.contains('-') => split_block_id_param(block_id_param, '-', false)?,
             bip if bip.contains('+') => split_block_id_param(block_id_param, '+', true)?,
-            _ => (block_id_param, None)
+            _ => (block_id_param, None),
         }
     };
 
@@ -474,13 +460,11 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
     let current_head = || {
         let state_read = env.state().read().unwrap();
         match state_read.current_head().as_ref() {
-            Some(current_head) => Ok(
-                (
-                    current_head.header().hash.clone(),
-                    current_head.header().header.level()
-                )
-            ),
-            None => bail!("Head not initialized")
+            Some(current_head) => Ok((
+                current_head.header().hash.clone(),
+                current_head.header().header.level(),
+            )),
+            None => bail!("Head not initialized"),
         }
     };
 
@@ -489,7 +473,10 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
             let (current_head, _) = current_head()?;
             if let Some(offset) = offset_param {
                 if offset < 0 {
-                    bail!("Offset for `head` parameter cannot be used with '+', block_id_param: {}", block_id_param);
+                    bail!(
+                        "Offset for `head` parameter cannot be used with '+', block_id_param: {}",
+                        block_id_param
+                    );
                 }
             }
             (current_head, offset_param)
@@ -504,7 +491,10 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
                     }
                     (genesis.into(), offset_param)
                 }
-                None => bail!("No genesis found for chain_id: {}", HashType::ChainId.hash_to_b58check(chain_id))
+                None => bail!(
+                    "No genesis found for chain_id: {}",
+                    HashType::ChainId.hash_to_b58check(chain_id)
+                ),
             }
         }
         level_or_hash => {
@@ -540,9 +530,10 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
     // find requested header, if no offset we return header
     let block_hash = if let Some(offset) = offset {
         match BlockMetaStorage::new(env.persistent_storage())
-            .find_block_at_distance(block_hash, offset)? {
+            .find_block_at_distance(block_hash, offset)?
+        {
             Some(block_hash) => block_hash,
-            None => bail!("Unknown block for block_id_param: {}", block_id_param)
+            None => bail!("Unknown block for block_id_param: {}", block_id_param),
         }
     } else {
         block_hash
@@ -553,23 +544,26 @@ pub(crate) fn parse_block_hash(chain_id: &ChainId, block_id_param: &str, env: &R
 
 #[inline]
 pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
-    action_types.split(",")
+    action_types
+        .split(',')
         .filter_map(|x: &str| x.parse().ok())
         .collect()
 }
 
 /// TODO: TE-238 - optimize context_hash/level index, not do deserialize whole header
 /// TODO: returns context_hash and level, but level is here just for one use-case, so maybe it could be splitted
-pub(crate) fn get_context_hash(block_hash: &BlockHash, env: &RpcServiceEnvironment) -> Result<ContextHash, failure::Error> {
+pub(crate) fn get_context_hash(
+    block_hash: &BlockHash,
+    env: &RpcServiceEnvironment,
+) -> Result<ContextHash, failure::Error> {
     let block_storage = BlockStorage::new(env.persistent_storage());
     match block_storage.get(block_hash)? {
         Some(header) => Ok(header.header.context().clone()),
-        None => bail!("Block not found for block_hash: {}", HashType::BlockHash.hash_to_b58check(block_hash))
+        None => bail!(
+            "Block not found for block_hash: {}",
+            HashType::BlockHash.hash_to_b58check(block_hash)
+        ),
     }
-}
-
-pub(crate) fn current_time_timestamp() -> TimeStamp {
-    TimeStamp::Integral(Utc::now().timestamp())
 }
 
 pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest, failure::Error> {
@@ -588,11 +582,64 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
 
     Ok(RpcRequest {
         body,
-        context_path: String::from(context_path.trim_end_matches("/")),
+        context_path: String::from(context_path.trim_end_matches('/')),
         meth,
         content_type,
         accept,
     })
+}
+
+#[derive(Serialize, Debug)]
+pub(crate) struct Prevalidator {
+    chain_id: String,
+    since: String,
+}
+
+/// Returns all prevalidator actors
+// TODO: implement the json structure form ocaml's RPC
+pub(crate) fn get_prevalidators(
+    env: &RpcServiceEnvironment,
+    filter_by_chain_id: Option<&ChainId>,
+) -> Result<Vec<Prevalidator>, failure::Error> {
+    // expecting max one prevalidator by name
+    let mempool_prevalidator = env
+        .sys()
+        .user_root()
+        .children()
+        .find(|actor_ref| actor_ref.name() == MempoolPrevalidator::name());
+
+    let prevalidators = match mempool_prevalidator {
+        Some(_mempool_prevalidator_actor) => {
+            let mempool_state = env
+                .current_mempool_state_storage()
+                .read()
+                .map_err(|e| format_err!("Failed to obtain read lock, reson: {}", e))?;
+            let mempool_prevalidator = mempool_state.prevalidator();
+            match mempool_prevalidator {
+                Some(prevalidator) => {
+                    let accept_prevalidator = if let Some(chain_id) = filter_by_chain_id {
+                        prevalidator.chain_id == *chain_id
+                    } else {
+                        true
+                    };
+
+                    if accept_prevalidator {
+                        vec![Prevalidator {
+                            chain_id: chain_id_to_b58_string(&prevalidator.chain_id),
+                            // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
+                            since: env.sys().start_date().to_rfc3339(),
+                        }]
+                    } else {
+                        vec![]
+                    }
+                }
+                None => vec![],
+            }
+        }
+        None => vec![],
+    };
+
+    Ok(prevalidators)
 }
 
 #[cfg(test)]

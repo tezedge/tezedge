@@ -48,7 +48,9 @@ impl PeerMonitor {
     pub fn snapshot(&mut self) -> PeerMetrics {
         let ret = PeerMetrics::new(
             self.public_key.clone(),
-            self.addr.unwrap_or(SocketAddr::new([0, 0, 0, 0].into(), 0)).to_string(),
+            self.addr
+                .unwrap_or(SocketAddr::new([0, 0, 0, 0].into(), 0))
+                .to_string(),
             self.total_transferred,
             self.avg_speed(),
             self.current_speed(),

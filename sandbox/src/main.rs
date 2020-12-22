@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-use std::{env, fs, io, iter};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
+use std::{env, fs, io, iter};
 
 use rand::distributions::Alphanumeric;
 use rand::Rng;
-use slog::{Drain, info, Level, Logger};
+use slog::{info, Drain, Level, Logger};
 
 mod configuration;
 mod filters;
@@ -60,11 +60,11 @@ fn create_logger(level: Level) -> Logger {
             .build()
             .fuse(),
     )
-        .chan_size(32768)
-        .overflow_strategy(slog_async::OverflowStrategy::Block)
-        .build()
-        .filter_level(level)
-        .fuse();
+    .chan_size(32768)
+    .overflow_strategy(slog_async::OverflowStrategy::Block)
+    .build()
+    .filter_level(level)
+    .fuse();
     Logger::root(drain, slog::o!())
 }
 
@@ -72,8 +72,7 @@ fn create_logger(level: Level) -> Logger {
 pub fn create_temp_dir(prefix: &str) -> io::Result<PathBuf> {
     let temp_dir = env::temp_dir();
     let temp_dir = temp_dir.join(format!("{}-{}", prefix, rand_chars(7)));
-    fs::create_dir_all(&temp_dir)
-        .and(Ok(temp_dir))
+    fs::create_dir_all(&temp_dir).and(Ok(temp_dir))
 }
 
 pub fn rand_chars(count: usize) -> String {

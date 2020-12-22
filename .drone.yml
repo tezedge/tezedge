@@ -52,21 +52,27 @@ steps:
       path: /artifacts
     - name: sandbox-data
       path: /tmp/sandbox
+    - name: tezos-src
+      path: /tmp/tezos-src
   commands:
     - rm -rf /tmp/sandbox/light-node
     - rm -rf /tmp/sandbox/tezos-node
     - rm -rf /tmp/sandbox/tezos-client
     - rm -rf /home/tezos/data/
     - rm -rf /artifacts/*
+    - rm -rf /tmp/tezos-src/*
 
 - name: test-and-build-artifacts
   image: simplestakingcom/tezedge-ci-builder:latest
+  pull: always
   user: root
   volumes:
     - name: build
       path: /artifacts
     - name: sandbox-data
       path: /tmp/sandbox
+    - name: tezos-src
+      path: /tmp/tezos-src
   environment:
     RUST_BACKTRACE: 1
     SODIUM_USE_PKG_CONFIG: 1
@@ -92,6 +98,7 @@ steps:
     - mkdir /artifacts/identities
     - mkdir -p /artifacts/test_data/tests/resources
     # copy binaries
+    - mkdir /tmp/tezos-src/modified
     - cp ./target/release/light-node /artifacts
     - cp ./target/release/sandbox /artifacts
     - cp ./target/release/protocol-runner /artifacts
@@ -122,6 +129,38 @@ steps:
     - cp ./light_node/etc/drone/wait_file.sh /artifacts/ && chmod 755 /artifacts/wait_file.sh
     - cp ./light_node/etc/drone/identities/* /artifacts/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config /artifacts/tezedge/
+    # collect modified python test framework files
+    - cp -R ./tezos/python-tests /tmp/tezos-src/modified
+
+- name: prepare-python-tests-unmodified
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: sandbox-data
+      path: /tmp/sandbox
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - mkdir /tmp/tezos-src/unmodified
+    # copy the tezos src file from the imgage to a shared volume
+    - cp -R /home/appuser/tezos-src/tezos /tmp/tezos-src/unmodified/tezos
+    # prepare modified python files for tests (compatibility with tezedge node)
+    - cp /tmp/tezos-src/modified/python-tests/daemons/node.py /tmp/tezos-src/unmodified/tezos/tests_python/daemons/node.py
+    - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/unmodified/tezos/tests_python/launchers/sandbox.py
+    - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/constants.py
+    - cp /tmp/tezos-src/modified/python-tests/tools/utils.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/utils.py
+    - cp /tmp/tezos-src/modified/python-tests/test-parameters.json /tmp/tezos-src/unmodified/tezos/src/proto_alpha/parameters/test-parameters.json
+    - cp /tmp/sandbox/sandbox-patch-context.json /tmp/tezos-src/unmodified/tezos/sandbox-patch-context.json
+    # copy binaries to the test 
+    - cp /artifacts/light-node /tmp/tezos-src/unmodified/tezos/
+    - cp /artifacts/protocol-runner /tmp/tezos-src/unmodified/tezos/
+    - cp /artifacts/ffi/libtezos.so /tmp/tezos-src/unmodified/tezos/
 
 # this is not triggered on pull request, because there is complex bench comparison on PR
 - name: benchmarks
@@ -348,11 +387,349 @@ volumes:
   - name: cache
     host:
       path: /etc/tezedge-ci/cache
+  - name: tezos-src
+    host:
+      path: /etc/tezedge-ci/tezos-src
 
 trigger:
   branch:
     - master
     - develop
+    - develop-old
+
+##############################################################################################################
+# This pipeline runs the python test framwork unmodified tests from the tezos repository aginst tezedge nodes
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-unmodified
+
+clone:
+  disable: true
+
+steps:
+- name: baker-endorser-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_baker_endorser.py
+
+- name: test-many-nodes
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_nodes.py
+
+- name: test-many-bakers
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_bakers.py
+
+- name: test-multinode
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_multinode.py
+
+- name: mempool-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_mempool.py
+
+- name: fork-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_fork.py
+
+- name: double-endorsement-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_double_endorsement.py
+
+- name: test-programs
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_programs.py
+
+- name: test-contract-annotations-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_annotations.py
+
+- name: test-contract-baker-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_baker.py
+
+# TODO: TE-275 remove failure: ignore
+# TODO - TE-220 - stop ignoring after resolving the rpc error handling
+- name: basic-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  failure: ignore
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_basic.py
+
+volumes:
+  - name: build
+    host:
+      path: /etc/tezedge-ci-build/
+  - name: tezos-src
+    host:
+      path: /etc/tezedge-ci/tezos-src
+
+trigger:
+  branch:
+    - master
+    - develop
+    - develop-old
+
+depends_on:
+  - build-and-tests
+
+##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository against tezos ocaml nodes
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-ocaml-reference
+
+clone:
+  disable: true
+
+steps:
+- name: baker-endorser-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_baker_endorser.py
+
+- name: test-many-nodes
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_many_nodes.py
+
+- name: test-many-bakers
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_many_bakers.py
+
+- name: test-multinode
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_multinode.py
+
+- name: mempool-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_mempool.py
+
+- name: fork-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_fork.py
+
+- name: basic-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_basic.py
+
+volumes:
+  - name: build
+    host:
+      path: /etc/tezedge-ci-build/
+
+trigger:
+  branch:
+    - master
+    - develop
+    - develop-old
+
+depends_on:
+  - build-and-tests
 
 ##############################################################################################################
 # This pipeline test the sandbox and its rpc sercver
@@ -373,7 +750,7 @@ environment:
 steps:
 - name: tezedge-sandbox-run
   image: simplestakingcom/tezedge-ci-builder:latest
-  pull: always
+  pull: if-not-exists
   user: root
   detach: true
   volumes:
@@ -420,6 +797,7 @@ steps:
 
 - name: wait-sandbox-node-start
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: always
   commands:
     - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -467,6 +845,7 @@ steps:
 
 - name: wait-sandbox-node-start-level-1
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=1 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -501,6 +880,7 @@ steps:
 
 - name: wait-sandbox-node-start-level-2
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=2 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -603,6 +983,7 @@ steps:
 
 - name: wait-for-tezedge-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -624,6 +1005,7 @@ steps:
 
 - name: wait-for-ocaml-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
@@ -656,6 +1038,7 @@ steps:
 # test checks if this block is synchronized to rust node through p2p
 - name: wait-for-sync-on-level-1
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=1 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -732,6 +1115,7 @@ steps:
 # test checks if this block is synchronized to rust node through p2p
 - name: wait-for-sync-on-level-2
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=2 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -764,6 +1148,7 @@ trigger:
   branch:
     - master
     - develop
+    - develop-old
 
 depends_on:
   - build-and-tests
@@ -822,6 +1207,7 @@ steps:
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
     commands:
       - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT}
 
@@ -845,6 +1231,7 @@ steps:
 
   - name: wait-ocaml-node-carthage-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
     commands:
       - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
@@ -875,6 +1262,7 @@ steps:
 
   - name: check-ocaml-still-running
     image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
     commands:
       - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
@@ -1018,6 +1406,7 @@ steps:
 
 - name: wait-for-ocaml-snapshoted-nodes
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_ocaml_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --node_ocaml_2=$${OCAML_NODE_RPC_CONTEXT_ROOT_2} --node_ocaml_3=$${OCAML_NODE_RPC_CONTEXT_ROOT_3} --node_ocaml_4=$${OCAML_NODE_RPC_CONTEXT_ROOT_4}
 
@@ -1074,6 +1463,7 @@ steps:
 
 - name: bootstrapping-tezedge
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --bootstrap --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -1134,6 +1524,7 @@ steps:
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
   image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
   commands:
     - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
 
@@ -1141,7 +1532,7 @@ steps:
 # not triggered on pull request, because on pull request is triggered more complex wrk test
 - name: wrk-performance-test-tezedge-vs-ocaml
   image: simplestakingcom/tezos-node-bootstrap:latest
-  pull: always
+  pull: if-not-exists
   user: root
   commands:
     - tezos-node-bootstrap --performance-test --level=$${WRK_TEST_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-duration=$${WRK_TEST_DURATION}
@@ -1429,6 +1820,7 @@ trigger:
   branch:
     - master
     - develop
+    - develop-old
 
 depends_on:
   - build-and-tests
@@ -1476,6 +1868,7 @@ trigger:
 depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
+  - tezos-python-tests-unmodified
   - connect-from-different-network-test
   - delphinet-offline-tests
   - carthagenet-offline-tests
@@ -1523,6 +1916,7 @@ trigger:
 depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
+  - tezos-python-tests-unmodified
   - connect-from-different-network-test
   - delphinet-offline-tests
   - carthagenet-offline-tests

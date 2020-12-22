@@ -11,6 +11,8 @@ use ocaml_interop::OCamlError;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
+use tezos_messages::base::rpc_support::{RpcJsonMap, UniversalValue};
+use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
@@ -29,8 +31,43 @@ pub struct GenesisChain {
 /// Voted protocol overrides
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ProtocolOverrides {
-    pub forced_protocol_upgrades: Vec<(i32, String)>,
-    pub voted_protocol_overrides: Vec<(String, String)>,
+    pub user_activated_upgrades: Vec<(i32, String)>,
+    pub user_activated_protocol_overrides: Vec<(String, String)>,
+}
+
+impl ProtocolOverrides {
+    pub fn user_activated_upgrades_to_rpc_json(&self) -> Vec<RpcJsonMap> {
+        self.user_activated_upgrades
+            .iter()
+            .map(|(level, protocol)| {
+                let mut json = RpcJsonMap::new();
+                json.insert("level", UniversalValue::num(*level));
+                json.insert(
+                    "replacement_protocol",
+                    UniversalValue::string(protocol.to_string()),
+                );
+                json
+            })
+            .collect::<Vec<RpcJsonMap>>()
+    }
+
+    pub fn user_activated_protocol_overrides_to_rpc_json(&self) -> Vec<RpcJsonMap> {
+        self.user_activated_protocol_overrides
+            .iter()
+            .map(|(replaced_protocol, replacement_protocol)| {
+                let mut json = RpcJsonMap::new();
+                json.insert(
+                    "replaced_protocol",
+                    UniversalValue::string(replaced_protocol.to_string()),
+                );
+                json.insert(
+                    "replacement_protocol",
+                    UniversalValue::string(replacement_protocol.to_string()),
+                );
+                json
+            })
+            .collect::<Vec<RpcJsonMap>>()
+    }
 }
 
 /// Patch_context key json
@@ -730,6 +767,25 @@ pub struct ComputePathRequest {
     pub operations: Vec<Vec<OperationHash>>,
 }
 
+impl TryFrom<&Vec<Vec<Operation>>> for ComputePathRequest {
+    type Error = MessageHashError;
+
+    fn try_from(ops: &Vec<Vec<Operation>>) -> Result<Self, Self::Error> {
+        let mut operation_hashes = Vec::with_capacity(ops.len());
+        for inner_ops in ops {
+            let mut iophs = Vec::with_capacity(inner_ops.len());
+            for op in inner_ops {
+                iophs.push(op.message_hash()?);
+            }
+            operation_hashes.push(iophs);
+        }
+
+        Ok(ComputePathRequest {
+            operations: operation_hashes,
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ComputePathResponse {
     pub operations_hashes_path: Vec<Path>,
@@ -766,10 +822,12 @@ impl From<CallError> for ComputePathError {
 
 #[cfg(test)]
 mod tests {
+    use assert_json_diff::assert_json_eq;
+
     use super::*;
 
     #[test]
-    fn test_validate_operation_result_merge() -> Result<(), failure::Error> {
+    fn test_validate_operation_result_merge() {
         let mut validate_result1 = validate_operation_result(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
             "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj",
@@ -804,8 +862,6 @@ mod tests {
         assert_eq!(3, validate_result1.refused.len());
         assert_eq!(3, validate_result1.branch_delayed.len());
         assert_eq!(3, validate_result1.branch_refused.len());
-
-        Ok(())
     }
 
     #[test]
@@ -940,5 +996,69 @@ mod tests {
             branch_refused,
             refused,
         }
+    }
+
+    #[test]
+    fn test_rpc_format_user_activated_upgrades() -> Result<(), failure::Error> {
+        let expected_json = serde_json::json!(
+            [
+              {
+                "level": 28082,
+                "replacement_protocol": "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt"
+              },
+              {
+                "level": 204761,
+                "replacement_protocol": "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP"
+              }
+            ]
+        );
+
+        let protocol_overrides = ProtocolOverrides {
+            user_activated_upgrades: vec![
+                (
+                    28082_i32,
+                    "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
+                ),
+                (
+                    204761_i32,
+                    "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
+                ),
+            ],
+            user_activated_protocol_overrides: vec![],
+        };
+
+        assert_json_eq!(
+            expected_json,
+            serde_json::to_value(protocol_overrides.user_activated_upgrades_to_rpc_json())?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_rpc_format_user_activated_protocol_overrides() -> Result<(), failure::Error> {
+        let expected_json = serde_json::json!(
+            [
+              {
+                "replaced_protocol": "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU",
+                "replacement_protocol": "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"
+              }
+            ]
+        );
+
+        let protocol_overrides = ProtocolOverrides {
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![(
+                "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
+                "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
+            )],
+        };
+
+        assert_json_eq!(
+            expected_json,
+            serde_json::to_value(
+                protocol_overrides.user_activated_protocol_overrides_to_rpc_json()
+            )?
+        );
+        Ok(())
     }
 }
