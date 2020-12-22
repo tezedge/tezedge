@@ -6,15 +6,15 @@
 
 mod state;
 
-pub mod stats;
-pub mod shell_channel;
 pub mod chain_feeder;
-pub mod context_listener;
 pub mod chain_manager;
-pub mod peer_manager;
-pub mod validation;
+pub mod context_listener;
 pub mod mempool;
+pub mod peer_manager;
+pub mod shell_channel;
+pub mod stats;
 pub mod utils;
+pub mod validation;
 
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
@@ -34,7 +34,11 @@ impl PeerConnectionThreshold {
     /// `low` cannot be bigger than `high`, otherwise function will panic
     pub fn new(low: usize, high: usize, peers_for_bootstrap_threshold: Option<usize>) -> Self {
         assert!(low <= high, "low must be less than or equal to high");
-        PeerConnectionThreshold { low, high, peers_for_bootstrap_threshold }
+        PeerConnectionThreshold {
+            low,
+            high,
+            peers_for_bootstrap_threshold,
+        }
     }
 
     /// Threshold for minimal count of bootstrapped peers
@@ -46,7 +50,7 @@ impl PeerConnectionThreshold {
             sync_tresh
         } else {
             // calculate othervise
-            // TODO TE-244 - Implement the synchronization heuristic 
+            // TODO TE-244 - Implement the synchronization heuristic
             // NOTE: the calculation should never yield 0!
 
             // since we define the low and high bound, calculate the expected connections
@@ -67,74 +71,94 @@ pub(crate) mod subscription {
     use crate::shell_channel::ShellChannelTopic;
 
     #[inline]
-    pub(crate) fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
-        where
-            M: Message,
-            E: Message + Into<M>
+    pub(crate) fn subscribe_to_actor_terminated<M, E>(
+        sys_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
     {
         sys_channel.tell(
             Subscribe {
                 topic: SysTopic::ActorTerminated.into(),
                 actor: Box::new(myself),
-            }, None);
+            },
+            None,
+        );
     }
 
     #[inline]
-    pub(crate) fn subscribe_to_network_events<M, E>(network_channel: &ChannelRef<E>, myself: ActorRef<M>)
-        where
-            M: Message,
-            E: Message + Into<M>
+    pub(crate) fn subscribe_to_network_events<M, E>(
+        network_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
     {
         network_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
                 topic: NetworkChannelTopic::NetworkEvents.into(),
-            }, None);
+            },
+            None,
+        );
     }
 
     #[inline]
-    pub(crate) fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
-        where
-            M: Message,
-            E: Message + Into<M>
+    pub(crate) fn subscribe_to_shell_events<M, E>(
+        shell_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
     {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself.clone()),
                 topic: ShellChannelTopic::ShellEvents.into(),
-            }, None);
+            },
+            None,
+        );
 
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
                 topic: ShellChannelTopic::ShellCommands.into(),
-            }, None);
+            },
+            None,
+        );
     }
 
     #[inline]
     pub(crate) fn subscribe_to_dead_letters<M, E>(dl_channel: &ChannelRef<E>, myself: ActorRef<M>)
-        where
-            M: Message,
-            E: Message + Into<M>
+    where
+        M: Message,
+        E: Message + Into<M>,
     {
         dl_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
                 topic: All.into(),
-            }, None);
+            },
+            None,
+        );
     }
 
     #[inline]
-    pub(crate) fn unsubscribe_from_dead_letters<M, E>(dl_channel: &ChannelRef<E>, myself: ActorRef<M>)
-        where
-            M: Message,
-            E: Message + Into<M>
+    pub(crate) fn unsubscribe_from_dead_letters<M, E>(
+        dl_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
     {
         dl_channel.tell(
             Unsubscribe {
                 actor: Box::new(myself),
                 topic: All.into(),
-            }, None);
+            },
+            None,
+        );
     }
 }
 

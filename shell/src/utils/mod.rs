@@ -20,21 +20,22 @@ pub enum WaitCondvarResultError {
     NoResultReceived,
 
     #[fail(display = "Mutex/lock poison error, reason: {}", reason)]
-    PoisonedLock {
-        reason: String,
-    },
+    PoisonedLock { reason: String },
 }
 
 #[derive(Fail, Debug)]
 pub enum DispatchCondvarResultError {
     #[fail(display = "Failed to set result, reason: {}", reason)]
-    DispatchResultError {
-        reason: String,
-    },
+    DispatchResultError { reason: String },
 }
 
-pub fn dispatch_condvar_result<T, E, RC>(result_callback: Option<CondvarResult<T, E>>, result: RC, notify_condvar_on_lock_error: bool) -> Result<(), DispatchCondvarResultError>
-    where RC: FnOnce() -> Result<T, E>
+pub fn dispatch_condvar_result<T, E, RC>(
+    result_callback: Option<CondvarResult<T, E>>,
+    result: RC,
+    notify_condvar_on_lock_error: bool,
+) -> Result<(), DispatchCondvarResultError>
+where
+    RC: FnOnce() -> Result<T, E>,
 {
     if let Some(result_callback) = result_callback {
         let &(ref lock, ref cvar) = &*result_callback;
@@ -49,7 +50,7 @@ pub fn dispatch_condvar_result<T, E, RC>(result_callback: Option<CondvarResult<T
                     cvar.notify_all();
                 }
                 Err(DispatchCondvarResultError::DispatchResultError {
-                    reason: format!("{}", e)
+                    reason: format!("{}", e),
                 })
             }
         }
@@ -58,7 +59,10 @@ pub fn dispatch_condvar_result<T, E, RC>(result_callback: Option<CondvarResult<T
     }
 }
 
-pub fn try_wait_for_condvar_result<T, E>(result_callback: CondvarResult<T, E>, duration: Duration) -> Result<Result<T, E>, WaitCondvarResultError> {
+pub fn try_wait_for_condvar_result<T, E>(
+    result_callback: CondvarResult<T, E>,
+    duration: Duration,
+) -> Result<Result<T, E>, WaitCondvarResultError> {
     // get lock
     let &(ref lock, ref cvar) = &*result_callback;
     let lock = lock
@@ -77,17 +81,13 @@ pub fn try_wait_for_condvar_result<T, E>(result_callback: CondvarResult<T, E>, d
 
             // process result
             match result.take() {
-                Some(result) => {
-                    Ok(result)
-                }
-                None => {
-                    Err(WaitCondvarResultError::NoResultReceived)
-                }
+                Some(result) => Ok(result),
+                None => Err(WaitCondvarResultError::NoResultReceived),
             }
         }
         Err(e) => Err(WaitCondvarResultError::PoisonedLock {
             reason: format!("{}", e),
-        })
+        }),
     }
 }
 
@@ -97,11 +97,12 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use crate::utils::{CondvarResult, dispatch_condvar_result, try_wait_for_condvar_result};
+    use crate::utils::{dispatch_condvar_result, try_wait_for_condvar_result, CondvarResult};
 
     #[test]
     fn test_wait_and_dispatch() -> Result<(), failure::Error> {
-        let condvar_result: CondvarResult<(), failure::Error> = Arc::new((Mutex::new(None), Condvar::new()));
+        let condvar_result: CondvarResult<(), failure::Error> =
+            Arc::new((Mutex::new(None), Condvar::new()));
 
         // run async
         {

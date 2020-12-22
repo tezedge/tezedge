@@ -1,18 +1,18 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-use std::{collections::{HashMap, HashSet}};
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 
-use futures::Stream;
 use futures::task::{Context, Poll};
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::{Logger, warn};
-use tokio::time::{Delay, delay_until};
+use slog::{warn, Logger};
+use tokio::time::{delay_until, Delay};
 use tokio::time::{Duration, Instant};
 
-use crypto::hash::{BlockHash, chain_id_to_b58_string, ChainId, HashType, ProtocolHash};
+use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, HashType, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::BlockApplied;
 
@@ -109,45 +109,59 @@ impl OperationMonitorStream {
             ..
         } = self;
 
-        let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) = get_pending_operations(&chain_id, current_mempool_state_storage.clone()) {
+        let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) =
+            get_pending_operations(&chain_id, current_mempool_state_storage.clone())
+        {
             (ops, protocol_hash)
         } else {
-            return Poll::Pending
+            return Poll::Pending;
         };
         let mut requested_ops: HashMap<String, Value> = HashMap::new();
 
         // fill in the resulting vector according to the querry
         if query.applied {
-            let applied: HashMap<_, _> = mempool_operations.applied.into_iter()
+            let applied: HashMap<_, _> = mempool_operations
+                .applied
+                .into_iter()
                 .map(|v| (v["hash"].to_string(), serde_json::to_value(v).unwrap()))
                 .collect();
             requested_ops.extend(applied);
         }
         if query.branch_delayed {
-            let branch_delayed: HashMap<_, _> = mempool_operations.branch_delayed.into_iter()
+            let branch_delayed: HashMap<_, _> = mempool_operations
+                .branch_delayed
+                .into_iter()
                 .map(|v| (v["hash"].to_string(), v))
                 .collect();
             requested_ops.extend(branch_delayed);
         }
         if query.branch_refused {
-            let branch_refused: HashMap<_, _> = mempool_operations.branch_refused.into_iter()
+            let branch_refused: HashMap<_, _> = mempool_operations
+                .branch_refused
+                .into_iter()
                 .map(|v| (v["hash"].to_string(), v))
                 .collect();
             requested_ops.extend(branch_refused);
         }
         if query.refused {
-            let refused: HashMap<_, _> = mempool_operations.refused.into_iter()
+            let refused: HashMap<_, _> = mempool_operations
+                .refused
+                .into_iter()
                 .map(|v| (v["hash"].to_string(), v))
                 .collect();
             requested_ops.extend(refused);
         }
 
         if let Some(streamed_operations) = streamed_operations {
-            let to_yield: Vec<MonitoredOperation> = requested_ops.clone().into_iter()
+            let to_yield: Vec<MonitoredOperation> = requested_ops
+                .clone()
+                .into_iter()
                 .filter(|(k, _)| !streamed_operations.contains(k))
                 .map(|(_, v)| {
                     let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
-                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
+                    monitor_op.protocol = protocol_hash
+                        .as_ref()
+                        .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
                     monitor_op
                 })
                 .collect();
@@ -167,24 +181,24 @@ impl OperationMonitorStream {
         } else {
             // first poll, yield the operations in mempool, or an empty vector if mempool is empty
             let mut streamed_operations = HashSet::<String>::new();
-            let to_yield: Vec<MonitoredOperation> = requested_ops.into_iter()
+            let to_yield: Vec<MonitoredOperation> = requested_ops
+                .into_iter()
                 .map(|(k, v)| {
                     streamed_operations.insert(k);
                     let mut monitor_op: MonitoredOperation = match serde_json::from_value(v) {
-                        Ok(json_value) => {
-                            json_value
-                        }
+                        Ok(json_value) => json_value,
                         Err(e) => {
                             warn!(log, "Wont yield errored op: {}", e);
-                            return Err(e)
+                            return Err(e);
                         }
                     };
-                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
+                    monitor_op.protocol = protocol_hash
+                        .as_ref()
+                        .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
                     Ok(monitor_op)
                 })
                 .filter_map(Result::ok)
                 .collect();
-
 
             self.streamed_operations = Some(streamed_operations);
             let mut to_yield_string = serde_json::to_string(&to_yield)?;
@@ -196,7 +210,11 @@ impl OperationMonitorStream {
 }
 
 impl HeadMonitorStream {
-    pub fn new(chain_id: ChainId, state: RpcCollectedStateRef, protocol: Option<ProtocolHash>) -> Self {
+    pub fn new(
+        chain_id: ChainId,
+        state: RpcCollectedStateRef,
+        protocol: Option<ProtocolHash>,
+    ) -> Self {
         Self {
             chain_id,
             state,
@@ -207,7 +225,9 @@ impl HeadMonitorStream {
     }
 
     fn yield_head(&self, current_head: &BlockApplied) -> Result<Option<String>, failure::Error> {
-        let HeadMonitorStream { chain_id, protocol, .. } = self;
+        let HeadMonitorStream {
+            chain_id, protocol, ..
+        } = self;
 
         let current_head_header = {
             let chain_id = chain_id_to_b58_string(&self.chain_id);
@@ -219,9 +239,11 @@ impl HeadMonitorStream {
                 let chain_id = chain_id_to_b58_string(&chain_id);
                 FullBlockInfo::new(current_head, chain_id)
             };
-            let block_next_protocol = block_info.metadata["next_protocol"].to_string().replace("\"", "");
+            let block_next_protocol = block_info.metadata["next_protocol"]
+                .to_string()
+                .replace("\"", "");
             if &HashType::ProtocolHash.b58check_to_hash(&block_next_protocol)? != protocol {
-                return Ok(None)
+                return Ok(None);
             }
         }
 
@@ -238,7 +260,10 @@ impl HeadMonitorStream {
 impl Stream for HeadMonitorStream {
     type Item = Result<String, failure::Error>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, failure::Error>>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<String, failure::Error>>> {
         // Note: the stream only ends on the client dropping the connection
 
         // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
@@ -253,9 +278,7 @@ impl Stream for HeadMonitorStream {
 
         // poll the delay future
         match pinned_mut.poll(cx) {
-            Poll::Pending => {
-                Poll::Pending
-            },
+            Poll::Pending => Poll::Pending,
             _ => {
                 // get rid of the used delay
                 self.delay = None;
@@ -275,17 +298,18 @@ impl Stream for HeadMonitorStream {
                     if let Some(current_head) = current_head {
                         self.last_checked_head = Some(current_head.header().hash.clone());
                         // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                        // would end the stream, in this case, we need to Pend. 
-                        if let Some(head_string_result) = self.yield_head(&current_head).transpose(){
-                            return Poll::Ready(Some(head_string_result))
+                        // would end the stream, in this case, we need to Pend.
+                        if let Some(head_string_result) = self.yield_head(&current_head).transpose()
+                        {
+                            return Poll::Ready(Some(head_string_result));
                         } else {
                             cx.waker().wake_by_ref();
-                            return Poll::Pending
+                            return Poll::Pending;
                         };
                     } else {
                         // No current head found, storage not ready yet
                         cx.waker().wake_by_ref();
-                        return Poll::Pending
+                        return Poll::Pending;
                     }
                 };
 
@@ -298,8 +322,9 @@ impl Stream for HeadMonitorStream {
                         // Head change, yield new head
                         self.last_checked_head = Some(current_head.header().hash.clone());
                         // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
-                        // would end the stream, in this case, we need to Pend. 
-                        if let Some(head_string_result) = self.yield_head(&current_head).transpose(){
+                        // would end the stream, in this case, we need to Pend.
+                        if let Some(head_string_result) = self.yield_head(&current_head).transpose()
+                        {
                             Poll::Ready(Some(head_string_result))
                         } else {
                             cx.waker().wake_by_ref();
@@ -319,7 +344,10 @@ impl Stream for HeadMonitorStream {
 impl Stream for OperationMonitorStream {
     type Item = Result<String, failure::Error>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<String, failure::Error>>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<String, failure::Error>>> {
         // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
         let delay = self.delay.get_or_insert_with(|| {
             let when = Instant::now() + Duration::from_millis(MONITOR_TIMER_MILIS);
@@ -332,9 +360,7 @@ impl Stream for OperationMonitorStream {
 
         // poll the delay future
         match pinned_mut.poll(cx) {
-            Poll::Pending => {
-                Poll::Pending
-            },
+            Poll::Pending => Poll::Pending,
             _ => {
                 // get rid of the used delay
                 self.delay = None;
@@ -354,17 +380,15 @@ impl Stream for OperationMonitorStream {
                             Poll::Pending => {
                                 cx.waker().wake_by_ref();
                                 Poll::Pending
-                            },
-                            _ => {
-                                yielded
-                            },
+                            }
+                            _ => yielded,
                         }
                     } else {
                         // Head change, end stream
                         Poll::Ready(None)
                     }
                 } else {
-                    // No current head found, storage not ready yet 
+                    // No current head found, storage not ready yet
                     cx.waker().wake_by_ref();
                     Poll::Pending
                 }

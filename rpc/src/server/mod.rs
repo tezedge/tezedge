@@ -8,8 +8,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use getset::Getters;
-use hyper::{Body, Method, Request, Response};
 use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response};
 use riker::actors::ActorSystem;
 use slog::{error, Logger};
 
@@ -22,13 +22,13 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::{error_with_message, not_found, options};
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
+use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
-mod shell_handler;
 mod protocol_handler;
 mod router;
+mod shell_handler;
 
 /// Server environment parameters
 #[derive(Getters, Clone)]
@@ -83,7 +83,8 @@ impl RpcServiceEnvironment {
         main_chain_id: ChainId,
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
-        log: &Logger) -> Self {
+        log: &Logger,
+    ) -> Self {
         Self {
             sys,
             actor,
@@ -110,7 +111,16 @@ pub type Query = HashMap<String, Vec<String>>;
 
 pub type HResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
-pub type Handler = Arc<dyn Fn(Request<Body>, Params, Query, RpcServiceEnvironment) -> Box<dyn Future<Output=HResult> + Send> + Send + Sync>;
+pub type Handler = Arc<
+    dyn Fn(
+            Request<Body>,
+            Params,
+            Query,
+            RpcServiceEnvironment,
+        ) -> Box<dyn Future<Output = HResult> + Send>
+        + Send
+        + Sync,
+>;
 
 pub struct MethodHandler {
     allowed_methods: Arc<HashSet<Method>>,
@@ -127,8 +137,13 @@ impl MethodHandler {
 }
 
 /// Spawn new HTTP server on given address interacting with specific actor system
-pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), hyper::Error>> {
-    let routes = Arc::new(router::create_routes(env.state().read().unwrap().is_sandbox()));
+pub fn spawn_server(
+    bind_address: &SocketAddr,
+    env: RpcServiceEnvironment,
+) -> impl Future<Output = Result<(), hyper::Error>> {
+    let routes = Arc::new(router::create_routes(
+        env.state().read().unwrap().is_sandbox(),
+    ));
 
     hyper::Server::bind(bind_address)
         .serve(make_service_fn(move |_| {
@@ -150,7 +165,7 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
 
                             let request_method = req.method();
                             let log = env.log.clone();
-                            
+
                             match *request_method {
                                 Method::OPTIONS => {
                                     // lets globaly handle options
@@ -177,9 +192,6 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                                     }
                                 }
                             }
-
-                            
-
                         } else {
                             not_found()
                         }
@@ -213,11 +225,13 @@ pub trait HasSingleValue {
     fn get_str(&self, key: &str) -> Option<&str>;
 
     fn get_u64(&self, key: &str) -> Option<u64> {
-        self.get_str(key).and_then(|value| value.parse::<u64>().ok())
+        self.get_str(key)
+            .and_then(|value| value.parse::<u64>().ok())
     }
 
     fn get_usize(&self, key: &str) -> Option<usize> {
-        self.get_str(key).and_then(|value| value.parse::<usize>().ok())
+        self.get_str(key)
+            .and_then(|value| value.parse::<usize>().ok())
     }
 
     fn contains_key(&self, key: &str) -> bool {
@@ -227,18 +241,15 @@ pub trait HasSingleValue {
 
 impl HasSingleValue for Params {
     fn get_str(&self, key: &str) -> Option<&str> {
-        self.iter().find_map(|(k, v)| {
-            if k == key {
-                Some(v.as_str())
-            } else {
-                None
-            }
-        })
+        self.iter()
+            .find_map(|(k, v)| if k == key { Some(v.as_str()) } else { None })
     }
 }
 
 impl HasSingleValue for Query {
     fn get_str(&self, key: &str) -> Option<&str> {
-        self.get(key).map(|values| values.iter().next().map(String::as_str)).flatten()
+        self.get(key)
+            .map(|values| values.iter().next().map(String::as_str))
+            .flatten()
     }
 }

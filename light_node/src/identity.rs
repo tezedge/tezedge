@@ -3,7 +3,7 @@
 
 use slog::{info, Logger};
 
-use tezos_identity::{Identity, IdentityError, load_identity, store_identity};
+use tezos_identity::{load_identity, store_identity, Identity, IdentityError};
 
 /// Ensures (load or create) identity exists according to the configuration
 pub fn ensure_identity(
@@ -26,10 +26,8 @@ pub fn ensure_identity(
         }
     };
 
-    identity.and_then(|identity| {
-        match identity.check_peer_id() {
-            Ok(_) => Ok(identity),
-            Err(e) => Err(e)
-        }
+    identity.and_then(|identity| match identity.check_peer_id() {
+        Ok(_) => Ok(identity),
+        Err(e) => Err(e),
     })
 }

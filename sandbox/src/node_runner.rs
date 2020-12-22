@@ -15,7 +15,7 @@ use itertools::Itertools;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
-use slog::{error, info, Logger, warn};
+use slog::{error, info, warn, Logger};
 use wait_timeout::ChildExt;
 use warp::reject;
 
@@ -29,9 +29,7 @@ pub enum LightNodeRunnerError {
 
     /// Already running error.
     #[fail(display = "Sandbox light-node is not running, node_ref: {}", node_ref)]
-    NodeNotRunning {
-        node_ref: NodeRpcIpPort,
-    },
+    NodeNotRunning { node_ref: NodeRpcIpPort },
 
     /// IO Error.
     #[fail(display = "IOError - {}, reason: {}", message, reason)]
@@ -42,19 +40,18 @@ pub enum LightNodeRunnerError {
 
     /// Json argument parsing error.
     #[fail(display = "Json argument parsing error, json: {}", json)]
-    JsonParsingError {
-        json: serde_json::Value,
-    },
+    JsonParsingError { json: serde_json::Value },
 
     /// Startup Error
     #[fail(display = "Error after light-node process spawned, reason: {}", reason)]
     NodeStartupError { reason: String },
 
     /// Rpc port is missing in cfg
-    #[fail(display = "Failed to start light-node - missing or invalid u16 `rpc_port` in configuration, value: {:?}", value)]
-    ConfigurationMissingValidRpcPort {
-        value: Option<String>,
-    },
+    #[fail(
+        display = "Failed to start light-node - missing or invalid u16 `rpc_port` in configuration, value: {:?}",
+        value
+    )]
+    ConfigurationMissingValidRpcPort { value: Option<String> },
 }
 
 impl From<LightNodeRunnerError> for reject::Rejection {
@@ -87,21 +84,29 @@ impl NodeRpcIpPort {
     pub fn new(cfg: &serde_json::Value) -> Result<Self, LightNodeRunnerError> {
         let port = match cfg.get(NODE_CONFIG_RPC_PORT) {
             Some(value) => match value.as_u64() {
-                Some(port) => if port <= u16::MAX as u64 {
-                    port as u16
-                } else {
-                    return Err(LightNodeRunnerError::ConfigurationMissingValidRpcPort { value: Some(value.to_string()) });
-                },
-                None => return Err(LightNodeRunnerError::ConfigurationMissingValidRpcPort { value: Some(value.to_string()) }),
+                Some(port) => {
+                    if port <= u16::MAX as u64 {
+                        port as u16
+                    } else {
+                        return Err(LightNodeRunnerError::ConfigurationMissingValidRpcPort {
+                            value: Some(value.to_string()),
+                        });
+                    }
+                }
+                None => {
+                    return Err(LightNodeRunnerError::ConfigurationMissingValidRpcPort {
+                        value: Some(value.to_string()),
+                    })
+                }
             },
-            None => return Err(LightNodeRunnerError::ConfigurationMissingValidRpcPort { value: None }),
-        };
-        Ok(
-            Self {
-                ip: SANDBOX_NODE_IP.to_string(),
-                port,
+            None => {
+                return Err(LightNodeRunnerError::ConfigurationMissingValidRpcPort { value: None })
             }
-        )
+        };
+        Ok(Self {
+            ip: SANDBOX_NODE_IP.to_string(),
+            port,
+        })
     }
 }
 
@@ -125,7 +130,11 @@ pub struct LightNodeRunner {
 impl LightNodeRunner {
     const PROCESS_WAIT_TIMEOUT: Duration = Duration::from_secs(4);
 
-    pub fn new(name: &str, executable_path: PathBuf, protocol_runner_executable_path: PathBuf) -> Self {
+    pub fn new(
+        name: &str,
+        executable_path: PathBuf,
+        protocol_runner_executable_path: PathBuf,
+    ) -> Self {
         Self {
             executable_path,
             protocol_runner_executable_path,
@@ -140,7 +149,11 @@ impl LightNodeRunner {
     /// `node_ref` - port/ip where is running sandbox node
     /// `data_dir` - one node will have its own temp folder for data (identity, dbs, temp files,...)
     ///            - so we need to filter and modify input cfg properties: [NODE_CONFIG_TEZOS_DATA_DIR][NODE_CONFIG_TEZEDGE_DATA_DIR][NODE_CONFIG_IDENTITY_FILE]
-    pub fn spawn(&mut self, cfg: serde_json::Value, log: &Logger) -> Result<(NodeRpcIpPort, PathBuf), LightNodeRunnerError> {
+    pub fn spawn(
+        &mut self,
+        cfg: serde_json::Value,
+        log: &Logger,
+    ) -> Result<(NodeRpcIpPort, PathBuf), LightNodeRunnerError> {
         if self.is_running() {
             Err(LightNodeRunnerError::NodeAlreadyRunning)
         } else {
@@ -148,8 +161,8 @@ impl LightNodeRunner {
             let node = NodeRpcIpPort::new(&cfg)?;
 
             // one node will have its own temp folder for data (identity, dbs, ...)
-            let data_dir = create_temp_dir("sandbox-node")
-                .map_err(|err| LightNodeRunnerError::IOError {
+            let data_dir =
+                create_temp_dir("sandbox-node").map_err(|err| LightNodeRunnerError::IOError {
                     message: "Failed to create temp data file for sandbox node".to_string(),
                     reason: err,
                 })?;
@@ -184,9 +197,20 @@ impl LightNodeRunner {
                     if !exit_status.success() {
                         let error_msg = handle_stderr(&mut process);
                         error!(log, "Failed to start light-node (validate_args)"; "reason" => error_msg.clone());
-                        return Err(LightNodeRunnerError::NodeStartupError { reason: error_msg.split("USAGE:").take(1).join("").replace("error:", "").trim().into() });
+                        return Err(LightNodeRunnerError::NodeStartupError {
+                            reason: error_msg
+                                .split("USAGE:")
+                                .take(1)
+                                .join("")
+                                .replace("error:", "")
+                                .trim()
+                                .into(),
+                        });
                     } else {
-                        info!(log, "Light-node configuration and identity validation finished!");
+                        info!(
+                            log,
+                            "Light-node configuration and identity validation finished!"
+                        );
                     }
                 }
                 _ => {
@@ -210,7 +234,9 @@ impl LightNodeRunner {
             // TODO: remove (temporary fix for debugger), now we just copy real identity to original path
             if let Some(original_identity_path) = original_identity_path {
                 if let Some(original_identity_path) = original_identity_path.as_str() {
-                    if let Some(Some(real_identity_path)) = cfg.get(NODE_CONFIG_IDENTITY_FILE).map(|path| path.as_str()) {
+                    if let Some(Some(real_identity_path)) =
+                        cfg.get(NODE_CONFIG_IDENTITY_FILE).map(|path| path.as_str())
+                    {
                         let original_identity_path = PathBuf::from(original_identity_path);
                         let real_identity_path = PathBuf::from(real_identity_path);
 
@@ -233,7 +259,7 @@ impl LightNodeRunner {
                             Err(e) => error!(log, "Identity was not copied successfully";
                                             "to_original_identity_path" => original_identity_path.as_path().display().to_string(),
                                             "from_real_identity_path" => real_identity_path.as_path().display().to_string(),
-                                            "reason" => format!("{}", e))
+                                            "reason" => format!("{}", e)),
                         }
                     }
                 }
@@ -272,7 +298,7 @@ impl LightNodeRunner {
             }
         } else {
             Err(LightNodeRunnerError::NodeNotRunning {
-                node_ref: node_ref.clone()
+                node_ref: node_ref.clone(),
             })
         }
     }
@@ -299,7 +325,10 @@ impl LightNodeRunner {
     }
 
     /// function to construct a vector with all the passed (via RPC) arguments
-    fn construct_args(cfg: serde_json::Value, add_validate_cfg_identity_and_stop: bool) -> Result<Vec<String>, LightNodeRunnerError> {
+    fn construct_args(
+        cfg: serde_json::Value,
+        add_validate_cfg_identity_and_stop: bool,
+    ) -> Result<Vec<String>, LightNodeRunnerError> {
         let mut args: Vec<String> = Vec::new();
 
         if let Some(arg_map) = cfg.as_object() {
@@ -317,9 +346,7 @@ impl LightNodeRunner {
             }
             Ok(args)
         } else {
-            Err(LightNodeRunnerError::JsonParsingError {
-                json: cfg,
-            })
+            Err(LightNodeRunnerError::JsonParsingError { json: cfg })
         }
     }
 
@@ -327,48 +354,89 @@ impl LightNodeRunner {
     /// 1. replaces [NODE_CONFIG_TEZOS_DATA_DIR][NODE_CONFIG_TEZEDGE_DATA_DIR][NODE_CONFIG_IDENTITY_FILE] with custom names prefixed [sandbox_data_dir]
     /// 2. replaces [NODE_CONFIG_PROTOCOL_RUNNER] with own settings
     /// 3. stores [sandbox_patch_context_json] to tempfile and sets it as [NODE_CONFIG_PATCH_CONTEXT_JSON_FILE_PATH] (if present)
-    fn ensure_sandbox_cfg(&self, mut cfg: serde_json::Value, sandbox_data_dir: &PathBuf, log: &Logger) -> Result<serde_json::Value, LightNodeRunnerError> {
+    fn ensure_sandbox_cfg(
+        &self,
+        mut cfg: serde_json::Value,
+        sandbox_data_dir: &PathBuf,
+        log: &Logger,
+    ) -> Result<serde_json::Value, LightNodeRunnerError> {
         if let Some(map) = cfg.as_object_mut() {
-
             // 1.
             let sandboxed = sandbox_data_dir
                 .join("sandbox_tezos_db")
-                .as_path().display().to_string();
-            if let Some(old_value) = map.insert(NODE_CONFIG_TEZOS_DATA_DIR.to_string(), serde_json::Value::String(sandboxed.clone())) {
+                .as_path()
+                .display()
+                .to_string();
+            if let Some(old_value) = map.insert(
+                NODE_CONFIG_TEZOS_DATA_DIR.to_string(),
+                serde_json::Value::String(sandboxed.clone()),
+            ) {
                 info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_TEZOS_DATA_DIR.to_string(), "old_value" => old_value.to_string(), "new_value" => sandboxed);
             }
             let sandboxed = sandbox_data_dir
                 .join("sandbox_tezedge_db")
-                .as_path().display().to_string();
-            if let Some(old_value) = map.insert(NODE_CONFIG_TEZEDGE_DATA_DIR.to_string(), serde_json::Value::String(sandboxed.clone())) {
+                .as_path()
+                .display()
+                .to_string();
+            if let Some(old_value) = map.insert(
+                NODE_CONFIG_TEZEDGE_DATA_DIR.to_string(),
+                serde_json::Value::String(sandboxed.clone()),
+            ) {
                 info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_TEZEDGE_DATA_DIR.to_string(), "old_value" => old_value.to_string(), "new_value" => sandboxed);
             }
             let sandboxed = sandbox_data_dir
                 .join("sandbox_identity.json")
-                .as_path().display().to_string();
-            if let Some(old_value) = map.insert(NODE_CONFIG_IDENTITY_FILE.to_string(), serde_json::Value::String(sandboxed.clone())) {
+                .as_path()
+                .display()
+                .to_string();
+            if let Some(old_value) = map.insert(
+                NODE_CONFIG_IDENTITY_FILE.to_string(),
+                serde_json::Value::String(sandboxed.clone()),
+            ) {
                 info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_IDENTITY_FILE.to_string(), "old_value" => old_value.to_string(), "new_value" => sandboxed);
             }
 
             // 2.
-            let protocol_runner = self.protocol_runner_executable_path.as_path().display().to_string();
-            if let Some(old_value) = map.insert(NODE_CONFIG_PROTOCOL_RUNNER.to_string(), serde_json::Value::String(protocol_runner.clone())) {
+            let protocol_runner = self
+                .protocol_runner_executable_path
+                .as_path()
+                .display()
+                .to_string();
+            if let Some(old_value) = map.insert(
+                NODE_CONFIG_PROTOCOL_RUNNER.to_string(),
+                serde_json::Value::String(protocol_runner.clone()),
+            ) {
                 info!(log, "Changing sandbox node configuration"; "property" => NODE_CONFIG_PROTOCOL_RUNNER.to_string(), "old_value" => old_value.to_string(), "new_value" => protocol_runner);
             }
 
             // 3.
             if let Some(sandbox_patch_context_json) = map.remove("sandbox_patch_context_json") {
-                let sandbox_patch_context_json_file = sandbox_data_dir.join(format!("sandbox-patch-context-{}.json", rand_chars(5)));
+                let sandbox_patch_context_json_file =
+                    sandbox_data_dir.join(format!("sandbox-patch-context-{}.json", rand_chars(5)));
 
                 // create temp file
-                fs::write(&sandbox_patch_context_json_file, &sandbox_patch_context_json.to_string())
-                    .map_err(|err| LightNodeRunnerError::IOError {
-                        message: sandbox_patch_context_json_file.as_path().display().to_string(),
-                        reason: err,
-                    })?;
+                fs::write(
+                    &sandbox_patch_context_json_file,
+                    &sandbox_patch_context_json.to_string(),
+                )
+                .map_err(|err| LightNodeRunnerError::IOError {
+                    message: sandbox_patch_context_json_file
+                        .as_path()
+                        .display()
+                        .to_string(),
+                    reason: err,
+                })?;
 
                 // insert to cfg
-                if let Some(old_value) = map.insert(NODE_CONFIG_PATCH_CONTEXT_JSON_FILE_PATH.to_string(), serde_json::Value::String(sandbox_patch_context_json_file.as_path().display().to_string())) {
+                if let Some(old_value) = map.insert(
+                    NODE_CONFIG_PATCH_CONTEXT_JSON_FILE_PATH.to_string(),
+                    serde_json::Value::String(
+                        sandbox_patch_context_json_file
+                            .as_path()
+                            .display()
+                            .to_string(),
+                    ),
+                ) {
                     info!(log, "Changing sandbox node configuration";
                                "property" => NODE_CONFIG_PATCH_CONTEXT_JSON_FILE_PATH.to_string(),
                                "old_value" => old_value.to_string(),

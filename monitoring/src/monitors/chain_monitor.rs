@@ -34,9 +34,7 @@ impl ChainMonitor {
     const BLOCKS_PER_CYCLE: usize = 4096;
 
     pub fn new() -> Self {
-        Self {
-            chain: Vec::new(),
-        }
+        Self { chain: Vec::new() }
     }
 
     // get cycle id number
@@ -126,7 +124,7 @@ mod tests {
         // initialize chain_monitor
         let mut chain_monitor = ChainMonitor::new();
 
-        // generate blocks with random level 
+        // generate blocks with random level
         for _index in 0..NUMBER_OF_BLOCK_EVENTS {
             // generate block level
             let block_level: usize = rng.gen_range(0, NUMBER_OF_BLOCKS);
@@ -146,7 +144,7 @@ mod tests {
         // generate block
         let chain_monitor = generate_blocks();
 
-        // check if we have duration in cycle  for block processing time 
+        // check if we have duration in cycle  for block processing time
         assert!(chain_monitor.snapshot().chain[0].duration.is_some());
     }
 }

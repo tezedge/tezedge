@@ -401,25 +401,44 @@ pub fn tezos_app() -> App<'static, 'static> {
     app
 }
 
-fn pool_cfg(args: &clap::ArgMatches, pool_name_discriminator: &str) -> TezosApiConnectionPoolConfiguration {
+fn pool_cfg(
+    args: &clap::ArgMatches,
+    pool_name_discriminator: &str,
+) -> TezosApiConnectionPoolConfiguration {
     TezosApiConnectionPoolConfiguration {
         min_connections: 0,
         /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
-        max_connections: args.value_of(&format!("ffi-{}-pool-max-connections", pool_name_discriminator))
+        max_connections: args
+            .value_of(&format!(
+                "ffi-{}-pool-max-connections",
+                pool_name_discriminator
+            ))
             .unwrap_or("10")
             .parse::<u8>()
             .expect("Provided value cannot be converted to number"),
-        connection_timeout: args.value_of(&format!("ffi-{}-pool-connection-timeout-in-secs", pool_name_discriminator))
+        connection_timeout: args
+            .value_of(&format!(
+                "ffi-{}-pool-connection-timeout-in-secs",
+                pool_name_discriminator
+            ))
             .unwrap_or("60")
             .parse::<u16>()
             .map(|seconds| Duration::from_secs(seconds as u64))
             .expect("Provided value cannot be converted to number"),
-        max_lifetime: args.value_of(&format!("ffi-{}-pool-max-lifetime-in-secs", pool_name_discriminator))
+        max_lifetime: args
+            .value_of(&format!(
+                "ffi-{}-pool-max-lifetime-in-secs",
+                pool_name_discriminator
+            ))
             .unwrap_or("21600")
             .parse::<u16>()
             .map(|seconds| Duration::from_secs(seconds as u64))
             .expect("Provided value cannot be converted to number"),
-        idle_timeout: args.value_of(&format!("ffi-{}-pool-idle-timeout-in-secs", pool_name_discriminator))
+        idle_timeout: args
+            .value_of(&format!(
+                "ffi-{}-pool-idle-timeout-in-secs",
+                pool_name_discriminator
+            ))
             .unwrap_or("1800")
             .parse::<u16>()
             .map(|seconds| Duration::from_secs(seconds as u64))
@@ -490,14 +509,20 @@ pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
 // Parses config file and returns vector of OsString representing all argument strings from file
 // All lines that are empty or begin with "#" or "//" are ignored
 pub fn parse_config(config_path: PathBuf) -> Vec<OsString> {
-    let file = fs::File::open(&config_path).unwrap_or_else(|_| panic!("Unable to open config file at: {:?}", config_path));
+    let file = fs::File::open(&config_path)
+        .unwrap_or_else(|_| panic!("Unable to open config file at: {:?}", config_path));
     let reader = io::BufReader::new(file);
 
     let mut args: Vec<OsString> = vec![];
 
     let mut line_num = 0;
     for line_result in reader.lines() {
-        let mut line = line_result.unwrap_or_else(|_| panic!("Unable to read line: {:?} from config file at: {:?}", line_num, config_path));
+        let mut line = line_result.unwrap_or_else(|_| {
+            panic!(
+                "Unable to read line: {:?} from config file at: {:?}",
+                line_num, config_path
+            )
+        });
         line = line.trim().to_string();
 
         if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
@@ -550,7 +575,8 @@ impl Environment {
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
 
-        let data_dir: PathBuf = args.value_of("tezos-data-dir")
+        let data_dir: PathBuf = args
+            .value_of("tezos-data-dir")
             .unwrap_or("")
             .parse::<PathBuf>()
             .expect("Provided value cannot be converted to path");
@@ -562,31 +588,37 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of p2p-port"),
-                disable_bootstrap_lookup: args
-                    .is_present("disable-bootstrap-lookup"),
-                bootstrap_lookup_addresses: args.
-                    value_of("bootstrap-lookup-address")
-                    .map(|addresses_str| addresses_str
-                        .split(',')
-                        .map(|address| address.to_string())
-                        .collect()
-                    ).unwrap_or_else(|| {
-                    if !args.is_present("peers") && !args.is_present("private-node") {
-                        match environment::TEZOS_ENV.get(&tezos_network) {
-                            None => panic!("No tezos environment configured for: {:?}", tezos_network),
-                            Some(cfg) => cfg.bootstrap_lookup_addresses.clone()
+                disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
+                bootstrap_lookup_addresses: args
+                    .value_of("bootstrap-lookup-address")
+                    .map(|addresses_str| {
+                        addresses_str
+                            .split(',')
+                            .map(|address| address.to_string())
+                            .collect()
+                    })
+                    .unwrap_or_else(|| {
+                        if !args.is_present("peers") && !args.is_present("private-node") {
+                            match environment::TEZOS_ENV.get(&tezos_network) {
+                                None => panic!(
+                                    "No tezos environment configured for: {:?}",
+                                    tezos_network
+                                ),
+                                Some(cfg) => cfg.bootstrap_lookup_addresses.clone(),
+                            }
+                        } else {
+                            Vec::with_capacity(0)
                         }
-                    } else {
-                        Vec::with_capacity(0)
-                    }
-                }
-                ),
-                initial_peers: args.value_of("peers")
-                    .map(|peers_str| peers_str
-                        .split(',')
-                        .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
-                        .collect()
-                    ).unwrap_or_default(),
+                    }),
+                initial_peers: args
+                    .value_of("peers")
+                    .map(|peers_str| {
+                        peers_str
+                            .split(',')
+                            .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
                 peer_threshold: PeerConnectionThreshold::new(
                     args.value_of("peer-thresh-low")
                         .unwrap_or("")
@@ -596,17 +628,17 @@ impl Environment {
                         .unwrap_or("")
                         .parse::<usize>()
                         .expect("Provided value cannot be converted to number"),
-                    args.value_of("synchronization-thresh")
-                        .map(|v| v.parse::<usize>()
+                    args.value_of("synchronization-thresh").map(|v| {
+                        v.parse::<usize>()
                             .expect("Provided value cannot be converted to number")
-                        ),
+                    }),
                 ),
-                private_node: args.value_of("private-node")
+                private_node: args
+                    .value_of("private-node")
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                disable_mempool: args
-                    .is_present("disable-mempool")
+                disable_mempool: args.is_present("disable-mempool"),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
@@ -614,17 +646,20 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of rpc-port"),
-                websocket_address: args.value_of("websocket-address")
+                websocket_address: args
+                    .value_of("websocket-address")
                     .unwrap_or("")
                     .parse()
                     .expect("Provided value cannot be converted into valid uri"),
             },
             logging: crate::configuration::Logging {
-                ocaml_log_enabled: args.value_of("ocaml-log-enabled")
+                ocaml_log_enabled: args
+                    .value_of("ocaml-log-enabled")
                     .unwrap_or("")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                level: args.value_of("log-level")
+                level: args
+                    .value_of("log-level")
                     .unwrap_or("")
                     .parse::<slog::Level>()
                     .expect("Was expecting one value from slog::Level"),
@@ -634,8 +669,10 @@ impl Environment {
                     .parse::<LogFormat>()
                     .expect("Was expecting 'simple' or 'json'"),
                 file: {
-                    let log_file_path = args.value_of("log-file")
-                        .map(|v| v.parse::<PathBuf>().expect("Provided value cannot be converted to path"));
+                    let log_file_path = args.value_of("log-file").map(|v| {
+                        v.parse::<PathBuf>()
+                            .expect("Provided value cannot be converted to path")
+                    });
 
                     if let Some(path) = log_file_path {
                         Some(get_final_path(&data_dir, path))
@@ -659,39 +696,53 @@ impl Environment {
                     db_cfg.build().unwrap()
                 },
                 db_path: {
-                    let db_path = args.value_of("bootstrap-db-path")
+                    let db_path = args
+                        .value_of("bootstrap-db-path")
                         .unwrap_or("")
                         .parse::<PathBuf>()
                         .expect("Provided value cannot be converted to path");
                     get_final_path(&data_dir, db_path)
                 },
-                store_context_actions: args.value_of("store-context-actions")
+                store_context_actions: args
+                    .value_of("store-context-actions")
                     .unwrap_or("true")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 patch_context: {
                     match args.value_of("sandbox-patch-context-json-file") {
                         Some(path) => {
-                            let path = path.parse::<PathBuf>().expect("Provided value cannot be converted to path");
+                            let path = path
+                                .parse::<PathBuf>()
+                                .expect("Provided value cannot be converted to path");
                             let path = get_final_path(&data_dir, path);
                             match fs::read_to_string(&path) {
-                                | Ok(content) => {
+                                Ok(content) => {
                                     // validate valid json
-                                    if let Err(e) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&content) {
-                                        panic!("Invalid json file: {}, reason: {}", path.as_path().display().to_string(), e);
+                                    if let Err(e) = serde_json::from_str::<
+                                        HashMap<String, serde_json::Value>,
+                                    >(&content)
+                                    {
+                                        panic!(
+                                            "Invalid json file: {}, reason: {}",
+                                            path.as_path().display().to_string(),
+                                            e
+                                        );
                                     }
                                     Some(PatchContext {
                                         key: "sandbox_parameter".to_string(),
                                         json: content,
                                     })
                                 }
-                                | Err(e) => panic!("Cannot read file, reason: {}", e)
+                                Err(e) => panic!("Cannot read file, reason: {}", e),
                             }
                         }
                         None => {
                             // check default configuration, if any
                             match environment::TEZOS_ENV.get(&tezos_network) {
-                                None => panic!("No tezos environment configured for: {:?}", tezos_network),
+                                None => panic!(
+                                    "No tezos environment configured for: {:?}",
+                                    tezos_network
+                                ),
                                 Some(cfg) => cfg.patch_context_genesis_parameters.clone(),
                             }
                         }
@@ -700,13 +751,15 @@ impl Environment {
             },
             identity: crate::configuration::Identity {
                 identity_json_file_path: {
-                    let identity_path = args.value_of("identity-file")
+                    let identity_path = args
+                        .value_of("identity-file")
                         .unwrap_or("")
                         .parse::<PathBuf>()
                         .expect("Provided value cannot be converted to path");
                     get_final_path(&data_dir, identity_path)
                 },
-                expected_pow: args.value_of("identity-expected-pow")
+                expected_pow: args
+                    .value_of("identity-expected-pow")
                     .unwrap_or("26.0")
                     .parse::<f64>()
                     .expect("Provided value cannot be converted to number"),
@@ -717,25 +770,36 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path"),
-                no_of_ffi_calls_threshold_for_gc: args.value_of("ffi-calls-gc-threshold")
+                no_of_ffi_calls_threshold_for_gc: args
+                    .value_of("ffi-calls-gc-threshold")
                     .unwrap_or("50")
                     .parse::<i32>()
                     .expect("Provided value cannot be converted to number"),
-                tezos_readonly_api_pool: pool_cfg(&args, Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR),
-                tezos_readonly_prevalidation_api_pool: pool_cfg(&args, Ffi::TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR),
-                tezos_without_context_api_pool: pool_cfg(&args, Ffi::TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR),
+                tezos_readonly_api_pool: pool_cfg(
+                    &args,
+                    Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR,
+                ),
+                tezos_readonly_prevalidation_api_pool: pool_cfg(
+                    &args,
+                    Ffi::TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR,
+                ),
+                tezos_without_context_api_pool: pool_cfg(
+                    &args,
+                    Ffi::TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR,
+                ),
             },
-            tokio_threads: args.value_of("tokio-threads")
+            tokio_threads: args
+                .value_of("tokio-threads")
                 .unwrap_or("0")
                 .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
-            enable_testchain: args.value_of("enable-testchain")
+            enable_testchain: args
+                .value_of("enable-testchain")
                 .unwrap_or("false")
                 .parse::<bool>()
                 .expect("Provided value cannot be converted to bool"),
-            validate_cfg_identity_and_stop: args
-                .is_present("validate-cfg-identity-and-stop"),
+            validate_cfg_identity_and_stop: args.is_present("validate-cfg-identity-and-stop"),
         }
     }
 }

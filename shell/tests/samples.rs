@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{env, io};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufRead;
 use std::path::Path;
+use std::{env, io};
 
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -22,10 +22,21 @@ use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsF
 lazy_static! {
     pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
         Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("block_header", Encoding::dynamic(BlockHeader::encoding().clone())),
-        Field::new("pred_header", Encoding::dynamic(BlockHeader::encoding().clone())),
+        Field::new(
+            "block_header",
+            Encoding::dynamic(BlockHeader::encoding().clone())
+        ),
+        Field::new(
+            "pred_header",
+            Encoding::dynamic(BlockHeader::encoding().clone())
+        ),
         Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new("operations", Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(Encoding::dynamic(Operation::encoding().clone())))))),
+        Field::new(
+            "operations",
+            Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(
+                Encoding::dynamic(Operation::encoding().clone())
+            ))))
+        ),
     ]);
 }
 
@@ -53,8 +64,15 @@ impl OperationsForBlocksMessageKey {
     }
 }
 
-pub fn read_data_apply_block_request_until_1326() -> (Vec<String>, HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>, TezosEnvironment) {
-    read_data_zip("apply_block_request_until_1326.zip", TezosEnvironment::Carthagenet)
+pub fn read_data_apply_block_request_until_1326() -> (
+    Vec<String>,
+    HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
+    TezosEnvironment,
+) {
+    read_data_zip(
+        "apply_block_request_until_1326.zip",
+        TezosEnvironment::Carthagenet,
+    )
 }
 
 /// Expected zip structure:
@@ -64,12 +82,20 @@ pub fn read_data_apply_block_request_until_1326() -> (Vec<String>, HashMap<Opera
 ///   ...
 ///   apply_block_request_XYZ.bytes
 /// - stored operations in file OperationsForBlocksMessage
-pub fn read_data_zip(zip_file_name: &str, tezos_env: TezosEnvironment) -> (Vec<String>, HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>, TezosEnvironment) {
+pub fn read_data_zip(
+    zip_file_name: &str,
+    tezos_env: TezosEnvironment,
+) -> (
+    Vec<String>,
+    HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
+    TezosEnvironment,
+) {
     let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("tests")
         .join("resources")
         .join(zip_file_name);
-    let file = File::open(path).unwrap_or_else(|_| panic!("Couldn't open file: tests/resources/{}", zip_file_name));
+    let file = File::open(path)
+        .unwrap_or_else(|_| panic!("Couldn't open file: tests/resources/{}", zip_file_name));
     let mut archive = zip::ZipArchive::new(file).unwrap();
 
     // 1. get requests from files sorted by name
@@ -91,7 +117,8 @@ pub fn read_data_zip(zip_file_name: &str, tezos_env: TezosEnvironment) -> (Vec<S
 
     // 2. get operations
     let operations_file = archive.by_name("OperationsForBlocksMessage").unwrap();
-    let mut operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> = HashMap::new();
+    let mut operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage> =
+        HashMap::new();
 
     // read file by lines
     let reader = io::BufReader::new(operations_file);
@@ -102,11 +129,18 @@ pub fn read_data_zip(zip_file_name: &str, tezos_env: TezosEnvironment) -> (Vec<S
             let split = line.split('|').collect_vec();
             assert_eq!(3, split.len());
 
-            let block_hash = HashType::BlockHash.b58check_to_hash(split[0]).expect("Failed to parse block_hash");
-            let validation_pass = split[1].parse::<i8>().expect("Failed to parse validation_pass");
+            let block_hash = HashType::BlockHash
+                .b58check_to_hash(split[0])
+                .expect("Failed to parse block_hash");
+            let validation_pass = split[1]
+                .parse::<i8>()
+                .expect("Failed to parse validation_pass");
 
-            let operations_for_blocks_message = hex::decode(split[2]).expect("Failed to parse operations_for_blocks_message");
-            let operations_for_blocks_message = OperationsForBlocksMessage::from_bytes(operations_for_blocks_message).expect("Failed to readed bytes for operations_for_blocks_message");
+            let operations_for_blocks_message =
+                hex::decode(split[2]).expect("Failed to parse operations_for_blocks_message");
+            let operations_for_blocks_message =
+                OperationsForBlocksMessage::from_bytes(operations_for_blocks_message)
+                    .expect("Failed to readed bytes for operations_for_blocks_message");
 
             operations.insert(
                 OperationsForBlocksMessageKey::new(block_hash, validation_pass),
@@ -124,7 +158,8 @@ pub(crate) fn read_carthagenet_context_json(file_name: &str) -> Option<String> {
         .join("tests")
         .join("resources")
         .join("ocaml_context_jsons.zip");
-    let file = File::open(path).expect("Couldn't open file: tests/resources/ocaml_context_jsons.zip");
+    let file =
+        File::open(path).expect("Couldn't open file: tests/resources/ocaml_context_jsons.zip");
     let mut archive = zip::ZipArchive::new(file).unwrap();
 
     for i in 0..archive.len() {

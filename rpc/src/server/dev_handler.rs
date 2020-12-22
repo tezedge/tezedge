@@ -4,12 +4,17 @@
 use hyper::{Body, Request};
 use slog::warn;
 
-use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use crate::helpers::{parse_block_hash, parse_chain_id, MAIN_CHAIN_ID};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, dev_services};
+use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 
-pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn dev_blocks(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     // TODO: TE-221 - add optional chain_id to params mapping
     let chain_id_param = MAIN_CHAIN_ID;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -32,7 +37,7 @@ pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServi
     let every_nth_level = match query.get_str("every_nth") {
         Some("cycle") => Some(cycle_length),
         Some("voting-period") => Some(cycle_length * 8),
-        _ => None
+        _ => None,
     };
     let limit = query.get_usize("limit").unwrap_or(50);
 
@@ -49,57 +54,100 @@ pub async fn dev_blocks(_: Request<Body>, _: Params, query: Query, env: RpcServi
 }
 
 #[allow(dead_code)]
-pub async fn dev_block_actions(_: Request<Body>, params: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn dev_block_actions(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     // TODO: TE-221 - add optional chain_id to params mapping
     let chain_id_param = MAIN_CHAIN_ID;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_hash")?, &env)?;
     result_to_json_response(
-        dev_services::get_block_actions(
-            block_hash,
-            env.persistent_storage()),
+        dev_services::get_block_actions(block_hash, env.persistent_storage()),
         env.log(),
     )
 }
 
 #[allow(dead_code)]
-pub async fn dev_contract_actions(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn dev_contract_actions(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     let contract_id = required_param!(params, "contract_address")?;
     let from_id = query.get_u64("from_id");
     let limit = query.get_usize("limit").unwrap_or(50);
-    result_to_json_response(dev_services::get_contract_actions(contract_id, from_id, limit, env.persistent_storage()), env.log())
+    result_to_json_response(
+        dev_services::get_contract_actions(contract_id, from_id, limit, env.persistent_storage()),
+        env.log(),
+    )
 }
 
-pub async fn dev_action_cursor(_: Request<Body>, params: Params, query: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn dev_action_cursor(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     let cursor_id = query.get_u64("cursor_id");
     let limit = query.get_u64("limit").map(|limit| limit as usize);
     let action_types = query.get_str("action_types");
 
-    result_to_json_response(if let Some(block_hash_param) = params.get_str("block_hash") {
-        // TODO: TE-221 - add optional chain_id to params mapping
-        let chain_id_param = MAIN_CHAIN_ID;
-        let chain_id = parse_chain_id(chain_id_param, &env)?;
-        let block_hash = parse_block_hash(&chain_id, block_hash_param, &env)?;
+    result_to_json_response(
+        if let Some(block_hash_param) = params.get_str("block_hash") {
+            // TODO: TE-221 - add optional chain_id to params mapping
+            let chain_id_param = MAIN_CHAIN_ID;
+            let chain_id = parse_chain_id(chain_id_param, &env)?;
+            let block_hash = parse_block_hash(&chain_id, block_hash_param, &env)?;
 
-        dev_services::get_block_actions_cursor(block_hash, cursor_id, limit, action_types, env.persistent_storage())
-    } else if let Some(contract_address) = params.get_str("contract_address") {
-        dev_services::get_contract_actions_cursor(contract_address, cursor_id, limit, action_types, env.persistent_storage())
-    } else {
-        unreachable!()
-    }, env.log())
+            dev_services::get_block_actions_cursor(
+                block_hash,
+                cursor_id,
+                limit,
+                action_types,
+                env.persistent_storage(),
+            )
+        } else if let Some(contract_address) = params.get_str("contract_address") {
+            dev_services::get_contract_actions_cursor(
+                contract_address,
+                cursor_id,
+                limit,
+                action_types,
+                env.persistent_storage(),
+            )
+        } else {
+            unreachable!()
+        },
+        env.log(),
+    )
 }
 
 #[allow(dead_code)]
-pub async fn dev_stats_storage(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn dev_stats_storage(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     result_to_json_response(
         crate::services::stats_services::compute_storage_stats(
             env.state(),
             env.main_chain_genesis_hash(),
-            env.persistent_storage()),
-        env.log())
+            env.persistent_storage(),
+        ),
+        env.log(),
+    )
 }
 
-pub async fn dev_stats_memory(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn dev_stats_memory(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     match dev_services::get_stats_memory() {
         Ok(resp) => make_json_response(&resp),
         Err(e) => {
@@ -109,7 +157,12 @@ pub async fn dev_stats_memory(_: Request<Body>, _: Params, _: Query, env: RpcSer
     }
 }
 
-pub async fn database_memstats(_: Request<Body>, _: Params, _: Query, env: RpcServiceEnvironment) -> ServiceResult {
+pub async fn database_memstats(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
     result_to_json_response(
         dev_services::get_database_memstats(env.tezedge_context()),
         env.log(),

@@ -16,28 +16,28 @@ pub type MemoryStatsResult<T> = std::result::Result<T, MemoryStatsError>;
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct LinuxData {
-    page_size: usize,   // unit of memory assignment/addressing used by the Linux kernel
-    size: String,       // total program size
-    resident: String,   // resident set size
-    shared: String,     // shared pages (i.e., backed by a file)
-    text: String,       // text (code)
-    lib: String,        // library (unused in Linux 2.6)
-    data: String,       // data + stack
-    dt: String          // dirty pages (unused in Linux 2.6)
+    page_size: usize, // unit of memory assignment/addressing used by the Linux kernel
+    size: String,     // total program size
+    resident: String, // resident set size
+    shared: String,   // shared pages (i.e., backed by a file)
+    text: String,     // text (code)
+    lib: String,      // library (unused in Linux 2.6)
+    data: String,     // data + stack
+    dt: String,       // dirty pages (unused in Linux 2.6)
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
 pub struct DarwinOsData {
-    page_size: usize,   // unit of memory assignment/addressing used by the Linux kernel
-    mem: f64,           // percentage of real memory being used by the process in KB
-    resident: String    // resident set size
+    page_size: usize, // unit of memory assignment/addressing used by the Linux kernel
+    mem: f64,         // percentage of real memory being used by the process in KB
+    resident: String, // resident set size
 }
 
-#[derive(Serialize,PartialEq, Clone, Debug)]
+#[derive(Serialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum MemoryData {
     Linux(LinuxData),
-    DarwinOs(DarwinOsData)
+    DarwinOs(DarwinOsData),
 }
 
 impl From<LinuxData> for MemoryData {
@@ -59,7 +59,7 @@ pub enum MemoryStatsError {
     #[fail(display = "fail to parse data")]
     ParsingData,
     #[fail(display = "not supported OS")]
-    NotSupportedOs
+    NotSupportedOs,
 }
 
 lazy_static! {
@@ -69,20 +69,20 @@ lazy_static! {
 
 pub struct Memory {
     pub pid: i32,
-    pub page_size: usize
+    pub page_size: usize,
 }
 
 impl Memory {
     pub fn new() -> Self {
         Memory {
             pid: nix::unistd::getpid().as_raw(),
-            page_size: page_size::get()
+            page_size: page_size::get(),
         }
     }
 
     pub fn get_memory_stats(&self) -> MemoryStatsResult<MemoryData> {
         if cfg!(target_os = "linux") {
-            self.get_linux_data( format!("/proc/{}/statm", self.pid) )
+            self.get_linux_data(format!("/proc/{}/statm", self.pid))
         } else if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
             self.get_mac_data()
         } else {
@@ -94,11 +94,11 @@ impl Memory {
 
     fn get_mac_data(&self) -> MemoryStatsResult<MemoryData> {
         let output = Command::new("ps")
-                        .args(&["-o", "%mem,rss", "-p", &self.pid.to_string()])
-                        .output()
-                        .expect("failed to execute sh command");
+            .args(&["-o", "%mem,rss", "-p", &self.pid.to_string()])
+            .output()
+            .expect("failed to execute sh command");
         let out_str = String::from_utf8(output.stdout).unwrap();
-        self.parse_mac_data( out_str )
+        self.parse_mac_data(out_str)
     }
 
     fn parse_mac_data(&self, out: String) -> MemoryStatsResult<MemoryData> {
@@ -106,7 +106,7 @@ impl Memory {
             let data = DarwinOsData {
                 page_size: self.page_size,
                 mem: captures["mem"].parse().unwrap(),
-                resident: captures["resident"].to_string()
+                resident: captures["resident"].to_string(),
             };
             Ok(MemoryData::from(data))
         } else {
@@ -127,7 +127,7 @@ impl Memory {
                 text: captures["text"].to_string(),
                 lib: captures["lib"].to_string(),
                 data: captures["data"].to_string(),
-                dt: captures["dt"].to_string()
+                dt: captures["dt"].to_string(),
             };
             Ok(MemoryData::from(data))
         } else {
@@ -142,14 +142,22 @@ impl Memory {
 
         let mut file = match File::open(&path) {
             // `io::Error`
-            Err(e) => return Err(MemoryStatsError::IOError( format!("couldn't open {}: {}", display, e) )),
+            Err(e) => {
+                return Err(MemoryStatsError::IOError(format!(
+                    "couldn't open {}: {}",
+                    display, e
+                )))
+            }
             Ok(file) => file,
         };
 
         let mut s = String::new();
         match file.read_to_string(&mut s) {
             // `io::Error`
-            Err(e) => Err(MemoryStatsError::IOError( format!("couldn't read {}: {}", display, e) )),
+            Err(e) => Err(MemoryStatsError::IOError(format!(
+                "couldn't read {}: {}",
+                display, e
+            ))),
             Ok(_) => self.parse_linux_statm(s),
         }
     }
@@ -163,16 +171,16 @@ pub mod tests {
     fn correct_parsing_linux() {
         let statm_to_parse = "218428 10272 6459 7780 0 22424 0".to_string();
         let memory = Memory::new();
-        let parse_result =  MemoryData::Linux( LinuxData {
-                page_size: memory.page_size,
-                size: "218428".to_string(),
-                resident: "10272".to_string(),
-                shared: "6459".to_string(),
-                text: "7780".to_string(),
-                lib: "0".to_string(),
-                data: "22424".to_string(),
-                dt: "0".to_string()
-            });
+        let parse_result = MemoryData::Linux(LinuxData {
+            page_size: memory.page_size,
+            size: "218428".to_string(),
+            resident: "10272".to_string(),
+            shared: "6459".to_string(),
+            text: "7780".to_string(),
+            lib: "0".to_string(),
+            data: "22424".to_string(),
+            dt: "0".to_string(),
+        });
         assert_eq!(Ok(parse_result), memory.parse_linux_statm(statm_to_parse))
     }
 
@@ -180,12 +188,11 @@ pub mod tests {
     fn correct_parsing_mac() {
         let to_parse = "PID %MEM   RSS\n0.3  5336\n".to_string();
         let memory = Memory::new();
-        let parse_result =  MemoryData::DarwinOs( DarwinOsData {
-                page_size: memory.page_size,
-                mem: 0.3,
-                resident: "5336".to_string()
-            });
+        let parse_result = MemoryData::DarwinOs(DarwinOsData {
+            page_size: memory.page_size,
+            mem: 0.3,
+            resident: "5336".to_string(),
+        });
         assert_eq!(Ok(parse_result), memory.parse_mac_data(to_parse))
     }
-
 }

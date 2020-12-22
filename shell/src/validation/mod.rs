@@ -13,18 +13,25 @@ use failure::Fail;
 
 use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
-use tezos_api::ffi::{BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest, ValidateOperationResult};
-use tezos_messages::Head;
+use tezos_api::ffi::{
+    BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
+    ValidateOperationResult,
+};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::validation::fitness_comparator::FitnessWrapper;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
-pub fn can_update_current_head(new_head: &BlockHeaderWithHash, current_head: &Head, current_context_fitness: &Fitness) -> bool {
+pub fn can_update_current_head(
+    new_head: &BlockHeaderWithHash,
+    current_head: &Head,
+    current_context_fitness: &Fitness,
+) -> bool {
     let new_head_fitness = FitnessWrapper::new(new_head.header.fitness());
     let current_head_fitness = FitnessWrapper::new(current_head.fitness());
     let context_fitness = FitnessWrapper::new(current_context_fitness);
@@ -57,46 +64,65 @@ pub fn is_same_head(head: &Head, incoming_header: &BlockHeader) -> Result<bool, 
 
 /// Returns only true, if timestamp of header is not in the far future
 pub fn is_future_block(block_header: &BlockHeader) -> Result<bool, failure::Error> {
-    let future_margin = chrono::offset::Utc::now() + chrono::Duration::from_std(Duration::from_secs(15))?;
-    let block_timestamp = chrono::Utc.from_utc_datetime(&chrono::NaiveDateTime::from_timestamp(block_header.timestamp(), 0));
+    let future_margin =
+        chrono::offset::Utc::now() + chrono::Duration::from_std(Duration::from_secs(15))?;
+    let block_timestamp = chrono::Utc.from_utc_datetime(&chrono::NaiveDateTime::from_timestamp(
+        block_header.timestamp(),
+        0,
+    ));
     Ok(block_timestamp > future_margin)
 }
 
 /// Returns true, if we can accept injected operation from rpc
-pub fn can_accept_operation_from_rpc(operation_hash: &OperationHash, result: &ValidateOperationResult) -> bool {
+pub fn can_accept_operation_from_rpc(
+    operation_hash: &OperationHash,
+    result: &ValidateOperationResult,
+) -> bool {
     // we can accept from rpc, only if it is [applied]
-    result.applied
+    result
+        .applied
         .iter()
         .any(|operation_result| operation_result.hash.eq(operation_hash))
 }
 
 /// Returns true, if we can accept received operation from p2p
-pub fn can_accept_operation_from_p2p(operation_hash: &OperationHash, result: &ValidateOperationResult) -> bool {
+pub fn can_accept_operation_from_p2p(
+    operation_hash: &OperationHash,
+    result: &ValidateOperationResult,
+) -> bool {
     // we can accept from p2p, only if it is [not refused]
-    if result.refused
+    if result
+        .refused
         .iter()
-        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
+        .any(|operation_result| operation_result.hash.eq(operation_hash))
+    {
         return false;
     }
 
     // true, if contained in applied
-    if result.applied
+    if result
+        .applied
         .iter()
-        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
+        .any(|operation_result| operation_result.hash.eq(operation_hash))
+    {
         return true;
     }
 
     // true, if contained in branch_refused
-    if result.branch_refused
+    if result
+        .branch_refused
         .iter()
-        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
+        .any(|operation_result| operation_result.hash.eq(operation_hash))
+    {
         return true;
     }
 
     // true, if contained in branch_refused
-    if result.branch_delayed
+    if result
+        .branch_delayed
         .iter()
-        .any(|operation_result| operation_result.hash.eq(operation_hash)) {
+        .any(|operation_result| operation_result.hash.eq(operation_hash))
+    {
         return true;
     }
 
@@ -108,22 +134,23 @@ pub fn can_accept_operation_from_p2p(operation_hash: &OperationHash, result: &Va
 #[derive(Debug, Fail)]
 pub enum PrevalidateOperationError {
     #[fail(display = "Unknown branch ({}), cannot inject the operation.", branch)]
-    UnknownBranch {
-        branch: String,
-    },
-    #[fail(display = "Branch is not applied yet ({}), cannot inject the operation.", branch)]
-    BranchNotAppliedYet {
-        branch: String,
-    },
-    #[fail(display = "Prevalidator is not running ({}), cannot inject the operation.", reason)]
-    PrevalidatorNotInitialized {
-        reason: String
-    },
+    UnknownBranch { branch: String },
+    #[fail(
+        display = "Branch is not applied yet ({}), cannot inject the operation.",
+        branch
+    )]
+    BranchNotAppliedYet { branch: String },
+    #[fail(
+        display = "Prevalidator is not running ({}), cannot inject the operation.",
+        reason
+    )]
+    PrevalidatorNotInitialized { reason: String },
     #[fail(display = "Storage read error! Reason: {:?}", error)]
-    StorageError {
-        error: StorageError
-    },
-    #[fail(display = "Failed to validate operation: {}! Reason: {:?}", operation_hash, reason)]
+    StorageError { error: StorageError },
+    #[fail(
+        display = "Failed to validate operation: {}! Reason: {:?}",
+        operation_hash, reason
+    )]
     ValidationError {
         operation_hash: String,
         reason: ProtocolServiceError,
@@ -132,9 +159,7 @@ pub enum PrevalidateOperationError {
 
 impl From<StorageError> for PrevalidateOperationError {
     fn from(error: StorageError) -> Self {
-        PrevalidateOperationError::StorageError {
-            error
-        }
+        PrevalidateOperationError::StorageError { error }
     }
 }
 
@@ -149,7 +174,6 @@ pub fn prevalidate_operation(
     block_storage: &Box<dyn BlockStorageReader>,
     block_meta_storage: &Box<dyn BlockMetaStorageReader>,
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
-
     // just check if we know block from operation (and is applied)
     let operation_branch = operation.branch();
     match block_storage.contains(operation_branch)? {
@@ -161,13 +185,15 @@ pub fn prevalidate_operation(
 
             if !is_applied {
                 return Err(PrevalidateOperationError::BranchNotAppliedYet {
-                    branch: HashType::BlockHash.hash_to_b58check(&operation_branch)
+                    branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
                 });
             }
         }
-        false => return Err(PrevalidateOperationError::UnknownBranch {
-            branch: HashType::BlockHash.hash_to_b58check(&operation_branch)
-        })
+        false => {
+            return Err(PrevalidateOperationError::UnknownBranch {
+                branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
+            })
+        }
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
@@ -175,9 +201,11 @@ pub fn prevalidate_operation(
     let mempool_head = match mempool_state.head().as_ref() {
         Some(head) => match block_storage.get(head)? {
             Some(head) => head,
-            None => return Err(PrevalidateOperationError::UnknownBranch {
-                branch: HashType::BlockHash.hash_to_b58check(&head)
-            })
+            None => {
+                return Err(PrevalidateOperationError::UnknownBranch {
+                    branch: HashType::BlockHash.hash_to_b58check(&head),
+                })
+            }
         },
         None => {
             return Err(PrevalidateOperationError::PrevalidatorNotInitialized {
@@ -190,22 +218,27 @@ pub fn prevalidate_operation(
     // TODO: possible to add ffi to decode_operation_data
 
     // begin construction of a new empty block
-    let prevalidator = api.begin_construction(BeginConstructionRequest {
-        chain_id: chain_id.clone(),
-        predecessor: (&*mempool_head.header).clone(),
-        protocol_data: None,
-    }).map_err(|e| PrevalidateOperationError::ValidationError {
-        operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
-        reason: e,
-    })?;
-
-    // validate operation to new empty/dummpy block
-    api.validate_operation(ValidateOperationRequest { prevalidator, operation: operation.clone() })
-        .map(|r| r.result)
+    let prevalidator = api
+        .begin_construction(BeginConstructionRequest {
+            chain_id: chain_id.clone(),
+            predecessor: (&*mempool_head.header).clone(),
+            protocol_data: None,
+        })
         .map_err(|e| PrevalidateOperationError::ValidationError {
             operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
             reason: e,
-        })
+        })?;
+
+    // validate operation to new empty/dummpy block
+    api.validate_operation(ValidateOperationRequest {
+        prevalidator,
+        operation: operation.clone(),
+    })
+    .map(|r| r.result)
+    .map_err(|e| PrevalidateOperationError::ValidationError {
+        operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
+        reason: e,
+    })
 }
 
 /// Implementation for multipass validation:
@@ -220,9 +253,11 @@ pub fn check_multipass_validation(
     predecessor: Option<BlockHeaderWithHash>,
     api: &ProtocolController,
 ) -> Option<ProtocolServiceError> {
-
     // 1. check encoding for protocol_data
-    if let Err(e) = api.assert_encoding_for_protocol_data(protocol_hash, validated_block_header.protocol_data().clone()) {
+    if let Err(e) = api.assert_encoding_for_protocol_data(
+        protocol_hash,
+        validated_block_header.protocol_data().clone(),
+    ) {
         return Some(e);
     };
 
@@ -256,9 +291,7 @@ pub mod fitness_comparator {
 
     impl<'a> FitnessWrapper<'a> {
         pub fn new(fitness: &'a Fitness) -> Self {
-            FitnessWrapper {
-                fitness
-            }
+            FitnessWrapper { fitness }
         }
     }
 
@@ -336,104 +369,122 @@ mod tests {
 
     #[test]
     fn test_can_update_current_head() -> Result<(), failure::Error> {
-        assert_eq!(false,
-                   can_update_current_head(
-                       &new_head(fitness!([0]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            false,
+            can_update_current_head(
+                &new_head(fitness!([0]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
-        assert_eq!(false,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 1]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            false,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 1]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
-        assert_eq!(false,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 1]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            false,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 1]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
-        assert_eq!(false,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 2]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            false,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 2]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
-        assert_eq!(true,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 3]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            true,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 3]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
-        assert_eq!(true,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 1], [0]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            true,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 1], [0]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
-        assert_eq!(true,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 0, 1]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 2]),
-                   )
+        assert_eq!(
+            true,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 0, 1]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 2]),
+            )
         );
 
         // context fitnes is lower than current head
-        assert_eq!(true,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 2]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 1]),
-                   )
+        assert_eq!(
+            true,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 2]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 1]),
+            )
         );
         // context fitnes is higher than current head
-        assert_eq!(false,
-                   can_update_current_head(
-                       &new_head(fitness!([0], [0, 0, 2]))?,
-                       &current_head(fitness!([0], [0, 0, 2]))?,
-                       &fitness!([0], [0, 0, 3]),
-                   )
+        assert_eq!(
+            false,
+            can_update_current_head(
+                &new_head(fitness!([0], [0, 0, 2]))?,
+                &current_head(fitness!([0], [0, 0, 2]))?,
+                &fitness!([0], [0, 0, 3]),
+            )
         );
 
         Ok(())
     }
 
     fn new_head(fitness: Fitness) -> Result<BlockHeaderWithHash, failure::Error> {
-        Ok(
-            BlockHeaderWithHash {
-                hash: HashType::BlockHash.b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
-                header: Arc::new(
-                    BlockHeaderBuilder::default()
-                        .level(34)
-                        .proto(1)
-                        .predecessor(HashType::BlockHash.b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?)
-                        .timestamp(5_635_634)
-                        .validation_pass(4)
-                        .operations_hash(HashType::OperationListListHash.b58check_to_hash("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc")?)
-                        .fitness(fitness)
-                        .context(HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?)
-                        .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
-                        .build().unwrap()
-                ),
-            }
-        )
+        Ok(BlockHeaderWithHash {
+            hash: HashType::BlockHash
+                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+            header: Arc::new(
+                BlockHeaderBuilder::default()
+                    .level(34)
+                    .proto(1)
+                    .predecessor(
+                        HashType::BlockHash.b58check_to_hash(
+                            "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET",
+                        )?,
+                    )
+                    .timestamp(5_635_634)
+                    .validation_pass(4)
+                    .operations_hash(HashType::OperationListListHash.b58check_to_hash(
+                        "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
+                    )?)
+                    .fitness(fitness)
+                    .context(
+                        HashType::ContextHash.b58check_to_hash(
+                            "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd",
+                        )?,
+                    )
+                    .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
+                    .build()
+                    .unwrap(),
+            ),
+        })
     }
 
     fn current_head(fitness: Fitness) -> Result<Head, failure::Error> {
-        Ok(
-            Head::new(
-                HashType::BlockHash.b58check_to_hash("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?,
-                5,
-                fitness,
-            )
-        )
+        Ok(Head::new(
+            HashType::BlockHash
+                .b58check_to_hash("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?,
+            5,
+            fitness,
+        ))
     }
 }

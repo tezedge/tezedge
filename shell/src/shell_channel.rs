@@ -10,10 +10,10 @@ use riker::actors::*;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::block_storage::BlockJsonData;
-use storage::BlockHeaderWithHash;
 use storage::mempool_storage::MempoolOperationType;
-use tezos_messages::Head;
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
+use tezos_messages::Head;
 
 use crate::utils::CondvarResult;
 
@@ -134,7 +134,7 @@ impl From<ShellChannelTopic> for Topic {
     fn from(evt: ShellChannelTopic) -> Self {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
-            ShellChannelTopic::ShellCommands => Topic::from("shell.command")
+            ShellChannelTopic::ShellCommands => Topic::from("shell.command"),
         }
     }
 }

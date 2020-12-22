@@ -6,7 +6,6 @@ extern crate test;
 /// Big integration test for actors, covers two main use cases:
 /// 1. test_scenario_for_apply_blocks_with_chain_feeder_and_check_context - see fn description
 /// 2. test_scenario_for_add_operations_to_mempool_and_check_state - see fn description
-
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -16,12 +15,15 @@ use slog::{info, Logger};
 
 use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
 use shell::shell_channel::{MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, context_key, MempoolStorage, OperationsMetaStorage, OperationsStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
 use storage::tests_common::TmpStorage;
+use storage::{
+    context_key, BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader,
+    ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
+};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
@@ -43,8 +45,12 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        TmpStorage::create(common::prepare_empty_dir("__test_actors_apply_blocks_and_check_context_and_mempool"))?,
-        &common::prepare_empty_dir("__test_actors_apply_blocks_and_check_context_and_mempool_context"),
+        TmpStorage::create(common::prepare_empty_dir(
+            "__test_actors_apply_blocks_and_check_context_and_mempool",
+        ))?,
+        &common::prepare_empty_dir(
+            "__test_actors_apply_blocks_and_check_context_and_mempool_context",
+        ),
         "test_actors_apply_blocks_and_check_context_and_mempool",
         &tezos_env,
         None,
@@ -64,18 +70,18 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
             &requests,
             &operations,
             1324,
-        ).is_ok()
+        )
+        .is_ok()
     );
 
     // 2. test - mempool test
-    assert!(
-        test_scenario_for_add_operations_to_mempool_and_check_state(
-            &node,
-            &requests[1323],
-            &requests[1324],
-            &requests[1325],
-        ).is_ok()
-    );
+    assert!(test_scenario_for_add_operations_to_mempool_and_check_state(
+        &node,
+        &requests[1323],
+        &requests[1324],
+        &requests[1325],
+    )
+    .is_ok());
 
     println!("\nDone in {:?}!", clocks.elapsed());
 
@@ -84,15 +90,23 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     Ok(())
 }
 
-fn check_context(expected_context_hash: ContextHash, persistent_storage: &PersistentStorage) -> Result<(), failure::Error> {
+fn check_context(
+    expected_context_hash: ContextHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<(), failure::Error> {
     let context = TezedgeContext::new(
         BlockStorage::new(&persistent_storage),
         persistent_storage.merkle(),
     );
 
     // check protocol
-    if let Some(data) = context.get_key_from_history(&expected_context_hash, &context_key!("protocol"))? {
-        assert_eq!("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS", HashType::ProtocolHash.hash_to_b58check(&data));
+    if let Some(data) =
+        context.get_key_from_history(&expected_context_hash, &context_key!("protocol"))?
+    {
+        assert_eq!(
+            "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS",
+            HashType::ProtocolHash.hash_to_b58check(&data)
+        );
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
     }
@@ -106,7 +120,10 @@ fn check_context(expected_context_hash: ContextHash, persistent_storage: &Persis
     // compare with context hash of last applied expected_context_hash
     assert_eq!(*expected_context_hash, merkle_last_hash.unwrap());
     let stats = merkle.get_merkle_stats().unwrap();
-    println!("Avg set exec time in ns: {}", stats.perf_stats.avg_set_exec_time_ns);
+    println!(
+        "Avg set exec time in ns: {}",
+        stats.perf_stats.avg_set_exec_time_ns
+    );
 
     Ok(())
 }
@@ -120,7 +137,8 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     log: Logger,
     requests: &[String],
     operations: &HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
-    apply_to_level: i32) -> Result<(), failure::Error> {
+    apply_to_level: i32,
+) -> Result<(), failure::Error> {
     // prepare dbs
     let block_storage = BlockStorage::new(&persistent_storage);
     let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
@@ -134,7 +152,6 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
 
     // let's insert stored requests to database
     for request in requests {
-
         // parse request
         let request = samples::from_captured_bytes(request)?;
         let header = request.block_header.clone();
@@ -151,7 +168,10 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
         // store operations to db
         let validation_pass: u8 = block.header.validation_pass();
         for vp in 0..validation_pass {
-            if let Some(msg) = operations.get(&OperationsForBlocksMessageKey::new(block.hash.clone(), vp as i8)) {
+            if let Some(msg) = operations.get(&OperationsForBlocksMessageKey::new(
+                block.hash.clone(),
+                vp as i8,
+            )) {
                 operations_storage.put_operations(msg)?;
                 let _ = operations_meta_storage.put_operations(msg)?;
             }
@@ -173,10 +193,16 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
             None => continue,
             Some(head) => {
                 if head.level() >= &apply_to_level {
-                    let header = block_storage.get(head.block_hash()).expect("failed to read current head").expect("current head not found");
+                    let header = block_storage
+                        .get(head.block_hash())
+                        .expect("failed to read current head")
+                        .expect("current head not found");
                     // TE-168: check if context is also asynchronously stored
                     let context_hash = header.header.context();
-                    if block_storage.contains_context_hash(&context_hash).expect("failed to read head") {
+                    if block_storage
+                        .contains_context_hash(&context_hash)
+                        .expect("failed to read head")
+                    {
                         break Some(context_hash.clone());
                     }
                 }
@@ -187,7 +213,12 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
 
     // check context
     check_context(
-        current_head_context_hash.unwrap_or_else(|| panic!("Context hash not set for apply_to_level: {}", apply_to_level)),
+        current_head_context_hash.unwrap_or_else(|| {
+            panic!(
+                "Context hash not set for apply_to_level: {}",
+                apply_to_level
+            )
+        }),
         &persistent_storage,
     )
 }
@@ -201,22 +232,34 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     node: &common::infra::NodeInfrastructure,
     last_applied_request_1324: &str,
     request_1325: &str,
-    request_1326: &str) -> Result<(), failure::Error> {
-
+    request_1326: &str,
+) -> Result<(), failure::Error> {
     // wait mempool for last_applied_block
-    let last_applied_block: BlockHash = samples::from_captured_bytes(last_applied_request_1324)?.block_header.message_hash()?;
-    node.wait_for_mempool_on_head("mempool_head_1324", last_applied_block.clone(), (Duration::from_secs(30), Duration::from_millis(250)))?;
+    let last_applied_block: BlockHash = samples::from_captured_bytes(last_applied_request_1324)?
+        .block_header
+        .message_hash()?;
+    node.wait_for_mempool_on_head(
+        "mempool_head_1324",
+        last_applied_block.clone(),
+        (Duration::from_secs(30), Duration::from_millis(250)),
+    )?;
 
     // check current mempool state, should be on last applied block 1324
     {
-        let current_mempool_state = node.current_mempool_state_storage.read().expect("Failed to obtain lock");
+        let current_mempool_state = node
+            .current_mempool_state_storage
+            .read()
+            .expect("Failed to obtain lock");
         assert!(current_mempool_state.head().is_some());
         assert_eq!(*current_mempool_state.head().unwrap(), last_applied_block);
     }
 
     // check operations in mempool - should by empty all
     {
-        let current_mempool_state = node.current_mempool_state_storage.read().expect("Failed to obtain lock");
+        let current_mempool_state = node
+            .current_mempool_state_storage
+            .read()
+            .expect("Failed to obtain lock");
         assert!(current_mempool_state.result().applied.is_empty());
         assert!(current_mempool_state.result().branch_delayed.is_empty());
         assert!(current_mempool_state.result().branch_refused.is_empty());
@@ -225,35 +268,66 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
 
     // add operations from 1325 to mempool - should by applied
     let mut mempool_storage = MempoolStorage::new(node.tmp_storage.storage());
-    let operations_from_1325 = add_operations_to_mempool(request_1325, node.shell_channel.clone(), &mut mempool_storage)?;
+    let operations_from_1325 = add_operations_to_mempool(
+        request_1325,
+        node.shell_channel.clone(),
+        &mut mempool_storage,
+    )?;
     let operations_from_1325_count = operations_from_1325.len();
     assert_ne!(0, operations_from_1325_count);
 
     // we expect here message for every operation
-    node.wait_for_mempool_contains_operations("mempool_operations_from_1325", &operations_from_1325, (Duration::from_secs(10), Duration::from_millis(250)))?;
+    node.wait_for_mempool_contains_operations(
+        "mempool_operations_from_1325",
+        &operations_from_1325,
+        (Duration::from_secs(10), Duration::from_millis(250)),
+    )?;
 
     // check mempool current state after operations 1325
     {
-        let current_mempool_state = node.current_mempool_state_storage.read().expect("Failed to obtain lock");
-        assert_eq!(operations_from_1325_count, current_mempool_state.result().applied.len());
+        let current_mempool_state = node
+            .current_mempool_state_storage
+            .read()
+            .expect("Failed to obtain lock");
+        assert_eq!(
+            operations_from_1325_count,
+            current_mempool_state.result().applied.len()
+        );
         assert!(current_mempool_state.result().branch_delayed.is_empty());
         assert!(current_mempool_state.result().branch_refused.is_empty());
         assert!(current_mempool_state.result().refused.is_empty());
     }
 
     // add operations from 1326 to mempool - should by branch_delay
-    let operations_from_1326 = add_operations_to_mempool(request_1326, node.shell_channel.clone(), &mut mempool_storage)?;
+    let operations_from_1326 = add_operations_to_mempool(
+        request_1326,
+        node.shell_channel.clone(),
+        &mut mempool_storage,
+    )?;
     let operations_from_1326_count = operations_from_1326.len();
     assert_ne!(0, operations_from_1326_count);
 
     // we expect here message for every operation
-    node.wait_for_mempool_contains_operations("mempool_operations_from_1325", &operations_from_1326, (Duration::from_secs(10), Duration::from_millis(250)))?;
+    node.wait_for_mempool_contains_operations(
+        "mempool_operations_from_1325",
+        &operations_from_1326,
+        (Duration::from_secs(10), Duration::from_millis(250)),
+    )?;
 
     // check mempool current state after operations 1326
     {
-        let current_mempool_state = node.current_mempool_state_storage.read().expect("Failed to obtain lock");
-        assert_eq!(operations_from_1325_count, current_mempool_state.result().applied.len());
-        assert_eq!(operations_from_1326_count, current_mempool_state.result().branch_delayed.len());
+        let current_mempool_state = node
+            .current_mempool_state_storage
+            .read()
+            .expect("Failed to obtain lock");
+        assert_eq!(
+            operations_from_1325_count,
+            current_mempool_state.result().applied.len()
+        );
+        assert_eq!(
+            operations_from_1326_count,
+            current_mempool_state.result().branch_delayed.len()
+        );
         assert!(current_mempool_state.result().branch_refused.is_empty());
         assert!(current_mempool_state.result().refused.is_empty());
     }
@@ -261,7 +335,11 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     Ok(())
 }
 
-fn add_operations_to_mempool(request: &str, shell_channel: ShellChannelRef, mempool_storage: &mut MempoolStorage) -> Result<HashSet<OperationHash>, failure::Error> {
+fn add_operations_to_mempool(
+    request: &str,
+    shell_channel: ShellChannelRef,
+    mempool_storage: &mut MempoolStorage,
+) -> Result<HashSet<OperationHash>, failure::Error> {
     let request = samples::from_captured_bytes(request)?;
     let mut operation_hashes = HashSet::new();
     for operations in request.operations {
@@ -277,7 +355,6 @@ fn add_operations_to_mempool(request: &str, shell_channel: ShellChannelRef, memp
                 SystemTime::now(),
             )?;
 
-
             // ping channel - mempool_prevalidator listens
             shell_channel.tell(
                 Publish {
@@ -285,7 +362,8 @@ fn add_operations_to_mempool(request: &str, shell_channel: ShellChannelRef, memp
                         operation_hash: operation_hash.clone(),
                         operation_type: MempoolOperationType::Pending,
                         result_callback: None,
-                    }.into(),
+                    }
+                    .into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 },
                 None,

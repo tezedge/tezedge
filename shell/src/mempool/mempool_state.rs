@@ -35,10 +35,14 @@ pub struct MempoolState {
 
 impl MempoolState {
     /// Reinitialize state for new prevalidator and head, returns unneeded operation hashes
-    pub(crate) fn reinit(&mut self, prevalidator: Option<PrevalidatorWrapper>, predecessor: Option<BlockHash>) -> Vec<OperationHash> {
-
+    pub(crate) fn reinit(
+        &mut self,
+        prevalidator: Option<PrevalidatorWrapper>,
+        predecessor: Option<BlockHash>,
+    ) -> Vec<OperationHash> {
         // we want to validate pending operations with new prevalidator, so other "already_validated" can be removed
-        let unneeded_operations: Vec<OperationHash> = self.operations
+        let unneeded_operations: Vec<OperationHash> = self
+            .operations
             .keys()
             .filter(|&key| !self.pending.contains(key))
             .cloned()
@@ -57,7 +61,11 @@ impl MempoolState {
 
     /// Tries to add operation to pendings.
     /// Returns true - if added, false - if operation was already validated
-    pub(crate) fn add_to_pending(&mut self, operation_hash: &OperationHash, operation: Operation) -> bool {
+    pub(crate) fn add_to_pending(
+        &mut self,
+        operation_hash: &OperationHash,
+        operation: Operation,
+    ) -> bool {
         if self.is_already_validated(&operation_hash) {
             return false;
         }
@@ -73,22 +81,42 @@ impl MempoolState {
     /// Removes operation from mempool
     pub fn remove_operation(&mut self, oph: OperationHash) {
         // remove from applied
-        if let Some(pos) = self.validation_result.applied.iter().position(|x| oph.eq(&x.hash)) {
+        if let Some(pos) = self
+            .validation_result
+            .applied
+            .iter()
+            .position(|x| oph.eq(&x.hash))
+        {
             self.validation_result.applied.remove(pos);
             self.operations.remove(&oph);
         }
         // remove from branch_delayed
-        if let Some(pos) = self.validation_result.branch_delayed.iter().position(|x| oph.eq(&x.hash)) {
+        if let Some(pos) = self
+            .validation_result
+            .branch_delayed
+            .iter()
+            .position(|x| oph.eq(&x.hash))
+        {
             self.validation_result.branch_delayed.remove(pos);
             self.operations.remove(&oph);
         }
         // remove from branch_refused
-        if let Some(pos) = self.validation_result.branch_refused.iter().position(|x| oph.eq(&x.hash)) {
+        if let Some(pos) = self
+            .validation_result
+            .branch_refused
+            .iter()
+            .position(|x| oph.eq(&x.hash))
+        {
             self.validation_result.branch_refused.remove(pos);
             self.operations.remove(&oph);
         }
         // remove from refused
-        if let Some(pos) = self.validation_result.refused.iter().position(|x| oph.eq(&x.hash)) {
+        if let Some(pos) = self
+            .validation_result
+            .refused
+            .iter()
+            .position(|x| oph.eq(&x.hash))
+        {
             self.validation_result.refused.remove(pos);
             self.operations.remove(&oph);
         }
@@ -101,40 +129,66 @@ impl MempoolState {
 
     /// Indicates, that pending operations can be handled
     /// Returns - None, if nothing can be done, or Some(prevalidator, head, pendings, operations) to handle
-    pub(crate) fn can_handle_pending(&mut self) -> Option<(&PrevalidatorWrapper, &BlockHash, &mut HashSet<OperationHash>, &HashMap<OperationHash, Operation>, &mut ValidateOperationResult)> {
+    pub(crate) fn can_handle_pending(
+        &mut self,
+    ) -> Option<(
+        &PrevalidatorWrapper,
+        &BlockHash,
+        &mut HashSet<OperationHash>,
+        &HashMap<OperationHash, Operation>,
+        &mut ValidateOperationResult,
+    )> {
         if self.pending.is_empty() {
             return None;
         }
 
         match self.prevalidator.as_ref() {
             Some(prevalidator) => match self.predecessor.as_ref() {
-                Some(head) => Some(
-                    (
-                        &prevalidator,
-                        &head,
-                        &mut self.pending,
-                        &self.operations,
-                        &mut self.validation_result,
-                    )
-                ),
-                None => None
-            }
-            None => None
+                Some(head) => Some((
+                    &prevalidator,
+                    &head,
+                    &mut self.pending,
+                    &self.operations,
+                    &mut self.validation_result,
+                )),
+                None => None,
+            },
+            None => None,
         }
     }
 
     /// Indicates, that the operation was already validated and is in the mempool
     fn is_already_validated(&self, operation_hash: &OperationHash) -> bool {
-        if self.validation_result.applied.iter().any(|op| op.hash.eq(operation_hash)) {
+        if self
+            .validation_result
+            .applied
+            .iter()
+            .any(|op| op.hash.eq(operation_hash))
+        {
             return true;
         }
-        if self.validation_result.branch_delayed.iter().any(|op| op.hash.eq(operation_hash)) {
+        if self
+            .validation_result
+            .branch_delayed
+            .iter()
+            .any(|op| op.hash.eq(operation_hash))
+        {
             return true;
         }
-        if self.validation_result.branch_refused.iter().any(|op| op.hash.eq(operation_hash)) {
+        if self
+            .validation_result
+            .branch_refused
+            .iter()
+            .any(|op| op.hash.eq(operation_hash))
+        {
             return true;
         }
-        if self.validation_result.refused.iter().any(|op| op.hash.eq(operation_hash)) {
+        if self
+            .validation_result
+            .refused
+            .iter()
+            .any(|op| op.hash.eq(operation_hash))
+        {
             return true;
         }
         false
@@ -164,17 +218,17 @@ pub(crate) fn collect_mempool(applied: &Vec<Applied>, pending: &HashSet<Operatio
         .map(|a| a.hash)
         .collect::<Vec<OperationHash>>();
 
-    let pending = pending
-        .iter()
-        .cloned()
-        .collect::<Vec<OperationHash>>();
+    let pending = pending.iter().cloned().collect::<Vec<OperationHash>>();
 
     Mempool::new(known_valid, pending)
 }
 
 impl From<&MempoolState> for Mempool {
     fn from(mempool_state: &MempoolState) -> Mempool {
-        collect_mempool(&mempool_state.validation_result.applied, &mempool_state.pending)
+        collect_mempool(
+            &mempool_state.validation_result.applied,
+            &mempool_state.pending,
+        )
     }
 }
 
@@ -189,8 +243,10 @@ mod tests {
 
     #[test]
     fn test_state_reinit() -> Result<(), failure::Error> {
-        let op_hash1 = HashType::OperationHash.b58check_to_hash("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?;
-        let op_hash2 = HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?;
+        let op_hash1 = HashType::OperationHash
+            .b58check_to_hash("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?;
+        let op_hash2 = HashType::OperationHash
+            .b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?;
 
         // init state with two pendings
         let mut state = MempoolState::default();
@@ -210,15 +266,15 @@ mod tests {
 
         // add header/prevalidator
         let _ = state.reinit(
+            Some(PrevalidatorWrapper {
+                chain_id: HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?,
+                protocol: HashType::ProtocolHash
+                    .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?,
+                context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
+            }),
             Some(
-                PrevalidatorWrapper {
-                    chain_id: HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?,
-                    protocol: HashType::ProtocolHash.b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?,
-                    context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
-                }
-            ),
-            Some(
-                HashType::BlockHash.b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+                HashType::BlockHash
+                    .b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
             ),
         );
 

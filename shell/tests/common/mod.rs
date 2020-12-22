@@ -15,7 +15,8 @@ use tezos_messages::p2p::encoding::prelude::Operation;
 pub fn prepare_empty_dir(dir_name: &str) -> String {
     let path = test_storage_dir_path(dir_name);
     if path.exists() {
-        fs::remove_dir_all(&path).unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
+        fs::remove_dir_all(&path)
+            .unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
     }
     fs::create_dir_all(&path).unwrap_or_else(|_| panic!("Failed to create directory: {:?}", &path));
     String::from(path.to_str().unwrap())
@@ -23,16 +24,18 @@ pub fn prepare_empty_dir(dir_name: &str) -> String {
 
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    Path::new(out_dir.as_str())
-        .join(Path::new(dir_name))
+    Path::new(out_dir.as_str()).join(Path::new(dir_name))
 }
 
 pub fn create_logger(level: Level) -> Logger {
     let drain = slog_async::Async::new(
-        slog_term::FullFormat::new(
-            slog_term::TermDecorator::new().build()
-        ).build().fuse()
-    ).build().filter_level(level).fuse();
+        slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+            .build()
+            .fuse(),
+    )
+    .build()
+    .filter_level(level)
+    .fuse();
 
     Logger::root(drain, slog::o!())
 }
@@ -40,19 +43,22 @@ pub fn create_logger(level: Level) -> Logger {
 pub fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
         .unwrap_or_else(|_| "false".to_string())
-        .parse::<bool>().unwrap()
+        .parse::<bool>()
+        .unwrap()
 }
 
 pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
     env::var("OCAML_CALLS_GC")
         .unwrap_or_else(|_| "2000".to_string())
-        .parse::<i32>().unwrap()
+        .parse::<i32>()
+        .unwrap()
 }
 
 pub fn log_level() -> Level {
     env::var("LOG_LEVEL")
         .unwrap_or_else(|_| "info".to_string())
-        .parse::<Level>().unwrap()
+        .parse::<Level>()
+        .unwrap()
 }
 
 pub fn protocol_runner_executable_path() -> PathBuf {
@@ -71,15 +77,15 @@ pub mod infra {
     use std::collections::HashSet;
     use std::path::PathBuf;
     use std::process::Child;
-    use std::sync::{Arc, Mutex};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::thread;
     use std::thread::JoinHandle;
     use std::time::{Duration, SystemTime};
 
     use riker::actors::*;
     use riker::system::SystemBuilder;
-    use slog::{info, Level, Logger, warn};
+    use slog::{info, warn, Level, Logger};
     use tokio::runtime::Runtime;
 
     use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
@@ -87,23 +93,23 @@ pub mod infra {
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
     use shell::context_listener::ContextListener;
-    use shell::mempool::{CurrentMempoolStateStorageRef, init_mempool_state_storage};
     use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
+    use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
     use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
-    use shell::PeerConnectionThreshold;
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
-    use storage::{BlockStorage, ChainMetaStorage, resolve_storage_init_chain_data};
+    use shell::PeerConnectionThreshold;
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
-    use tezos_api::environment::{TEZOS_ENV, TezosEnvironment, TezosEnvironmentConfiguration};
+    use storage::{resolve_storage_init_chain_data, BlockStorage, ChainMetaStorage};
+    use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
     use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::version::NetworkVersion;
-    use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
-    use tezos_wrapper::ProtocolEndpointConfiguration;
     use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
     use tezos_wrapper::service::ProtocolRunnerEndpoint;
+    use tezos_wrapper::ProtocolEndpointConfiguration;
+    use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
     use crate::common;
     use crate::common::contains_all_keys;
@@ -133,11 +139,14 @@ pub mod infra {
             patch_context: Option<PatchContext>,
             p2p: Option<(P2p, NetworkVersion)>,
             identity: Identity,
-            (log, log_level): (Logger, Level)) -> Result<Self, failure::Error> {
+            (log, log_level): (Logger, Level),
+        ) -> Result<Self, failure::Error> {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
             // environement
-            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV.get(&tezos_env).expect("no environment configuration");
+            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                .get(&tezos_env)
+                .expect("no environment configuration");
             let is_sandbox = false;
             let p2p_threshold = PeerConnectionThreshold::new(1, 1, Some(0));
             let identity = Arc::new(identity);
@@ -152,12 +161,20 @@ pub mod infra {
             let current_mempool_state_storage = init_mempool_state_storage();
 
             let context_db_path = PathBuf::from(context_db_path);
-            let init_storage_data = resolve_storage_init_chain_data(&tezos_env, &tmp_storage.path(), &context_db_path, &patch_context, &log)
-                .expect("Failed to resolve init storage chain data");
+            let init_storage_data = resolve_storage_init_chain_data(
+                &tezos_env,
+                &tmp_storage.path(),
+                &context_db_path,
+                &patch_context,
+                &log,
+            )
+            .expect("Failed to resolve init storage chain data");
 
             // apply block protocol runner endpoint
             let apply_protocol_runner = common::protocol_runner_executable_path();
-            let mut apply_protocol_runner_endpoint = ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
+            let mut apply_protocol_runner_endpoint = ProtocolRunnerEndpoint::<
+                ExecutableProtocolRunner,
+            >::new(
                 &format!("{}_write_runner", name),
                 ProtocolEndpointConfiguration::new(
                     TezosRuntimeConfiguration {
@@ -174,58 +191,85 @@ pub mod infra {
                 ),
                 log.clone(),
             );
-            let (apply_restarting_feature, apply_protocol_commands, apply_protocol_events) = match apply_protocol_runner_endpoint.start_in_restarting_mode() {
-                Ok(restarting_feature) => {
-                    let ProtocolRunnerEndpoint {
-                        commands,
-                        events,
-                        ..
-                    } = apply_protocol_runner_endpoint;
-                    (restarting_feature, commands, events)
-                }
-                Err(e) => panic!("Error to start test_protocol_runner_endpoint: {} - error: {:?}", apply_protocol_runner.as_os_str().to_str().unwrap_or("-none-"), e)
-            };
+            let (apply_restarting_feature, apply_protocol_commands, apply_protocol_events) =
+                match apply_protocol_runner_endpoint.start_in_restarting_mode() {
+                    Ok(restarting_feature) => {
+                        let ProtocolRunnerEndpoint {
+                            commands, events, ..
+                        } = apply_protocol_runner_endpoint;
+                        (restarting_feature, commands, events)
+                    }
+                    Err(e) => panic!(
+                        "Error to start test_protocol_runner_endpoint: {} - error: {:?}",
+                        apply_protocol_runner
+                            .as_os_str()
+                            .to_str()
+                            .unwrap_or("-none-"),
+                        e
+                    ),
+                };
 
             // create pool for ffi protocol runner connections (used just for readonly context)
-            let tezos_readonly_api = Arc::new(
-                TezosApiConnectionPool::new_with_readonly_context(
-                    String::from(&format!("{}_readonly_runner_pool", name)),
-                    TezosApiConnectionPoolConfiguration {
-                        min_connections: 0,
-                        max_connections: 2,
-                        connection_timeout: Duration::from_secs(3),
-                        max_lifetime: Duration::from_secs(60),
-                        idle_timeout: Duration::from_secs(60),
+            let tezos_readonly_api = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
+                String::from(&format!("{}_readonly_runner_pool", name)),
+                TezosApiConnectionPoolConfiguration {
+                    min_connections: 0,
+                    max_connections: 2,
+                    connection_timeout: Duration::from_secs(3),
+                    max_lifetime: Duration::from_secs(60),
+                    idle_timeout: Duration::from_secs(60),
+                },
+                ProtocolEndpointConfiguration::new(
+                    TezosRuntimeConfiguration {
+                        log_enabled: common::is_ocaml_log_enabled(),
+                        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+                        debug_mode: false,
                     },
-                    ProtocolEndpointConfiguration::new(
-                        TezosRuntimeConfiguration {
-                            log_enabled: common::is_ocaml_log_enabled(),
-                            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-                            debug_mode: false,
-                        },
-                        tezos_env.clone(),
-                        false,
-                        &context_db_path,
-                        &common::protocol_runner_executable_path(),
-                        log_level,
-                        false,
-                    ),
-                    log.clone(),
-                )
-            );
+                    tezos_env.clone(),
+                    false,
+                    &context_db_path,
+                    &common::protocol_runner_executable_path(),
+                    log_level,
+                    false,
+                ),
+                log.clone(),
+            ));
 
             let tokio_runtime = create_tokio_runtime();
 
             // run actor's
-            let actor_system = SystemBuilder::new().name(name).log(log.clone()).create().expect("Failed to create actor system");
-            let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-            let network_channel = NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-            let _ = ContextListener::actor(&actor_system, &persistent_storage, apply_protocol_events.expect("Context listener needs event server"), log.clone(), false).expect("Failed to create context event listener");
-            let block_applier = ChainFeeder::actor(&actor_system, shell_channel.clone(), &persistent_storage, &init_storage_data, &tezos_env, apply_protocol_commands, log.clone()).expect("Failed to create chain feeder");
+            let actor_system = SystemBuilder::new()
+                .name(name)
+                .log(log.clone())
+                .create()
+                .expect("Failed to create actor system");
+            let shell_channel =
+                ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+            let network_channel =
+                NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+            let _ = ContextListener::actor(
+                &actor_system,
+                &persistent_storage,
+                apply_protocol_events.expect("Context listener needs event server"),
+                log.clone(),
+                false,
+            )
+            .expect("Failed to create context event listener");
+            let block_applier = ChainFeeder::actor(
+                &actor_system,
+                shell_channel.clone(),
+                &persistent_storage,
+                &init_storage_data,
+                &tezos_env,
+                apply_protocol_commands,
+                log.clone(),
+            )
+            .expect("Failed to create chain feeder");
             let _ = ChainManager::actor(
                 &actor_system,
                 block_applier,
-                network_channel.clone(), shell_channel.clone(),
+                network_channel.clone(),
+                shell_channel.clone(),
                 &persistent_storage,
                 tezos_readonly_api.clone(),
                 init_storage_data.chain_id.clone(),
@@ -234,7 +278,8 @@ pub mod infra {
                 false,
                 &p2p_threshold,
                 identity.clone(),
-            ).expect("Failed to create chain manager");
+            )
+            .expect("Failed to create chain manager");
             let _ = MempoolPrevalidator::actor(
                 &actor_system,
                 shell_channel.clone(),
@@ -243,7 +288,8 @@ pub mod infra {
                 &init_storage_data,
                 tezos_readonly_api,
                 log.clone(),
-            ).expect("Failed to create chain feeder");
+            )
+            .expect("Failed to create chain feeder");
 
             // and than open p2p and others - if configured
             let peer_manager = if let Some((p2p_config, network_version)) = p2p {
@@ -255,28 +301,29 @@ pub mod infra {
                     identity,
                     Arc::new(network_version),
                     p2p_config,
-                ).expect("Failed to create peer manager");
+                )
+                .expect("Failed to create peer manager");
                 Some(peer_manager)
             } else {
                 None
             };
 
-            Ok(
-                NodeInfrastructure {
-                    name: String::from(name),
-                    log,
-                    apply_block_restarting_feature: apply_restarting_feature.0,
-                    apply_block_restarting_thread: Arc::new(Mutex::new(Some(apply_restarting_feature.1))),
-                    peer_manager,
-                    shell_channel,
-                    network_channel,
-                    tokio_runtime,
-                    actor_system,
-                    tmp_storage,
-                    current_mempool_state_storage,
-                    tezos_env: tezos_env.clone(),
-                }
-            )
+            Ok(NodeInfrastructure {
+                name: String::from(name),
+                log,
+                apply_block_restarting_feature: apply_restarting_feature.0,
+                apply_block_restarting_thread: Arc::new(Mutex::new(Some(
+                    apply_restarting_feature.1,
+                ))),
+                peer_manager,
+                shell_channel,
+                network_channel,
+                tokio_runtime,
+                actor_system,
+                tmp_storage,
+                current_mempool_state_storage,
+                tezos_env: tezos_env.clone(),
+            })
         }
 
         pub fn stop(&mut self) {
@@ -302,7 +349,8 @@ pub mod infra {
                 Publish {
                     msg: ShuttingDown.into(),
                     topic: ShellChannelTopic::ShellCommands.into(),
-                }, None,
+                },
+                None,
             );
 
             let apply_restarting_feature = apply_block_restarting_thread
@@ -312,7 +360,10 @@ pub mod infra {
                 .expect("JoinHandle is None");
 
             if let Ok(mut protocol_runner_process) = apply_restarting_feature.join() {
-                if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(&mut protocol_runner_process, Duration::from_secs(2)) {
+                if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(
+                    &mut protocol_runner_process,
+                    Duration::from_secs(2),
+                ) {
                     warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
                 }
             };
@@ -323,13 +374,19 @@ pub mod infra {
         }
 
         // TODO: refactor with async/condvar, not to block main thread
-        pub fn wait_for_new_current_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        pub fn wait_for_new_current_head(
+            &self,
+            marker: &str,
+            tested_head: BlockHash,
+            (timeout, delay): (Duration, Duration),
+        ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
             let tested_head = Some(tested_head).map(|th| HashType::BlockHash.hash_to_b58check(&th));
 
             let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
             let result = loop {
-                let current_head = chain_meta_data.get_current_head(&self.tezos_env.main_chain_id()?)?
+                let current_head = chain_meta_data
+                    .get_current_head(&self.tezos_env.main_chain_id()?)?
                     .map(|ch| {
                         let ch: BlockHash = ch.into();
                         ch
@@ -353,7 +410,12 @@ pub mod infra {
 
         // TODO: refactor with async/condvar, not to block main thread
         /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
-        pub fn wait_for_context(&self, marker: &str, context_hash: ContextHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        pub fn wait_for_context(
+            &self,
+            marker: &str,
+            context_hash: ContextHash,
+            (timeout, delay): (Duration, Duration),
+        ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
 
             let context = TezedgeContext::new(
@@ -380,13 +442,22 @@ pub mod infra {
         }
 
         // TODO: refactor with async/condvar, not to block main thread
-        pub fn wait_for_mempool_on_head(&self, marker: &str, tested_head: BlockHash, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        pub fn wait_for_mempool_on_head(
+            &self,
+            marker: &str,
+            tested_head: BlockHash,
+            (timeout, delay): (Duration, Duration),
+        ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
             let tested_head = Some(tested_head).map(|th| HashType::BlockHash.hash_to_b58check(&th));
 
             let result = loop {
-                let mempool_state = self.current_mempool_state_storage.read().expect("Failed to obtain lock");
-                let current_head = mempool_state.head()
+                let mempool_state = self
+                    .current_mempool_state_storage
+                    .read()
+                    .expect("Failed to obtain lock");
+                let current_head = mempool_state
+                    .head()
                     .map(|ch| HashType::BlockHash.hash_to_b58check(&ch));
 
                 if current_head.eq(&tested_head) {
@@ -405,11 +476,19 @@ pub mod infra {
         }
 
         // TODO: refactor with async/condvar, not to block main thread
-        pub fn wait_for_mempool_contains_operations(&self, marker: &str, expected_operations: &HashSet<OperationHash>, (timeout, delay): (Duration, Duration)) -> Result<(), failure::Error> {
+        pub fn wait_for_mempool_contains_operations(
+            &self,
+            marker: &str,
+            expected_operations: &HashSet<OperationHash>,
+            (timeout, delay): (Duration, Duration),
+        ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
 
             let result = loop {
-                let mempool_state = self.current_mempool_state_storage.read().expect("Failed to obtain lock");
+                let mempool_state = self
+                    .current_mempool_state_storage
+                    .read()
+                    .expect("Failed to obtain lock");
                 let operations = mempool_state.operations();
                 if contains_all_keys(operations, expected_operations) {
                     info!(self.log, "[NODE] All expected operations found in mempool"; "marker" => marker);
@@ -449,7 +528,10 @@ pub mod infra {
     }
 }
 
-fn contains_all_keys(map: &HashMap<OperationHash, Operation>, keys: &HashSet<OperationHash>) -> bool {
+fn contains_all_keys(
+    map: &HashMap<OperationHash, Operation>,
+    keys: &HashSet<OperationHash>,
+) -> bool {
     let mut contains_counter = 0;
     for key in keys {
         if map.contains_key(key) {

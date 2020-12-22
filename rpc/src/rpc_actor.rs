@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 
 use getset::{CopyGetters, Getters, Setters};
 use riker::actors::*;
-use slog::{Logger, warn};
+use slog::{warn, Logger};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
@@ -19,7 +19,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::server::{RpcServiceEnvironment, spawn_server};
+use crate::server::{spawn_server, RpcServiceEnvironment};
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -45,7 +45,9 @@ pub struct RpcServer {
 }
 
 impl RpcServer {
-    pub fn name() -> &'static str { "rpc-server" }
+    pub fn name() -> &'static str {
+        "rpc-server"
+    }
 
     pub fn actor(
         sys: &ActorSystem,
@@ -64,7 +66,11 @@ impl RpcServer {
         is_sandbox: bool,
     ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(persistent_storage, &init_storage_data.chain_id, &sys.log()),
+            current_head: load_current_head(
+                persistent_storage,
+                &init_storage_data.chain_id,
+                &sys.log(),
+            ),
             is_sandbox,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
@@ -106,7 +112,10 @@ impl RpcServer {
 
 impl ActorFactoryArgs<(ShellChannelRef, RpcCollectedStateRef)> for RpcServer {
     fn create_args((shell_channel, state): (ShellChannelRef, RpcCollectedStateRef)) -> Self {
-        Self { shell_channel, state }
+        Self {
+            shell_channel,
+            state,
+        }
     }
 }
 
@@ -114,10 +123,13 @@ impl Actor for RpcServer {
     type Msg = RpcServerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.shell_channel.tell(Subscribe {
-            actor: Box::new(ctx.myself()),
-            topic: ShellChannelTopic::ShellEvents.into(),
-        }, ctx.myself().into());
+        self.shell_channel.tell(
+            Subscribe {
+                actor: Box::new(ctx.myself()),
+                topic: ShellChannelTopic::ShellEvents.into(),
+            },
+            ctx.myself().into(),
+        );
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
@@ -140,16 +152,23 @@ impl Receive<ShellChannelMsg> for RpcServer {
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId, log: &Logger) -> Option<Arc<BlockApplied>> {
-    use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
+fn load_current_head(
+    persistent_storage: &PersistentStorage,
+    chain_id: &ChainId,
+    log: &Logger,
+) -> Option<Arc<BlockApplied>> {
     use storage::chain_meta_storage::ChainMetaStorageReader;
+    use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
 
     let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
     match chain_meta_storage.get_current_head(chain_id) {
         Ok(Some(head)) => {
             let block_applied = BlockStorage::new(persistent_storage)
                 .get_with_json_data(head.block_hash())
-                .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));
+                .and_then(|data| {
+                    data.map(|(block, json)| BlockApplied::new(block, json))
+                        .ok_or(StorageError::MissingKey)
+                });
             match block_applied {
                 Ok(block) => Some(Arc::new(block)),
                 Err(e) => {
