@@ -29,6 +29,7 @@ use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstr
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
+/// There is a 90-second timeout for ping peers with GetCurrentHead
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(120);
 
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);

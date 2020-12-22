@@ -11,7 +11,7 @@ use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, Operatio
 use storage::persistent::PersistentStorage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::collections::{BlockData, UniqueBlockData};
+use crate::utils::collections::{BlockData, UniqueBlockData};
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,

@@ -22,7 +22,7 @@ use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTOR
 use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
-use crate::collections::{BlockData, UniqueBlockData};
+use crate::utils::collections::{BlockData, UniqueBlockData};
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::BlockApplied;
 use crate::validation;
@@ -310,7 +310,7 @@ impl BlockchainState {
         // schedule also current_head
         self.push_missing_block(
             MissingBlock::with_level(
-                block_hash.clone(),
+                block_hash,
                 block_level,
             )
         )?;
@@ -607,17 +607,11 @@ impl Ord for MissingBlock {
     fn cmp(&self, other: &Self) -> Ordering {
         let self_potential_level = match self.level {
             Some(level) => level,
-            None => match self.level_guess {
-                Some(level) => level,
-                None => 0
-            }
+            None => self.level_guess.unwrap_or(0)
         };
         let other_potential_level = match other.level {
             Some(level) => level,
-            None => match other.level_guess {
-                Some(level) => level,
-                None => 0
-            }
+            None => other.level_guess.unwrap_or(0)
         };
 
         // reverse, because we want lower level at begining

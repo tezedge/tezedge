@@ -827,7 +827,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_validate_operation_result_merge() -> Result<(), failure::Error> {
+    fn test_validate_operation_result_merge() {
         let mut validate_result1 = validate_operation_result(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
             "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj",
@@ -862,8 +862,6 @@ mod tests {
         assert_eq!(3, validate_result1.refused.len());
         assert_eq!(3, validate_result1.branch_delayed.len());
         assert_eq!(3, validate_result1.branch_refused.len());
-
-        Ok(())
     }
 
     #[test]
@@ -1018,11 +1016,11 @@ mod tests {
         let protocol_overrides = ProtocolOverrides {
             user_activated_upgrades: vec![
                 (
-                    28082 as i32,
+                    28082_i32,
                     "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
                 ),
                 (
-                    204761 as i32,
+                    204761_i32,
                     "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
                 ),
             ],

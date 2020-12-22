@@ -329,15 +329,15 @@ fn complete_endorsing_rights_for_level(context_data: &RightsContextData, paramet
 
     // order descending by delegate public key hash address hex byte string
     for delegate in endorers_slots_keys_for_order.keys().sorted().rev() {
-        let delegate_key = endorers_slots_keys_for_order.get(delegate).ok_or(format_err!("missing delegate key"))?;
-        let delegate_data = endorsers_slots.get(delegate_key).ok_or(format_err!("missing EndorserSlots for delegate_key: {:?}", delegate_key))?;
+        let delegate_key = endorers_slots_keys_for_order.get(delegate).ok_or_else(|| format_err!("missing delegate key"))?;
+        let delegate_data = endorsers_slots.get(delegate_key).ok_or_else(|| format_err!("missing EndorserSlots for delegate_key: {:?}", delegate_key))?;
 
         // prepare delegate contract id
-        let delegate_contract_id = delegate_data.contract_id().to_string();
+        let delegate_contract_id = delegate_data.contract_id();
 
         // filter delegates
         if let Some(d) = parameters.requested_delegate() {
-            if delegate_contract_id != d.to_string() {
+            if delegate_contract_id != d {
                 continue;
             }
         }
@@ -379,7 +379,7 @@ fn get_endorsers_slots(constants: &RightsConstants, context_data: &RightsContext
                 // collect all slots for each delegate
                 let endorsers_slots_entry = endorsers_slots
                     .entry(delegate.clone())
-                    .or_insert(EndorserSlots::new(delegate.clone(), Vec::new()));
+                    .or_insert_with(|| EndorserSlots::new(delegate.clone(), Vec::new()));
                 endorsers_slots_entry.push_to_slot(endorser_slot as u16);
                 break;
             } else {

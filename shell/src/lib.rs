@@ -4,7 +4,6 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
-mod collections;
 mod state;
 
 pub mod stats;

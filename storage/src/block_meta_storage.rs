@@ -619,6 +619,7 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        assert!(DB::destroy(&Options::default(), path).is_ok());
+        Ok(())
     }
 }

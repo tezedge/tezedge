@@ -1097,7 +1097,7 @@ impl ChainManager {
     /// Updates currnet local head and some stats.
     /// Also checks/sets [is_bootstrapped] flag
     fn update_local_current_head(&mut self, new_head: Head, log: &Logger) {
-        let new_level = new_head.level().clone();
+        let new_level = *new_head.level();
         self.current_head.local = Some(new_head);
         self.stats.applied_block_level = Some(new_level);
         self.stats.applied_block_last = Some(Instant::now());

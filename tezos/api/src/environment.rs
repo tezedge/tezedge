@@ -171,11 +171,11 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             protocol_overrides: ProtocolOverrides {
                 user_activated_upgrades: vec![
                     (
-                        28082 as i32,
+                        28082_i32,
                         "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
                     ),
                     (
-                        204761 as i32,
+                        204761_i32,
                         "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
                     ),
                 ],

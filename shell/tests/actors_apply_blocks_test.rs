@@ -118,7 +118,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     persistent_storage: &PersistentStorage,
     tezos_env: &TezosEnvironmentConfiguration,
     log: Logger,
-    requests: &Vec<String>,
+    requests: &[String],
     operations: &HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     apply_to_level: i32) -> Result<(), failure::Error> {
     // prepare dbs
@@ -199,7 +199,7 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
 /// Than tries to validate operations from block 1326, which are `branch_delayed`.
 fn test_scenario_for_add_operations_to_mempool_and_check_state(
     node: &common::infra::NodeInfrastructure,
-    last_applied_request_1324: &String,
+    last_applied_request_1324: &str,
     request_1325: &str,
     request_1326: &str) -> Result<(), failure::Error> {
 

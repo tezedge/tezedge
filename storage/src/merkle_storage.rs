@@ -306,7 +306,7 @@ impl MerkleStorage {
 
         match entry {
             Entry::Blob(blob) => {
-                Ok(StringTreeEntry::Blob(hex::encode(blob).to_string()))
+                Ok(StringTreeEntry::Blob(hex::encode(blob)))
             }
             Entry::Tree(tree) => {
                 // Go through all descendants and gather errors. Remap error if there is a failure
@@ -447,7 +447,7 @@ impl MerkleStorage {
         let instant = Instant::now();
         let rv = self.compute_new_root_with_change(root, &key, Some(new_node));
         let elapsed = instant.elapsed().as_nanos() as f64;
-        if self.set_exec_times >= self.set_exec_times_to_discard.into() {
+        if self.set_exec_times >= self.set_exec_times_to_discard {
             self.cumul_set_exec_time += elapsed;
         }
         self.set_exec_times += 1;
@@ -646,9 +646,9 @@ impl MerkleStorage {
         hasher.update(&commit.root_hash);
 
         if commit.parent_commit_hash.is_none() {
-            hasher.update(&(0 as u64).to_be_bytes());
+            hasher.update(&(0_u64).to_be_bytes());
         } else {
-            hasher.update(&(1 as u64).to_be_bytes()); // # of parents; we support only 1
+            hasher.update(&(1_u64).to_be_bytes()); // # of parents; we support only 1
             hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes());
             hasher.update(&commit.parent_commit_hash.unwrap());
         }
@@ -760,7 +760,7 @@ impl MerkleStorage {
         if self.set_exec_times > self.set_exec_times_to_discard {
             avg_set_exec_time_ns = self.cumul_set_exec_time / ((self.set_exec_times - self.set_exec_times_to_discard) as f64);
         }
-        let perf = MerklePerfStats { avg_set_exec_time_ns: avg_set_exec_time_ns };
+        let perf = MerklePerfStats { avg_set_exec_time_ns };
         Ok(MerkleStorageStats { rocksdb_stats: db_stats, map_stats: self.map_stats, perf_stats: perf })
     }
 }
@@ -787,10 +787,8 @@ mod tests {
 
     pub fn out_dir_path(dir_name: &str) -> PathBuf {
         let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-        let path = Path::new(out_dir.as_str())
+        Path::new(out_dir.as_str())
             .join(Path::new(dir_name))
-            .to_path_buf();
-        path
     }
 
     fn get_db_name(db_name: &str) -> PathBuf {
@@ -815,7 +813,7 @@ mod tests {
         storage.set(&vec!["a".to_string(), "aaa".to_string()], &vec![97, 98, 99, 100]);
         storage.set(&vec!["x".to_string()], &vec![97]);
         storage.set(&vec!["one".to_string(), "two".to_string(), "three".to_string()], &vec![97]);
-        let tree = storage.current_stage_tree.clone().unwrap().clone();
+        let tree = storage.current_stage_tree.clone().unwrap();
 
         let hash = storage.hash_tree(&tree).unwrap();
 
@@ -905,11 +903,11 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(key_abc, &vec![1 as u8]);
+        storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
 
         assert_eq!(
-            vec![1 as u8],
+            vec![1_u8],
             storage.get(&vec!["z".to_string(), "b".to_string(), "c".to_string()]).unwrap());
         // TODO test copy over commits
     }
@@ -923,8 +921,8 @@ mod tests {
         let mut storage = get_storage(db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(key_abc, &vec![2 as u8]);
-        storage.set(key_abx, &vec![3 as u8]);
+        storage.set(key_abc, &vec![2_u8]);
+        storage.set(key_abx, &vec![3_u8]);
         storage.delete(key_abx);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
@@ -939,12 +937,12 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(key_abc, &vec![2 as u8]);
+        storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         storage.delete(key_abc);
         let _commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        assert_eq!(vec![2 as u8], storage.get_history(&commit1, &key_abc).unwrap());
+        assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
     #[test]
@@ -956,8 +954,8 @@ mod tests {
         let mut storage = get_storage(db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(key_abc, &vec![2 as u8]).unwrap();
-        storage.set(key_abx, &vec![3 as u8]).unwrap();
+        storage.set(key_abc, &vec![2_u8]).unwrap();
+        storage.set(key_abx, &vec![3_u8]).unwrap();
         storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         storage.delete(key_abx);
@@ -1013,14 +1011,14 @@ mod tests {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(db_name, &cache);
             let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-            storage.set(key_abc, &vec![2 as u8]).unwrap();
-            storage.set(key_abx, &vec![3 as u8]).unwrap();
+            storage.set(key_abc, &vec![2_u8]).unwrap();
+            storage.set(key_abx, &vec![3_u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let storage = get_storage(db_name, &cache);
-        assert_eq!(vec![2 as u8], storage.get_history(&commit1, &key_abc).unwrap());
+        assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
     #[test]
@@ -1032,10 +1030,10 @@ mod tests {
         let mut storage = get_storage(db_name, &cache);
 
         let res = storage.get(&vec![]);
-        assert!(if let MerkleError::KeyEmpty = res.err().unwrap() { true } else { false });
+        assert!(matches!(res.err().unwrap(), MerkleError::KeyEmpty));
 
         let res = storage.get(&vec!["a".to_string()]);
-        assert!(if let MerkleError::ValueNotFound { .. } = res.err().unwrap() { true } else { false });
+        assert!(matches!(res.err().unwrap(), MerkleError::ValueNotFound { .. }));
     }
 
     // Test a DB error by writing into a read-only database.
@@ -1055,7 +1053,7 @@ mod tests {
         let res = storage.commit(
             0, "".to_string(), "".to_string());
 
-        assert!(if let MerkleError::DBError { .. } = res.err().unwrap() { true } else { false });
+        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
     }
 
     // Test getting entire tree in string format for JSON RPC

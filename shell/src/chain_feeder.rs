@@ -305,7 +305,7 @@ fn feed_chain_to_protocol(
     let chain_id = &init_storage_data.chain_id;
 
     // now just check current head (at least genesis should be there)
-    if let None = chain_meta_storage.get_current_head(chain_id)? {
+    if chain_meta_storage.get_current_head(chain_id)?.is_none() {
         // this should not happen here, we applied at least genesis before
         return Err(FeedChainError::UnknownCurrentHeadError);
     };
@@ -505,7 +505,7 @@ pub fn wait_for_context(context: &Box<dyn ContextApi>, context_hash: &ContextHas
     let start = SystemTime::now();
 
     // try find context_hash
-    let result = loop {
+    loop {
         // if success, than ok
         if let Ok(true) = context.is_committed(context_hash) {
             break Ok(());
@@ -517,6 +517,5 @@ pub fn wait_for_context(context: &Box<dyn ContextApi>, context_hash: &ContextHas
         } else {
             break Err(failure::format_err!("Block inject - context was not processed for context_hash: {}, timeout (timeout: {:?}, delay: {:?})", HashType::ContextHash.hash_to_b58check(&context_hash), timeout, delay));
         }
-    };
-    result
+    }
 }

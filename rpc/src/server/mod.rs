@@ -142,7 +142,7 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
-                        if let Some((method_and_handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches("/")) {
+                        if let Some((method_and_handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches('/')) {
                             let MethodHandler {
                                 allowed_methods,
                                 handler,
@@ -159,7 +159,7 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                                 _ => {
                                     if allowed_methods.contains(request_method) {
                                         let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
-                                        let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
+                                        let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(HashMap::new);
 
                                         let handler = handler.clone();
                                         let fut = handler(req, params, query, env);

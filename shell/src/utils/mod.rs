@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use failure::Fail;
 
+pub mod collections;
+
 /// Simple condvar synchronized result callback
 pub type CondvarResult<T, E> = Arc<(Mutex<Option<Result<T, E>>>, Condvar)>;
 
@@ -79,15 +81,13 @@ pub fn try_wait_for_condvar_result<T, E>(result_callback: CondvarResult<T, E>, d
                     Ok(result)
                 }
                 None => {
-                    return Err(WaitCondvarResultError::NoResultReceived);
+                    Err(WaitCondvarResultError::NoResultReceived)
                 }
             }
         }
-        Err(e) => {
-            return Err(WaitCondvarResultError::PoisonedLock {
-                reason: format!("{}", e),
-            });
-        }
+        Err(e) => Err(WaitCondvarResultError::PoisonedLock {
+            reason: format!("{}", e),
+        })
     }
 }
 

@@ -30,13 +30,11 @@ pub fn can_update_current_head(new_head: &BlockHeaderWithHash, current_head: &He
     let context_fitness = FitnessWrapper::new(current_context_fitness);
 
     // according to chain_validator.ml
-    let accepted_head = if context_fitness.eq(&current_head_fitness) {
+    if context_fitness.eq(&current_head_fitness) {
         new_head_fitness.gt(&current_head_fitness)
     } else {
         new_head_fitness.ge(&context_fitness)
-    };
-
-    accepted_head
+    }
 }
 
 /// Returns only true, if new_fitness is greater than head's fitness
@@ -69,8 +67,7 @@ pub fn can_accept_operation_from_rpc(operation_hash: &OperationHash, result: &Va
     // we can accept from rpc, only if it is [applied]
     result.applied
         .iter()
-        .find(|operation_result| operation_result.hash.eq(operation_hash))
-        .is_some()
+        .any(|operation_result| operation_result.hash.eq(operation_hash))
 }
 
 /// Returns true, if we can accept received operation from p2p

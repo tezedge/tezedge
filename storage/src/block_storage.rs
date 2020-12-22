@@ -451,6 +451,7 @@ mod tests {
             let res = index.get_blocks(65673, 100)?.iter().map(|location| location.block_header.offset()).collect::<Vec<_>>();
             assert_eq!(vec![65673, 1161, 905, 649, 393], res);
         }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        assert!(DB::destroy(&Options::default(), path).is_ok());
+        Ok(())
     }
 }

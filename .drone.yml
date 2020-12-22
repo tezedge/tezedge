@@ -389,7 +389,7 @@ volumes:
       path: /etc/tezedge-ci/cache
   - name: tezos-src
     host:
-      path: /etc/tmp/tezos-src
+      path: /etc/tezedge-ci/tezos-src
 
 trigger:
   branch:
@@ -604,7 +604,7 @@ volumes:
       path: /etc/tezedge-ci-build/
   - name: tezos-src
     host:
-      path: /etc/tmp/tezos-src
+      path: /etc/tezedge-ci/tezos-src
 
 trigger:
   branch:
@@ -1868,10 +1868,10 @@ trigger:
 depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
+  - tezos-python-tests-unmodified
   - connect-from-different-network-test
   - delphinet-offline-tests
   - carthagenet-offline-tests
-  - tezos-python-tests-unmodified
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
@@ -1916,7 +1916,7 @@ trigger:
 depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
+  - tezos-python-tests-unmodified
   - connect-from-different-network-test
   - delphinet-offline-tests
   - carthagenet-offline-tests
-  - tezos-python-tests-unmodified

@@ -337,8 +337,8 @@ impl NodeVersion {
     }
 }
 
-pub const MAIN_CHAIN_ID: &'static str = "main";
-pub const TEST_CHAIN_ID: &'static str = "test";
+pub const MAIN_CHAIN_ID: &str = "main";
+pub const TEST_CHAIN_ID: &str = "test";
 
 /// Parses [ChainId] from chain_id url param
 pub(crate) fn parse_chain_id(chain_id_param: &str, env: &RpcServiceEnvironment) -> Result<ChainId, failure::Error> {
@@ -554,8 +554,7 @@ pub(crate) fn get_prevalidators(env: &RpcServiceEnvironment, filter_by_chain_id:
     let mempool_prevalidator = env.sys()
         .user_root()
         .children()
-        .filter(|actor_ref| actor_ref.name() == MempoolPrevalidator::name())
-        .next();
+        .find(|actor_ref| actor_ref.name() == MempoolPrevalidator::name());
 
     let prevalidators = match mempool_prevalidator {
         Some(_mempool_prevalidator_actor) => {

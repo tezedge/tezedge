@@ -300,11 +300,11 @@ impl Stream for HeadMonitorStream {
                         // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
                         // would end the stream, in this case, we need to Pend. 
                         if let Some(head_string_result) = self.yield_head(&current_head).transpose(){
-                            return Poll::Ready(Some(head_string_result))
+                            Poll::Ready(Some(head_string_result))
                         } else {
                             cx.waker().wake_by_ref();
-                            return Poll::Pending
-                        };
+                            Poll::Pending
+                        }
                     }
                 } else {
                     // No current head found, storage not ready yet, wait

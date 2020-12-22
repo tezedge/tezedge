@@ -110,8 +110,6 @@ pub struct ValidBlocks {
 
 #[cfg(test)]
 mod tests {
-    use serde_json;
-
     use crate::encoding::test_helpers::*;
 
     use super::*;

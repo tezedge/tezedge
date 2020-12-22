@@ -295,12 +295,11 @@ pub fn inject_block(
     let start_async = SystemTime::now();
 
     // notify other actors, that a block was injected
-    let header = Arc::new(header);
     shell_channel.tell(
         Publish {
             msg: ShellChannelMsg::InjectBlock(
                 InjectBlock {
-                    block_header: header.clone(),
+                    block_header: Arc::new(header),
                     operations: validation_passes,
                     operation_paths: paths,
                 },
