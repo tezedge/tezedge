@@ -180,6 +180,9 @@ steps:
     # interop_benchmark
     - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
     - cargo bench --bench interop_benchmark -- --noplot
+    # interop_benchmark
+    - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
+    - cargo bench --bench predecessor_benchmarks -- --noplot
   when:
     ref:
       exclude:

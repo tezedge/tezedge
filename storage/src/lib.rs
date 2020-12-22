@@ -31,6 +31,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
+pub use crate::predeccessor_storage::PredecessorStorage;
 
 pub mod persistent;
 pub mod merkle_storage;
@@ -44,6 +45,7 @@ pub mod system_storage;
 pub mod skip_list;
 pub mod context;
 pub mod chain_meta_storage;
+pub mod predeccessor_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -116,6 +118,8 @@ pub enum StorageError {
     MessageHashError {
         error: MessageHashError
     },
+    #[fail(display = "Predecessor lookup failed")]
+    PredecessorLookupError,
 }
 
 impl From<DBError> for StorageError {
@@ -225,6 +229,8 @@ pub fn store_applied_block_result(
     // mark current head as applied
     block_metadata.set_is_applied(true);
     block_meta_storage.put(&block_hash, &block_metadata)?;
+    // populate predecessor storage
+    block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
 
     Ok((block_json_data, block_additional_data))
 }
@@ -431,6 +437,7 @@ pub mod tests_common {
                 MempoolStorage::descriptor(&cache),
                 ContextActionStorage::descriptor(&cache),
                 ChainMetaStorage::descriptor(&cache),
+                PredecessorStorage::descriptor(&cache),
             ], &cfg)?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),
