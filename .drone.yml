@@ -132,7 +132,7 @@ steps:
     # collect modified python test framework files
     - cp -R ./tezos/python-tests /tmp/tezos-src/modified
 
-- name: prepare-python-tests-unmodified
+- name: prepare-python-tests
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -402,7 +402,7 @@ trigger:
 ##############################################################################################################
 ---
 kind: pipeline
-name: tezos-python-tests-unmodified
+name: tezos-python-tests
 
 clone:
   disable: true
@@ -1868,7 +1868,7 @@ trigger:
 depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
-  - tezos-python-tests-unmodified
+  - tezos-python-tests
   - connect-from-different-network-test
   - delphinet-offline-tests
   - carthagenet-offline-tests
@@ -1916,7 +1916,7 @@ trigger:
 depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
-  - tezos-python-tests-unmodified
+  - tezos-python-tests
   - connect-from-different-network-test
   - delphinet-offline-tests
   - carthagenet-offline-tests

@@ -474,7 +474,6 @@ impl ChainManager {
                     .system
                     .log()
                     .new(slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone()));
-                debug!(log, "Requesting current branch");
                 tell_peer(
                     GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(),
                     peer,
@@ -562,12 +561,6 @@ impl ChainManager {
                                     let block_header_with_hash =
                                         BlockHeaderWithHash::new(message.block_header().clone())
                                             .unwrap();
-                                    info!(
-                                        log,
-                                        "MESSAGE BLOCKHEADER RECIEVED: {:?}",
-                                        BLOCK_HASH_ENCODING
-                                            .hash_to_b58check(&block_header_with_hash.hash)
-                                    );
                                     match peer
                                         .queued_block_headers
                                         .remove(&block_header_with_hash.hash)
@@ -590,20 +583,11 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetBlockHeaders(message) => {
-                                    info!(
-                                        log,
-                                        "Recieved block GetBlockHeaders message: {:?}", message
-                                    );
                                     for block_hash in message.get_block_headers() {
                                         if let Some(block) = block_storage.get(block_hash)? {
                                             let msg: BlockHeaderMessage =
                                                 (*block.header).clone().into();
                                             tell_peer(msg.into(), peer);
-                                            info!(
-                                                log,
-                                                "Header {:?} sent",
-                                                BLOCK_HASH_ENCODING.hash_to_b58check(&block_hash)
-                                            );
                                         }
                                     }
                                 }
@@ -716,13 +700,6 @@ impl ChainManager {
                                 }
                                 PeerMessage::CurrentHead(message) => {
                                     // process current head only if we are bootstrapped
-                                    info!(
-                                        log,
-                                        "MESSAGE CURRENTHEAD RECIEVED - CURRENT HEAD: {:?}",
-                                        BLOCK_HASH_ENCODING.hash_to_b58check(
-                                            &message.current_block_header().message_hash()?
-                                        )
-                                    );
                                     if !self.is_bootstrapped {
                                         continue;
                                     }
