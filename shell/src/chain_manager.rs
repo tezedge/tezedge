@@ -6,10 +6,10 @@
 //! - also supplies downloaded data to other peers
 //!
 //! Also responsible for:
-//! -- managing attribute current head (BlockApplied event is trigger)
+//! -- managing attribute current head
 //! -- start test chain (if needed)
-//!
-//! see more description in [process_shell_channel_message][ShellChannelMsg::BlockApplied]
+//! -- validate blocks with protocol
+//! -- ...
 
 use std::cmp;
 use std::collections::HashMap;
@@ -23,9 +23,7 @@ use slog::{debug, info, trace, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
 use crypto::seeded_step::Seed;
-use networking::p2p::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped,
-};
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::p2p::peer::SendMessage;
 use networking::PeerId;
 use storage::chain_meta_storage::ChainMetaStorageReader;
@@ -71,15 +69,17 @@ const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
 const ASK_CURRENT_HEAD_INITIAL_DELAY: Duration = Duration::from_secs(15);
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
+
 /// After this time we will disconnect peer if his current head level stays the same
 const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
 /// After this time peer will be disconnected if it fails to respond to our request
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
 const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
+
 /// After this interval we will rehydrate state if no new blocks are applied
 const STALLED_CHAIN_COMPLETENESS_TIMEOUT: Duration = Duration::from_secs(240);
-const BLOCK_HASH_ENCODING: HashType = HashType::BlockHash;
+
 /// Mempool operation time to live
 const MEMPOOL_OPERATION_TTL: Duration = Duration::from_secs(60);
 
@@ -100,6 +100,26 @@ pub struct CheckMempoolCompleteness;
 pub struct ApplyCompletedBlock {
     block_hash: BlockHash,
     result_callback: Option<CondvarResult<(), failure::Error>>,
+}
+
+/// Message commands [`ChainManager`] to process applied block.
+/// Chain_feeder propagates if block successfully validated and applied
+/// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
+#[derive(Clone, Debug)]
+pub struct ProcessValidatedBlock {
+    block: Arc<BlockHash>,
+    timer: Arc<Instant>,
+    validated_at: Arc<Duration>,
+}
+
+impl ProcessValidatedBlock {
+    pub fn new(block: Arc<BlockHash>, timer: Arc<Instant>, validated_at: Arc<Duration>) -> Self {
+        Self {
+            block,
+            timer,
+            validated_at,
+        }
+    }
 }
 
 /// Message commands [`ChainManager`] to ask all connected peers for their current branch.
@@ -187,7 +207,8 @@ struct Stats {
     NetworkChannelMsg,
     ShellChannelMsg,
     SystemEvent,
-    DeadLetter
+    DeadLetter,
+    ProcessValidatedBlock
 )]
 pub struct ChainManager {
     /// Chain feeder - actor, which is responsible to apply_block to context
@@ -249,7 +270,7 @@ impl ChainManager {
         block_applier: ChainFeederRef,
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
-        persistent_storage: &PersistentStorage,
+        persistent_storage: PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         chain_id: ChainId,
         is_sandbox: bool,
@@ -264,7 +285,7 @@ impl ChainManager {
                 block_applier,
                 network_channel,
                 shell_channel,
-                persistent_storage.clone(),
+                persistent_storage,
                 tezos_readonly_prevalidation_api,
                 chain_id,
                 is_sandbox,
@@ -448,6 +469,7 @@ impl ChainManager {
             chain_state,
             operations_state,
             shell_channel,
+            network_channel,
             block_storage,
             block_meta_storage,
             operations_storage,
@@ -459,25 +481,18 @@ impl ChainManager {
         } = self;
 
         match msg {
-            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Success {
-                peer_id,
-                peer_metadata,
-            }) => {
-                let peer = PeerState::new(peer_id, peer_metadata);
+            NetworkChannelMsg::PeerBootstrapped(peer_id, peer_metadata) => {
+                let peer = PeerState::new(peer_id, &peer_metadata);
                 // store peer
                 let actor_uri = peer.peer_id.peer_ref.uri().clone();
                 self.peers.insert(actor_uri.clone(), peer);
                 // retrieve mutable reference and use it as `tell_peer()` parameter
-                let peer = self.peers.get_mut(&actor_uri).unwrap();
-
-                let log = ctx
-                    .system
-                    .log()
-                    .new(slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone()));
-                tell_peer(
-                    GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(),
-                    peer,
-                );
+                if let Some(peer) = self.peers.get_mut(&actor_uri) {
+                    tell_peer(
+                        GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(),
+                        peer,
+                    );
+                }
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 match peers.get_mut(received.peer.uri()) {
@@ -494,7 +509,7 @@ impl ChainManager {
                                     {
                                         let head = message.current_branch().current_head();
                                         debug!(log, "Ignoring received (low) current branch";
-                                                    "branch" => BLOCK_HASH_ENCODING.hash_to_b58check(&head.message_hash()?),
+                                                    "branch" => HashType::BlockHash.hash_to_b58check(&head.message_hash()?),
                                                     "level" => head.level());
                                     } else {
                                         let message_current_head = BlockHeaderWithHash::new(
@@ -578,7 +593,7 @@ impl ChainManager {
                                             )?;
                                         }
                                         None => {
-                                            warn!(log, "Received unexpected block header"; "block_header_hash" => BLOCK_HASH_ENCODING.hash_to_b58check(&block_header_with_hash.hash));
+                                            warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash));
                                         }
                                     }
                                 }
@@ -626,7 +641,7 @@ impl ChainManager {
                                             if operation_was_expected {
                                                 peer.block_operations_response_last =
                                                     Instant::now();
-                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.hash_to_b58check(&block_hash));
+                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.hash_to_b58check(&block_hash));
 
                                                 if operations_state
                                                     .process_block_operations(&operations)?
@@ -676,7 +691,7 @@ impl ChainManager {
                                                         .remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => BLOCK_HASH_ENCODING.hash_to_b58check(&block_hash));
+                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.hash_to_b58check(&block_hash));
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
@@ -779,13 +794,13 @@ impl ChainManager {
                                             peer.clear();
 
                                             // blacklist peer
-                                            self.network_channel.tell(
+                                            network_channel.tell(
                                                 Publish {
                                                     msg: NetworkChannelMsg::BlacklistPeer(
                                                         peer.peer_id.clone(),
                                                         format!("{:?}", error),
                                                     ),
-                                                    topic: NetworkChannelTopic::NetworkEvents
+                                                    topic: NetworkChannelTopic::NetworkCommands
                                                         .into(),
                                                 },
                                                 None,
@@ -876,6 +891,31 @@ impl ChainManager {
                                         }
                                     }
                                 }
+                                PeerMessage::Advertise(msg) => {
+                                    // re-send command to network layer
+                                    network_channel.tell(
+                                        Publish {
+                                            msg: NetworkChannelMsg::ProcessAdvertisedPeers(
+                                                peer.peer_id.clone(),
+                                                msg.clone(),
+                                            ),
+                                            topic: NetworkChannelTopic::NetworkCommands.into(),
+                                        },
+                                        None,
+                                    );
+                                }
+                                PeerMessage::Bootstrap => {
+                                    // re-send command to network layer
+                                    network_channel.tell(
+                                        Publish {
+                                            msg: NetworkChannelMsg::SendBootstrapPeers(
+                                                peer.peer_id.clone(),
+                                            ),
+                                            topic: NetworkChannelTopic::NetworkCommands.into(),
+                                        },
+                                        None,
+                                    );
+                                }
                                 ignored_message => {
                                     trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
                                 }
@@ -901,69 +941,8 @@ impl ChainManager {
         msg: ShellChannelMsg,
     ) -> Result<(), Error> {
         match msg {
-            ShellChannelMsg::BlockApplied(message) => {
-                // this logic is equivalent to [chain_validator.ml][let on_request]
-                // if applied block is winner we need to:
-                // - set current head
-                // - set bootstrapped flag
-                // - broadcast new current head/branch to peers (if bootstrapped)
-                // - start test chain (if needed) (TODO: TE-123 - not implemented yet)
-                // - update checkpoint (TODO: TE-210 - not implemented yet)
-                // - reset mempool_prevalidator
-
-                // we try to set it as "new current head", if some means set, if none means just ignore block
-                if let Some((new_head, new_head_result)) =
-                    self.chain_state.try_update_new_current_head(
-                        &message,
-                        &self.current_head.local,
-                        self.current_mempool_state.clone(),
-                    )?
-                {
-                    debug!(ctx.system.log(), "New current head";
-                                             "block_header_hash" => HashType::BlockHash.hash_to_b58check(new_head.block_hash()),
-                                             "level" => new_head.level(),
-                                             "is_bootstrapped" => self.is_bootstrapped,
-                                             "result" => format!("{}", new_head_result)
-                    );
-
-                    // update internal state with new head
-                    self.update_local_current_head(new_head.clone(), &ctx.system.log());
-
-                    // notify other actors that new current head was changed
-                    // (this also notifies [mempool_prevalidator])
-                    self.shell_channel.tell(
-                        Publish {
-                            msg: ShellChannelMsg::NewCurrentHead(new_head, message.clone()),
-                            topic: ShellChannelTopic::ShellEvents.into(),
-                        },
-                        Some(ctx.myself().into()),
-                    );
-
-                    // broadcast new head/branch to other peers
-                    // we can do this, only if we are bootstrapped,
-                    // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
-                    if self.is_bootstrapped {
-                        match new_head_result {
-                            HeadResult::BranchSwitch => {
-                                self.advertise_current_branch_to_p2p(
-                                    self.chain_state.get_chain_id(),
-                                    message.header(),
-                                )?;
-                            }
-                            HeadResult::HeadIncrement => {
-                                self.advertise_current_head_to_p2p(
-                                    self.chain_state.get_chain_id(),
-                                    message.header().header.clone(),
-                                    Mempool::default(),
-                                    false,
-                                );
-                            }
-                        }
-                    }
-                }
-
-                // check successors, if can be applied
-                self.check_successors_for_apply(ctx, &message.header().hash)?;
+            ShellChannelMsg::ProcessValidatedGenesisBlock(msg) => {
+                self.process_applied_block(ctx, msg)?;
             }
             ShellChannelMsg::AdvertiseToP2pNewMempool(chain_id, block_hash, new_mempool) => {
                 // get header and send it to p2p
@@ -1305,6 +1284,94 @@ impl ChainManager {
         Ok(())
     }
 
+    /// Handles validated block.
+    ///
+    /// This logic is equivalent to [chain_validator.ml][let on_request]
+    /// if applied block is winner we need to:
+    /// - set current head
+    /// - set bootstrapped flag
+    /// - broadcast new current head/branch to peers (if bootstrapped)
+    /// - start test chain (if needed) (TODO: TE-123 - not implemented yet)
+    /// - update checkpoint (TODO: TE-210 - not implemented yet)
+    /// - reset mempool_prevalidator
+    /// ...
+    fn process_applied_block(
+        &mut self,
+        ctx: &Context<ChainManagerMsg>,
+        validated_block: ProcessValidatedBlock,
+    ) -> Result<(), Error> {
+        let ProcessValidatedBlock {
+            block,
+            timer,
+            validated_at,
+        } = validated_block;
+
+        // read block
+        let block = match self.block_storage.get(&block)? {
+            Some(block) => Arc::new(block),
+            None => {
+                return Err(format_err!(
+                    "Block/json_data not found for block_hash: {}",
+                    HashType::BlockHash.hash_to_b58check(&block)
+                ))
+            }
+        };
+
+        // we try to set it as "new current head", if some means set, if none means just ignore block
+        if let Some((new_head, new_head_result)) = self.chain_state.try_update_new_current_head(
+            &block,
+            &self.current_head.local,
+            self.current_mempool_state.clone(),
+        )? {
+            debug!(ctx.system.log(), "New current head";
+                                     "block_header_hash" => HashType::BlockHash.hash_to_b58check(new_head.block_hash()),
+                                     "level" => new_head.level(),
+                                     "is_bootstrapped" => self.is_bootstrapped,
+                                     "result" => format!("{}", new_head_result)
+            );
+
+            // update internal state with new head
+            self.update_local_current_head(new_head.clone(), &ctx.system.log());
+
+            // notify other actors that new current head was changed
+            // (this also notifies [mempool_prevalidator])
+            self.shell_channel.tell(
+                Publish {
+                    msg: ShellChannelMsg::NewCurrentHead(new_head, block.clone()),
+                    topic: ShellChannelTopic::ShellEvents.into(),
+                },
+                Some(ctx.myself().into()),
+            );
+
+            // broadcast new head/branch to other peers
+            // we can do this, only if we are bootstrapped,
+            // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
+            if self.is_bootstrapped {
+                match new_head_result {
+                    HeadResult::BranchSwitch => {
+                        self.advertise_current_branch_to_p2p(
+                            self.chain_state.get_chain_id(),
+                            &block,
+                        )?;
+                    }
+                    HeadResult::HeadIncrement => {
+                        self.advertise_current_head_to_p2p(
+                            self.chain_state.get_chain_id(),
+                            block.header.clone(),
+                            Mempool::default(),
+                            false,
+                        );
+                    }
+                }
+            }
+        }
+
+        // check successors, if can be applied
+        self.check_successors_for_apply(ctx, &block.hash)?;
+
+        Ok(())
+    }
+
     fn hydrate_state(&mut self, ctx: &Context<ChainManagerMsg>) {
         info!(ctx.system.log(), "Loading current head");
         self.current_head.local = self
@@ -1439,7 +1506,13 @@ impl ChainManager {
 
         // ping chain_feeder
         self.block_applier.tell(
-            ApplyBlock::new(msg.block_hash, request, msg.result_callback),
+            ApplyBlock::new(
+                msg.block_hash,
+                request,
+                msg.result_callback,
+                ctx.myself(),
+                Instant::now(),
+            ),
             None,
         );
 
@@ -1694,11 +1767,10 @@ impl Actor for ChainManager {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
         subscribe_to_dead_letters(ctx.system.dead_letters(), ctx.myself());
-
-        self.hydrate_state(ctx);
+        subscribe_to_network_events(&self.network_channel, ctx.myself());
+        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_commands(&self.shell_channel, ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
             CHECK_CHAIN_COMPLETENESS_INTERVAL / 4,
@@ -1707,12 +1779,6 @@ impl Actor for ChainManager {
             None,
             CheckChainCompleteness.into(),
         );
-        // ctx.schedule::<Self::Msg, _>(
-        //     ASK_CURRENT_BRANCH_INTERVAL / 100,
-        //     ASK_CURRENT_BRANCH_INTERVAL,
-        //     ctx.myself(),
-        //     None,
-        //     AskPeersAboutCurrentBranch.into());
         ctx.schedule::<Self::Msg, _>(
             ASK_CURRENT_HEAD_INITIAL_DELAY,
             ASK_CURRENT_HEAD_INTERVAL,
@@ -1740,6 +1806,11 @@ impl Actor for ChainManager {
             None,
             DisconnectStalledPeers.into(),
         );
+    }
+
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        // now we can hydrate state
+        self.hydrate_state(ctx);
     }
 
     fn sys_recv(
@@ -1954,6 +2025,19 @@ impl Receive<ShellChannelMsg> for ChainManager {
     }
 }
 
+impl Receive<ProcessValidatedBlock> for ChainManager {
+    type Msg = ChainManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ProcessValidatedBlock, _: Sender) {
+        match self.process_applied_block(ctx, msg) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to process validated block"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
 impl Receive<AskPeersAboutCurrentBranch> for ChainManager {
     type Msg = ChainManagerMsg;
 
@@ -2035,7 +2119,7 @@ struct PeerState {
 }
 
 impl PeerState {
-    fn new(peer_id: Arc<PeerId>, peer_metadata: MetadataMessage) -> Self {
+    fn new(peer_id: Arc<PeerId>, peer_metadata: &MetadataMessage) -> Self {
         PeerState {
             peer_id,
             mempool_enabled: !peer_metadata.disable_mempool(),
@@ -2107,7 +2191,6 @@ fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerState) {
 #[cfg(test)]
 pub mod tests {
     use std::net::SocketAddr;
-
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::channel;
     use std::sync::Mutex;
@@ -2184,7 +2267,7 @@ pub mod tests {
                 peer_id_marker,
                 socket_address,
             )),
-            MetadataMessage::new(false, false),
+            &MetadataMessage::new(false, false),
         )
     }
 
@@ -2295,7 +2378,7 @@ pub mod tests {
         assert!(!chain_manager.is_bootstrapped);
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, false);
 
-        // simulate - BlockApplied event with level 4
+        // simulate - block applied event with level 4
         let new_head = Head::new(
             HashType::BlockHash
                 .b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
@@ -2308,7 +2391,7 @@ pub mod tests {
         assert!(!chain_manager.is_bootstrapped);
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, false);
 
-        // simulate - BlockApplied event with level 5
+        // simulate - block applied event with level 5
         let new_head = Head::new(
             HashType::BlockHash
                 .b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
@@ -2326,7 +2409,7 @@ pub mod tests {
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
-                topic: ShellChannelTopic::ShellCommands.into(),
+                topic: ShellChannelTopic::ShellShutdown.into(),
             },
             None,
         );

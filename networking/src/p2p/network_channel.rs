@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use riker::actors::*;
 
+use tezos_messages::p2p::encoding::advertise::AdvertiseMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
@@ -28,16 +29,10 @@ pub struct PeerCreated {
 
 /// Peer has been bootstrapped.
 #[derive(Clone, Debug)]
-pub enum PeerBootstrapped {
-    Success {
-        peer_id: Arc<PeerId>,
-        peer_metadata: MetadataMessage,
-    },
-    Failure {
-        address: SocketAddr,
-        /// List of potential peers to connect to. Is extracted from `Nack`.
-        potential_peers_to_connect: Option<Vec<String>>,
-    },
+pub struct PeerBootstrapFailed {
+    pub address: SocketAddr,
+    /// List of potential peers to connect to. Is extracted from `Nack`.
+    pub potential_peers_to_connect: Option<Vec<String>>,
 }
 
 /// We have received message from another peer
@@ -50,22 +45,21 @@ pub struct PeerMessageReceived {
 /// Network channel event message.
 #[derive(Clone, Debug)]
 pub enum NetworkChannelMsg {
+    /// Events
     PeerCreated(PeerCreated),
-    PeerBootstrapped(PeerBootstrapped),
+    PeerBootstrapped(Arc<PeerId>, Arc<MetadataMessage>),
     PeerBlacklisted(Arc<PeerId>),
-    BlacklistPeer(Arc<PeerId>, String),
     PeerMessageReceived(PeerMessageReceived),
+    /// Commands
+    BlacklistPeer(Arc<PeerId>, String),
+    ProcessAdvertisedPeers(Arc<PeerId>, AdvertiseMessage),
+    SendBootstrapPeers(Arc<PeerId>),
+    ProcessFailedBootstrapAddress(PeerBootstrapFailed),
 }
 
 impl From<PeerCreated> for NetworkChannelMsg {
     fn from(msg: PeerCreated) -> Self {
         NetworkChannelMsg::PeerCreated(msg)
-    }
-}
-
-impl From<PeerBootstrapped> for NetworkChannelMsg {
-    fn from(msg: PeerBootstrapped) -> Self {
-        NetworkChannelMsg::PeerBootstrapped(msg)
     }
 }
 
@@ -78,13 +72,16 @@ impl From<PeerMessageReceived> for NetworkChannelMsg {
 /// Represents various topics
 pub enum NetworkChannelTopic {
     /// Events generated from networking layer
-    NetworkEvents
+    NetworkEvents,
+    /// Commands generated from other layers for network layer
+    NetworkCommands,
 }
 
 impl From<NetworkChannelTopic> for Topic {
     fn from(evt: NetworkChannelTopic) -> Self {
         match evt {
-            NetworkChannelTopic::NetworkEvents => Topic::from("network.events")
+            NetworkChannelTopic::NetworkEvents => Topic::from("network.events"),
+            NetworkChannelTopic::NetworkCommands => Topic::from("network.commands")
         }
     }
 }

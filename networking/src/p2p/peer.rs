@@ -23,9 +23,10 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryM
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::p2p::network_channel::NetworkChannelMsg;
 use crate::PeerId;
 
-use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
+use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
@@ -269,10 +270,7 @@ impl Receive<Bootstrap> for Peer {
 
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
-                        msg: PeerBootstrapped::Success {
-                            peer_id: Arc::new(peer_id),
-                            peer_metadata,
-                        }.into(),
+                        msg: NetworkChannelMsg::PeerBootstrapped(Arc::new(peer_id), Arc::new(peer_metadata)),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
 
@@ -292,11 +290,13 @@ impl Receive<Bootstrap> for Peer {
 
                     // notify that peer failed at bootstrap process
                     network_channel.tell(Publish {
-                        msg: PeerBootstrapped::Failure {
-                            address: peer_address,
-                            potential_peers_to_connect: potential_peers,
-                        }.into(),
-                        topic: NetworkChannelTopic::NetworkEvents.into(),
+                        msg: NetworkChannelMsg::ProcessFailedBootstrapAddress(
+                            PeerBootstrapFailed {
+                                address: peer_address,
+                                potential_peers_to_connect: potential_peers,
+                            }
+                        ),
+                        topic: NetworkChannelTopic::NetworkCommands.into(),
                     }, Some(myself.clone().into()));
 
                     system.stop(myself);

@@ -370,7 +370,7 @@ pub fn inject_block(
                 },
                 result_callback.clone(),
             ),
-            topic: ShellChannelTopic::ShellEvents.into(),
+            topic: ShellChannelTopic::ShellCommands.into(),
         },
         None,
     );
@@ -413,7 +413,7 @@ pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure:
     shell_channel.tell(
         Publish {
             msg: RequestCurrentHead.into(),
-            topic: ShellChannelTopic::ShellEvents.into(),
+            topic: ShellChannelTopic::ShellCommands.into(),
         },
         None,
     );

@@ -20,9 +20,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
-use crypto::hash::HashType;
 use networking::p2p::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerCreated,
+    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed, PeerCreated,
 };
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use networking::PeerId;
@@ -145,11 +144,7 @@ impl PeerManager {
         p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
-            &format!(
-                "{}-{}",
-                PeerManager::name(),
-                HashType::CryptoboxPublicKeyHash.hash_to_b58check(&identity.peer_id)
-            ),
+            PeerManager::name(),
             Props::new_args((
                 network_channel,
                 shell_channel,
@@ -278,20 +273,6 @@ impl PeerManager {
         );
     }
 
-    fn process_shell_channel_message(
-        &mut self,
-        ctx: &Context<PeerManagerMsg>,
-        msg: ShellChannelMsg,
-    ) {
-        match msg {
-            ShellChannelMsg::ShuttingDown(_) => {
-                self.shutting_down = true;
-                unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
-            }
-            _ => (),
-        }
-    }
-
     fn trigger_check_peer_count(&mut self, ctx: &Context<PeerManagerMsg>) {
         let should_trigger = self
             .check_peer_count_last
@@ -363,9 +344,9 @@ impl Actor for PeerManager {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
         subscribe_to_dead_letters(ctx.system.dead_letters(), ctx.myself());
+        subscribe_to_network_commands(&self.network_channel, ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
             Duration::from_secs(3),
@@ -442,7 +423,10 @@ impl Receive<ShellChannelMsg> for PeerManager {
     type Msg = PeerManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        self.process_shell_channel_message(ctx, msg);
+        if let ShellChannelMsg::ShuttingDown(_) = msg {
+            self.shutting_down = true;
+            unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
+        }
     }
 }
 
@@ -517,31 +501,24 @@ impl Receive<NetworkChannelMsg> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
         match msg {
-            NetworkChannelMsg::PeerMessageReceived(received) => {
-                // received message containing additional peers to which we can connect in the future
-                let messages = received.message.messages();
-                messages.iter()
-                    .for_each(|message| match message {
-                        PeerMessage::Advertise(message) => {
-                            // extract potential peers from the advertise message
-                            info!(ctx.system.log(), "Received advertise message"; "peer" => received.peer.name(), "peers" => format!("{:?}", message.id().join(", ")));
-                            self.process_potential_peers(message.id());
-                        }
-                        PeerMessage::Bootstrap => {
-                            // to a bootstrap message we will respond with list of potential peers
-                            trace!(ctx.system.log(), "Received bootstrap message"; "peer" => received.peer.name());
-                            let addresses = self.peers.values()
-                                .filter(|peer_state| peer_state.peer_ref != received.peer)
-                                .map(|peer_state| peer_state.address)
-                                .collect::<Vec<_>>();
-                            let msg = Arc::new(AdvertiseMessage::new(&addresses).into());
-                            received.peer.tell(SendMessage::new(msg), None);
-                        }
-                        _ => {}
-                    });
-                self.trigger_check_peer_count(ctx);
+            NetworkChannelMsg::ProcessAdvertisedPeers(peer, message) => {
+                // extract potential peers from the advertise message
+                info!(ctx.system.log(), "Received advertise message"; "peer_id" => peer.peer_id_marker.clone(), "peers" => format!("{:?}", message.id().join(", ")));
+                self.process_potential_peers(message.id());
             }
-            NetworkChannelMsg::PeerBootstrapped(PeerBootstrapped::Failure {
+            NetworkChannelMsg::SendBootstrapPeers(peer) => {
+                // to a bootstrap message we will respond with list of potential peers
+                trace!(ctx.system.log(), "Received bootstrap message"; "peer_id" => peer.peer_id_marker.clone());
+                let addresses = self
+                    .peers
+                    .values()
+                    .filter(|peer_state| peer_state.peer_ref != peer.peer_ref)
+                    .map(|peer_state| peer_state.address)
+                    .collect::<Vec<_>>();
+                let msg = Arc::new(AdvertiseMessage::new(&addresses).into());
+                peer.peer_ref.tell(SendMessage::new(msg), None);
+            }
+            NetworkChannelMsg::ProcessFailedBootstrapAddress(PeerBootstrapFailed {
                 address,
                 potential_peers_to_connect,
             }) => {

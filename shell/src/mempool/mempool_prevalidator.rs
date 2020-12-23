@@ -25,7 +25,7 @@ use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError, StorageInitInfo};
+use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError};
 use tezos_api::ffi::{
     Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
 };
@@ -38,7 +38,7 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::subscription::subscribe_to_shell_events;
+use crate::subscription::{subscribe_to_shell_events, subscribe_to_shell_shutdown};
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -73,7 +73,7 @@ impl MempoolPrevalidator {
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        init_storage_data: &StorageInitInfo,
+        chain_id: ChainId,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         log: Logger,
     ) -> Result<MempoolPrevalidatorRef, CreateError> {
@@ -84,7 +84,6 @@ impl MempoolPrevalidator {
             let persistent_storage = persistent_storage.clone();
             let shell_channel = shell_channel.clone();
             let validator_run = validator_run.clone();
-            let chain_id = init_storage_data.chain_id.clone();
 
             thread::spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
@@ -154,7 +153,7 @@ impl MempoolPrevalidator {
                 self.validator_event_sender
                     .lock()
                     .unwrap()
-                    .send(Event::NewHead(head.into(), block.header().header.clone()))?;
+                    .send(Event::NewHead(head.into(), block.header.clone()))?;
             }
             ShellChannelMsg::MempoolOperationReceived(operation) => {
                 // add operation to queue for validation
@@ -209,6 +208,7 @@ impl Actor for MempoolPrevalidator {
     type Msg = MempoolPrevalidatorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
     }
 
@@ -550,7 +550,7 @@ fn advertise_new_mempool(
                 Arc::new(head.clone()),
                 Arc::new(collect_mempool(applied, pending)),
             ),
-            topic: ShellChannelTopic::ShellEvents.into(),
+            topic: ShellChannelTopic::ShellCommands.into(),
         },
         None,
     );

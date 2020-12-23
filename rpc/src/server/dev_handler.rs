@@ -26,7 +26,7 @@ pub async fn dev_blocks(
             // fallback, if no block param is present - check current head, if no one, then genesis
             let state = env.state().read().unwrap();
             match state.current_head() {
-                Some(current_head) => current_head.header().hash.clone(),
+                Some(current_head) => current_head.hash.clone(),
                 None => env.main_chain_genesis_hash().clone(),
             }
         }

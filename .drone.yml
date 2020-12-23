@@ -413,7 +413,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 ##############################################################################################################
 # This pipeline runs the python test framwork unmodified tests from the tezos repository aginst tezedge nodes
@@ -628,7 +627,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests
@@ -744,7 +742,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests
@@ -1166,7 +1163,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests
@@ -1838,7 +1834,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests

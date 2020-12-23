@@ -270,7 +270,7 @@ pub mod infra {
                 block_applier,
                 network_channel.clone(),
                 shell_channel.clone(),
-                &persistent_storage,
+                persistent_storage.clone(),
                 tezos_readonly_api.clone(),
                 init_storage_data.chain_id.clone(),
                 is_sandbox,
@@ -285,7 +285,7 @@ pub mod infra {
                 shell_channel.clone(),
                 &persistent_storage,
                 current_mempool_state_storage.clone(),
-                &init_storage_data,
+                init_storage_data.chain_id.clone(),
                 tezos_readonly_api,
                 log.clone(),
             )
@@ -348,7 +348,7 @@ pub mod infra {
             shell_channel.tell(
                 Publish {
                     msg: ShuttingDown.into(),
-                    topic: ShellChannelTopic::ShellCommands.into(),
+                    topic: ShellChannelTopic::ShellShutdown.into(),
                 },
                 None,
             );

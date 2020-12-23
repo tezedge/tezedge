@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 
+use failure::format_err;
 use futures::task::{Context, Poll};
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -12,9 +13,10 @@ use slog::{warn, Logger};
 use tokio::time::{delay_until, Delay};
 use tokio::time::{Duration, Instant};
 
-use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::shell_channel::BlockApplied;
+use storage::persistent::PersistentStorage;
+use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 
 use crate::helpers::{BlockHeaderInfo, FullBlockInfo};
 use crate::rpc_actor::RpcCollectedStateRef;
@@ -24,7 +26,7 @@ pub const MONITOR_TIMER_MILIS: u64 = 100;
 
 /// Object containing information to recreate the block header shell information
 #[derive(Serialize, Debug, Clone)]
-pub struct BlockHeaderMonitorInfo {
+struct BlockHeaderMonitorInfo {
     pub hash: String,
     pub level: i32,
     pub proto: u8,
@@ -35,6 +37,23 @@ pub struct BlockHeaderMonitorInfo {
     pub fitness: Vec<String>,
     pub context: String,
     pub protocol_data: String,
+}
+
+impl From<(&BlockHeaderInfo, &BlockHeaderWithHash)> for BlockHeaderMonitorInfo {
+    fn from((block_header_info, block): (&BlockHeaderInfo, &BlockHeaderWithHash)) -> Self {
+        BlockHeaderMonitorInfo {
+            hash: block_header_info.hash.clone(),
+            level: block_header_info.level,
+            proto: block_header_info.proto,
+            predecessor: block_header_info.predecessor.clone(),
+            timestamp: block_header_info.timestamp.clone(),
+            validation_pass: block_header_info.validation_pass,
+            operations_hash: block_header_info.operations_hash.clone(),
+            fitness: block_header_info.fitness.clone(),
+            context: block_header_info.context.clone(),
+            protocol_data: hex::encode(block.header.protocol_data()),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -60,6 +79,8 @@ pub struct MonitoredOperation {
 }
 
 pub struct HeadMonitorStream {
+    block_storage: BlockStorage,
+
     chain_id: ChainId,
     state: RpcCollectedStateRef,
     last_checked_head: Option<BlockHash>,
@@ -214,6 +235,7 @@ impl HeadMonitorStream {
         chain_id: ChainId,
         state: RpcCollectedStateRef,
         protocol: Option<ProtocolHash>,
+        persistent_storage: &PersistentStorage,
     ) -> Self {
         Self {
             chain_id,
@@ -221,24 +243,35 @@ impl HeadMonitorStream {
             protocol,
             last_checked_head: None,
             delay: None,
+            block_storage: BlockStorage::new(persistent_storage),
         }
     }
 
-    fn yield_head(&self, current_head: &BlockApplied) -> Result<Option<String>, failure::Error> {
+    fn yield_head(
+        &self,
+        current_head: &BlockHeaderWithHash,
+    ) -> Result<Option<String>, failure::Error> {
         let HeadMonitorStream {
             chain_id, protocol, ..
         } = self;
 
-        let current_head_header = {
-            let chain_id = chain_id_to_b58_string(&self.chain_id);
-            BlockHeaderInfo::new(current_head, chain_id).to_monitor_header(current_head)
+        let block_json_data = match self.block_storage.get_with_json_data(&current_head.hash)? {
+            Some((_, block_json_data)) => block_json_data,
+            None => {
+                return Err(format_err!(
+                    "Missing block json data for block_hash: {}",
+                    HashType::BlockHash.hash_to_b58check(&current_head.hash),
+                ))
+            }
         };
 
+        let current_head_header = BlockHeaderMonitorInfo::from((
+            &BlockHeaderInfo::new(&current_head, &block_json_data, chain_id),
+            current_head,
+        ));
+
         if let Some(protocol) = &protocol {
-            let block_info = {
-                let chain_id = chain_id_to_b58_string(&chain_id);
-                FullBlockInfo::new(current_head, chain_id)
-            };
+            let block_info = { FullBlockInfo::new(&current_head, &block_json_data, chain_id) };
             let block_next_protocol = block_info.metadata["next_protocol"]
                 .to_string()
                 .replace("\"", "");
@@ -296,7 +329,7 @@ impl Stream for HeadMonitorStream {
                 } else {
                     // first poll
                     if let Some(current_head) = current_head {
-                        self.last_checked_head = Some(current_head.header().hash.clone());
+                        self.last_checked_head = Some(current_head.hash.clone());
                         // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
                         // would end the stream, in this case, we need to Pend.
                         if let Some(head_string_result) = self.yield_head(&current_head).transpose()
@@ -314,13 +347,13 @@ impl Stream for HeadMonitorStream {
                 };
 
                 if let Some(current_head) = current_head {
-                    if last_checked_head == &current_head.header().hash {
+                    if last_checked_head == &current_head.hash {
                         // current head not changed, yield nothing
                         cx.waker().wake_by_ref();
                         Poll::Pending
                     } else {
                         // Head change, yield new head
-                        self.last_checked_head = Some(current_head.header().hash.clone());
+                        self.last_checked_head = Some(current_head.hash.clone());
                         // If there is no head with the desired protocol, [yield_head] returns Ok(None) which is transposed to None, meaning we
                         // would end the stream, in this case, we need to Pend.
                         if let Some(head_string_result) = self.yield_head(&current_head).transpose()
@@ -373,7 +406,7 @@ impl Stream for OperationMonitorStream {
                 drop(state);
 
                 if let Some(current_head) = current_head {
-                    if self.last_checked_head == current_head.header().hash {
+                    if self.last_checked_head == current_head.hash {
                         // current head not changed, check for new operations
                         let yielded = self.yield_operations();
                         match yielded {

@@ -63,7 +63,7 @@ impl PeerConnectionThreshold {
     }
 }
 
-pub(crate) mod subscription {
+pub mod subscription {
     use riker::actors::*;
 
     use networking::p2p::network_channel::NetworkChannelTopic;
@@ -88,10 +88,8 @@ pub(crate) mod subscription {
     }
 
     #[inline]
-    pub(crate) fn subscribe_to_network_events<M, E>(
-        network_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
+    pub fn subscribe_to_network_events<M, E>(network_channel: &ChannelRef<E>, myself: ActorRef<M>)
+    where
         M: Message,
         E: Message + Into<M>,
     {
@@ -105,10 +103,25 @@ pub(crate) mod subscription {
     }
 
     #[inline]
-    pub(crate) fn subscribe_to_shell_events<M, E>(
-        shell_channel: &ChannelRef<E>,
+    pub(crate) fn subscribe_to_network_commands<M, E>(
+        network_channel: &ChannelRef<E>,
         myself: ActorRef<M>,
     ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        network_channel.tell(
+            Subscribe {
+                actor: Box::new(myself),
+                topic: NetworkChannelTopic::NetworkCommands.into(),
+            },
+            None,
+        );
+    }
+
+    #[inline]
+    pub fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
+    where
         M: Message,
         E: Message + Into<M>,
     {
@@ -119,11 +132,35 @@ pub(crate) mod subscription {
             },
             None,
         );
+    }
 
+    #[inline]
+    pub(crate) fn subscribe_to_shell_commands<M, E>(
+        shell_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
                 topic: ShellChannelTopic::ShellCommands.into(),
+            },
+            None,
+        );
+    }
+
+    #[inline]
+    pub fn subscribe_to_shell_shutdown<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
+    where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        shell_channel.tell(
+            Subscribe {
+                actor: Box::new(myself.clone()),
+                topic: ShellChannelTopic::ShellShutdown.into(),
             },
             None,
         );

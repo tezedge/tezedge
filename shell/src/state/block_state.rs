@@ -26,7 +26,6 @@ use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
-use crate::shell_channel::BlockApplied;
 use crate::utils::collections::{BlockData, UniqueBlockData};
 use crate::validation;
 
@@ -346,7 +345,7 @@ impl BlockchainState {
     /// - Some(new_head, head_result)
     pub fn try_update_new_current_head(
         &self,
-        potential_new_head: &BlockApplied,
+        potential_new_head: &BlockHeaderWithHash,
         current_head: &Option<Head>,
         current_mempool_state: CurrentMempoolStateStorageRef,
     ) -> Result<Option<(Head, HeadResult)>, StorageError> {
@@ -365,7 +364,7 @@ impl BlockchainState {
             };
             // need to check against current_head, if not accepted, just ignore potential head
             if !validation::can_update_current_head(
-                potential_new_head.header(),
+                potential_new_head,
                 &current_head,
                 &current_context_fitness,
             ) {
@@ -379,7 +378,7 @@ impl BlockchainState {
             Some(previos_head) => {
                 if previos_head
                     .block_hash()
-                    .eq(potential_new_head.header().header.predecessor())
+                    .eq(potential_new_head.header.predecessor())
                 {
                     HeadResult::HeadIncrement
                 } else {
@@ -392,9 +391,9 @@ impl BlockchainState {
 
         // this will be new head
         let head = Head::new(
-            potential_new_head.header().hash.clone(),
-            potential_new_head.header().header.level(),
-            potential_new_head.header().header.fitness().clone(),
+            potential_new_head.hash.clone(),
+            potential_new_head.header.level(),
+            potential_new_head.header.fitness().clone(),
         );
 
         // set new head to db
