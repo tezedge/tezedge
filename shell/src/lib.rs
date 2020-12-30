@@ -71,10 +71,8 @@ pub mod subscription {
     use crate::shell_channel::ShellChannelTopic;
 
     #[inline]
-    pub(crate) fn subscribe_to_actor_terminated<M, E>(
-        sys_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
+    pub fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
+    where
         M: Message,
         E: Message + Into<M>,
     {

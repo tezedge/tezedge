@@ -40,7 +40,7 @@ lazy_static! {
             disable_bootstrap_lookup: true,
             disable_mempool: false,
             private_node: false,
-            initial_peers: vec![],
+            bootstrap_peers: vec![],
             peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
         },
         NETWORK_VERSION.clone(),

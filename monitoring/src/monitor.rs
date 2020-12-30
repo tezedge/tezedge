@@ -10,7 +10,9 @@ use slog::{warn, Logger};
 use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use shell::subscription::{subscribe_to_network_events, subscribe_to_shell_events};
+use shell::subscription::{
+    subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
+};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo};
@@ -156,6 +158,7 @@ impl Actor for Monitor {
     type Msg = MonitorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
         subscribe_to_network_events(&self.network_channel, ctx.myself());
 

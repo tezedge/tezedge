@@ -73,7 +73,7 @@ const LOG_INTERVAL: Duration = Duration::from_secs(60);
 /// After this time we will disconnect peer if his current head level stays the same
 const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
 /// After this time peer will be disconnected if it fails to respond to our request
-const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(30);
+const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(60);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
 const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
 
@@ -85,7 +85,9 @@ const MEMPOOL_OPERATION_TTL: Duration = Duration::from_secs(60);
 
 /// Message commands [`ChainManager`] to disconnect stalled peers.
 #[derive(Clone, Debug)]
-pub struct DisconnectStalledPeers;
+pub struct DisconnectStalledPeers {
+    silent_peer_timeout: Duration,
+}
 
 /// Message commands [`ChainManager`] to check completeness of the chain.
 #[derive(Clone, Debug)]
@@ -1794,17 +1796,20 @@ impl Actor for ChainManager {
             LogStats.into(),
         );
 
-        let peer_timeout = if self.is_sandbox {
+        let silent_peer_timeout = if self.is_sandbox {
             SILENT_PEER_TIMEOUT_SANDBOX
         } else {
-            SILENT_PEER_TIMEOUT / 2
+            SILENT_PEER_TIMEOUT
         };
         ctx.schedule::<Self::Msg, _>(
-            peer_timeout,
-            peer_timeout,
+            silent_peer_timeout,
+            silent_peer_timeout,
             ctx.myself(),
             None,
-            DisconnectStalledPeers.into(),
+            DisconnectStalledPeers {
+                silent_peer_timeout,
+            }
+            .into(),
         );
     }
 
@@ -1914,7 +1919,7 @@ impl Receive<LogStats> for ChainManager {
 impl Receive<DisconnectStalledPeers> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, _msg: DisconnectStalledPeers, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: DisconnectStalledPeers, _sender: Sender) {
         self.peers.iter()
             .for_each(|(uri, state)| {
                 let block_response_pending = state.block_request_last > state.block_response_last;
@@ -1922,22 +1927,28 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                 let mempool_operations_response_pending = state.mempool_operations_request_last > state.mempool_operations_response_last;
 
                 let should_disconnect = if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
-                    warn!(ctx.system.log(), "Peer failed to update its current head"; "peer" => format!("{}", uri));
+                    warn!(ctx.system.log(), "Peer failed to update its current head";
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
-                } else if block_response_pending && (state.block_request_last - state.block_response_last > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer did not respond to our request for block on time"; "peer" => format!("{}", uri), "request_secs" => state.block_request_last.elapsed().as_secs(), "response_secs" => state.block_response_last.elapsed().as_secs());
+                } else if block_response_pending && (state.block_request_last - state.block_response_last > msg.silent_peer_timeout) {
+                    warn!(ctx.system.log(), "Peer did not respond to our request for block on time"; "request_secs" => state.block_request_last.elapsed().as_secs(), "response_secs" => state.block_response_last.elapsed().as_secs(),
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
-                } else if block_operations_response_pending && (state.block_operations_request_last - state.block_operations_response_last > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer did not respond to our request for block operations on time"; "peer" => format!("{}", uri), "request_secs" => state.block_operations_request_last.elapsed().as_secs(), "response_secs" => state.block_operations_response_last.elapsed().as_secs());
+                } else if block_operations_response_pending && (state.block_operations_request_last - state.block_operations_response_last > msg.silent_peer_timeout) {
+                    warn!(ctx.system.log(), "Peer did not respond to our request for block operations on time"; "request_secs" => state.block_operations_request_last.elapsed().as_secs(), "response_secs" => state.block_operations_response_last.elapsed().as_secs(),
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
-                } else if block_response_pending && !state.queued_block_headers.is_empty() && (state.block_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer is not providing requested blocks"; "peer" => format!("{}", uri), "queued_count" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs());
+                } else if block_response_pending && !state.queued_block_headers.is_empty() && (state.block_response_last.elapsed() > msg.silent_peer_timeout) {
+                    warn!(ctx.system.log(), "Peer is not providing requested blocks"; "queued_count" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs(),
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
-                } else if block_operations_response_pending && !state.queued_block_operations.is_empty() && (state.block_operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer is not providing requested block operations"; "peer" => format!("{}", uri), "queued_count" => state.queued_block_operations.len(), "response_secs" => state.block_operations_response_last.elapsed().as_secs());
+                } else if block_operations_response_pending && !state.queued_block_operations.is_empty() && (state.block_operations_response_last.elapsed() > msg.silent_peer_timeout) {
+                    warn!(ctx.system.log(), "Peer is not providing requested block operations"; "queued_count" => state.queued_block_operations.len(), "response_secs" => state.block_operations_response_last.elapsed().as_secs(),
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
-                } else if mempool_operations_response_pending && !state.queued_mempool_operations.is_empty() && (state.mempool_operations_response_last.elapsed() > SILENT_PEER_TIMEOUT) {
-                    warn!(ctx.system.log(), "Peer is not providing requested mempool operations"; "peer" => format!("{}", uri), "queued_count" => state.queued_mempool_operations.len(), "response_secs" => state.mempool_operations_response_last.elapsed().as_secs());
+                } else if mempool_operations_response_pending && !state.queued_mempool_operations.is_empty() && (state.mempool_operations_response_last.elapsed() > msg.silent_peer_timeout) {
+                    warn!(ctx.system.log(), "Peer is not providing requested mempool operations"; "queued_count" => state.queued_mempool_operations.len(), "response_secs" => state.mempool_operations_response_last.elapsed().as_secs(),
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
                 } else {
                     false
