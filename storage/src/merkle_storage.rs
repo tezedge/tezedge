@@ -310,7 +310,11 @@ impl MerkleStorage {
 
         let rv = self.get_from_tree(&root_hash, key);
         self.update_execution_stats("Get".to_string(), Some(&key), &instant);
-        rv
+        if rv.is_err() {
+            return Ok(Vec::new())
+        } else {
+            rv
+        }
     }
 
     /// Check if value exists in current staged root
