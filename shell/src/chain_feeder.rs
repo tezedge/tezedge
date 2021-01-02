@@ -33,6 +33,7 @@ use tezos_wrapper::service::{
 
 use crate::chain_manager::{ChainManagerMsg, ChainManagerRef, ProcessValidatedBlock};
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::stats::BlockValidationTimer;
 use crate::subscription::subscribe_to_shell_shutdown;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 
@@ -47,7 +48,7 @@ pub struct ApplyBlock {
     result_callback: Option<CondvarResult<(), failure::Error>>,
 
     chain_manager: ActorRef<ChainManagerMsg>,
-    timer: Arc<Instant>,
+    roundtrip_timer: Arc<Instant>,
 }
 
 impl ApplyBlock {
@@ -56,14 +57,14 @@ impl ApplyBlock {
         request: ApplyBlockRequest,
         result_callback: Option<CondvarResult<(), failure::Error>>,
         chain_manager: ChainManagerRef,
-        timer: Instant,
+        roundtrip_timer: Instant,
     ) -> Self {
         ApplyBlock {
             block_hash,
             request: Arc::new(request),
             result_callback,
             chain_manager,
-            timer: Arc::new(timer),
+            roundtrip_timer: Arc::new(roundtrip_timer),
         }
     }
 }
@@ -332,6 +333,7 @@ fn feed_chain_to_protocol(
         block_meta_storage,
         chain_meta_storage,
         operations_meta_storage,
+        context,
         &protocol_controller,
         &log,
         &tezos_env,
@@ -356,12 +358,13 @@ fn feed_chain_to_protocol(
                     request,
                     result_callback,
                     chain_manager,
-                    timer,
+                    roundtrip_timer,
                 }) => {
-                    let timer_for_apply = Instant::now();
+                    let validated_at_timer = Instant::now();
                     debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash));
 
                     // check if block is already applied (not necessery here)
+                    let load_metadata_timer = Instant::now();
                     let mut current_head_meta = match block_meta_storage.get(&block_hash)? {
                         Some(meta) => {
                             if meta.is_applied() {
@@ -390,16 +393,20 @@ fn feed_chain_to_protocol(
                             continue;
                         }
                     };
+                    let load_metadata_elapsed = load_metadata_timer.elapsed();
 
                     // try apply block
+                    let protocol_call_timer = Instant::now();
                     match protocol_controller.apply_block((&*request).clone()) {
                         Ok(apply_block_result) => {
+                            let protocol_call_elapsed = protocol_call_timer.elapsed();
                             debug!(log, "Block was applied";
                                 "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash),
                                 "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
                                 "validation_result_message" => &apply_block_result.validation_result_message);
 
                             // we need to check and wait for context_hash to be 100% sure, that everything is ok
+                            let context_wait_timer = Instant::now();
                             if let Err(e) =
                                 wait_for_context(context, &apply_block_result.context_hash)
                             {
@@ -424,9 +431,11 @@ fn feed_chain_to_protocol(
                                         .hash_to_b58check(&apply_block_result.context_hash),
                                 });
                             }
+                            let context_wait_elapsed = context_wait_timer.elapsed();
 
                             // Lets mark header as applied and store result
                             // store success result
+                            let store_result_timer = Instant::now();
                             match store_applied_block_result(
                                 block_storage,
                                 block_meta_storage,
@@ -460,14 +469,21 @@ fn feed_chain_to_protocol(
                                     return Err(e.into());
                                 }
                             };
+                            let store_result_elapsed = store_result_timer.elapsed();
 
                             // notify chain_manager, which sent request
                             if apply_block_run.load(Ordering::Acquire) {
                                 chain_manager.tell(
                                     ProcessValidatedBlock::new(
                                         Arc::new(block_hash),
-                                        timer,
-                                        Arc::new(timer_for_apply.elapsed()),
+                                        roundtrip_timer,
+                                        Arc::new(BlockValidationTimer::new(
+                                            validated_at_timer.elapsed(),
+                                            load_metadata_elapsed,
+                                            protocol_call_elapsed,
+                                            context_wait_elapsed,
+                                            store_result_elapsed,
+                                        )),
                                     ),
                                     None,
                                 );
@@ -508,24 +524,30 @@ pub(crate) fn initialize_protocol_context(
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
+    context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     log: &Logger,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
 ) -> Result<(), FeedChainError> {
-    let timer_for_apply = Instant::now();
+    let validated_at_timer = Instant::now();
+    let roundtrip_timer = Instant::now();
 
     // we must check if genesis is applied, if not then we need "commit_genesis" to context
+    let load_metadata_timer = Instant::now();
     let need_commit_genesis =
         match block_meta_storage.get(&init_storage_data.genesis_block_header_hash)? {
             Some(genesis_meta) => !genesis_meta.is_applied(),
             None => true,
         };
+    let load_metadata_elapsed = load_metadata_timer.elapsed();
     trace!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
 
     // initialize protocol context runtime
+    let protocol_call_timer = Instant::now();
     let context_init_info = protocol_controller
         .init_protocol_for_write(need_commit_genesis, &init_storage_data.patch_context)?;
+    let protocol_call_elapsed = protocol_call_timer.elapsed();
     info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info));
 
     if need_commit_genesis {
@@ -533,6 +555,7 @@ pub(crate) fn initialize_protocol_context(
         // which initiates genesis protocol in context, so we need to store some data, like we do in normal apply, see below store_apply_block_result
         if let Some(genesis_context_hash) = context_init_info.genesis_commit_hash {
             // at first store genesis to storage
+            let store_result_timer = Instant::now();
             let genesis_with_hash = initialize_storage_with_genesis_block(
                 block_storage,
                 &init_storage_data,
@@ -540,6 +563,20 @@ pub(crate) fn initialize_protocol_context(
                 &genesis_context_hash,
                 &log,
             )?;
+
+            let context_wait_timer = Instant::now();
+            if let Err(e) = wait_for_context(context, &genesis_context_hash) {
+                error!(log,
+                       "Failed to wait for genesis context";
+                       "block" => HashType::BlockHash.hash_to_b58check(&init_storage_data.genesis_block_header_hash),
+                       "context" => HashType::ContextHash.hash_to_b58check(&genesis_context_hash),
+                       "reason" => format!("{}", e)
+                );
+                return Err(FeedChainError::MissingContextError {
+                    context_hash: HashType::ContextHash.hash_to_b58check(&genesis_context_hash),
+                });
+            }
+            let context_wait_elapsed = context_wait_timer.elapsed();
 
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
             // this needs to be second step, because, this triggers context.checkout, so we need to call it after store_commit_genesis_result
@@ -554,6 +591,7 @@ pub(crate) fn initialize_protocol_context(
                 &init_storage_data,
                 commit_data,
             )?;
+            let store_result_elapsed = store_result_timer.elapsed();
 
             // notify listeners
             if apply_block_run.load(Ordering::Acquire) {
@@ -563,8 +601,14 @@ pub(crate) fn initialize_protocol_context(
                         msg: ShellChannelMsg::ProcessValidatedGenesisBlock(
                             ProcessValidatedBlock::new(
                                 Arc::new(genesis_with_hash.hash),
-                                Arc::new(Instant::now()),
-                                Arc::new(timer_for_apply.elapsed()),
+                                Arc::new(roundtrip_timer),
+                                Arc::new(BlockValidationTimer::new(
+                                    validated_at_timer.elapsed(),
+                                    load_metadata_elapsed,
+                                    protocol_call_elapsed,
+                                    context_wait_elapsed,
+                                    store_result_elapsed,
+                                )),
                             ),
                         ),
                         topic: ShellChannelTopic::ShellCommands.into(),
@@ -579,7 +623,7 @@ pub(crate) fn initialize_protocol_context(
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(30), Duration::from_millis(20));
+    (Duration::from_secs(30), Duration::from_millis(10));
 
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(

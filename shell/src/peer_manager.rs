@@ -596,7 +596,7 @@ impl Receive<ConnectToPeer> for PeerManager {
             let private_node = self.private_node;
 
             self.tokio_executor.spawn(async move {
-                info!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
+                debug!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
                 match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                     Ok(Ok(stream)) => {
                         info!(system.log(), "Connection successful"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
@@ -623,7 +623,7 @@ impl Receive<AcceptPeer> for PeerManager {
         if self.is_blacklisted(&msg.address.ip()) {
             warn!(ctx.system.log(), "Peer is blacklisted - will not accept connection"; "ip" => format!("{}", msg.address.ip()));
         } else if self.peers.len() < self.threshold.high {
-            info!(ctx.system.log(), "Connection from"; "ip" => msg.address);
+            debug!(ctx.system.log(), "Connection from"; "ip" => msg.address);
             let peer = self.create_peer(ctx, &msg.address);
             peer.tell(
                 Bootstrap::incoming(

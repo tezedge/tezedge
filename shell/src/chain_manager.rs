@@ -13,6 +13,7 @@
 
 use std::cmp;
 use std::collections::HashMap;
+use std::ops::AddAssign;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -51,6 +52,7 @@ use crate::shell_channel::{
 };
 use crate::state::block_state::{BlockAcceptanceResult, BlockchainState, HeadResult, MissingBlock};
 use crate::state::operations_state::{MissingOperations, OperationsState};
+use crate::stats::BlockValidationTimer;
 use crate::subscription::*;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 use crate::{validation, PeerConnectionThreshold};
@@ -110,16 +112,22 @@ pub struct ApplyCompletedBlock {
 #[derive(Clone, Debug)]
 pub struct ProcessValidatedBlock {
     block: Arc<BlockHash>,
-    timer: Arc<Instant>,
-    validated_at: Arc<Duration>,
+
+    // TODO: remove - just temporary stats
+    roundtrip_timer: Arc<Instant>,
+    validation_timer: Arc<BlockValidationTimer>,
 }
 
 impl ProcessValidatedBlock {
-    pub fn new(block: Arc<BlockHash>, timer: Arc<Instant>, validated_at: Arc<Duration>) -> Self {
+    pub fn new(
+        block: Arc<BlockHash>,
+        roundtrip_timer: Arc<Instant>,
+        validation_timer: Arc<BlockValidationTimer>,
+    ) -> Self {
         Self {
             block,
-            timer,
-            validated_at,
+            roundtrip_timer,
+            validation_timer,
         }
     }
 }
@@ -195,6 +203,38 @@ struct Stats {
     applied_block_last: Option<Instant>,
     /// Last time state was hydrated
     hydrated_state_last: Option<Instant>,
+
+    /// Count of applied blocks, from last LogStats run
+    applied_block_lasts_count: u32,
+    /// Sum of durations of block validation with protocol from last LogStats run
+    applied_block_lasts_sum_validation_timer: BlockValidationTimer,
+    /// Sum of durations of roundtrip: time of fired event for validation to received response
+    applied_block_lasts_sum_roundtrip_timer: Duration,
+}
+
+impl Stats {
+    fn clear_applied_block_lasts(&mut self) {
+        self.applied_block_lasts_count = 0;
+        self.applied_block_lasts_sum_validation_timer = BlockValidationTimer::default();
+        self.applied_block_lasts_sum_roundtrip_timer = Duration::new(0, 0);
+    }
+
+    fn add_block_validation_stats(
+        &mut self,
+        roundtrip_timer: Arc<Instant>,
+        validation_timer: Arc<BlockValidationTimer>,
+    ) {
+        self.applied_block_lasts_count += 1;
+        self.applied_block_lasts_sum_validation_timer
+            .add_assign(validation_timer);
+        self.applied_block_lasts_sum_roundtrip_timer = match self
+            .applied_block_lasts_sum_roundtrip_timer
+            .checked_add(roundtrip_timer.elapsed())
+        {
+            Some(result) => result,
+            None => self.applied_block_lasts_sum_roundtrip_timer,
+        };
+    }
 }
 
 /// Purpose of this actor is to perform chain synchronization.
@@ -1304,9 +1344,13 @@ impl ChainManager {
     ) -> Result<(), Error> {
         let ProcessValidatedBlock {
             block,
-            timer,
-            validated_at,
+            roundtrip_timer,
+            validation_timer,
         } = validated_block;
+
+        // count stats
+        self.stats
+            .add_block_validation_stats(roundtrip_timer, validation_timer);
 
         // read block
         let block = match self.block_storage.get(&block)? {
@@ -1749,9 +1793,12 @@ impl
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
                 unseen_block_operations_last: Instant::now(),
-                applied_block_last: None,
-                applied_block_level: None,
                 hydrated_state_last: None,
+                applied_block_level: None,
+                applied_block_last: None,
+                applied_block_lasts_count: 0,
+                applied_block_lasts_sum_validation_timer: BlockValidationTimer::default(),
+                applied_block_lasts_sum_roundtrip_timer: Duration::new(0, 0),
             },
             is_sandbox,
             identity_peer_id,
@@ -1883,6 +1930,41 @@ impl Receive<LogStats> for ChainManager {
         let log = ctx.system.log();
         let (local, local_level, local_fitness) = &self.current_head.local_debug_info();
         let (remote, remote_level, remote_fitness) = &self.current_head.remote_debug_info();
+
+        // calculate applied stats
+        let last_applied = {
+            let Stats {
+                applied_block_lasts_count,
+                applied_block_lasts_sum_validation_timer,
+                applied_block_lasts_sum_roundtrip_timer,
+                ..
+            } = &self.stats;
+
+            if *applied_block_lasts_count > 0 {
+                let validation = applied_block_lasts_sum_validation_timer
+                    .print_formatted_average_for_count(*applied_block_lasts_count);
+                let roundtrip = match applied_block_lasts_sum_roundtrip_timer
+                    .checked_div(*applied_block_lasts_count)
+                {
+                    Some(result) => format!("{:?}", result),
+                    None => "-".to_string(),
+                };
+
+                // calculated message
+                let stats = format!(
+                    "({} blocks - average times [request_response {:?} -> {}]",
+                    applied_block_lasts_count, roundtrip, validation,
+                );
+
+                // clear stats for next run
+                self.stats.clear_applied_block_lasts();
+
+                stats
+            } else {
+                format!("({} blocks)", applied_block_lasts_count)
+            }
+        };
+
         info!(log, "Head info";
             "local" => local,
             "local_level" => local_level,
@@ -1912,7 +1994,12 @@ impl Receive<LogStats> for ChainManager {
                 "current_head_level" => peer.current_head_level,
                 "current_head_update_secs" => peer.current_head_update_last.elapsed().as_secs());
         }
-        info!(log, "Various info"; "peer_count" => self.peers.len(), "hydrated_state_secs" => self.stats.hydrated_state_last.map(|i| i.elapsed().as_secs()));
+        info!(log, "Various info";
+                   "peer_count" => self.peers.len(),
+                   "hydrated_state_secs" => self.stats.hydrated_state_last.map(|i| i.elapsed().as_secs()),
+                   "local_level" => local_level,
+                   "last_applied" => last_applied,
+        );
     }
 }
 
