@@ -29,7 +29,10 @@ pub trait ContextApi {
     fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), ContextError>;
     // get value for key
     fn get_key(&self, key: &ContextKey) -> Result<ContextValue, ContextError>;
-
+    // mem - check if value exists
+    fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
+    // dirmem - check if directory exists
+    fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // get value for key from a point in history indicated by context hash
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
     // get a list of all key-values under a certain key prefix
@@ -123,6 +126,18 @@ impl ContextApi for TezedgeContext {
     fn get_key(&self, key: &ContextKey) -> Result<ContextValue, ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         let val = merkle.get(key)?;
+        Ok(val)
+    }
+
+    fn mem(&self, key: &ContextKey) -> Result<bool, ContextError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let val = merkle.mem(key)?;
+        Ok(val)
+    }
+
+    fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let val = merkle.dirmem(key)?;
         Ok(val)
     }
 
