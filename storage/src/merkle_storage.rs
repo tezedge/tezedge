@@ -386,7 +386,7 @@ impl MerkleStorage {
         // find tree by path
         let root = self.get_tree(root_hash)?;
         let node = self.find_tree(&root, &key);
-        if node.is_err() {
+        if node.is_err() || node?.is_empty() {
             return Ok(false)
         } else {
             return Ok(true)
@@ -1352,6 +1352,12 @@ mod tests {
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(db_name, &cache);
+
+            let res = storage.get(&vec![]);
+            assert_eq!(res.unwrap().is_empty(), true);
+            let res = storage.get(&vec!["a".to_string()]);
+            assert_eq!(res.unwrap().is_empty(), true);
+
             storage.set(key_abc, &vec![1u8, 2u8]);
             storage.set(key_abx, &vec![3u8]);
             assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
@@ -1371,6 +1377,7 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
+
         assert_eq!(storage.get_history(&commit1, key_abc).unwrap(), vec![1u8, 2u8]);
         assert_eq!(storage.get_history(&commit1, key_abx).unwrap(), vec![3u8]);
         assert_eq!(storage.get_history(&commit2, key_abx).unwrap(), vec![5u8]);
@@ -1550,21 +1557,6 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
-    }
-
-    #[test]
-    fn test_get_errors() {
-        let db_name = "ms_test_get_errors";
-        { clean_db(db_name); }
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
-
-        let res = storage.get(&vec![]);
-        assert!(matches!(res.err().unwrap(), MerkleError::KeyEmpty));
-
-        let res = storage.get(&vec!["a".to_string()]);
-        assert!(matches!(res.err().unwrap(), MerkleError::ValueNotFound { .. }));
     }
 
     // Test a DB error by writing into a read-only database.
