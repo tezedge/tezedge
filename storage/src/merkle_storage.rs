@@ -300,6 +300,7 @@ impl MerkleStorage {
 
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
+        let instant = Instant::now();
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         self.apply_actions_to_staging_area()?;
@@ -307,7 +308,39 @@ impl MerkleStorage {
         let root = &self.get_staged_root()?;
         let root_hash = hash_tree(&root)?;
 
-        self.get_from_tree(&root_hash, key)
+        let rv = self.get_from_tree(&root_hash, key);
+        self.update_execution_stats("Get".to_string(), Some(&key), &instant);
+        rv
+    }
+
+    /// Check if value exists in current staged root
+    pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
+        let instant = Instant::now();
+        // build staging tree from saved list of actions (set/copy/delete)
+        // note: this can be slow if there are a lot of actions
+        self.apply_actions_to_staging_area()?;
+
+        let root = &self.get_staged_root()?;
+        let root_hash = hash_tree(&root)?;
+
+        let rv = self.value_exists(&root_hash, key);
+        self.update_execution_stats("Mem".to_string(), Some(&key), &instant);
+        rv
+    }
+
+    /// Check if directory exists in current staged root
+    pub fn dirmem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
+        let instant = Instant::now();
+        // build staging tree from saved list of actions (set/copy/delete)
+        // note: this can be slow if there are a lot of actions
+        self.apply_actions_to_staging_area()?;
+
+        let root = &self.get_staged_root()?;
+        let root_hash = hash_tree(&root)?;
+
+        let rv = self.directory_exists(&root_hash, key);
+        self.update_execution_stats("DirMem".to_string(), Some(&key), &instant);
+        rv
     }
 
     /// Get value. Staging area is checked first, then last (checked out) commit.
@@ -324,6 +357,36 @@ impl MerkleStorage {
         let rv = self.get_from_tree(&commit.root_hash, key);
         self.update_execution_stats("GetKeyFromHistory".to_string(), Some(&key), &instant);
         rv
+    }
+
+    fn value_exists(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<bool, MerkleError> {
+        let mut full_path = key.clone();
+        let file = full_path.pop().ok_or(MerkleError::KeyEmpty)?;
+        let path = full_path;
+        // find tree by path
+        let root = self.get_tree(root_hash)?;
+        let node = self.find_tree(&root, &path);
+        if node.is_err() {
+            return Ok(false)
+        }
+
+        // get file node from tree
+        if node?.get(&file).is_some() {
+            return Ok(true)
+        } else {
+            return Ok(false)
+        }
+    }
+
+    fn directory_exists(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<bool, MerkleError> {
+        // find tree by path
+        let root = self.get_tree(root_hash)?;
+        let node = self.find_tree(&root, &key);
+        if node.is_err() {
+            return Ok(false)
+        } else {
+            return Ok(true)
+        }
     }
 
     fn get_from_tree(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<ContextValue, MerkleError> {
