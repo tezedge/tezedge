@@ -1337,7 +1337,7 @@ mod tests {
     }
 
     #[test]
-    fn get_test() {
+    fn test_get() {
         let db_name = "ms_get_test";
         clean_db(db_name);
 
@@ -1354,15 +1354,18 @@ mod tests {
             let mut storage = get_storage(db_name, &cache);
             storage.set(key_abc, &vec![1u8, 2u8]);
             storage.set(key_abx, &vec![3u8]);
-       //     assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
-        //    assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
+            assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
+            assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
             storage.set(key_az, &vec![4u8]);
             storage.set(key_abx, &vec![5u8]);
             storage.set(key_d, &vec![6u8]);
             storage.set(key_eab, &vec![7u8]);
-         //   assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
+            assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
+            assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
+            assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
+            assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
@@ -1374,6 +1377,53 @@ mod tests {
         assert_eq!(storage.get_history(&commit2, key_az).unwrap(), vec![4u8]);
         assert_eq!(storage.get_history(&commit2, key_d).unwrap(), vec![6u8]);
         assert_eq!(storage.get_history(&commit2, key_eab).unwrap(), vec![7u8]);
+    }
+
+    #[test]
+    fn test_mem() {
+        let db_name = "ms_test_mem";
+        clean_db(db_name);
+
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let mut storage = get_storage(db_name, &cache);
+        assert_eq!(storage.mem(&key_abc).unwrap(), false);
+        assert_eq!(storage.mem(&key_abx).unwrap(), false);
+        storage.set(key_abc, &vec![1u8, 2u8]);
+        assert_eq!(storage.mem(&key_abc).unwrap(), true);
+        assert_eq!(storage.mem(&key_abx).unwrap(), false);
+        storage.set(key_abx, &vec![3u8]);
+        assert_eq!(storage.mem(&key_abc).unwrap(), true);
+        assert_eq!(storage.mem(&key_abx).unwrap(), true);
+        storage.delete(key_abx);
+        assert_eq!(storage.mem(&key_abc).unwrap(), true);
+        assert_eq!(storage.mem(&key_abx).unwrap(), false);
+    }
+
+    #[test]
+    fn test_dirmem() {
+        let db_name = "ms_test_dirmem";
+        clean_db(db_name);
+
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
+        let key_a: &ContextKey = &vec!["a".to_string()];
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let mut storage = get_storage(db_name, &cache);
+        assert_eq!(storage.dirmem(&key_a).unwrap(), false);
+        assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
+        assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
+        storage.set(key_abc, &vec![1u8, 2u8]);
+        assert_eq!(storage.dirmem(&key_a).unwrap(), true);
+        assert_eq!(storage.dirmem(&key_ab).unwrap(), true);
+        assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
+        storage.delete(key_abc);
+        assert_eq!(storage.dirmem(&key_a).unwrap(), false);
+        assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
+        assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
     }
 
     #[test]
