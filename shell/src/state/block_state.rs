@@ -748,61 +748,61 @@ mod tests {
         // for block 1 in history [1, 20)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 1);
-            assert!(level >= 1 && level < 20);
+            assert!((1..20).contains(&level));
         }
 
         // for block 2 in history [20, 40)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 2);
-            assert!(level >= 20 && level < 40);
+            assert!((20..40).contains(&level));
         }
 
         // for block 3 in history [40, 60)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 3);
-            assert!(level >= 40 && level < 60);
+            assert!((40..60).contains(&level));
         }
 
         // for block 4 in history [60, 80)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 4);
-            assert!(level >= 60 && level < 80);
+            assert!((60..80).contains(&level));
         }
 
         // for block 5 in history [80, 100)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 5);
-            assert!(level >= 80 && level < 100);
+            assert!((80..100).contains(&level));
         }
 
         // for block 0 in history [0, 1)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 1, 0);
-            assert!(level >= 0 && level < 1);
+            assert!((0..1).contains(&level));
         }
 
         // corner case (for level 1 if there are two elements)
         // for block 0 in history [0, 1)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 2, 0);
-            assert!(level >= 0 && level < 1);
+            assert!((0..1).contains(&level));
         }
 
         // corner case (for level 1 if there are two elements)
         // for block 1 in history [1, 2)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 2, 1);
-            assert!(level >= 1 && level < 2);
+            assert!((1..2).contains(&level));
         }
 
         // corner cases
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 3, 0);
-            assert!(level >= 0 && level < 1);
+            assert!((0..1).contains(&level));
             let level = BlockchainState::guess_level(&mut rng, 1, 3, 1);
-            assert!(level >= 1 && level < 2);
+            assert!((1..2).contains(&level));
             let level = BlockchainState::guess_level(&mut rng, 1, 3, 2);
-            assert!(level >= 1 && level < 2);
+            assert!((1..2).contains(&level));
         }
     }
 
@@ -1221,17 +1221,23 @@ mod tests {
                 block_storage
                     .put_block_header(&new_block)
                     .expect("failed to store block");
-                block_meta_storage
+                let meta = block_meta_storage
                     .put_block_header(&new_block, &chain_id, &log)
                     .expect("failed to store block metadata");
+                block_meta_storage
+                    .store_predecessors(&new_block.hash, &meta)
+                    .expect("failed to store block predecessors");
 
                 let new_block = blocks.header(successor);
                 block_storage
                     .put_block_header(&new_block)
                     .expect("failed to store block");
-                block_meta_storage
+                let meta = block_meta_storage
                     .put_block_header(&new_block, &chain_id, &log)
                     .expect("failed to store block metadata");
+                block_meta_storage
+                    .store_predecessors(&new_block.hash, &meta)
+                    .expect("failed to store block predecessors");
 
                 successor
             });

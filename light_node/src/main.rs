@@ -31,7 +31,7 @@ use storage::{
     block_storage, check_database_compatibility, context_action_storage,
     resolve_storage_init_chain_data, BlockMetaStorage, BlockStorage, ChainMetaStorage,
     ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
-    StorageInitInfo, SystemStorage,
+    PredecessorStorage, StorageInitInfo, SystemStorage,
 };
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -531,6 +531,7 @@ fn main() {
         Sequences::descriptor(&cache),
         MempoolStorage::descriptor(&cache),
         ChainMetaStorage::descriptor(&cache),
+        PredecessorStorage::descriptor(&cache),
     ];
 
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {

@@ -180,6 +180,9 @@ steps:
     # interop_benchmark
     - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
     - cargo bench --bench interop_benchmark -- --noplot
+    # interop_benchmark
+    - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
+    - cargo bench --bench predecessor_benchmarks -- --noplot
   when:
     ref:
       exclude:
@@ -211,6 +214,9 @@ steps:
     # interop_benchmark
     - cd /tmp/tezedge-cache/tezedge/tezos/interop
     - cargo bench --bench interop_benchmark --no-run
+    # predecessor_benchmarks
+    - cd /tmp/tezedge-cache/tezedge/storage
+    - cargo bench --bench predecessor_benchmarks --no-run
     # this step is async, so we will sync later on this file
     - echo > /tmp/tezedge-cache/tezedge/tezos/messages/build.done
   when:
@@ -353,6 +359,11 @@ steps:
     - cargo bench --bench interop_benchmark --no-run
     - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_target_branch_result
     - critcmp --export interop_benchmark_target_branch_result > /artifacts/interop_benchmark_target_branch_result.json
+    # predecessor_benchmarks - target
+    - cd /tmp/tezedge-cache/tezedge/storage
+    - cargo bench --bench predecessor_benchmarks --no-run
+    - cargo bench --bench predecessor_benchmarks -- --noplot --save-baseline predecessor_benchmarks_target_branch_result
+    - critcmp --export predecessor_benchmarks_target_branch_result > /artifacts/predecessor_benchmarks_target_branch_result.json
     # checkout current branch
     - current_branch=$${DRONE_SOURCE_BRANCH}
     - git reset --hard origin/$current_branch && git checkout $current_branch
@@ -368,11 +379,18 @@ steps:
     - cargo bench --bench interop_benchmark --no-run
     - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_current_branch_result
     - critcmp --export interop_benchmark_current_branch_result > /artifacts/interop_benchmark_current_branch_result.json
+    # predecessor_benchmarks - current
+    - cd /tmp/tezedge-cache/tezedge/storage
+    - cargo bench --bench predecessor_benchmarks --no-run
+    - cargo bench --bench predecessor_benchmarks -- --noplot --save-baseline predecessor_benchmarks_current_branch_result
+    - critcmp --export predecessor_benchmarks_current_branch_result > /artifacts/predecessor_benchmarks_current_branch_result.json
     # compare results
     - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
     - critcmp /artifacts/message_benchmark_target_branch_result.json /artifacts/message_benchmark_current_branch_result.json --list
     - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
     - critcmp /artifacts/interop_benchmark_target_branch_result.json /artifacts/interop_benchmark_current_branch_result.json --list
+    - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
+    - critcmp /artifacts/predecessor_benchmarks_target_branch_result.json /artifacts/predecessor_benchmarks_current_branch_result.json --list
   when:
     ref:
       - refs/pull/*/head
