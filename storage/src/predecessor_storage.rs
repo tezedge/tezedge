@@ -15,8 +15,6 @@ use crate::block_meta_storage::Meta;
 
 pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
 
-pub const STORED_PREDECESSORS_SIZE: u32 = 12;
-
 #[derive(Serialize, Deserialize)]
 pub struct PredecessorKey {
     block_hash: BlockHash,
@@ -44,21 +42,23 @@ impl PredecessorStorage {
         }
     }
 
-    pub fn store_predecessors(&self, block_hash: &BlockHash, block_meta: &Meta) -> Result<(), StorageError> {
+    pub fn store_predecessors(&self, block_hash: &BlockHash, block_meta: &Meta, stored_predecessors_size: u32) -> Result<(), StorageError> {
         if let Some(direct_predecessor) = block_meta.predecessor() {
             // genesis
             if direct_predecessor == block_hash {
                 return Ok(())
             } else {
                 // put the direct predecessor to slot 0
-                self.put(&PredecessorKey::new(block_hash.to_vec(), 0), direct_predecessor)?;
+                self.put(&PredecessorKey::new(block_hash.clone(), 0), direct_predecessor)?;
+
+                // fill other slots
                 let mut predecessor = direct_predecessor.clone();
-                for predecessor_exponent_slot in 1..STORED_PREDECESSORS_SIZE {
-                    let predecessor_key = PredecessorKey::new(predecessor.to_vec(), predecessor_exponent_slot - 1);
+                for predecessor_exponent_slot in 1..stored_predecessors_size {
+                    let predecessor_key = PredecessorKey::new(predecessor, predecessor_exponent_slot - 1);
                     if let Some(p) = self.get(&predecessor_key)? {
                         let key = PredecessorKey::new(block_hash.clone(), predecessor_exponent_slot);
                         self.put(&key, &p)?;
-                        predecessor = p.clone();
+                        predecessor = p;
                     } else {
                         return Ok(())
                     }

@@ -31,7 +31,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
-pub use crate::predeccessor_storage::PredecessorStorage;
+pub use crate::predecessor_storage::PredecessorStorage;
 
 pub mod persistent;
 pub mod merkle_storage;
@@ -45,7 +45,7 @@ pub mod system_storage;
 pub mod skip_list;
 pub mod context;
 pub mod chain_meta_storage;
-pub mod predeccessor_storage;
+pub mod predecessor_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

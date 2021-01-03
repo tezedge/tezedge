@@ -135,7 +135,6 @@ mod tests {
             chain_monitor.process_block_operations(block_level);
         }
 
-        // println!("[test] headers_stats  {:#?}", chain_monitor.snapshot());
         chain_monitor
     }
 

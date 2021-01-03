@@ -102,33 +102,22 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
 fn find_block_at_distance_benchmark(c: &mut Criterion) {
     let (storage, last_block_hash) = init_mocked_storage(100_000).unwrap();
 
+    // just, check if impl. is correct
     assert_eq!(
         find_block_at_distance_old(&storage, last_block_hash.clone(), 99_998).unwrap(),
         storage.find_block_at_distance(last_block_hash.clone(), 99_998).unwrap()
     );
 
+    // run bench
     c.bench_function("find_block_at_distance", |b| {
         b.iter(|| storage.find_block_at_distance(last_block_hash.clone(), 99_998))
-    });
-}
-
-fn find_block_at_distance_old_benchmark(c: &mut Criterion) {
-    let (storage, last_block_hash) = init_mocked_storage(100_000).unwrap();
-
-    assert_eq!(
-        find_block_at_distance_old(&storage, last_block_hash.clone(), 99_998).unwrap(),
-        storage.find_block_at_distance(last_block_hash.clone(), 99_998).unwrap()
-    );
-
-    c.bench_function("find_block_at_distance_old", |b| {
-        b.iter(|| find_block_at_distance_old(&storage, last_block_hash.clone(), 99_998))
     });
 }
 
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = find_block_at_distance_benchmark, find_block_at_distance_old_benchmark
+    targets = find_block_at_distance_benchmark
 }
 
 criterion_main!(benches);

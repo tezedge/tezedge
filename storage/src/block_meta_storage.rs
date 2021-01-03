@@ -14,7 +14,7 @@ use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
 use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
-use crate::predeccessor_storage::{PredecessorStorage, PredecessorKey, STORED_PREDECESSORS_SIZE};
+use crate::predecessor_storage::{PredecessorStorage, PredecessorKey};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
@@ -28,17 +28,18 @@ pub trait BlockMetaStorageReader: Sync + Send {
     fn get_live_blocks(&self, block_hash: BlockHash, max_ttl: usize) -> Result<Vec<BlockHash>, StorageError>;
 }
 
-#[derive(Clone, Getters)]
+#[derive(Clone)]
 pub struct BlockMetaStorage {
     kv: Arc<BlockMetaStorageKV>,
     predecessors_index: PredecessorStorage,
 }
 
 impl BlockMetaStorage {
+    const STORED_PREDECESSORS_SIZE: u32 = 12;
+
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage { kv: persistent_storage.kv(), predecessors_index: PredecessorStorage::new(persistent_storage) }
     }
-
 
     /// Creates/updates metadata record in storage from given block header
     /// Returns block metadata
@@ -136,7 +137,7 @@ impl BlockMetaStorage {
     }
 
     pub fn store_predecessors(&self, block_hash: &BlockHash, block_meta: &Meta) -> Result<(), StorageError> {
-        self.predecessors_index.store_predecessors(block_hash, block_meta)?;
+        self.predecessors_index.store_predecessors(block_hash, block_meta, Self::STORED_PREDECESSORS_SIZE)?;
         Ok(())
     }
 
@@ -185,8 +186,8 @@ impl BlockMetaStorageReader for BlockMetaStorage {
             } else {
                 let (mut power, mut rest) = closest_power_two_and_rest(distance)?;
 
-                if power >= STORED_PREDECESSORS_SIZE {
-                    power = STORED_PREDECESSORS_SIZE - 1;
+                if power >= Self::STORED_PREDECESSORS_SIZE {
+                    power = Self::STORED_PREDECESSORS_SIZE - 1;
                     rest = distance - BASE.pow(power);
                 }
 
@@ -701,7 +702,6 @@ mod tests {
     fn find_block_at_distance_test() -> Result<(), Error> {
         const BLOCK_COUNT: usize = 100_000;
 
-        println!("Creating mocked block_meta_storage...");
         // block_hashes starts with level 1 (genesis not included)
         let (storage, last_block_hash, block_hashes) = init_mocked_storage(BLOCK_COUNT, "__find_block_at_distance_teststorage")?;
 
@@ -750,7 +750,7 @@ mod tests {
     #[test]
     fn find_block_at_distance_heavy_test() -> Result<(), Error> {
         const BLOCK_COUNT: usize = 1_500;
-        println!("Creating mocked block_meta_storage...");
+
         // block_hashes starts with level 1 (genesis not included)
         let (storage, _, block_hashes) = init_mocked_storage(BLOCK_COUNT, "__find_block_at_distance_heavy_teststorage")?;
 
@@ -761,7 +761,6 @@ mod tests {
                 println!("Checked {} blocks from {}", idx, BLOCK_COUNT);
             }
             for i in 1..idx {
-                // println!("i: {}", i);
                 let res = storage.find_block_at_distance(hash.to_vec(), i as i32)?;
                 assert_eq!(
                     block_hashes[idx - i],
