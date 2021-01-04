@@ -88,8 +88,9 @@ impl ContextApi for TezedgeContext {
                             }
                         );
                     } else {
+                        // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
                         // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
-                        ()
+                        // but we need to storage assignment elsewhere
                     }
                 }
                 _ => return Err(

@@ -125,16 +125,20 @@ fn check_context(
     println!("Context storage global latency statistics:");
     println!();
     for (op, v) in stats.perf_stats.global.iter() {
-        println!("{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
-                 op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times);
+        println!(
+            "{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+            op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+        );
     }
     println!();
     println!("Context storage per-path latency statistics:");
     for (node, v) in stats.perf_stats.perpath.iter() {
         println!("{}:", node);
         for (op, v) in v.iter() {
-            println!("\t{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
-                     op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times);
+            println!(
+                "\t{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+                op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+            );
         }
     }
 

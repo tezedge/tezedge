@@ -201,8 +201,8 @@ pub struct OperationLatencies {
     pub op_exec_time_max: f64,
 }
 
-impl OperationLatencies {
-    pub fn new() -> Self {
+impl Default for OperationLatencies {
+    fn default() -> Self {
         OperationLatencies {
             cumul_op_exec_time: 0.0,
             op_exec_times: 0,
@@ -311,7 +311,7 @@ impl MerkleStorage {
         let rv = self.get_from_tree(&root_hash, key);
         self.update_execution_stats("Get".to_string(), Some(&key), &instant);
         if rv.is_err() {
-            return Ok(Vec::new())
+            Ok(Vec::new())
         } else {
             rv
         }
@@ -376,9 +376,9 @@ impl MerkleStorage {
 
         // get file node from tree
         if node?.get(&file).is_some() {
-            return Ok(true)
+            Ok(true)
         } else {
-            return Ok(false)
+            Ok(false)
         }
     }
 
@@ -387,9 +387,9 @@ impl MerkleStorage {
         let root = self.get_tree(root_hash)?;
         let node = self.find_tree(&root, &key);
         if node.is_err() || node?.is_empty() {
-            return Ok(false)
+            Ok(false)
         } else {
-            return Ok(true)
+            Ok(true)
         }
     }
 
@@ -629,7 +629,7 @@ impl MerkleStorage {
     fn add_empty_tree_to_staging(&mut self) -> Result<Option<usize>, MerkleError> {
         let tree = Tree::new();
         let hash = hash_tree(&tree)?;
-        self.put_to_staging_area(&hash, Entry::Tree(tree.clone()))
+        self.put_to_staging_area(&hash, Entry::Tree(tree))
     }
 
     /// If current staging tree does not exist yet, create a new empty tree
@@ -640,7 +640,7 @@ impl MerkleStorage {
                 self.current_stage_tree = Some(tree.clone());
                 let hash = hash_tree(&tree)?;
                 self.current_stage_tree_hash = Some(hash);
-                self.put_to_staging_area(&hash, Entry::Tree(tree.clone()))?;
+                self.put_to_staging_area(&hash, Entry::Tree(tree))?;
             }
             Some(_tree) => (),
         }
@@ -706,7 +706,10 @@ impl MerkleStorage {
                             &root_hash, &copy.to_key, Some(self.get_non_leaf(source_tree_hash)))?;
                         //TODO: check if there is need to increment refcounts recursively
                     } else {
-                        panic!("Action Copy(): not a tree");
+                        return Err(MerkleError::FoundUnexpectedStructure {
+                            sought: "Tree".to_string(),
+                            found: "Blob/Commit".to_string(),
+                        });
                     }
                     self.current_stage_tree = Some(self.get_tree(&new_hash)?);
                     self.current_stage_tree_hash = Some(new_hash);
@@ -774,7 +777,7 @@ impl MerkleStorage {
                 idx = idx_of_empty_tree;
                 empty_tree_existed = true;
             } else {
-                idx = self.add_empty_tree_to_staging().unwrap();
+                idx = self.add_empty_tree_to_staging()?;
             }
         }
 
@@ -786,7 +789,7 @@ impl MerkleStorage {
                 // first check if we can modify tree in place
                 let mut in_place = true;
                 let refcnt = self.staged[idx].1;
-                if refcnt > 1 || empty_tree_existed == true {
+                if refcnt > 1 || empty_tree_existed {
                     // can't modify in place as it's used elsewhere, must copy tree to a new entry
                     in_place = false;
                     let len = self.staged.len();
@@ -811,7 +814,7 @@ impl MerkleStorage {
                     let old_hash = *tree_hash;
 
                     // If tree was modified in place, remove old hash from staged_indices as it no longer exists
-                    if in_place == true {
+                    if in_place {
                         self.staged_indices.remove(&old_hash);
                     }
 
@@ -821,11 +824,8 @@ impl MerkleStorage {
 
                     let tree_is_empty = tree.is_empty();
 
-                    drop(tree);
-                    drop(tree_hash);
-
                     // Add mapping from hash to index
-                    if self.staged_indices.contains_key(&new_tree_hash) == true {
+                    if self.staged_indices.contains_key(&new_tree_hash) {
                         // entry already exists in staging, increase its refcnt only
                         // staged_indices will point to the other entry while this entry will be
                         // unreachable (wasting space, but removing it would require changing all
@@ -835,7 +835,7 @@ impl MerkleStorage {
                         self.staged_indices.insert(new_tree_hash, idx);
                     }
 
-                    if tree_is_empty == true {
+                    if tree_is_empty {
                         // last element was removed, delete this node
                         if path.is_empty() {
                             // tree was removed completely - the entire staging tree up to the root
@@ -849,7 +849,11 @@ impl MerkleStorage {
                         self.compute_new_root_with_change(&root_hash, path, Some(self.get_non_leaf(new_tree_hash)))
                     }
                 } else {
-                    panic!("compute_new_root_with_change: Entry is not a Tree");
+                    // compute_new_root_with_change: Entry is not a Tree
+                    Err(MerkleError::FoundUnexpectedStructure {
+                        sought: "Tree".to_string(),
+                        found: "Blob/Commit".to_string(),
+                    })
                 }
             },
             None => {
@@ -882,15 +886,17 @@ impl MerkleStorage {
                 }
         };
 
-        let entry_hash = child_node.entry_hash.clone();
-        let entry_idx = match self.staged_get_idx(&child_node.entry_hash) {
+        let entry_hash = child_node.entry_hash;
+        let entry_idx = match self.staged_get_idx(&entry_hash) {
             Some(idx) => {
                 idx
             }
             None => {
                 // not in staging, get Entry from database and put in staging
-                let last_idx = self.put_to_staging_area(&entry_hash,
-                                         self.get_entry_db(&entry_hash)?);
+                let last_idx = self.put_to_staging_area(
+                    &entry_hash,
+                    self.get_entry_db(&entry_hash)?
+                );
                 last_idx.unwrap().unwrap()
             }
         };
@@ -900,14 +906,14 @@ impl MerkleStorage {
             Entry::Tree(_) => {
                 if key.len() == 1 {
                     // return the found tree
-                    return Ok(Some(entry_idx));
+                    Ok(Some(entry_idx))
                 } else {
                     self.find_tree_staging(entry_idx, &key[1..])
                 }
             }
             Entry::Blob(_) => Ok(None),
             Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "tree".to_string(),
+                sought: "Tree/Blob".to_string(),
                 found: "commit".to_string(),
             })
         }
@@ -917,8 +923,8 @@ impl MerkleStorage {
     fn staged_get(&self, hash: &EntryHash) -> Option<&Entry> {
         // lookup index by hash
         match self.staged_get_idx(hash) {
-            Some(idx) => return Some(&self.staged[idx].2),
-            None => return None,
+            Some(idx) => Some(&self.staged[idx].2),
+            None => None,
         }
     }
 
@@ -963,10 +969,10 @@ impl MerkleStorage {
                 self.find_tree(&tree, &key[1..])
             }
             Entry::Blob(_) => {
-                return Ok(Tree::new());
+                Ok(Tree::new())
             }
             Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "tree".to_string(),
+                sought: "Tree/Blob".to_string(),
                 found: "commit".to_string(),
             })
         }
@@ -1189,7 +1195,7 @@ impl MerkleStorage {
         let exec_time: f64 = instant.elapsed().as_nanos() as f64;
 
         // collect global stats
-        let entry = self.perf_stats.global.entry(op.to_owned()).or_insert( OperationLatencies::new() );
+        let entry = self.perf_stats.global.entry(op.to_owned()).or_insert_with(OperationLatencies::default);
         // add to cumulative execution time
         entry.cumul_op_exec_time += exec_time;
         entry.op_exec_times += 1;
@@ -1205,10 +1211,10 @@ impl MerkleStorage {
         // collect per-path stats
         if let Some(path) = path {
             // we are only interested in nodes under /data
-            if path.len() > 1 && path[0] == "data".to_string() {
+            if path.len() > 1 && path[0] == "data" {
                 let node = path[1].to_string();
-                let perpath = self.perf_stats.perpath.entry(node).or_insert( HashMap::new() );
-                let entry = perpath.entry(op).or_insert( OperationLatencies::new() );
+                let perpath = self.perf_stats.perpath.entry(node).or_insert_with(HashMap::new);
+                let entry = perpath.entry(op).or_insert_with(OperationLatencies::default);
 
                 // add to cumulative execution time
                 entry.cumul_op_exec_time += exec_time;
@@ -1294,7 +1300,7 @@ mod tests {
         storage.set(&vec!["one".to_string(), "two".to_string(), "three".to_string()], &vec![97]);
         storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
-        let tree = storage.current_stage_tree.clone().unwrap();
+        let tree = storage.current_stage_tree.unwrap();
 
         let hash = hash_tree(&tree).unwrap();
 
