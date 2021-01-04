@@ -216,6 +216,15 @@ fn listen_protocol_events(
                 event_count += 1;
 
                 match &msg {
+                    ContextAction::Get { key, .. } => {
+                        context.get_key(key)?;
+                    }
+                    ContextAction::Mem { key, .. } => {
+                        context.mem(key)?;
+                    }
+                    ContextAction::DirMem { key, .. } => {
+                        context.dirmem(key)?;
+                    }
                     ContextAction::Set {
                         key,
                         value,
