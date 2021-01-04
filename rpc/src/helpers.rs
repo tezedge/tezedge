@@ -12,11 +12,11 @@ use serde_json::Value;
 
 use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash, HashType};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
-use shell::shell_channel::BlockApplied;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context_action_storage::ContextActionType;
 use storage::{
-    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
+    BlockHeaderWithHash, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, ChainMetaStorage,
 };
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -25,7 +25,6 @@ use tezos_messages::ts_to_rfc3339;
 
 use crate::encoding::base_types::UniString;
 use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
-use crate::services::stream_services::BlockHeaderMonitorInfo;
 
 #[macro_export]
 macro_rules! merge_slices {
@@ -123,20 +122,23 @@ pub struct BlockHeaderShellInfo {
 }
 
 impl FullBlockInfo {
-    pub fn new(val: &BlockApplied, chain_id: String) -> Self {
-        let header: &BlockHeader = &val.header().header;
+    pub fn new(
+        block: &BlockHeaderWithHash,
+        block_json_data: &BlockJsonData,
+        chain_id: &ChainId,
+    ) -> Self {
+        let header: &BlockHeader = &block.header;
         let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
         let operations_hash =
             HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
         let context = HashType::ContextHash.hash_to_b58check(header.context());
-        let hash = HashType::BlockHash.hash_to_b58check(&val.header().hash);
-        let json_data = val.json_data();
+        let hash = HashType::BlockHash.hash_to_b58check(&block.hash);
 
         Self {
             hash,
-            chain_id,
+            chain_id: chain_id_to_b58_string(chain_id),
             header: InnerBlockHeader {
                 level: header.level(),
                 proto: header.proto(),
@@ -146,29 +148,34 @@ impl FullBlockInfo {
                 operations_hash,
                 fitness,
                 context,
-                protocol_data: serde_json::from_str(json_data.block_header_proto_json())
+                protocol_data: serde_json::from_str(block_json_data.block_header_proto_json())
                     .unwrap_or_default(),
             },
-            metadata: serde_json::from_str(json_data.block_header_proto_metadata_json())
+            metadata: serde_json::from_str(block_json_data.block_header_proto_metadata_json())
                 .unwrap_or_default(),
-            operations: serde_json::from_str(json_data.operations_proto_metadata_json())
+            operations: serde_json::from_str(block_json_data.operations_proto_metadata_json())
                 .unwrap_or_default(),
         }
     }
 }
 
 impl BlockHeaderInfo {
-    pub fn new(val: &BlockApplied, chain_id: String) -> Self {
-        let header: &BlockHeader = &val.header().header;
+    pub fn new(
+        block: &BlockHeaderWithHash,
+        block_json_data: &BlockJsonData,
+        chain_id: &ChainId,
+    ) -> Self {
+        let header: &BlockHeader = &block.header;
         let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
         let timestamp = ts_to_rfc3339(header.timestamp());
         let operations_hash =
             HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
         let context = HashType::ContextHash.hash_to_b58check(header.context());
-        let hash = HashType::BlockHash.hash_to_b58check(&val.header().hash);
+        let hash = HashType::BlockHash.hash_to_b58check(&block.hash);
+
         let header_data: HashMap<String, Value> =
-            serde_json::from_str(val.json_data().block_header_proto_json()).unwrap_or_default();
+            serde_json::from_str(block_json_data.block_header_proto_json()).unwrap_or_default();
         let signature = header_data
             .get("signature")
             .map(|val| val.as_str().unwrap().to_string());
@@ -179,8 +186,9 @@ impl BlockHeaderInfo {
         let seed_nonce_hash = header_data
             .get("seed_nonce_hash")
             .map(|val| val.as_str().unwrap().to_string());
+
         let proto_data: HashMap<String, Value> =
-            serde_json::from_str(val.json_data().block_header_proto_metadata_json())
+            serde_json::from_str(block_json_data.block_header_proto_metadata_json())
                 .unwrap_or_default();
         let protocol = proto_data
             .get("protocol")
@@ -193,7 +201,7 @@ impl BlockHeaderInfo {
 
         Self {
             hash,
-            chain_id,
+            chain_id: chain_id_to_b58_string(chain_id),
             level: header.level(),
             proto: header.proto(),
             predecessor,
@@ -221,21 +229,6 @@ impl BlockHeaderInfo {
             operations_hash: self.operations_hash.clone(),
             fitness: self.fitness.clone(),
             context: self.context.clone(),
-        }
-    }
-
-    pub fn to_monitor_header(&self, block: &BlockApplied) -> BlockHeaderMonitorInfo {
-        BlockHeaderMonitorInfo {
-            hash: self.hash.clone(),
-            level: self.level,
-            proto: self.proto,
-            predecessor: self.predecessor.clone(),
-            timestamp: self.timestamp.clone(),
-            validation_pass: self.validation_pass,
-            operations_hash: self.operations_hash.clone(),
-            fitness: self.fitness.clone(),
-            context: self.context.clone(),
-            protocol_data: hex::encode(block.header().header.protocol_data()),
         }
     }
 }
@@ -460,10 +453,7 @@ pub(crate) fn parse_block_hash(
     let current_head = || {
         let state_read = env.state().read().unwrap();
         match state_read.current_head().as_ref() {
-            Some(current_head) => Ok((
-                current_head.header().hash.clone(),
-                current_head.header().header.level(),
-            )),
+            Some(current_head) => Ok((current_head.hash.clone(), current_head.header.level())),
             None => bail!("Head not initialized"),
         }
     };

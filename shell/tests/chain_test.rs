@@ -40,7 +40,7 @@ lazy_static! {
             disable_bootstrap_lookup: true,
             disable_mempool: false,
             private_node: false,
-            initial_peers: vec![],
+            bootstrap_peers: vec![],
             peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
         },
         NETWORK_VERSION.clone(),
@@ -1292,9 +1292,8 @@ mod test_actor {
     use slog::warn;
 
     use crypto::hash::{CryptoboxPublicKeyHash, HashType};
-    use networking::p2p::network_channel::{
-        NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped,
-    };
+    use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
+    use shell::subscription::subscribe_to_network_events;
 
     use crate::test_node_peer::TestNodePeer;
 
@@ -1310,13 +1309,7 @@ mod test_actor {
         type Msg = NetworkChannelListenerMsg;
 
         fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-            self.network_channel.tell(
-                Subscribe {
-                    actor: Box::new(ctx.myself()),
-                    topic: NetworkChannelTopic::NetworkEvents.into(),
-                },
-                ctx.myself().into(),
-            );
+            subscribe_to_network_events(&self.network_channel, ctx.myself());
         }
 
         fn recv(
@@ -1352,7 +1345,7 @@ mod test_actor {
         type Msg = NetworkChannelListenerMsg;
 
         fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
-            match self.process_shell_channel_message(ctx, msg) {
+            match self.process_network_channel_message(ctx, msg) {
                 Ok(_) => (),
                 Err(e) => {
                     warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e))
@@ -1377,7 +1370,7 @@ mod test_actor {
             )?)
         }
 
-        fn process_shell_channel_message(
+        fn process_network_channel_message(
             &mut self,
             _: &Context<NetworkChannelListenerMsg>,
             msg: NetworkChannelMsg,
@@ -1385,13 +1378,11 @@ mod test_actor {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
                 NetworkChannelMsg::PeerCreated(_) => {}
-                NetworkChannelMsg::PeerBootstrapped(peer) => {
-                    if let PeerBootstrapped::Success { peer_id, .. } = peer {
-                        self.peers_mirror.write().unwrap().insert(
-                            peer_id.peer_public_key_hash.clone(),
-                            "CONNECTED".to_string(),
-                        );
-                    }
+                NetworkChannelMsg::PeerBootstrapped(peer_id, _) => {
+                    self.peers_mirror.write().unwrap().insert(
+                        peer_id.peer_public_key_hash.clone(),
+                        "CONNECTED".to_string(),
+                    );
                 }
                 NetworkChannelMsg::BlacklistPeer(..) => {}
                 NetworkChannelMsg::PeerBlacklisted(peer_id) => {
@@ -1400,6 +1391,7 @@ mod test_actor {
                         "BLACKLISTED".to_string(),
                     );
                 }
+                _ => (),
             }
             Ok(())
         }

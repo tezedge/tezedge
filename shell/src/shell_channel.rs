@@ -5,32 +5,16 @@
 
 use std::sync::Arc;
 
-use getset::Getters;
 use riker::actors::*;
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
-use storage::block_storage::BlockJsonData;
 use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 use tezos_messages::Head;
 
+use crate::chain_manager::ProcessValidatedBlock;
 use crate::utils::CondvarResult;
-
-/// Message informing actors about successful block application by protocol
-#[derive(Clone, Debug, Getters)]
-pub struct BlockApplied {
-    #[get = "pub"]
-    header: BlockHeaderWithHash,
-    #[get = "pub"]
-    json_data: BlockJsonData,
-}
-
-impl BlockApplied {
-    pub fn new(header: BlockHeaderWithHash, json_data: BlockJsonData) -> Self {
-        Self { header, json_data }
-    }
-}
 
 /// Notify actors that system is about to shut down
 #[derive(Clone, Debug)]
@@ -72,24 +56,20 @@ pub struct InjectBlock {
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
+    /// Events
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(Head, Arc<BlockApplied>),
-    /// Chain_feeder propagates if block successfully validated and applied
-    /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
-    BlockApplied(Arc<BlockApplied>),
+    NewCurrentHead(Head, Arc<BlockHeaderWithHash>),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
+
+    /// Commands
     AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
     InjectBlock(InjectBlock, Option<CondvarResult<(), failure::Error>>),
     RequestCurrentHead(RequestCurrentHead),
+    // TODO: remove just for genesis
+    ProcessValidatedGenesisBlock(ProcessValidatedBlock),
     ShuttingDown(ShuttingDown),
-}
-
-impl From<BlockApplied> for ShellChannelMsg {
-    fn from(msg: BlockApplied) -> Self {
-        ShellChannelMsg::BlockApplied(Arc::new(msg))
-    }
 }
 
 impl From<MempoolOperationReceived> for ShellChannelMsg {
@@ -126,15 +106,20 @@ impl From<RequestCurrentHead> for ShellChannelMsg {
 pub enum ShellChannelTopic {
     /// Ordinary events generated from shell layer
     ShellEvents,
+
     /// Control event
     ShellCommands,
+
+    /// Shutdown event
+    ShellShutdown,
 }
 
 impl From<ShellChannelTopic> for Topic {
     fn from(evt: ShellChannelTopic) -> Self {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
-            ShellChannelTopic::ShellCommands => Topic::from("shell.command"),
+            ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
+            ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }
     }
 }

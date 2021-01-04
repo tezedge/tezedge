@@ -10,7 +10,7 @@ use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender}
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use failure::{format_err, Error, Fail};
 use riker::actors::*;
@@ -22,8 +22,8 @@ use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
-    BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage,
-    StorageError, StorageInitInfo,
+    BlockMetaStorage, BlockStorage, ChainMetaStorage, OperationsMetaStorage, StorageError,
+    StorageInitInfo,
 };
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
@@ -31,8 +31,10 @@ use tezos_wrapper::service::{
     handle_protocol_service_error, IpcCmdServer, ProtocolController, ProtocolServiceError,
 };
 
-use crate::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::subscription::subscribe_to_shell_events;
+use crate::chain_manager::{ChainManagerMsg, ChainManagerRef, ProcessValidatedBlock};
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::stats::BlockValidationTimer;
+use crate::subscription::subscribe_to_shell_shutdown;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -44,6 +46,9 @@ pub struct ApplyBlock {
     request: Arc<ApplyBlockRequest>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
+
+    chain_manager: ActorRef<ChainManagerMsg>,
+    roundtrip_timer: Arc<Instant>,
 }
 
 impl ApplyBlock {
@@ -51,11 +56,15 @@ impl ApplyBlock {
         block_hash: BlockHash,
         request: ApplyBlockRequest,
         result_callback: Option<CondvarResult<(), failure::Error>>,
+        chain_manager: ChainManagerRef,
+        roundtrip_timer: Instant,
     ) -> Self {
         ApplyBlock {
             block_hash,
             request: Arc::new(request),
             result_callback,
+            chain_manager,
+            roundtrip_timer: Arc::new(roundtrip_timer),
         }
     }
 }
@@ -75,10 +84,10 @@ impl From<ApplyBlock> for Event {
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
 #[actor(ShellChannelMsg, ApplyBlock)]
 pub struct ChainFeeder {
-    /// All events from shell will be published to this channel
+    /// Just for subscribing to shell shutdown channel
     shell_channel: ShellChannelRef,
 
-    // Internal queue sender
+    /// Internal queue sender
     block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
     /// Thread where blocks are applied will run until this is set to `false`
     block_applier_run: Arc<AtomicBool>,
@@ -180,19 +189,6 @@ impl ChainFeeder {
         "chain-feeder"
     }
 
-    fn process_shell_channel_message(
-        &mut self,
-        _ctx: &Context<ChainFeederMsg>,
-        msg: ShellChannelMsg,
-    ) -> Result<(), Error> {
-        if let ShellChannelMsg::ShuttingDown(_) = msg {
-            self.block_applier_run.store(false, Ordering::Release);
-            self.send_to_queue(Event::ShuttingDown)
-        } else {
-            Ok(())
-        }
-    }
-
     fn send_to_queue(&self, event: Event) -> Result<(), Error> {
         self.block_applier_event_sender
             .lock()
@@ -231,7 +227,7 @@ impl Actor for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
     }
 
     fn post_stop(&mut self) {
@@ -278,10 +274,11 @@ impl Receive<ShellChannelMsg> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match self.process_shell_channel_message(ctx, msg) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to process shell channel message"; "reason" => format!("{:?}", e))
+        if let ShellChannelMsg::ShuttingDown(_) = msg {
+            self.block_applier_run.store(false, Ordering::Release);
+            // TODO: remove inner thread, this evet just pings the thread
+            if let Err(e) = self.send_to_queue(Event::ShuttingDown) {
+                warn!(ctx.system.log(), "Failed to send ShuttinDown event do internal queue"; "reason" => format!("{:?}", e));
             }
         }
     }
@@ -336,6 +333,7 @@ fn feed_chain_to_protocol(
         block_meta_storage,
         chain_meta_storage,
         operations_meta_storage,
+        context,
         &protocol_controller,
         &log,
         &tezos_env,
@@ -359,10 +357,14 @@ fn feed_chain_to_protocol(
                     block_hash,
                     request,
                     result_callback,
+                    chain_manager,
+                    roundtrip_timer,
                 }) => {
+                    let validated_at_timer = Instant::now();
                     debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash));
 
                     // check if block is already applied (not necessery here)
+                    let load_metadata_timer = Instant::now();
                     let mut current_head_meta = match block_meta_storage.get(&block_hash)? {
                         Some(meta) => {
                             if meta.is_applied() {
@@ -391,16 +393,20 @@ fn feed_chain_to_protocol(
                             continue;
                         }
                     };
+                    let load_metadata_elapsed = load_metadata_timer.elapsed();
 
                     // try apply block
+                    let protocol_call_timer = Instant::now();
                     match protocol_controller.apply_block((&*request).clone()) {
                         Ok(apply_block_result) => {
+                            let protocol_call_elapsed = protocol_call_timer.elapsed();
                             debug!(log, "Block was applied";
                                 "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash),
                                 "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
                                 "validation_result_message" => &apply_block_result.validation_result_message);
 
                             // we need to check and wait for context_hash to be 100% sure, that everything is ok
+                            let context_wait_timer = Instant::now();
                             if let Err(e) =
                                 wait_for_context(context, &apply_block_result.context_hash)
                             {
@@ -414,7 +420,7 @@ fn feed_chain_to_protocol(
                                     result_callback,
                                     || {
                                         Err(format_err!("Failed to wait for context, context_hash: {}, reason: {}", HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash), e)
-                                    )
+                                        )
                                     },
                                     true,
                                 ) {
@@ -425,17 +431,19 @@ fn feed_chain_to_protocol(
                                         .hash_to_b58check(&apply_block_result.context_hash),
                                 });
                             }
+                            let context_wait_elapsed = context_wait_timer.elapsed();
 
                             // Lets mark header as applied and store result
                             // store success result
-                            let block_json_data = match store_applied_block_result(
+                            let store_result_timer = Instant::now();
+                            match store_applied_block_result(
                                 block_storage,
                                 block_meta_storage,
                                 &block_hash,
                                 apply_block_result,
                                 &mut current_head_meta,
                             ) {
-                                Ok((block_json_data, _)) => {
+                                Ok(_) => {
                                     // now everythings stored, we are done
 
                                     // notify condvar
@@ -444,8 +452,6 @@ fn feed_chain_to_protocol(
                                     {
                                         warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
                                     }
-
-                                    block_json_data
                                 }
                                 Err(e) => {
                                     if let Err(e) = dispatch_condvar_result(
@@ -463,18 +469,22 @@ fn feed_chain_to_protocol(
                                     return Err(e.into());
                                 }
                             };
+                            let store_result_elapsed = store_result_timer.elapsed();
 
-                            // notify other actors/listeners
+                            // notify chain_manager, which sent request
                             if apply_block_run.load(Ordering::Acquire) {
-                                let current_head = block_storage.get(&block_hash)?.unwrap();
-
-                                // notify others that the block successfully applied
-                                shell_channel.tell(
-                                    Publish {
-                                        msg: BlockApplied::new(current_head, block_json_data)
-                                            .into(),
-                                        topic: ShellChannelTopic::ShellEvents.into(),
-                                    },
+                                chain_manager.tell(
+                                    ProcessValidatedBlock::new(
+                                        Arc::new(block_hash),
+                                        roundtrip_timer,
+                                        Arc::new(BlockValidationTimer::new(
+                                            validated_at_timer.elapsed(),
+                                            load_metadata_elapsed,
+                                            protocol_call_elapsed,
+                                            context_wait_elapsed,
+                                            store_result_elapsed,
+                                        )),
+                                    ),
                                     None,
                                 );
                             }
@@ -514,22 +524,30 @@ pub(crate) fn initialize_protocol_context(
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
+    context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     log: &Logger,
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
 ) -> Result<(), FeedChainError> {
+    let validated_at_timer = Instant::now();
+    let roundtrip_timer = Instant::now();
+
     // we must check if genesis is applied, if not then we need "commit_genesis" to context
+    let load_metadata_timer = Instant::now();
     let need_commit_genesis =
         match block_meta_storage.get(&init_storage_data.genesis_block_header_hash)? {
             Some(genesis_meta) => !genesis_meta.is_applied(),
             None => true,
         };
+    let load_metadata_elapsed = load_metadata_timer.elapsed();
     trace!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
 
     // initialize protocol context runtime
+    let protocol_call_timer = Instant::now();
     let context_init_info = protocol_controller
         .init_protocol_for_write(need_commit_genesis, &init_storage_data.patch_context)?;
+    let protocol_call_elapsed = protocol_call_timer.elapsed();
     info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info));
 
     if need_commit_genesis {
@@ -537,6 +555,7 @@ pub(crate) fn initialize_protocol_context(
         // which initiates genesis protocol in context, so we need to store some data, like we do in normal apply, see below store_apply_block_result
         if let Some(genesis_context_hash) = context_init_info.genesis_commit_hash {
             // at first store genesis to storage
+            let store_result_timer = Instant::now();
             let genesis_with_hash = initialize_storage_with_genesis_block(
                 block_storage,
                 &init_storage_data,
@@ -545,12 +564,26 @@ pub(crate) fn initialize_protocol_context(
                 &log,
             )?;
 
+            let context_wait_timer = Instant::now();
+            if let Err(e) = wait_for_context(context, &genesis_context_hash) {
+                error!(log,
+                       "Failed to wait for genesis context";
+                       "block" => HashType::BlockHash.hash_to_b58check(&init_storage_data.genesis_block_header_hash),
+                       "context" => HashType::ContextHash.hash_to_b58check(&genesis_context_hash),
+                       "reason" => format!("{}", e)
+                );
+                return Err(FeedChainError::MissingContextError {
+                    context_hash: HashType::ContextHash.hash_to_b58check(&genesis_context_hash),
+                });
+            }
+            let context_wait_elapsed = context_wait_timer.elapsed();
+
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
             // this needs to be second step, because, this triggers context.checkout, so we need to call it after store_commit_genesis_result
             let commit_data = protocol_controller.genesis_result_data(&genesis_context_hash)?;
 
             // this, marks genesis block as applied
-            let block_json_data = store_commit_genesis_result(
+            let _ = store_commit_genesis_result(
                 block_storage,
                 block_meta_storage,
                 chain_meta_storage,
@@ -558,14 +591,27 @@ pub(crate) fn initialize_protocol_context(
                 &init_storage_data,
                 commit_data,
             )?;
+            let store_result_elapsed = store_result_timer.elapsed();
 
             // notify listeners
             if apply_block_run.load(Ordering::Acquire) {
                 // notify others that the block successfully applied
                 shell_channel.tell(
                     Publish {
-                        msg: BlockApplied::new(genesis_with_hash, block_json_data).into(),
-                        topic: ShellChannelTopic::ShellEvents.into(),
+                        msg: ShellChannelMsg::ProcessValidatedGenesisBlock(
+                            ProcessValidatedBlock::new(
+                                Arc::new(genesis_with_hash.hash),
+                                Arc::new(roundtrip_timer),
+                                Arc::new(BlockValidationTimer::new(
+                                    validated_at_timer.elapsed(),
+                                    load_metadata_elapsed,
+                                    protocol_call_elapsed,
+                                    context_wait_elapsed,
+                                    store_result_elapsed,
+                                )),
+                            ),
+                        ),
+                        topic: ShellChannelTopic::ShellCommands.into(),
                     },
                     None,
                 );
@@ -577,7 +623,7 @@ pub(crate) fn initialize_protocol_context(
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(30), Duration::from_millis(20));
+    (Duration::from_secs(30), Duration::from_millis(10));
 
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(

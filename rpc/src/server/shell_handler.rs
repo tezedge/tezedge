@@ -10,7 +10,6 @@ use hyper::{Body, Method, Request};
 use serde::Serialize;
 
 use crypto::hash::{chain_id_to_b58_string, HashType};
-use shell::shell_channel::BlockApplied;
 use tezos_api::ffi::ProtocolRpcError;
 use tezos_messages::ts_to_rfc3339;
 use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
@@ -27,6 +26,7 @@ use crate::{
     result_option_to_json_response, result_to_empty_json_response, result_to_json_response,
     services, ServiceResult,
 };
+use storage::BlockHeaderWithHash;
 
 #[derive(Serialize)]
 pub struct ErrorMessage {
@@ -44,10 +44,10 @@ pub async fn bootstrapped(
 
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
-            let current_head: &BlockApplied = &current_head;
-            let timestamp = ts_to_rfc3339(current_head.header().header.timestamp());
+            let current_head: &BlockHeaderWithHash = &current_head;
+            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
             Ok(BootstrapInfo::new(
-                &current_head.header().hash,
+                &current_head.hash,
                 TimeStamp::Rfc(timestamp),
             ))
         }
@@ -102,10 +102,17 @@ pub async fn head_chain(
         None
     };
 
-    let RpcServiceEnvironment { state, .. } = env;
+    let RpcServiceEnvironment {
+        state,
+        persistent_storage,
+        ..
+    } = env;
 
     make_json_stream_response(stream_services::HeadMonitorStream::new(
-        chain_id, state, protocol,
+        chain_id,
+        state,
+        protocol,
+        &persistent_storage,
     ))
 }
 
@@ -142,7 +149,6 @@ pub async fn mempool_monitor_operations(
         .current_head()
         .as_ref()
         .unwrap()
-        .header()
         .hash
         .clone();
     make_json_stream_response(stream_services::OperationMonitorStream::new(

@@ -11,10 +11,11 @@ use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::shell_channel::{BlockApplied, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use shell::subscription::subscribe_to_shell_events;
 use storage::context::TezedgeContext;
 use storage::persistent::PersistentStorage;
-use storage::StorageInitInfo;
+use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
@@ -31,7 +32,7 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 #[derive(CopyGetters, Getters, Setters)]
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
-    current_head: Option<Arc<BlockApplied>>,
+    current_head: Option<Arc<BlockHeaderWithHash>>,
     #[get_copy = "pub(crate)"]
     is_sandbox: bool,
 }
@@ -123,13 +124,7 @@ impl Actor for RpcServer {
     type Msg = RpcServerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.shell_channel.tell(
-            Subscribe {
-                actor: Box::new(ctx.myself()),
-                topic: ShellChannelTopic::ShellEvents.into(),
-            },
-            ctx.myself().into(),
-        );
+        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
@@ -141,12 +136,9 @@ impl Receive<ShellChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match msg {
-            ShellChannelMsg::NewCurrentHead(_, block) => {
-                let current_head_ref = &mut *self.state.write().unwrap();
-                current_head_ref.current_head = Some(block);
-            }
-            _ => (/* Not yet implemented, do nothing */),
+        if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+            let current_head_ref = &mut *self.state.write().unwrap();
+            current_head_ref.current_head = Some(block);
         }
     }
 }
@@ -156,7 +148,7 @@ fn load_current_head(
     persistent_storage: &PersistentStorage,
     chain_id: &ChainId,
     log: &Logger,
-) -> Option<Arc<BlockApplied>> {
+) -> Option<Arc<BlockHeaderWithHash>> {
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
 
@@ -164,11 +156,8 @@ fn load_current_head(
     match chain_meta_storage.get_current_head(chain_id) {
         Ok(Some(head)) => {
             let block_applied = BlockStorage::new(persistent_storage)
-                .get_with_json_data(head.block_hash())
-                .and_then(|data| {
-                    data.map(|(block, json)| BlockApplied::new(block, json))
-                        .ok_or(StorageError::MissingKey)
-                });
+                .get(head.block_hash())
+                .and_then(|data| data.ok_or(StorageError::MissingKey));
             match block_applied {
                 Ok(block) => Some(Arc::new(block)),
                 Err(e) => {

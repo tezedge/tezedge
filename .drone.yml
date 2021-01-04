@@ -413,7 +413,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 ##############################################################################################################
 # This pipeline runs the python test framwork unmodified tests from the tezos repository aginst tezedge nodes
@@ -463,6 +462,8 @@ steps:
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
+  # TODO: TE-275 remove failure: ignore
+  failure: ignore
   user: root
   volumes:
     - name: build
@@ -596,11 +597,11 @@ steps:
     - mkdir $${DRONE_STEP_NAME}_logs
     - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_baker.py
 
-# TODO: TE-275 remove failure: ignore
-# TODO - TE-220 - stop ignoring after resolving the rpc error handling
 - name: basic-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
+  # TODO: TE-275 remove failure: ignore
+  # TODO - TE-220 - stop ignoring after resolving the rpc error handling
   failure: ignore
   user: root
   volumes:
@@ -628,7 +629,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests
@@ -744,7 +744,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests
@@ -1166,7 +1165,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests
@@ -1838,7 +1836,6 @@ trigger:
   branch:
     - master
     - develop
-    - develop-old
 
 depends_on:
   - build-and-tests

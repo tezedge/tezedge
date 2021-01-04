@@ -8,11 +8,11 @@ use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{warn, Logger};
 
 use crypto::hash::ChainId;
-use networking::p2p::network_channel::PeerBootstrapped;
-use networking::p2p::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
+use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use shell::subscription::{
+    subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
 };
-use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo};
@@ -35,7 +35,7 @@ pub type MonitorRef = ActorRef<MonitorMsg>;
 
 #[actor(BroadcastSignal, NetworkChannelMsg, SystemEvent, ShellChannelMsg)]
 pub struct Monitor {
-    event_channel: NetworkChannelRef,
+    network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     msg_channel: ActorRef<WebsocketHandlerMsg>,
     // Monitors
@@ -142,7 +142,7 @@ impl
         bootstrap_monitor.set_level(level as usize);
 
         Self {
-            event_channel,
+            network_channel: event_channel,
             shell_channel,
             msg_channel,
             peer_monitors: HashMap::new(),
@@ -158,21 +158,9 @@ impl Actor for Monitor {
     type Msg = MonitorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        // Listen for all network events
-        self.event_channel.tell(
-            Subscribe {
-                actor: Box::new(ctx.myself()),
-                topic: NetworkChannelTopic::NetworkEvents.into(),
-            },
-            None,
-        );
-        self.shell_channel.tell(
-            Subscribe {
-                actor: Box::new(ctx.myself()),
-                topic: ShellChannelTopic::ShellEvents.into(),
-            },
-            None,
-        );
+        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
+        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_network_events(&self.network_channel, ctx.myself());
 
         // Every second, send yourself a message to broadcast the monitoring to all connected clients
         ctx.schedule(
@@ -283,19 +271,15 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     None,
                 );
             }
-            NetworkChannelMsg::PeerBootstrapped(msg) => match msg {
-                PeerBootstrapped::Success { peer_id, .. } => {
-                    if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
-                        monitor.public_key = Some(peer_id.peer_id_marker.clone());
-                    }
+            NetworkChannelMsg::PeerBootstrapped(peer_id, _) => {
+                if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
+                    monitor.public_key = Some(peer_id.peer_id_marker.clone());
                 }
-                PeerBootstrapped::Failure { .. } => (),
-            },
+            }
             NetworkChannelMsg::PeerMessageReceived(msg) => {
                 self.process_peer_message(msg, &ctx.system.log())
             }
-            NetworkChannelMsg::PeerBlacklisted(..) => {}
-            NetworkChannelMsg::BlacklistPeer(..) => {}
+            _ => (),
         }
     }
 }

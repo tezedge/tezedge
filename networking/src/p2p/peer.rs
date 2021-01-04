@@ -23,9 +23,10 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryM
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::p2p::network_channel::NetworkChannelMsg;
 use crate::PeerId;
 
-use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapped, PeerMessageReceived};
+use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
@@ -256,34 +257,35 @@ impl Receive<Bootstrap> for Peer {
             }
 
             let peer_address = msg.address;
-            debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name());
+            debug!(system.log(), "Bootstrapping"; "ip" => &peer_address, "peer" => myself.name(), "peer_uri" => myself.uri().to_string());
             match bootstrap(msg, info, &system.log()).await {
                 Ok(BootstrapOutput(rx, tx, peer_public_key_hash, peer_id_marker, peer_metadata)) => {
                     // prepare PeerId
                     let peer_id = PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, peer_address);
-                    let log = system.log().new(slog::o!("peer_id" => peer_id.peer_id_marker.clone()));
-                    debug!(log, "Bootstrap successful"; "ip" => &peer_address, "peer" => myself.name(), "peer_metadata" => format!("{:?}", &peer_metadata));
+                    let log = {
+                        let myself_name = myself.name().to_string();
+                        let myself_uri = myself.uri().to_string();
+                        system.log().new(slog::o!("peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_address.to_string(), "peer" => myself_name, "peer_uri" => myself_uri))
+                    };
+                    debug!(log, "Bootstrap successful"; "peer_metadata" => format!("{:?}", &peer_metadata));
 
                     // setup encryption writer
                     setup_net(&net, tx).await;
 
                     // notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
-                        msg: PeerBootstrapped::Success {
-                            peer_id: Arc::new(peer_id),
-                            peer_metadata,
-                        }.into(),
+                        msg: NetworkChannelMsg::PeerBootstrapped(Arc::new(peer_id), Arc::new(peer_metadata)),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
                     }, Some(myself.clone().into()));
 
                     // begin to process incoming messages in a loop
-                    begin_process_incoming(rx, net, myself.clone(), network_channel, log, peer_address).await;
+                    begin_process_incoming(rx, net, myself.clone(), network_channel, log).await;
 
                     // connection to peer was closed, stop this actor
                     system.stop(myself);
                 }
                 Err(err) => {
-                    warn!(system.log(), "Connection to peer failed"; "reason" => format!("{}", &err), "ip" => &peer_address, "peer" => myself.name());
+                    warn!(system.log(), "Connection to peer failed"; "reason" => format!("{}", &err), "ip" => &peer_address, "peer" => myself.name(), "peer_uri" => myself.uri().to_string());
 
                     let potential_peers = match err {
                         PeerError::NackWithMotiveReceived { nack_info } => Some(nack_info.potential_peers_to_connect().clone()),
@@ -292,11 +294,13 @@ impl Receive<Bootstrap> for Peer {
 
                     // notify that peer failed at bootstrap process
                     network_channel.tell(Publish {
-                        msg: PeerBootstrapped::Failure {
-                            address: peer_address,
-                            potential_peers_to_connect: potential_peers,
-                        }.into(),
-                        topic: NetworkChannelTopic::NetworkEvents.into(),
+                        msg: NetworkChannelMsg::ProcessFailedBootstrapAddress(
+                            PeerBootstrapFailed {
+                                address: peer_address,
+                                potential_peers_to_connect: potential_peers,
+                            }
+                        ),
+                        topic: NetworkChannelTopic::NetworkCommands.into(),
                     }, Some(myself.clone().into()));
 
                     system.stop(myself);
@@ -464,8 +468,8 @@ fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: boo
 }
 
 /// Start to process incoming data
-async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger, peer_address: SocketAddr) {
-    info!(log, "Starting to accept messages"; "ip" => format!("{:?}", &peer_address));
+async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger) {
+    info!(log, "Starting to accept messages");
 
     while net.rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
@@ -500,7 +504,7 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
         }
     }
 
-    debug!(log, "Shutting down peer connection"; "ip" => format!("{:?}", &peer_address));
+    debug!(log, "Shutting down peer connection");
     let mut tx_lock = net.tx.lock().await;
     if let Some(tx) = tx_lock.take() {
         let socket = rx.unsplit(tx);
@@ -510,5 +514,5 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
         }
     }
 
-    info!(log, "Stopped to accept messages"; "ip" => format!("{:?}", &peer_address));
+    info!(log, "Stopped to accept messages");
 }

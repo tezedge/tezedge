@@ -3,8 +3,7 @@
 
 use failure::bail;
 
-use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, HashType};
-use shell::shell_channel::BlockApplied;
+use crypto::hash::{BlockHash, ChainId, HashType};
 use storage::block_storage::BlockJsonData;
 use storage::context::ContextApi;
 use storage::merkle_storage::StringTreeEntry;
@@ -206,8 +205,7 @@ fn map_header_and_json_to_full_block_info(
     json_data: BlockJsonData,
     chain_id: &ChainId,
 ) -> FullBlockInfo {
-    let chain_id = chain_id_to_b58_string(chain_id);
-    FullBlockInfo::new(&BlockApplied::new(header, json_data), chain_id)
+    FullBlockInfo::new(&header, &json_data, chain_id)
 }
 
 #[inline]
@@ -216,6 +214,5 @@ fn map_header_and_json_to_block_header_info(
     json_data: BlockJsonData,
     chain_id: &ChainId,
 ) -> BlockHeaderInfo {
-    let chain_id = chain_id_to_b58_string(chain_id);
-    BlockHeaderInfo::new(&BlockApplied::new(header, json_data), chain_id)
+    BlockHeaderInfo::new(&header, &json_data, chain_id)
 }

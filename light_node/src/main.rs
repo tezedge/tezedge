@@ -339,7 +339,7 @@ fn block_on_actors(
         block_applier,
         network_channel.clone(),
         shell_channel.clone(),
-        &persistent_storage,
+        persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.chain_id.clone(),
         is_sandbox,
@@ -359,7 +359,7 @@ fn block_on_actors(
             shell_channel.clone(),
             &persistent_storage,
             current_mempool_state_storage.clone(),
-            &init_storage_data,
+            init_storage_data.chain_id.clone(),
             tezos_readonly_api_pool.clone(),
             log.clone(),
         )
@@ -426,19 +426,17 @@ fn block_on_actors(
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
-                topic: ShellChannelTopic::ShellCommands.into(),
+                topic: ShellChannelTopic::ShellShutdown.into(),
             },
             None,
         );
 
         // give actors some time to shut down
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(2));
 
         info!(log, "Shutting down actors");
         let _ = actor_system.shutdown().await;
         info!(log, "Shutdown actors complete");
-
-        thread::sleep(Duration::from_secs(1));
 
         info!(log, "Shutting down protocol runner pools");
         drop(tezos_readonly_api_pool);

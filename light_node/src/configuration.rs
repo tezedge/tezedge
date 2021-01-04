@@ -609,8 +609,16 @@ impl Environment {
                         } else {
                             Vec::with_capacity(0)
                         }
-                    }),
-                initial_peers: args
+                    })
+                    .iter()
+                    .map(|addr| {
+                        (
+                            addr.clone(),
+                            crate::configuration::P2p::DEFAULT_P2P_PORT_FOR_LOOKUP,
+                        )
+                    })
+                    .collect(),
+                bootstrap_peers: args
                     .value_of("peers")
                     .map(|peers_str| {
                         peers_str
