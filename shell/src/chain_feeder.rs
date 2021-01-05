@@ -432,6 +432,12 @@ fn feed_chain_to_protocol(
                                 });
                             }
                             let context_wait_elapsed = context_wait_timer.elapsed();
+                            if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
+                                info!(log, "Block was applied with long context processing";
+                                           "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash),
+                                           "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
+                                           "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed));
+                            }
 
                             // Lets mark header as applied and store result
                             // store success result
@@ -623,7 +629,8 @@ pub(crate) fn initialize_protocol_context(
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(30), Duration::from_millis(10));
+    (Duration::from_secs(300), Duration::from_millis(10));
+const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(
