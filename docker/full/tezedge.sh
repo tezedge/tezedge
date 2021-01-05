@@ -5,7 +5,7 @@ export HOME=/home/appuser
 export PATH=/home/appuser/.cargo/bin:$PATH
 
 # light node config
-NETWORK="carthage"
+NETWORK="delphi"
 TEZOS_DIR="/tmp/tezedge/tezos-data"
 BOOTSTRAP_DIR="/tmp/tezedge/tezedge-data/"
 CONFIG_FILE="./light_node/etc/tezedge/tezedge.config"

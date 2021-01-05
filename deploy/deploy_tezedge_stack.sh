@@ -8,12 +8,12 @@ if ! [ -n "$BASH_VERSION" ];then
 fi
 
 if [ -z "$1" ]; then
-  echo "No tezedge root path specified. e.g.: ./deploy_tezedge_stack.sh /home/tezedge_user/tezedge v0.7.2"
+  echo "No tezedge root path specified. e.g.: ./deploy_tezedge_stack.sh /home/tezedge_user/tezedge v0.9.0"
   exit 1
 fi
 
 if [ -z "$2" ]; then
-  echo "No tag specified. e.g.: ./deploy_tezedge_stack.sh /home/tezedge_user/tezedge v0.7.2"
+  echo "No tag specified. e.g.: ./deploy_tezedge_stack.sh /home/tezedge_user/tezedge v0.9.0"
   exit 1
 fi
 
