@@ -14,6 +14,7 @@
 use std::cmp;
 use std::collections::HashMap;
 use std::ops::AddAssign;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -292,6 +293,10 @@ pub struct ChainManager {
     current_head: CurrentHead,
     /// Internal stats
     stats: Stats,
+    /// Indicates that we triggered check_chain_completeness
+    /// (means, waiting in actor's mailbox)
+    /// this is optimization
+    check_chain_completeness_triggered: AtomicBool,
 
     /// Holds ref to global current shared mempool state
     current_mempool_state: CurrentMempoolStateStorageRef,
@@ -398,6 +403,7 @@ impl ChainManager {
             chain_state,
             operations_state,
             current_head,
+            check_chain_completeness_triggered,
             ..
         } = self;
 
@@ -490,6 +496,9 @@ impl ChainManager {
                     }
                 });
         }
+
+        // allow next run
+        check_chain_completeness_triggered.store(false, Ordering::Release);
     }
 
     fn process_network_channel_message(
@@ -510,6 +519,7 @@ impl ChainManager {
             mempool_storage,
             current_head,
             identity_peer_id,
+            check_chain_completeness_triggered,
             ..
         } = self;
 
@@ -573,7 +583,13 @@ impl ChainManager {
                                         );
 
                                         // trigger CheckChainCompleteness
-                                        ctx.myself().tell(CheckChainCompleteness, None);
+                                        if !check_chain_completeness_triggered
+                                            .load(Ordering::Acquire)
+                                        {
+                                            check_chain_completeness_triggered
+                                                .store(true, Ordering::Release);
+                                            ctx.myself().tell(CheckChainCompleteness, None);
+                                        }
                                     }
                                 }
                                 PeerMessage::GetCurrentBranch(message) => {
@@ -622,6 +638,7 @@ impl ChainManager {
                                                 chain_state,
                                                 operations_state,
                                                 stats,
+                                                check_chain_completeness_triggered,
                                                 shell_channel,
                                             )?;
                                         }
@@ -703,7 +720,14 @@ impl ChainManager {
                                                     }
 
                                                     // trigger CheckChainCompleteness
-                                                    ctx.myself().tell(CheckChainCompleteness, None);
+                                                    if !check_chain_completeness_triggered
+                                                        .load(Ordering::Acquire)
+                                                    {
+                                                        check_chain_completeness_triggered
+                                                            .store(true, Ordering::Release);
+                                                        ctx.myself()
+                                                            .tell(CheckChainCompleteness, None);
+                                                    }
 
                                                     // notify others that new all operations for block were received
                                                     shell_channel.tell(
@@ -775,6 +799,7 @@ impl ChainManager {
                                                 chain_state,
                                                 operations_state,
                                                 stats,
+                                                check_chain_completeness_triggered,
                                                 shell_channel,
                                             )?;
 
@@ -1023,6 +1048,7 @@ impl ChainManager {
         chain_state: &mut BlockchainState,
         operations_state: &mut OperationsState,
         stats: &mut Stats,
+        check_chain_completeness_triggered: &mut AtomicBool,
         shell_channel: &ShellChannelRef,
     ) -> Result<(), Error> {
         // stored header and operations
@@ -1055,7 +1081,11 @@ impl ChainManager {
             stats.unseen_block_count += 1;
 
             // trigger CheckChainCompleteness
-            myself.tell(CheckChainCompleteness, None);
+            // trigger CheckChainCompleteness
+            if !check_chain_completeness_triggered.load(Ordering::Acquire) {
+                check_chain_completeness_triggered.store(true, Ordering::Release);
+                myself.tell(CheckChainCompleteness, None);
+            }
 
             // notify others that new block was received
             shell_channel.tell(
@@ -1350,7 +1380,7 @@ impl ChainManager {
                 return Err(format_err!(
                     "Block/json_data not found for block_hash: {}",
                     HashType::BlockHash.hash_to_b58check(&block)
-                ))
+                ));
             }
         };
 
@@ -1550,7 +1580,7 @@ impl ChainManager {
                 return Err(format_err!(
                     "Block metadata not found for block_hash: {}",
                     HashType::BlockHash.hash_to_b58check(&msg.block_hash)
-                ))
+                ));
             }
         }
 
@@ -1807,6 +1837,7 @@ impl
                 applied_block_lasts_sum_validation_timer: BlockValidationTimer::default(),
                 applied_block_lasts_sum_roundtrip_timer: Duration::new(0, 0),
             },
+            check_chain_completeness_triggered: AtomicBool::new(false),
             is_sandbox,
             identity_peer_id,
             is_bootstrapped: false,

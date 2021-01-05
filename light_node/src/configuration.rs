@@ -481,7 +481,7 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 // Returns final path. In case:
 //      1. path is relative -> final_path = tezos_data_dir / path
 //      2. path is absolute -> final_path = path
-pub fn get_final_path(tezos_data_dir: &PathBuf, path: PathBuf) -> PathBuf {
+pub fn get_final_path(tezos_data_dir: &Path, path: PathBuf) -> PathBuf {
     let mut final_path: PathBuf;
 
     // path is absolute or relative to the current dir -> start with ./ or ../
