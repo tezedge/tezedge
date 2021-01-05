@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use riker::actors::*;
 use slog::{info, Logger};
 
-use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash};
 use shell::shell_channel::{MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
@@ -24,7 +24,7 @@ use storage::{
     context_key, BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader,
     ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
 };
-use tezos_api::environment::TezosEnvironmentConfiguration;
+use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
@@ -42,15 +42,54 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     // prepare data - we have stored 1326 request, apply just 1324, and 1325,1326 will be used for mempool test
     let (requests, operations, tezos_env) = samples::read_data_apply_block_request_until_1326();
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&tezos_env)
+        .expect("no environment configuration");
+    let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
-    // start node
+    // prepare storage paths
+    let storage_db_path =
+        common::prepare_empty_dir("__test_actors_apply_blocks_and_check_context_and_mempool");
+    let context_db_path = common::prepare_empty_dir(
+        "__test_actors_apply_blocks_and_check_context_and_mempool_context",
+    );
+
+    // Note: kind of hack
+    // start/stop node - because we want to start with initialized genesis database/context before insert data
+    // genesis is handled in chain_feeder asynchronously, so we need to start/wait/stop node
     let node = common::infra::NodeInfrastructure::start(
-        TmpStorage::create(common::prepare_empty_dir(
-            "__test_actors_apply_blocks_and_check_context_and_mempool",
-        ))?,
-        &common::prepare_empty_dir(
-            "__test_actors_apply_blocks_and_check_context_and_mempool_context",
-        ),
+        TmpStorage::initialize(&storage_db_path, true, false)?,
+        &context_db_path,
+        "test_actors_apply_blocks_and_check_context_and_mempool",
+        &tezos_env,
+        None,
+        None,
+        tezos_identity::Identity::generate(0f64),
+        (log.clone(), log_level),
+    )?;
+    // wait for storage initialization to genesis
+    node.wait_for_new_current_head(
+        "genesis",
+        node.tezos_env.genesis_header_hash()?,
+        (Duration::from_secs(5), Duration::from_millis(250)),
+    )?;
+    drop(node);
+
+    // insert data before running the node to hit [`chain_manager.hydrate_state`] function
+    let apply_to_level = 1324;
+    init_storage_data(
+        &log,
+        &requests,
+        &operations,
+        apply_to_level,
+        TmpStorage::initialize(&storage_db_path, false, false)?.storage(),
+        &chain_id,
+    )?;
+
+    // start node again - to hit [`chain_manager.hydrate_state`]
+    let node = common::infra::NodeInfrastructure::start(
+        TmpStorage::initialize(storage_db_path, false, true)?,
+        &context_db_path,
         "test_actors_apply_blocks_and_check_context_and_mempool",
         &tezos_env,
         None,
@@ -65,11 +104,9 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     assert!(
         test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
             &node.tmp_storage.storage(),
-            &node.tezos_env,
             node.log.clone(),
-            &requests,
-            &operations,
-            1324,
+            apply_to_level,
+            &chain_id,
         )
         .is_ok()
     );
@@ -77,13 +114,13 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     // 2. test - mempool test
     assert!(test_scenario_for_add_operations_to_mempool_and_check_state(
         &node,
-        &requests[1323],
-        &requests[1324],
-        &requests[1325],
+        &requests[(apply_to_level - 1) as usize],
+        &requests[apply_to_level as usize],
+        &requests[(apply_to_level + 1) as usize],
     )
     .is_ok());
 
-    println!("\nDone in {:?}!", clocks.elapsed());
+    println!("\nDone in {:?}!\n", clocks.elapsed());
 
     drop(node);
 
@@ -150,20 +187,64 @@ fn check_context(
 /// and then validates stored context to dedicated context exported from ocaml on the same level
 fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     persistent_storage: &PersistentStorage,
-    tezos_env: &TezosEnvironmentConfiguration,
     log: Logger,
+    apply_to_level: i32,
+    chain_id: &ChainId,
+) -> Result<(), failure::Error> {
+    let block_storage = BlockStorage::new(&persistent_storage);
+    let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
+
+    // wait context_listener to finished context for applied blocks
+    info!(log, "Waiting for context processing"; "level" => apply_to_level);
+    let current_head_context_hash: Option<ContextHash> = loop {
+        match chain_meta_storage.get_current_head(&chain_id)? {
+            None => continue,
+            Some(head) => {
+                if head.level() >= &apply_to_level {
+                    let header = block_storage
+                        .get(head.block_hash())
+                        .expect("failed to read current head")
+                        .expect("current head not found");
+                    // TE-168: check if context is also asynchronously stored
+                    let context_hash = header.header.context();
+                    if block_storage
+                        .contains_context_hash(&context_hash)
+                        .expect("failed to read head")
+                    {
+                        break Some(context_hash.clone());
+                    }
+                }
+            }
+        }
+    };
+    info!(log, "Context done and successfully applied to level"; "level" => apply_to_level);
+
+    // check context
+    check_context(
+        current_head_context_hash.unwrap_or_else(|| {
+            panic!(
+                "Context hash not set for apply_to_level: {}",
+                apply_to_level
+            )
+        }),
+        &persistent_storage,
+    )
+}
+
+fn init_storage_data(
+    log: &Logger,
     requests: &[String],
     operations: &HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     apply_to_level: i32,
+    persistent_storage: &PersistentStorage,
+    chain_id: &Vec<u8>,
 ) -> Result<(), failure::Error> {
-    // prepare dbs
+    println!("\n[Insert] Initialize storage data started...");
+
     let block_storage = BlockStorage::new(&persistent_storage);
     let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
-    let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
     let operations_storage = OperationsStorage::new(&persistent_storage);
     let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
-
-    let chain_id = tezos_env.main_chain_id().expect("invalid chain id");
 
     let clocks = Instant::now();
 
@@ -201,43 +282,9 @@ fn test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
     }
 
     let clocks = clocks.elapsed();
-    println!("\n[Insert] done in {:?}!", clocks);
+    println!("[Insert] done in {:?}!\n", clocks);
 
-    // wait context_listener to finished context for applied blocks
-    info!(log, "Waiting for context processing"; "level" => apply_to_level);
-    let current_head_context_hash: Option<ContextHash> = loop {
-        match chain_meta_storage.get_current_head(&chain_id)? {
-            None => continue,
-            Some(head) => {
-                if head.level() >= &apply_to_level {
-                    let header = block_storage
-                        .get(head.block_hash())
-                        .expect("failed to read current head")
-                        .expect("current head not found");
-                    // TE-168: check if context is also asynchronously stored
-                    let context_hash = header.header.context();
-                    if block_storage
-                        .contains_context_hash(&context_hash)
-                        .expect("failed to read head")
-                    {
-                        break Some(context_hash.clone());
-                    }
-                }
-            }
-        }
-    };
-    info!(log, "Context done and successfully applied to level"; "level" => apply_to_level);
-
-    // check context
-    check_context(
-        current_head_context_hash.unwrap_or_else(|| {
-            panic!(
-                "Context hash not set for apply_to_level: {}",
-                apply_to_level
-            )
-        }),
-        &persistent_storage,
-    )
+    Ok(())
 }
 
 /// Starts on mempool current state for last applied block, which is supossed to be 1324.

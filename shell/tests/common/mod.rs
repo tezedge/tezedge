@@ -102,7 +102,7 @@ pub mod infra {
     use storage::context::{ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
     use storage::{resolve_storage_init_chain_data, BlockStorage, ChainMetaStorage};
-    use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
+    use tezos_api::environment::TezosEnvironmentConfiguration;
     use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::version::NetworkVersion;
@@ -135,7 +135,7 @@ pub mod infra {
             tmp_storage: TmpStorage,
             context_db_path: &str,
             name: &str,
-            tezos_env: &TezosEnvironment,
+            tezos_env: &TezosEnvironmentConfiguration,
             patch_context: Option<PatchContext>,
             p2p: Option<(P2p, NetworkVersion)>,
             identity: Identity,
@@ -144,9 +144,6 @@ pub mod infra {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
             // environement
-            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
-                .get(&tezos_env)
-                .expect("no environment configuration");
             let is_sandbox = false;
             let p2p_threshold = PeerConnectionThreshold::new(1, 1, Some(0));
             let identity = Arc::new(identity);
@@ -285,7 +282,7 @@ pub mod infra {
                 shell_channel.clone(),
                 &persistent_storage,
                 current_mempool_state_storage.clone(),
-                init_storage_data.chain_id.clone(),
+                init_storage_data.chain_id,
                 tezos_readonly_api,
                 log.clone(),
             )
@@ -326,7 +323,7 @@ pub mod infra {
             })
         }
 
-        pub fn stop(&mut self) {
+        fn stop(&mut self) {
             let NodeInfrastructure {
                 log,
                 apply_block_restarting_feature,
@@ -356,17 +353,18 @@ pub mod infra {
             let apply_restarting_feature = apply_block_restarting_thread
                 .lock()
                 .expect("Failed to lock mutex")
-                .take()
-                .expect("JoinHandle is None");
+                .take();
 
-            if let Ok(mut protocol_runner_process) = apply_restarting_feature.join() {
-                if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(
-                    &mut protocol_runner_process,
-                    Duration::from_secs(2),
-                ) {
-                    warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
-                }
-            };
+            if let Some(apply_restarting_feature) = apply_restarting_feature {
+                if let Ok(mut protocol_runner_process) = apply_restarting_feature.join() {
+                    if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(
+                        &mut protocol_runner_process,
+                        Duration::from_secs(2),
+                    ) {
+                        warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
+                    }
+                };
+            }
 
             let _ = tokio_runtime.block_on(actor_system.shutdown());
 

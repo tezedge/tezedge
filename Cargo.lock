@@ -816,12 +816,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doc-comment"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
-
-[[package]]
 name = "dtoa"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1911,15 +1905,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ntapi"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6bb902e437b6d86e03cce10a7e2af662292c5dfef23b65899ea3ac9354ad44"
-dependencies = [
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "num-bigint"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2908,7 +2893,6 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
- "sysinfo",
  "tezos_api",
  "tezos_context",
  "tezos_encoding",
@@ -3158,21 +3142,6 @@ dependencies = [
  "quote 1.0.7",
  "syn 1.0.48",
  "unicode-xid 0.2.1",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.15.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67330cbee3b2a819e3365a773f05e884a136603687f812bf24db5b6c3d76b696"
-dependencies = [
- "cfg-if 0.1.10",
- "doc-comment",
- "libc",
- "ntapi",
- "once_cell",
- "rayon",
- "winapi 0.3.9",
 ]
 
 [[package]]
