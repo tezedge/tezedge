@@ -30,6 +30,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [0.9.0] - 2021-01-05
+
+### Added
+
+- Modification of node to be able to launch Tezos python tests in Drone CI
+- Benchmarks for message encoding, ffi conversion, storage predecessor search to Drone CI
+- Block applied approx. stats to log for chain_manager
+- Extended statistics in merkle storage
+
+### Changed
+
+- Refactor shell/network channels and event/commands for actors
+- Refactored chain_manager/chain_feeder + optimization to speedup bootstrap
+- Optimizations of merkle storage by modifying trees in place
+
+### Fixed
+
+- Graceful shutdown of node and runners
+- Generate invalid peer_id for identity
+
 ## [0.8.0] - 2020-11-30
 
 ### Added
@@ -193,8 +213,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.8.0...HEAD
-[0.7.2]: https://github.com/simplestaking/tezedge/releases/v0.8.0
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/simplestaking/tezedge/releases/v0.9.0
+[0.8.0]: https://github.com/simplestaking/tezedge/releases/v0.8.0
 [0.7.2]: https://github.com/simplestaking/tezedge/releases/v0.7.2
 [0.7.1]: https://github.com/simplestaking/tezedge/releases/v0.7.1
 [0.7.0]: https://github.com/simplestaking/tezedge/releases/v0.7.0

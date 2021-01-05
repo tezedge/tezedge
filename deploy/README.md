@@ -17,7 +17,7 @@ Description=Tezedge "stack"(node + debugger + explorer) deployment
 [Service]
 Type=oneshot
 # give exec start the absolute path to the tezedge checking script 
-ExecStart=/bin/bash /home/tezedge_user/tezedge/deploy/deploy_tezedge_stack.sh /home/tezedge_user/tezedge v0.7.2
+ExecStart=/bin/bash /home/tezedge_user/tezedge/deploy/deploy_tezedge_stack.sh /home/tezedge_user/tezedge v0.9.0
 ```
 
 ## 1. Copy the systemd files to /etc/systemd/system
