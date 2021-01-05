@@ -23,7 +23,7 @@ use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
     /// alternative to ocaml Operation_list_list_hash.empty
-    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = HashType::OperationListListHash.string_to_bytes("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap();
+    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = HashType::OperationListListHash.b58check_to_hash("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap();
 }
 
 /// Enum representing different Tezos environment.
@@ -79,8 +79,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             ],
             version: "TEZOS_ALPHANET_2018-11-30T15:30:56Z".to_string(),
             protocol_overrides: ProtocolOverrides {
-                forced_protocol_upgrades: vec![],
-                voted_protocol_overrides: vec![],
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
             },
             enable_testchain: false,
             patch_context_genesis_parameters: None,
@@ -102,8 +102,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             ],
             version: "TEZOS_ALPHANET_BABYLON_2019-09-27T07:43:32Z".to_string(),
             protocol_overrides: ProtocolOverrides {
-                forced_protocol_upgrades: vec![],
-                voted_protocol_overrides: vec![],
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
             },
             enable_testchain: true,
             patch_context_genesis_parameters: None,
@@ -126,8 +126,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             ],
             version: "TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z".to_string(),
             protocol_overrides: ProtocolOverrides {
-                forced_protocol_upgrades: vec![],
-                voted_protocol_overrides: vec![],
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
             },
             enable_testchain: true,
             patch_context_genesis_parameters: None,
@@ -148,8 +148,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         ],
         version: "TEZOS_DELPHINET_2020-09-04T07:08:53Z".to_string(),
         protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
         },
         enable_testchain: true,
         patch_context_genesis_parameters: Some(PatchContext {
@@ -169,17 +169,17 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             bootstrap_lookup_addresses: vec!["boot.tzbeta.net".to_string()],
             version: "TEZOS_MAINNET".to_string(),
             protocol_overrides: ProtocolOverrides {
-                forced_protocol_upgrades: vec![
+                user_activated_upgrades: vec![
                     (
-                        28082 as i32,
+                        28082_i32,
                         "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
                     ),
                     (
-                        204761 as i32,
+                        204761_i32,
                         "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
                     ),
                 ],
-                voted_protocol_overrides: vec![(
+                user_activated_protocol_overrides: vec![(
                     "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
                     "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
                 )],
@@ -203,8 +203,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             ],
             version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
             protocol_overrides: ProtocolOverrides {
-                forced_protocol_upgrades: vec![],
-                voted_protocol_overrides: vec![],
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
             },
             enable_testchain: true,
             patch_context_genesis_parameters: None,
@@ -220,8 +220,8 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         bootstrap_lookup_addresses: vec![],
         version: "SANDBOXED_TEZOS".to_string(),
         protocol_overrides: ProtocolOverrides {
-            forced_protocol_upgrades: vec![],
-            voted_protocol_overrides: vec![],
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
         },
         enable_testchain: false,
         patch_context_genesis_parameters: Some(PatchContext {
@@ -278,7 +278,7 @@ impl TezosEnvironmentConfiguration {
     /// Resolves genesis hash from configuration of GenesisChain.block
     pub fn genesis_header_hash(&self) -> Result<BlockHash, TezosEnvironmentError> {
         HashType::BlockHash
-            .string_to_bytes(&self.genesis.block)
+            .b58check_to_hash(&self.genesis.block)
             .map_err(|e| TezosEnvironmentError::InvalidBlockHash {
                 hash: self.genesis.block.clone(),
                 error: e,
@@ -293,7 +293,7 @@ impl TezosEnvironmentConfiguration {
     /// Resolves genesis protocol
     pub fn genesis_protocol(&self) -> Result<ProtocolHash, TezosEnvironmentError> {
         HashType::ProtocolHash
-            .string_to_bytes(&self.genesis.protocol)
+            .b58check_to_hash(&self.genesis.protocol)
             .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
                 hash: self.genesis.protocol.clone(),
                 error: e,

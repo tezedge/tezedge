@@ -448,7 +448,7 @@ mod test_data {
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Sandbox;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashType::ContextHash.string_to_bytes(hash).unwrap()
+        HashType::ContextHash.b58check_to_hash(hash).unwrap()
     }
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd

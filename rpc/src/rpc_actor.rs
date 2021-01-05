@@ -6,22 +6,21 @@ use std::sync::{Arc, RwLock};
 
 use getset::{CopyGetters, Getters, Setters};
 use riker::actors::*;
-use slog::{Logger, warn};
+use slog::{warn, Logger};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::shell_channel::{BlockApplied, CurrentMempoolState, ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::persistent::PersistentStorage;
+use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use shell::subscription::subscribe_to_shell_events;
 use storage::context::TezedgeContext;
-use storage::StorageInitInfo;
+use storage::persistent::PersistentStorage;
+use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::encoding::base_types::TimeStamp;
-use crate::helpers::current_time_timestamp;
-use crate::server::{RpcServiceEnvironment, spawn_server};
-
+use crate::server::{spawn_server, RpcServiceEnvironment};
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
@@ -33,11 +32,7 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 #[derive(CopyGetters, Getters, Setters)]
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
-    current_head: Option<BlockApplied>,
-    #[get = "pub(crate)"]
-    current_mempool_state: Option<Arc<RwLock<CurrentMempoolState>>>,
-    #[get = "pub(crate)"]
-    head_update_time: TimeStamp,
+    current_head: Option<Arc<BlockHeaderWithHash>>,
     #[get_copy = "pub(crate)"]
     is_sandbox: bool,
 }
@@ -51,7 +46,9 @@ pub struct RpcServer {
 }
 
 impl RpcServer {
-    pub fn name() -> &'static str { "rpc-server" }
+    pub fn name() -> &'static str {
+        "rpc-server"
+    }
 
     pub fn actor(
         sys: &ActorSystem,
@@ -59,18 +56,22 @@ impl RpcServer {
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
+        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
         tezos_env: TezosEnvironmentConfiguration,
-        network_version: NetworkVersion,
+        network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
-        is_sandbox: bool) -> Result<RpcServerRef, CreateError> {
+        is_sandbox: bool,
+    ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
-            current_head: load_current_head(persistent_storage, &init_storage_data.chain_id, &sys.log()),
-            current_mempool_state: None,
-            head_update_time: current_time_timestamp(),
+            current_head: load_current_head(
+                persistent_storage,
+                &init_storage_data.chain_id,
+                &sys.log(),
+            ),
             is_sandbox,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
@@ -87,6 +88,7 @@ impl RpcServer {
                 tezos_env,
                 network_version,
                 persistent_storage,
+                current_mempool_state_storage,
                 tezedge_context,
                 tezos_readonly_api,
                 tezos_readonly_prevalidation_api,
@@ -111,7 +113,10 @@ impl RpcServer {
 
 impl ActorFactoryArgs<(ShellChannelRef, RpcCollectedStateRef)> for RpcServer {
     fn create_args((shell_channel, state): (ShellChannelRef, RpcCollectedStateRef)) -> Self {
-        Self { shell_channel, state }
+        Self {
+            shell_channel,
+            state,
+        }
     }
 }
 
@@ -119,10 +124,7 @@ impl Actor for RpcServer {
     type Msg = RpcServerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        self.shell_channel.tell(Subscribe {
-            actor: Box::new(ctx.myself()),
-            topic: ShellChannelTopic::ShellEvents.into(),
-        }, ctx.myself().into());
+        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
@@ -134,34 +136,30 @@ impl Receive<ShellChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match msg {
-            ShellChannelMsg::NewCurrentHead(_, block) => {
-                let current_head_ref = &mut *self.state.write().unwrap();
-                current_head_ref.current_head = Some(block);
-                current_head_ref.head_update_time = current_time_timestamp();
-            }
-            ShellChannelMsg::MempoolStateChanged(result) => {
-                let current_state = &mut *self.state.write().unwrap();
-                current_state.current_mempool_state = Some(result);
-            }
-            _ => (/* Not yet implemented, do nothing */),
+        if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+            let current_head_ref = &mut *self.state.write().unwrap();
+            current_head_ref.current_head = Some(block);
         }
     }
 }
 
 /// Load local head (block with highest level) from dedicated storage
-fn load_current_head(persistent_storage: &PersistentStorage, chain_id: &ChainId, log: &Logger) -> Option<BlockApplied> {
-    use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
+fn load_current_head(
+    persistent_storage: &PersistentStorage,
+    chain_id: &ChainId,
+    log: &Logger,
+) -> Option<Arc<BlockHeaderWithHash>> {
     use storage::chain_meta_storage::ChainMetaStorageReader;
+    use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError};
 
     let chain_meta_storage = ChainMetaStorage::new(persistent_storage);
     match chain_meta_storage.get_current_head(chain_id) {
         Ok(Some(head)) => {
             let block_applied = BlockStorage::new(persistent_storage)
-                .get_with_json_data(head.block_hash())
-                .and_then(|data| data.map(|(block, json)| BlockApplied::new(block, json)).ok_or(StorageError::MissingKey));
+                .get(head.block_hash())
+                .and_then(|data| data.ok_or(StorageError::MissingKey));
             match block_applied {
-                Ok(block) => Some(block),
+                Ok(block) => Some(Arc::new(block)),
                 Err(e) => {
                     warn!(log, "Error reading current head detail from database."; "reason" => format!("{}", e));
                     None

@@ -23,7 +23,10 @@ pub(crate) fn options() -> ServiceResult {
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
         .body(Body::empty())?)
 }
 
@@ -35,24 +38,36 @@ pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceRes
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
         .body(Body::from(serde_json::to_string(content)?))?)
 }
 
 /// Function to generate JSON response from a stream
-pub(crate) fn make_json_stream_response<T: futures::Stream<Item=Result<String, serde_json::Error>> + Send + 'static>(content: T) -> ServiceResult {
+pub(crate) fn make_json_stream_response<
+    T: futures::Stream<Item = Result<String, failure::Error>> + Send + 'static,
+>(
+    content: T,
+) -> ServiceResult {
     Ok(Response::builder()
         .header(hyper::header::CONTENT_TYPE, "application/json")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, OPTIONS, PUT")
-        .header(hyper::header::TRANSFER_ENCODING, "chunked")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
         .body(Body::wrap_stream(content))?)
 }
 
 /// Returns result as a JSON response.
-pub(crate) fn result_to_json_response<T: serde::Serialize>(res: Result<T, failure::Error>, log: &Logger) -> ServiceResult {
+pub(crate) fn result_to_json_response<T: serde::Serialize>(
+    res: Result<T, failure::Error>,
+    log: &Logger,
+) -> ServiceResult {
     match res {
         Ok(t) => make_json_response(&t),
         Err(err) => {
@@ -63,11 +78,31 @@ pub(crate) fn result_to_json_response<T: serde::Serialize>(res: Result<T, failur
 }
 
 /// Returns optional result as a JSON response.
-pub(crate) fn result_option_to_json_response<T: serde::Serialize>(res: Result<Option<T>, failure::Error>, log: &Logger) -> ServiceResult {
+pub(crate) fn result_option_to_json_response<T: serde::Serialize>(
+    res: Result<Option<T>, failure::Error>,
+    log: &Logger,
+) -> ServiceResult {
     match res {
         Ok(opt) => match opt {
             Some(t) => make_json_response(&t),
-            None => not_found()
+            None => not_found(),
+        },
+        Err(err) => {
+            error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
+            error(err)
+        }
+    }
+}
+
+/// Returns result as a empty JSON response: `{}`.
+pub(crate) fn result_to_empty_json_response(
+    res: Result<(), failure::Error>,
+    log: &Logger,
+) -> ServiceResult {
+    match res {
+        Ok(_) => {
+            let empty_json = serde_json::json!({});
+            make_json_response(&empty_json)
         }
         Err(err) => {
             error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));

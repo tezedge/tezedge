@@ -29,7 +29,7 @@ pub fn fitness_encoding() -> Encoding {
 pub fn display_fitness(fitness: &Fitness) -> String {
     fitness
         .iter()
-        .map(|f| hex::encode(f))
+        .map(hex::encode)
         .collect::<Vec<String>>()
         .join("::")
 }

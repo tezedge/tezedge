@@ -3,39 +3,26 @@
 
 //! Shell channel is used to transmit high level shell messages.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use getset::Getters;
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
-use storage::block_storage::BlockJsonData;
-use storage::BlockHeaderWithHash;
+use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::mempool_storage::MempoolOperationType;
-use tezos_api::ffi::{ApplyBlockRequest, ValidateOperationResult};
+use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 use tezos_messages::Head;
-use tezos_messages::p2p::encoding::block_header::Fitness;
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, Path};
 
-/// Message informing actors about successful block application by protocol
-#[derive(Clone, Debug, Getters)]
-pub struct BlockApplied {
-    #[get = "pub"]
-    header: BlockHeaderWithHash,
-    #[get = "pub"]
-    json_data: BlockJsonData,
-}
-
-impl BlockApplied {
-    pub fn new(header: BlockHeaderWithHash, json_data: BlockJsonData) -> Self {
-        Self { header, json_data }
-    }
-}
+use crate::chain_manager::ProcessValidatedBlock;
+use crate::utils::CondvarResult;
 
 /// Notify actors that system is about to shut down
 #[derive(Clone, Debug)]
 pub struct ShuttingDown;
+
+/// Request peers to send their current heads
+#[derive(Clone, Debug)]
+pub struct RequestCurrentHead;
 
 /// Message informing actors about receiving block header
 #[derive(Clone, Debug)]
@@ -51,26 +38,17 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
-// Notify actors that operations should by validated by mempool
+/// Notify actors that operations should by validated by mempool
 #[derive(Clone, Debug)]
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
     pub operation_type: MempoolOperationType,
-}
-
-#[derive(Clone, Debug)]
-pub struct CurrentMempoolState {
-    pub head: Option<BlockHash>,
-    pub protocol: Option<ProtocolHash>,
-    pub fitness: Option<Fitness>,
-    pub result: ValidateOperationResult,
-    pub operations: HashMap<OperationHash, Operation>,
-    pub pending: HashSet<OperationHash>,
+    pub result_callback: Option<CondvarResult<(), failure::Error>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct InjectBlock {
-    pub block_header: BlockHeader,
+    pub block_header: Arc<BlockHeaderWithHash>,
     pub operations: Option<Vec<Vec<Operation>>>,
     pub operation_paths: Option<Vec<Path>>,
 }
@@ -78,41 +56,25 @@ pub struct InjectBlock {
 /// Shell channel event message.
 #[derive(Clone, Debug)]
 pub enum ShellChannelMsg {
+    /// Events
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(Head, BlockApplied),
-    /// Chain_feeder propagates if block successfully validated and applied
-    /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
-    BlockApplied(BlockApplied),
-    ApplyBlock(BlockHash, Arc<ApplyBlockRequest>),
+    NewCurrentHead(Head, Arc<BlockHeaderWithHash>),
     BlockReceived(BlockReceived),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
-    MempoolStateChanged(Arc<RwLock<CurrentMempoolState>>),
-    InjectBlock(InjectBlock),
+
+    /// Commands
+    AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
+    InjectBlock(InjectBlock, Option<CondvarResult<(), failure::Error>>),
+    RequestCurrentHead(RequestCurrentHead),
+    // TODO: remove just for genesis
+    ProcessValidatedGenesisBlock(ProcessValidatedBlock),
     ShuttingDown(ShuttingDown),
-}
-
-impl From<InjectBlock> for ShellChannelMsg {
-    fn from(msg: InjectBlock) -> Self {
-        ShellChannelMsg::InjectBlock(msg)
-    }
-}
-
-impl From<BlockApplied> for ShellChannelMsg {
-    fn from(msg: BlockApplied) -> Self {
-        ShellChannelMsg::BlockApplied(msg)
-    }
 }
 
 impl From<MempoolOperationReceived> for ShellChannelMsg {
     fn from(msg: MempoolOperationReceived) -> Self {
         ShellChannelMsg::MempoolOperationReceived(msg)
-    }
-}
-
-impl From<CurrentMempoolState> for ShellChannelMsg {
-    fn from(msg: CurrentMempoolState) -> Self {
-        ShellChannelMsg::MempoolStateChanged(Arc::new(RwLock::new(msg)))
     }
 }
 
@@ -134,19 +96,30 @@ impl From<ShuttingDown> for ShellChannelMsg {
     }
 }
 
+impl From<RequestCurrentHead> for ShellChannelMsg {
+    fn from(msg: RequestCurrentHead) -> Self {
+        ShellChannelMsg::RequestCurrentHead(msg)
+    }
+}
+
 /// Represents various topics
 pub enum ShellChannelTopic {
     /// Ordinary events generated from shell layer
     ShellEvents,
+
     /// Control event
     ShellCommands,
+
+    /// Shutdown event
+    ShellShutdown,
 }
 
 impl From<ShellChannelTopic> for Topic {
     fn from(evt: ShellChannelTopic) -> Self {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
-            ShellChannelTopic::ShellCommands => Topic::from("shell.command")
+            ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
+            ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }
     }
 }

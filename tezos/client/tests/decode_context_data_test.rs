@@ -10,7 +10,7 @@ use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
 
 fn protocol(hash: &str) -> ProtocolHash {
-    HashType::ProtocolHash.string_to_bytes(hash).unwrap()
+    HashType::ProtocolHash.b58check_to_hash(hash).unwrap()
 }
 
 fn data(data_as_hex: &str) -> Vec<u8> {

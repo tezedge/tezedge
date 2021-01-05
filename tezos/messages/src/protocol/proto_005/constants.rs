@@ -10,8 +10,8 @@ use tezos_encoding::{
     types::BigInt,
 };
 
+use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
 use crate::non_cached_data;
-use crate::protocol::{ToRpcJsonMap, UniversalValue};
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,

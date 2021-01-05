@@ -63,6 +63,8 @@ pub trait BlockStorageReader: Sync + Send {
     fn get_by_context_hash(&self, context_hash: &ContextHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
+
+    fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 }
 
 impl BlockStorage {
@@ -241,6 +243,11 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
+        self.by_context_hash_index.contains(context_hash)
+    }
+
+    #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.primary_index.contains(block_hash)
     }
@@ -392,6 +399,11 @@ impl BlockByContextHashIndex {
     fn get(&self, context_hash: &ContextHash) -> Result<Option<BlockStorageColumnsLocation>, StorageError> {
         self.kv.get(context_hash).map_err(StorageError::from)
     }
+
+    fn contains(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
+        self.kv.contains(context_hash)
+            .map_err(StorageError::from)
+    }
 }
 
 impl KeyValueSchema for BlockByContextHashIndex {
@@ -439,6 +451,7 @@ mod tests {
             let res = index.get_blocks(65673, 100)?.iter().map(|location| location.block_header.offset()).collect::<Vec<_>>();
             assert_eq!(vec![65673, 1161, 905, 649, 393], res);
         }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        assert!(DB::destroy(&Options::default(), path).is_ok());
+        Ok(())
     }
 }

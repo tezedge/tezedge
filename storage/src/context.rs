@@ -10,8 +10,8 @@ use failure::Fail;
 
 use crypto::hash::{BlockHash, ContextHash, HashType};
 
-use crate::{BlockStorage, StorageError};
-use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTree};
+use crate::{BlockStorage, BlockStorageReader, StorageError};
+use crate::merkle_storage::{ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats, StringTreeEntry};
 
 /// Abstraction on context manipulation
 pub trait ContextApi {
@@ -29,18 +29,25 @@ pub trait ContextApi {
     fn copy_to_diff(&self, context_hash: &Option<ContextHash>, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), ContextError>;
     // get value for key
     fn get_key(&self, key: &ContextKey) -> Result<ContextValue, ContextError>;
-
+    // mem - check if value exists
+    fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
+    // dirmem - check if directory exists
+    fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // get value for key from a point in history indicated by context hash
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
     // get a list of all key-values under a certain key prefix
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError>;
     // get entire context tree in string form for JSON RPC
-    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError>;
+    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError>;
 
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
     fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError>;
+
+    /// TODO: TE-203 - remove when context_listener will not be used
+    // check if context_hash is committed
+    fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
 }
 
 impl ContextApi for TezedgeContext {
@@ -75,20 +82,21 @@ impl ContextApi for TezedgeContext {
                     if parent_context_hash.is_some() {
                         return Err(
                             ContextError::ContextHashAssignError {
-                                block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                                context_hash: HashType::ContextHash.bytes_to_string(commit_hash),
+                                block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+                                context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
                                 error: e,
                             }
                         );
                     } else {
+                        // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
                         // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
-                        ()
+                        // but we need to storage assignment elsewhere
                     }
                 }
                 _ => return Err(
                     ContextError::ContextHashAssignError {
-                        block_hash: HashType::BlockHash.bytes_to_string(block_hash),
-                        context_hash: HashType::ContextHash.bytes_to_string(commit_hash),
+                        block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+                        context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
                         error: e,
                     }
                 )
@@ -122,13 +130,25 @@ impl ContextApi for TezedgeContext {
         Ok(val)
     }
 
+    fn mem(&self, key: &ContextKey) -> Result<bool, ContextError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let val = merkle.mem(key)?;
+        Ok(val)
+    }
+
+    fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let val = merkle.dirmem(key)?;
+        Ok(val)
+    }
+
     fn get_key_from_history(&self, context_hash: &ContextHash, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        let merkle = self.merkle.read().expect("lock poisoning");
+        let mut merkle = self.merkle.write().expect("lock poisoning");
         match merkle.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
-                Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.bytes_to_string(context_hash) })
+                Err(ContextError::UnknownContextHashError { context_hash: HashType::ContextHash.hash_to_b58check(context_hash) })
             }
             Err(err) => {
                 Err(ContextError::MerkleStorageError { error: err })
@@ -139,14 +159,14 @@ impl ContextApi for TezedgeContext {
 
     fn get_key_values_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        let merkle = self.merkle.read().expect("lock poisoning");
+        let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.get_key_values_by_prefix(&context_hash_arr, prefix)
     }
 
-    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey) -> Result<StringTree, MerkleError> {
+    fn get_context_tree_by_prefix(&self, context_hash: &ContextHash, prefix: &ContextKey, depth: Option<usize>) -> Result<StringTreeEntry, MerkleError> {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
-        let merkle = self.merkle.read().expect("lock poisoning");
-        merkle.get_context_tree_by_prefix(&context_hash_arr, prefix)
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        merkle.get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
     }
 
     fn get_last_commit_hash(&self) -> Option<Vec<u8>> {
@@ -159,6 +179,12 @@ impl ContextApi for TezedgeContext {
         let stats = merkle.get_merkle_stats()?;
 
         Ok(stats)
+    }
+
+    fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
+        self.block_storage
+            .contains_context_hash(context_hash)
+            .map_err(|e| ContextError::StorageError { error: e })
     }
 }
 
@@ -207,6 +233,11 @@ pub enum ContextError {
     #[fail(display = "Failed to convert hash to array: {}", error)]
     HashConversionError {
         error: TryFromSliceError,
+    },
+    /// TODO: TE-203 - remove when context_listener will not be used
+    #[fail(display = "Storage error: {}", error)]
+    StorageError {
+        error: StorageError,
     },
 }
 

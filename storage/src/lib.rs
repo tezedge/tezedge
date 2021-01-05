@@ -3,8 +3,8 @@
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
 
-use std::convert::TryInto;
-use std::path::PathBuf;
+use std::convert::{TryInto, TryFrom};
+use std::path::Path;
 use std::sync::Arc;
 
 use failure::Fail;
@@ -31,6 +31,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 pub use crate::system_storage::SystemStorage;
+pub use crate::predecessor_storage::PredecessorStorage;
 
 pub mod persistent;
 pub mod merkle_storage;
@@ -44,6 +45,7 @@ pub mod system_storage;
 pub mod skip_list;
 pub mod context;
 pub mod chain_meta_storage;
+pub mod predecessor_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -59,6 +61,14 @@ impl BlockHeaderWithHash {
             hash: block_header.message_hash()?,
             header: Arc::new(block_header),
         })
+    }
+}
+
+impl TryFrom<BlockHeader> for BlockHeaderWithHash {
+    type Error = MessageHashError;
+
+    fn try_from(value: BlockHeader) -> Result<Self, Self::Error> {
+        BlockHeaderWithHash::new(value)
     }
 }
 
@@ -108,6 +118,8 @@ pub enum StorageError {
     MessageHashError {
         error: MessageHashError
     },
+    #[fail(display = "Predecessor lookup failed")]
+    PredecessorLookupError,
 }
 
 impl From<DBError> for StorageError {
@@ -162,8 +174,8 @@ pub struct StorageInitInfo {
 
 /// Resolve main chain id and genesis header from configuration
 pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration,
-                                       storage_db_path: &PathBuf,
-                                       context_db_path: &PathBuf,
+                                       storage_db_path: &Path,
+                                       context_db_path: &Path,
                                        patch_context: &Option<PatchContext>,
                                        log: &Logger) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
@@ -176,8 +188,8 @@ pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration
         log,
         "Storage based on data";
         "chain_name" => &tezos_env.version,
-        "init_data.chain_id" => format!("{:?}", HashType::ChainId.bytes_to_string(&init_data.chain_id)),
-        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.bytes_to_string(&init_data.genesis_block_header_hash)),
+        "init_data.chain_id" => format!("{:?}", HashType::ChainId.hash_to_b58check(&init_data.chain_id)),
+        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.hash_to_b58check(&init_data.genesis_block_header_hash)),
         "storage_db_path" => format!("{:?}", storage_db_path),
         "context_db_path" => format!("{:?}", context_db_path),
         "patch_context" => match patch_context {
@@ -217,6 +229,8 @@ pub fn store_applied_block_result(
     // mark current head as applied
     block_metadata.set_is_applied(true);
     block_meta_storage.put(&block_hash, &block_metadata)?;
+    // populate predecessor storage
+    block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
 
     Ok((block_json_data, block_additional_data))
 }
@@ -307,8 +321,8 @@ pub fn initialize_storage_with_genesis_block(
 
     info!(log,
         "Storage initialized with genesis block";
-        "genesis" => HashType::BlockHash.bytes_to_string(&genesis_with_hash.hash),
-        "context_hash" => HashType::ContextHash.bytes_to_string(&context_hash),
+        "genesis" => HashType::BlockHash.hash_to_b58check(&genesis_with_hash.hash),
+        "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash),
     );
     Ok(genesis_with_hash)
 }
@@ -382,6 +396,7 @@ pub mod tests_common {
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
         path: PathBuf,
+        remove_on_destroy: bool,
     }
 
     impl TmpStorage {
@@ -393,9 +408,13 @@ pub mod tests_common {
         }
 
         pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+            Self::initialize(path, true, true)
+        }
+
+        pub fn initialize<P: AsRef<Path>>(path: P, remove_if_exists: bool, remove_on_destroy: bool) -> Result<Self, Error> {
             let path = path.as_ref().to_path_buf();
             // remove previous data if exists
-            if Path::new(&path).exists() {
+            if Path::new(&path).exists() && remove_if_exists {
                 fs::remove_dir_all(&path).unwrap();
             }
 
@@ -423,6 +442,7 @@ pub mod tests_common {
                 MempoolStorage::descriptor(&cache),
                 ContextActionStorage::descriptor(&cache),
                 ChainMetaStorage::descriptor(&cache),
+                PredecessorStorage::descriptor(&cache),
             ], &cfg)?;
             let clog = open_cl(&path, vec![
                 BlockStorage::descriptor(),
@@ -431,6 +451,7 @@ pub mod tests_common {
             Ok(Self {
                 persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
                 path,
+                remove_on_destroy,
             })
         }
 
@@ -446,7 +467,9 @@ pub mod tests_common {
     impl Drop for TmpStorage {
         fn drop(&mut self) {
             let _ = rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path);
-            let _ = fs::remove_dir_all(&self.path);
+            if self.remove_on_destroy {
+                let _ = fs::remove_dir_all(&self.path);
+            }
         }
     }
 }

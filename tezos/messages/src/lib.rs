@@ -49,7 +49,7 @@ impl Head {
 
     pub fn to_debug_info(&self) -> (String, Level, String) {
         (
-            HashType::BlockHash.bytes_to_string(&self.block_hash),
+            HashType::BlockHash.hash_to_b58check(&self.block_hash),
             self.level,
             display_fitness(&self.fitness),
         )

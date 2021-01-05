@@ -4,30 +4,25 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use riker::{
-    actor::*, actors::SystemMsg,
-    system::SystemEvent, system::Timer,
-};
-use slog::{Logger, warn};
+use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
+use slog::{warn, Logger};
 
 use crypto::hash::ChainId;
-use networking::p2p::{
-    network_channel::{NetworkChannelMsg, NetworkChannelTopic, PeerMessageReceived, NetworkChannelRef},
+use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
+use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use shell::subscription::{
+    subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
 };
-use networking::p2p::network_channel::PeerBootstrapped;
-use shell::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
+use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::{
-    handlers::handler_messages::PeerConnectionStatus,
-    handlers::WebsocketHandlerMsg,
-    monitors::*,
-};
 use crate::handlers::handler_messages::HandlerMessage;
+use crate::{
+    handlers::handler_messages::PeerConnectionStatus, handlers::WebsocketHandlerMsg, monitors::*,
+};
 
 #[derive(Clone, Debug)]
 pub enum BroadcastSignal {
@@ -40,7 +35,7 @@ pub type MonitorRef = ActorRef<MonitorMsg>;
 
 #[actor(BroadcastSignal, NetworkChannelMsg, SystemEvent, ShellChannelMsg)]
 pub struct Monitor {
-    event_channel: NetworkChannelRef,
+    network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     msg_channel: ActorRef<WebsocketHandlerMsg>,
     // Monitors
@@ -56,10 +51,23 @@ impl Monitor {
         "monitor-manager"
     }
 
-    pub fn actor(sys: &impl ActorRefFactory, event_channel: NetworkChannelRef, msg_channel: ActorRef<WebsocketHandlerMsg>, shell_channel: ShellChannelRef, persistent_storage: &PersistentStorage, init_storage_data: &StorageInitInfo) -> Result<MonitorRef, CreateError> {
+    pub fn actor(
+        sys: &impl ActorRefFactory,
+        event_channel: NetworkChannelRef,
+        msg_channel: ActorRef<WebsocketHandlerMsg>,
+        shell_channel: ShellChannelRef,
+        persistent_storage: &PersistentStorage,
+        init_storage_data: &StorageInitInfo,
+    ) -> Result<MonitorRef, CreateError> {
         sys.actor_of_props::<Monitor>(
             Self::name(),
-            Props::new_args((event_channel, msg_channel, shell_channel, persistent_storage.clone(), init_storage_data.chain_id.clone())),
+            Props::new_args((
+                event_channel,
+                msg_channel,
+                shell_channel,
+                persistent_storage.clone(),
+                init_storage_data.chain_id.clone(),
+            )),
         )
     }
 
@@ -71,7 +79,8 @@ impl Monitor {
             match message {
                 PeerMessage::CurrentBranch(msg) => {
                     if msg.current_branch().current_head().level() > 0 {
-                        self.bootstrap_monitor.set_level(msg.current_branch().current_head().level() as usize);
+                        self.bootstrap_monitor
+                            .set_level(msg.current_branch().current_head().level() as usize);
                     }
                 }
                 _ => (),
@@ -94,17 +103,36 @@ impl Monitor {
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage, ChainId)> for Monitor {
-    fn create_args((event_channel, msg_channel, shell_channel, persistent_storage, chain_id): (NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellChannelRef, PersistentStorage, ChainId)) -> Self {
+impl
+    ActorFactoryArgs<(
+        NetworkChannelRef,
+        ActorRef<WebsocketHandlerMsg>,
+        ShellChannelRef,
+        PersistentStorage,
+        ChainId,
+    )> for Monitor
+{
+    fn create_args(
+        (event_channel, msg_channel, shell_channel, persistent_storage, chain_id): (
+            NetworkChannelRef,
+            ActorRef<WebsocketHandlerMsg>,
+            ShellChannelRef,
+            PersistentStorage,
+            ChainId,
+        ),
+    ) -> Self {
         let blocks_meta = BlockMetaStorage::new(&persistent_storage);
         let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
         // TODO: TE-184 - monitor - count all downloaded blocks - is this necessery?
         // get downloaded count
         let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
             iter.count()
-        } else { 0 };
+        } else {
+            0
+        };
         // get last header level
-        let level: Level = chain_meta_storage.get_current_head(&chain_id)
+        let level: Level = chain_meta_storage
+            .get_current_head(&chain_id)
             .unwrap_or(None)
             .map(|head| head.into())
             .unwrap_or(0);
@@ -114,7 +142,7 @@ impl ActorFactoryArgs<(NetworkChannelRef, ActorRef<WebsocketHandlerMsg>, ShellCh
         bootstrap_monitor.set_level(level as usize);
 
         Self {
-            event_channel,
+            network_channel: event_channel,
             shell_channel,
             msg_channel,
             peer_monitors: HashMap::new(),
@@ -130,32 +158,37 @@ impl Actor for Monitor {
     type Msg = MonitorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        // Listen for all network events
-        self.event_channel.tell(Subscribe {
-            actor: Box::new(ctx.myself()),
-            topic: NetworkChannelTopic::NetworkEvents.into(),
-        }, None);
-        self.shell_channel.tell(Subscribe {
-            actor: Box::new(ctx.myself()),
-            topic: ShellChannelTopic::ShellEvents.into(),
-        }, None);
+        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
+        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_network_events(&self.network_channel, ctx.myself());
 
         // Every second, send yourself a message to broadcast the monitoring to all connected clients
-        ctx.schedule(Duration::from_secs(1),
-                     Duration::from_secs(1),
-                     ctx.myself(), None,
-                     BroadcastSignal::PublishPeerStatistics);
-        ctx.schedule(Duration::from_secs_f32(1.5),
-                     Duration::from_secs(1),
-                     ctx.myself(), None,
-                     BroadcastSignal::PublishBlocksStatistics);
+        ctx.schedule(
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            ctx.myself(),
+            None,
+            BroadcastSignal::PublishPeerStatistics,
+        );
+        ctx.schedule(
+            Duration::from_secs_f32(1.5),
+            Duration::from_secs(1),
+            ctx.myself(),
+            None,
+            BroadcastSignal::PublishBlocksStatistics,
+        );
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
         self.receive(ctx, msg, sender);
     }
 
-    fn sys_recv(&mut self, ctx: &Context<Self::Msg>, msg: SystemMsg, sender: Option<BasicActorRef>) {
+    fn sys_recv(
+        &mut self,
+        ctx: &Context<Self::Msg>,
+        msg: SystemMsg,
+        sender: Option<BasicActorRef>,
+    ) {
         if let SystemMsg::Event(evt) = msg {
             self.receive(ctx, evt, sender);
         }
@@ -198,13 +231,18 @@ impl Receive<BroadcastSignal> for Monitor {
                 self.msg_channel.tell(bootstrap_stats, ctx.myself().into());
 
                 let payload = self.blocks_monitor.snapshot();
-                self.msg_channel.tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
+                self.msg_channel
+                    .tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
 
                 let payload = self.block_application_monitor.snapshot();
-                self.msg_channel.tell(HandlerMessage::BlockApplicationStatus { payload }, ctx.myself().into());
+                self.msg_channel.tell(
+                    HandlerMessage::BlockApplicationStatus { payload },
+                    ctx.myself().into(),
+                );
 
                 let payload = self.chain_monitor.snapshot();
-                self.msg_channel.tell(HandlerMessage::ChainStatus { payload }, ctx.myself().into());
+                self.msg_channel
+                    .tell(HandlerMessage::ChainStatus { payload }, ctx.myself().into());
             }
             BroadcastSignal::PeerUpdate(msg) => {
                 let msg: HandlerMessage = msg.into();
@@ -227,21 +265,21 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     warn!(ctx.system.log(), "Duplicate monitor found for peer"; "peer" => monitor.identifier.to_string());
                 }
                 ctx.myself.tell(
-                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(msg.address.to_string())),
+                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(
+                        msg.address.to_string(),
+                    )),
                     None,
                 );
             }
-            NetworkChannelMsg::PeerBootstrapped(msg) => {
-                match msg {
-                    PeerBootstrapped::Success { peer_id, .. } => if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
-                        monitor.public_key = Some(peer_id.peer_id_marker.clone());
-                    }
-                    PeerBootstrapped::Failure { .. } => ()
+            NetworkChannelMsg::PeerBootstrapped(peer_id, _) => {
+                if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
+                    monitor.public_key = Some(peer_id.peer_id_marker.clone());
                 }
             }
-            NetworkChannelMsg::PeerMessageReceived(msg) => self.process_peer_message(msg, &ctx.system.log()),
-            NetworkChannelMsg::PeerBlacklisted(..) => {},
-            NetworkChannelMsg::BlacklistPeer(..) => {}
+            NetworkChannelMsg::PeerMessageReceived(msg) => {
+                self.process_peer_message(msg, &ctx.system.log())
+            }
+            _ => (),
         }
     }
 }
@@ -264,7 +302,8 @@ impl Receive<ShellChannelMsg> for Monitor {
             }
             ShellChannelMsg::NewCurrentHead(head, ..) => {
                 // update stats for block applications
-                self.chain_monitor.process_block_application(*head.level() as usize);
+                self.chain_monitor
+                    .process_block_application(*head.level() as usize);
 
                 self.blocks_monitor.block_was_applied_by_protocol();
                 self.block_application_monitor.block_was_applied(head);
@@ -274,7 +313,8 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.blocks_monitor.block_finished_downloading_operations();
 
                 // update stats for block operations
-                self.chain_monitor.process_block_operations(msg.level as usize);
+                self.chain_monitor
+                    .process_block_operations(msg.level as usize);
             }
             _ => (),
         }

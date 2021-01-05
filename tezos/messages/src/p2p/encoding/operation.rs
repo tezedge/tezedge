@@ -65,7 +65,7 @@ impl Operation {
 impl From<DecodedOperation> for Operation {
     fn from(dop: DecodedOperation) -> Operation {
         Operation {
-            branch: HashType::BlockHash.string_to_bytes(&dop.branch).unwrap(),
+            branch: HashType::BlockHash.b58check_to_hash(&dop.branch).unwrap(),
             data: hex::decode(&dop.data).unwrap(),
             body: Default::default(),
         }
@@ -96,7 +96,7 @@ pub struct DecodedOperation {
 impl From<Operation> for DecodedOperation {
     fn from(op: Operation) -> DecodedOperation {
         DecodedOperation {
-            branch: HashType::BlockHash.bytes_to_string(&op.branch()),
+            branch: HashType::BlockHash.hash_to_b58check(&op.branch()),
             data: hex::encode(op.data()),
         }
     }

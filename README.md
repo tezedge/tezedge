@@ -201,16 +201,7 @@ Listening for updates. Node emits statistics on the websocket server, which can 
 ./run.sh node --websocket-address 0.0.0.0:12345
 ```
 
-Example of how to call the RPC
-----------------
-
-Open shell and type this code into the command line and then press Enter:
-
-```curl localhost:18732/chains/main/blocks/head```
-
-For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
-
-Prearranged docker-compose files
+Running node using prearranged docker-compose files
 ----------------
 
 ### light-node + tezedge-explorer
@@ -239,3 +230,21 @@ docker-compose -f docker-compose.sandbox.latest.yml up
 # stop and remove docker volume
 docker-compose -f docker-compose.sandbox.latest.yml down -v
 ```
+
+Shutdown running node gracefully
+----------------
+Just press `Ctrl-c`, works for e.g. `cargo run` or `run.sh` script.
+
+Or you can send `signal` to running process, dedicated signal is `SIGINT`, e.g.:
+```
+kill -s SIGINT <PID-of-running-process-with-light-node>
+```
+
+Example of how to call the RPC
+----------------
+
+Open shell and type this code into the command line and then press Enter:
+
+```curl localhost:18732/chains/main/blocks/head```
+
+For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.

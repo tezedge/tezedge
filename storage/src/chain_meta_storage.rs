@@ -261,16 +261,16 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_current_head")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let block_1 = Head::new(
-            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
             vec![],
         );
 
-        let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
+        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
-            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
             vec![],
         );
@@ -307,16 +307,16 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_caboose")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let block_1 = Head::new(
-            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
             vec![],
         );
 
-        let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
+        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
-            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
             vec![],
         );
@@ -353,16 +353,16 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_genesis")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
+        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let block_1 = Head::new(
-            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
             vec![],
         );
 
-        let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
+        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
-            HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
             vec![],
         );
@@ -399,9 +399,9 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_test_chain_id")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.string_to_bytes("NetXgtSLGNJvNye")?;
-        let chain_id2 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
-        let chain_id3 = HashType::ChainId.string_to_bytes("NetXjD3HPJJjmcd")?;
+        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
+        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
+        let chain_id3 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
 
         assert!(index.get_test_chain_id(&chain_id1)?.is_none());
         assert!(index.get_test_chain_id(&chain_id2)?.is_none());

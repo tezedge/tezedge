@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 use ws::{Factory, Handler, Sender};
 
@@ -14,9 +17,7 @@ pub struct WsServer {
 
 impl WsServer {
     pub fn new(count: Arc<AtomicUsize>) -> Self {
-        Self {
-            count
-        }
+        Self { count }
     }
 }
 
@@ -33,13 +34,12 @@ impl Factory for WsServer {
     }
 }
 
-
 /// Client handler
 /// Contains bare-bones implementation, as we do not need any fancy
 /// client handling, for now.
 #[derive(Clone)]
 pub struct WsClient {
-    ws: Sender
+    ws: Sender,
 }
 
 impl WsClient {

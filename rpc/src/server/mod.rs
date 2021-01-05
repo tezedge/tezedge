@@ -1,19 +1,20 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use getset::Getters;
-use hyper::{Body, Method, Request, Response};
 use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response};
 use riker::actors::ActorSystem;
 use slog::{error, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
+use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::ShellChannelRef;
 use storage::context::TezedgeContext;
 use storage::persistent::PersistentStorage;
@@ -21,13 +22,13 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::{error_with_message, not_found, options};
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
+use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
-mod shell_handler;
 mod protocol_handler;
 mod router;
+mod shell_handler;
 
 /// Server environment parameters
 #[derive(Getters, Clone)]
@@ -39,6 +40,8 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
+    current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    #[get = "pub(crate)"]
     tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
@@ -47,7 +50,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezos_environment: TezosEnvironmentConfiguration,
     #[get = "pub(crate)"]
-    network_version: NetworkVersion,
+    network_version: Arc<NetworkVersion>,
     #[get = "pub(crate)"]
     log: Logger,
 
@@ -70,8 +73,9 @@ impl RpcServiceEnvironment {
         actor: RpcServerRef,
         shell_channel: ShellChannelRef,
         tezos_environment: TezosEnvironmentConfiguration,
-        network_version: NetworkVersion,
+        network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
+        current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
@@ -79,7 +83,8 @@ impl RpcServiceEnvironment {
         main_chain_id: ChainId,
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
-        log: &Logger) -> Self {
+        log: &Logger,
+    ) -> Self {
         Self {
             sys,
             actor,
@@ -87,6 +92,7 @@ impl RpcServiceEnvironment {
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),
+            current_mempool_state_storage,
             tezedge_context: tezedge_context.clone(),
             main_chain_id,
             main_chain_genesis_hash,
@@ -105,12 +111,39 @@ pub type Query = HashMap<String, Vec<String>>;
 
 pub type HResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
-pub type Handler = Arc<dyn Fn(Request<Body>, Params, Query, RpcServiceEnvironment) -> Box<dyn Future<Output=HResult> + Send> + Send + Sync>;
+pub type Handler = Arc<
+    dyn Fn(
+            Request<Body>,
+            Params,
+            Query,
+            RpcServiceEnvironment,
+        ) -> Box<dyn Future<Output = HResult> + Send>
+        + Send
+        + Sync,
+>;
 
+pub struct MethodHandler {
+    allowed_methods: Arc<HashSet<Method>>,
+    handler: Handler,
+}
+
+impl MethodHandler {
+    pub fn new(allowed_methods: Arc<HashSet<Method>>, handler: Handler) -> Self {
+        Self {
+            allowed_methods,
+            handler,
+        }
+    }
+}
 
 /// Spawn new HTTP server on given address interacting with specific actor system
-pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> impl Future<Output=Result<(), hyper::Error>> {
-    let routes = Arc::new(router::create_routes(env.state().read().unwrap().is_sandbox()));
+pub fn spawn_server(
+    bind_address: &SocketAddr,
+    env: RpcServiceEnvironment,
+) -> impl Future<Output = Result<(), hyper::Error>> {
+    let routes = Arc::new(router::create_routes(
+        env.state().read().unwrap().is_sandbox(),
+    ));
 
     hyper::Server::bind(bind_address)
         .serve(make_service_fn(move |_| {
@@ -124,25 +157,38 @@ pub fn spawn_server(bind_address: &SocketAddr, env: RpcServiceEnvironment) -> im
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
-                        if let Some((handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches("/")) {
-                            match *req.method() {
+                        if let Some((method_and_handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches('/')) {
+                            let MethodHandler {
+                                allowed_methods,
+                                handler,
+                            } = method_and_handler;
+
+                            let request_method = req.method();
+                            let log = env.log.clone();
+
+                            match *request_method {
                                 Method::OPTIONS => {
                                     // lets globaly handle options
                                     options()
                                 }
                                 _ => {
-                                    let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
-                                    let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(|| HashMap::new());
+                                    if allowed_methods.contains(request_method) {
+                                        let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
+                                        let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(HashMap::new);
 
-                                    let handler = handler.clone();
-                                    let log = env.log.clone();
-                                    let fut = handler(req, params, query, env);
-                                    match Pin::from(fut).await {
-                                        Ok(response) => Ok(response),
-                                        Err(e) => {
-                                            error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
-                                            error_with_message(format!("{:?}", e))
+                                        let handler = handler.clone();
+                                        let fut = handler(req, params, query, env);
+                                        match Pin::from(fut).await {
+                                            Ok(response) => Ok(response),
+                                            Err(e) => {
+                                                error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
+                                                error_with_message(format!("{:?}", e))
+                                            }
                                         }
+                                    } else {
+                                        let error_message = format!("Failed to execute RPC function - Method {} not registered for this RPC function", request_method);
+                                        error!(log, "{}", error_message);
+                                        error_with_message(format!("{:?}", error_message))
                                     }
                                 }
                             }
@@ -179,11 +225,13 @@ pub trait HasSingleValue {
     fn get_str(&self, key: &str) -> Option<&str>;
 
     fn get_u64(&self, key: &str) -> Option<u64> {
-        self.get_str(key).and_then(|value| value.parse::<u64>().ok())
+        self.get_str(key)
+            .and_then(|value| value.parse::<u64>().ok())
     }
 
     fn get_usize(&self, key: &str) -> Option<usize> {
-        self.get_str(key).and_then(|value| value.parse::<usize>().ok())
+        self.get_str(key)
+            .and_then(|value| value.parse::<usize>().ok())
     }
 
     fn contains_key(&self, key: &str) -> bool {
@@ -193,18 +241,15 @@ pub trait HasSingleValue {
 
 impl HasSingleValue for Params {
     fn get_str(&self, key: &str) -> Option<&str> {
-        self.iter().find_map(|(k, v)| {
-            if k == key {
-                Some(v.as_str())
-            } else {
-                None
-            }
-        })
+        self.iter()
+            .find_map(|(k, v)| if k == key { Some(v.as_str()) } else { None })
     }
 }
 
 impl HasSingleValue for Query {
     fn get_str(&self, key: &str) -> Option<&str> {
-        self.get(key).map(|values| values.iter().next().map(String::as_str)).flatten()
+        self.get(key)
+            .map(|values| values.iter().next().map(String::as_str))
+            .flatten()
     }
 }

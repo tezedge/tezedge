@@ -32,7 +32,8 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
         assert_eq!(3, gen_1.next()?);
         assert_eq!(1, gen_2.next()?);
     }
-    Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+    assert!(DB::destroy(&Options::default(), path).is_ok());
+    Ok(())
 }
 
 #[test]
@@ -59,7 +60,8 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
         assert_eq!(6, gen_b.next()?);
         assert_eq!(7, gen_a.next()?);
     }
-    Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+    assert!(DB::destroy(&Options::default(), path).is_ok());
+    Ok(())
 }
 
 #[test]
@@ -80,7 +82,8 @@ fn generator_test_batch() -> Result<(), Error> {
             assert_eq!(i, gen.next()?);
         }
     }
-    Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+    assert!(DB::destroy(&Options::default(), path).is_ok());
+    Ok(())
 }
 
 #[test]
@@ -126,5 +129,6 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
             }
         }
     }
-    Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+    assert!(DB::destroy(&Options::default(), path).is_ok());
+    Ok(())
 }

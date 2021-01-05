@@ -6,8 +6,8 @@ use std::iter::FromIterator;
 use serde::Serialize;
 use slog_derive::SerdeValue;
 
-use crate::monitors::PeerMonitor;
 use crate::monitors::ChainMonitor;
+use crate::monitors::PeerMonitor;
 
 // -------------------------- GENERAL METRICS -------------------------- //
 #[derive(Serialize, Debug, Clone)]
@@ -21,7 +21,13 @@ pub struct BlockMetrics {
 }
 
 impl BlockMetrics {
-    pub fn new(group: i32, numbers_of_blocks: i32, finished_blocks: i32, applied_blocks: i32, download_duration: Option<f32>) -> Self {
+    pub fn new(
+        group: i32,
+        numbers_of_blocks: i32,
+        finished_blocks: i32,
+        applied_blocks: i32,
+        download_duration: Option<f32>,
+    ) -> Self {
         Self {
             group,
             numbers_of_blocks,
@@ -47,15 +53,16 @@ pub struct IncomingTransferMetrics {
 }
 
 impl IncomingTransferMetrics {
-    pub fn new(eta: f32,
-               current_block_count: usize,
-               downloaded_blocks: usize,
-               download_rate: f32,
-               average_download_rate: f32,
-               downloaded_headers: usize,
-               header_download_rate: f32,
-               header_average_download_rate: f32) -> Self
-    {
+    pub fn new(
+        eta: f32,
+        current_block_count: usize,
+        downloaded_blocks: usize,
+        download_rate: f32,
+        average_download_rate: f32,
+        downloaded_headers: usize,
+        header_download_rate: f32,
+        header_average_download_rate: f32,
+    ) -> Self {
         Self {
             eta,
             current_block_count,
@@ -82,7 +89,13 @@ pub struct PeerMetrics {
 }
 
 impl PeerMetrics {
-    pub fn new(public_key: Option<String>, ip_address: String, transferred_bytes: usize, average_transfer_speed: f32, current_transfer_speed: f32) -> Self {
+    pub fn new(
+        public_key: Option<String>,
+        ip_address: String,
+        transferred_bytes: usize,
+        average_transfer_speed: f32,
+        current_transfer_speed: f32,
+    ) -> Self {
         Self {
             public_key,
             ip_address,
@@ -115,29 +128,17 @@ impl PeerConnectionStatus {
 #[derive(SerdeValue, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HandlerMessage {
-    PeersMetrics {
-        payload: Vec<PeerMetrics>
-    },
-    PeerStatus {
-        payload: PeerConnectionStatus,
-    },
-    IncomingTransfer {
-        payload: IncomingTransferMetrics
-    },
-    BlockStatus {
-        payload: Vec<BlockMetrics>
-    },
-    BlockApplicationStatus {
-        payload: BlockApplicationMessage,
-    },
-    ChainStatus {
-        payload:  ChainMonitor,
-    },
+    PeersMetrics { payload: Vec<PeerMetrics> },
+    PeerStatus { payload: PeerConnectionStatus },
+    IncomingTransfer { payload: IncomingTransferMetrics },
+    BlockStatus { payload: Vec<BlockMetrics> },
+    BlockApplicationStatus { payload: BlockApplicationMessage },
+    ChainStatus { payload: ChainMonitor },
     NotImplemented(String),
 }
 
 impl<'a> FromIterator<&'a mut PeerMonitor> for HandlerMessage {
-    fn from_iter<I: IntoIterator<Item=&'a mut PeerMonitor>>(monitors: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = &'a mut PeerMonitor>>(monitors: I) -> Self {
         let mut payload = Vec::new();
         for monitor in monitors {
             payload.push(monitor.snapshot())

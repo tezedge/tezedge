@@ -5,7 +5,6 @@ use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, RwLock};
 
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -13,19 +12,23 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use crypto::seeded_step::{Seed, Step};
-use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError};
 use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
-use tezos_messages::Head;
+use storage::{
+    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError,
+};
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
 use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
+use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
-use crate::collections::{BlockData, UniqueBlockData};
-use crate::shell_channel::{BlockApplied, CurrentMempoolState};
+use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::utils::collections::{BlockData, UniqueBlockData};
 use crate::validation;
+
 pub enum BlockAcceptanceResult {
     AcceptBlock,
     IgnoreBlock,
@@ -63,7 +66,11 @@ impl BlockchainState {
     }
 
     /// Validate if we can accept branch
-    pub fn can_accept_branch(&self, branch: &CurrentBranchMessage, current_head: &Option<Head>) -> bool {
+    pub fn can_accept_branch(
+        &self,
+        branch: &CurrentBranchMessage,
+        current_head: &Option<Head>,
+    ) -> bool {
         // validate chain which we operate on
         if self.get_chain_id() != branch.chain_id() {
             // return Ok(BlockAcceptanceResult::IgnoreBlock);
@@ -75,7 +82,10 @@ impl BlockchainState {
 
         if let Some(current_head) = current_head.as_ref() {
             // (only_if_fitness_increases) we can accept branch if increases fitness
-            if validation::is_fitness_increases(current_head, branch.current_branch().current_head().fitness()) {
+            if validation::is_fitness_increases(
+                current_head,
+                branch.current_branch().current_head().fitness(),
+            ) {
                 return true;
             }
 
@@ -86,10 +96,11 @@ impl BlockchainState {
     }
 
     /// Validate if we can accept head
-    pub fn can_accept_head(&self,
-                           head: &CurrentHeadMessage,
-                           current_head: &Option<Head>,
-                           api: &ProtocolController,
+    pub fn can_accept_head(
+        &self,
+        head: &CurrentHeadMessage,
+        current_head: &Option<Head>,
+        api: &ProtocolController,
     ) -> Result<BlockAcceptanceResult, failure::Error> {
         // validate chain which we operate on
         if self.get_chain_id() != head.chain_id() {
@@ -103,18 +114,24 @@ impl BlockchainState {
 
         // we need our current head at first
         if let Some(current_head) = current_head.as_ref() {
+            // same header means only mempool operations were changed
+            if validation::is_same_head(current_head, validated_header)? {
+                return Ok(BlockAcceptanceResult::AcceptBlock);
+            }
+
             // (future block)
             if validation::is_future_block(&validated_header)? {
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
             // (only_if_fitness_increases) we can accept head if increases fitness
-            if !validation::is_fitness_increases(current_head, validated_header.fitness()) {
+            if !validation::is_fitness_increases_or_same(current_head, validated_header.fitness()) {
                 return Ok(BlockAcceptanceResult::IgnoreBlock);
             }
 
             // lets try to find protocol for validated_block
-            let (protocol_hash, predecessor_header, missing_predecessor) = self.resolve_protocol(validated_header, &current_head)?;
+            let (protocol_hash, predecessor_header, missing_predecessor) =
+                self.resolve_protocol(validated_header, &current_head)?;
 
             // if missing predecessor
             if missing_predecessor {
@@ -131,10 +148,8 @@ impl BlockchainState {
                     predecessor_header,
                     api,
                 ) {
-                    Some(error) => {
-                        Ok(BlockAcceptanceResult::MutlipassValidationError(error))
-                    }
-                    None => Ok(BlockAcceptanceResult::AcceptBlock)
+                    Some(error) => Ok(BlockAcceptanceResult::MutlipassValidationError(error)),
+                    None => Ok(BlockAcceptanceResult::AcceptBlock),
                 }
             } else {
                 // if not, we cannot trigger validation, so we just ignore head
@@ -149,25 +164,40 @@ impl BlockchainState {
     /// 1. protocol_hash
     /// 2. applied_predecessor (only if is already applied)
     /// 3. (bool) missing_predecessor,
-    fn resolve_protocol(&self, validated_header: &BlockHeader, current_head: &Head) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), failure::Error> {
+    fn resolve_protocol(
+        &self,
+        validated_header: &BlockHeader,
+        current_head: &Head,
+    ) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), failure::Error> {
         // TODO: TE-238 - store proto_level and protocol_hash and map - optimization - detect change protocol event
 
-        let (protocol_hash, predecessor_header, missing_predecessor) = match self.block_meta_storage.get(validated_header.predecessor())? {
+        let (protocol_hash, predecessor_header, missing_predecessor) = match self
+            .block_meta_storage
+            .get(validated_header.predecessor())?
+        {
             Some(predecessor_meta) => {
                 match predecessor_meta.is_applied() {
                     true => {
                         // if predecessor is applied, than we have exact protocol
-                        match self.block_storage.get_with_json_data(validated_header.predecessor())? {
+                        match self
+                            .block_storage
+                            .get_with_json_data(validated_header.predecessor())?
+                        {
                             Some((predecessor_header, predecessor_data)) => {
                                 // get next_protocol from predecessor
-                                let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(&predecessor_data.block_header_proto_metadata_json())?;
-                                let protocol_hash = metadata
-                                    .get("next_protocol")
-                                    .map(|value| value.as_str());
+                                let metadata: HashMap<String, serde_json::Value> =
+                                    serde_json::from_str(
+                                        &predecessor_data.block_header_proto_metadata_json(),
+                                    )?;
+                                let protocol_hash =
+                                    metadata.get("next_protocol").map(|value| value.as_str());
                                 if let Some(Some(protocol_hash)) = protocol_hash {
                                     // return next_protocol and header
                                     (
-                                        Some(HashType::ProtocolHash.string_to_bytes(protocol_hash)?),
+                                        Some(
+                                            HashType::ProtocolHash
+                                                .b58check_to_hash(protocol_hash)?,
+                                        ),
                                         Some(predecessor_header),
                                         false,
                                     )
@@ -175,18 +205,17 @@ impl BlockchainState {
                                     return Err(
                                         failure::format_err!(
                                             "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                            HashType::BlockHash.bytes_to_string(validated_header.predecessor())
+                                            HashType::BlockHash.hash_to_b58check(validated_header.predecessor())
                                         )
                                     );
                                 }
                             }
                             None => {
-                                return Err(
-                                    failure::format_err!(
-                                        "Missing data for applied predecessor: {}!",
-                                        HashType::BlockHash.bytes_to_string(validated_header.predecessor())
-                                    )
-                                );
+                                return Err(failure::format_err!(
+                                    "Missing data for applied predecessor: {}!",
+                                    HashType::BlockHash
+                                        .hash_to_b58check(validated_header.predecessor())
+                                ));
                             }
                         }
                     }
@@ -208,50 +237,53 @@ impl BlockchainState {
         } else {
             // check protocol by current head for the same proto_level
             // if predecessor is applied, than we have exact protocol
-            match self.block_storage.get_with_json_data(current_head.block_hash())? {
+            match self
+                .block_storage
+                .get_with_json_data(current_head.block_hash())?
+            {
                 Some((current_head_header, current_head_header_data)) => {
                     if current_head_header.header.proto() == validated_header.proto() {
                         // get protocol from predecessor
-                        let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(&current_head_header_data.block_header_proto_metadata_json())?;
-                        let protocol_hash = metadata
-                            .get("protocol")
-                            .map(|value| value.as_str());
+                        let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(
+                            &current_head_header_data.block_header_proto_metadata_json(),
+                        )?;
+                        let protocol_hash = metadata.get("protocol").map(|value| value.as_str());
                         if let Some(Some(protocol_hash)) = protocol_hash {
                             // return protocol
-                            Ok(
-                                (
-                                    Some(HashType::ProtocolHash.string_to_bytes(protocol_hash)?),
-                                    predecessor_header,
-                                    missing_predecessor
-                                )
-                            )
+                            Ok((
+                                Some(HashType::ProtocolHash.b58check_to_hash(protocol_hash)?),
+                                predecessor_header,
+                                missing_predecessor,
+                            ))
                         } else {
-                            return Err(
-                                failure::format_err!(
-                                    "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                    HashType::BlockHash.bytes_to_string(validated_header.predecessor())
-                                )
-                            );
+                            return Err(failure::format_err!(
+                                "Missing `next_protocol` attribute for applied predecessor: {}!",
+                                HashType::BlockHash
+                                    .hash_to_b58check(validated_header.predecessor())
+                            ));
                         }
                     } else {
                         Ok((None, predecessor_header, missing_predecessor))
                     }
                 }
                 None => {
-                    return Err(
-                        failure::format_err!(
-                            "Missing data for applied current_head: {}!",
-                            HashType::BlockHash.bytes_to_string(current_head.block_hash())
-                        )
-                    );
+                    return Err(failure::format_err!(
+                        "Missing data for applied current_head: {}!",
+                        HashType::BlockHash.hash_to_b58check(current_head.block_hash())
+                    ));
                 }
             }
         }
     }
 
     /// Returns true, if [block] can be applied
-    pub fn can_apply_block<'b, OP>(&self, (block, block_metadata): (&'b BlockHash, &'b Meta), operations_complete: OP) -> Result<bool, StorageError>
-        where OP: Fn(&'b BlockHash) -> Result<bool, StorageError> /* func returns true, if operations are completed */
+    pub fn can_apply_block<'b, OP>(
+        &self,
+        (block, block_metadata): (&'b BlockHash, &'b Meta),
+        operations_complete: OP,
+    ) -> Result<bool, StorageError>
+    where
+        OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
     {
         let block_predecessor = block_metadata.predecessor();
 
@@ -281,33 +313,27 @@ impl BlockchainState {
     }
 
     /// Resolves missing blocks and schedules them for download from network
-    pub fn schedule_branch_bootstrap(&mut self, block_header: &BlockHeaderWithHash, history: &Vec<BlockHash>) -> Result<(), StorageError> {
+    pub fn schedule_branch_bootstrap(
+        &mut self,
+        block_header: &BlockHeaderWithHash,
+        history: &Vec<BlockHash>,
+    ) -> Result<(), StorageError> {
         let block_level = block_header.header.level();
         let block_hash = block_header.hash.clone();
 
         // at first schedule history - we try to prioritize download from the beginning, so the history is reversed here
-        self.push_missing_history(
-            history.iter().cloned().rev().collect(),
-            block_level,
-        )?;
+        self.push_missing_history(history.iter().cloned().rev().collect(), block_level)?;
 
         // schedule predecessor (if not present in history)
         if !history.contains(block_header.header.predecessor()) {
-            self.push_missing_block(
-                MissingBlock::with_level_guess(
-                    block_header.header.predecessor().clone(),
-                    std::cmp::max(1, block_level - 1),
-                )
-            )?;
+            self.push_missing_block(MissingBlock::with_level_guess(
+                block_header.header.predecessor().clone(),
+                std::cmp::max(1, block_level - 1),
+            ))?;
         }
 
         // schedule also current_head
-        self.push_missing_block(
-            MissingBlock::with_level(
-                block_hash.clone(),
-                block_level,
-            )
-        )?;
+        self.push_missing_block(MissingBlock::with_level(block_hash, block_level))?;
 
         Ok(())
     }
@@ -317,22 +343,31 @@ impl BlockchainState {
     /// Returns:
     /// - None, if head was not updated, means was ignored
     /// - Some(new_head, head_result)
-    pub fn try_update_new_current_head(&self, potential_new_head: &BlockApplied, current_head: &Option<Head>, mempool_state: &Option<Arc<RwLock<CurrentMempoolState>>>) -> Result<Option<(Head, HeadResult)>, StorageError> {
+    pub fn try_update_new_current_head(
+        &self,
+        potential_new_head: &BlockHeaderWithHash,
+        current_head: &Option<Head>,
+        current_mempool_state: CurrentMempoolStateStorageRef,
+    ) -> Result<Option<(Head, HeadResult)>, StorageError> {
         if let Some(current_head) = current_head {
             // get fitness from mempool, if not, than use current_head.fitness
-            let current_context_fitness = match mempool_state {
-                Some(state) => {
-                    let mempool_state = state.read().unwrap();
-                    match mempool_state.fitness.as_ref() {
-                        Some(fitness) => fitness.clone(),
-                        None => current_head.fitness().to_vec()
-                    }
+            let mempool_state = current_mempool_state.read().unwrap();
+            let current_context_fitness = {
+                if let Some(Some(fitness)) = mempool_state
+                    .prevalidator()
+                    .map(|p| p.context_fitness.as_ref())
+                {
+                    fitness
+                } else {
+                    current_head.fitness()
                 }
-                None => current_head.fitness().to_vec()
             };
-
             // need to check against current_head, if not accepted, just ignore potential head
-            if !validation::can_update_current_head(potential_new_head.header(), &current_head, &current_context_fitness) {
+            if !validation::can_update_current_head(
+                potential_new_head,
+                &current_head,
+                &current_context_fitness,
+            ) {
                 // just ignore
                 return Ok(None);
             }
@@ -340,41 +375,51 @@ impl BlockchainState {
 
         // we need to check, if previous head is predecessor of new_head (for later use)
         let head_result = match &current_head {
-            Some(previos_head) => if previos_head.block_hash().eq(potential_new_head.header().header.predecessor()) {
-                HeadResult::HeadIncrement
-            } else {
-                // if previous head is not predecesor of new head, means it could be new branch
-                HeadResult::BranchSwitch
+            Some(previos_head) => {
+                if previos_head
+                    .block_hash()
+                    .eq(potential_new_head.header.predecessor())
+                {
+                    HeadResult::HeadIncrement
+                } else {
+                    // if previous head is not predecesor of new head, means it could be new branch
+                    HeadResult::BranchSwitch
+                }
             }
             None => HeadResult::HeadIncrement,
         };
 
         // this will be new head
         let head = Head::new(
-            potential_new_head.header().hash.clone(),
-            potential_new_head.header().header.level(),
-            potential_new_head.header().header.fitness().clone(),
+            potential_new_head.hash.clone(),
+            potential_new_head.header.level(),
+            potential_new_head.header.fitness().clone(),
         );
 
         // set new head to db
-        self.chain_meta_storage.set_current_head(&self.chain_id, head.clone())?;
+        self.chain_meta_storage
+            .set_current_head(&self.chain_id, head.clone())?;
 
         Ok(Some((head, head_result)))
     }
 
-    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash, log: &Logger) -> Result<(Meta, bool), StorageError> {
+    pub fn process_block_header(
+        &mut self,
+        block_header: &BlockHeaderWithHash,
+        log: &Logger,
+    ) -> Result<(Meta, bool), StorageError> {
         // check if we already have seen predecessor
-        self.push_missing_block(
-            MissingBlock::with_level_guess(
-                block_header.header.predecessor().clone(),
-                block_header.header.level() - 1,
-            )
-        )?;
+        self.push_missing_block(MissingBlock::with_level_guess(
+            block_header.header.predecessor().clone(),
+            block_header.header.level() - 1,
+        ))?;
 
         // store block
         let is_new_block = self.block_storage.put_block_header(block_header)?;
         // update meta
-        let metadata = self.block_meta_storage.put_block_header(block_header, &self.chain_id, &log)?;
+        let metadata =
+            self.block_meta_storage
+                .put_block_header(block_header, &self.chain_id, &log)?;
 
         Ok((metadata, is_new_block))
     }
@@ -383,7 +428,12 @@ impl BlockchainState {
     pub fn drain_missing_blocks(&mut self, n: usize, level_max: i32) -> Vec<MissingBlock> {
         (0..cmp::min(self.missing_blocks.len(), n))
             .filter_map(|_| {
-                if self.missing_blocks.peek().filter(|block| block.fits_to_max(level_max)).is_some() {
+                if self
+                    .missing_blocks
+                    .peek()
+                    .filter(|block| block.fits_to_max(level_max))
+                    .is_some()
+                {
                     self.missing_blocks.pop()
                 } else {
                     None
@@ -401,7 +451,11 @@ impl BlockchainState {
     }
 
     #[inline]
-    fn push_missing_history(&mut self, history: Vec<BlockHash>, level: Level) -> Result<(), StorageError> {
+    fn push_missing_history(
+        &mut self,
+        history: Vec<BlockHash>,
+        level: Level,
+    ) -> Result<(), StorageError> {
         let mut rng = rand::thread_rng();
         let history_max_parts = if history.len() < usize::from(HISTORY_MAX_SIZE) {
             history.len() as u8
@@ -409,14 +463,14 @@ impl BlockchainState {
             HISTORY_MAX_SIZE
         };
 
-        history.iter().enumerate()
+        history
+            .iter()
+            .enumerate()
             .map(|(idx, history_block_hash)| {
-                self.push_missing_block(
-                    MissingBlock::with_level_guess(
-                        history_block_hash.clone(),
-                        Self::guess_level(&mut rng, level, history_max_parts, idx),
-                    )
-                )
+                self.push_missing_block(MissingBlock::with_level_guess(
+                    history_block_hash.clone(),
+                    Self::guess_level(&mut rng, level, history_max_parts, idx),
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -437,12 +491,8 @@ impl BlockchainState {
         for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
             let (block_hash, meta) = (key?, value?);
             if meta.predecessor().is_none() && (meta.chain_id() == &self.chain_id) {
-                self.missing_blocks.push(
-                    MissingBlock::with_level(
-                        block_hash,
-                        meta.level(),
-                    )
-                );
+                self.missing_blocks
+                    .push(MissingBlock::with_level(block_hash, meta.level()));
             }
         }
 
@@ -454,7 +504,11 @@ impl BlockchainState {
         &self.chain_id
     }
 
-    pub fn get_history(&self, head: &BlockHash, seed: &Seed) -> Result<Vec<BlockHash>, StorageError> {
+    pub fn get_history(
+        &self,
+        head: &BlockHash,
+        seed: &Seed,
+    ) -> Result<Vec<BlockHash>, StorageError> {
         Self::compute_history(
             &self.block_meta_storage,
             self.chain_meta_storage.get_caboose(&self.chain_id)?,
@@ -465,7 +519,13 @@ impl BlockchainState {
     }
 
     /// Resulted history is sorted: "from oldest block to newest"
-    fn compute_history(block_meta_storage: &BlockMetaStorage, caboose: Option<Head>, head: &BlockHash, max_size: u8, seed: &Seed) -> Result<Vec<BlockHash>, StorageError> {
+    fn compute_history(
+        block_meta_storage: &BlockMetaStorage,
+        caboose: Option<Head>,
+        head: &BlockHash,
+        max_size: u8,
+        seed: &Seed,
+    ) -> Result<Vec<BlockHash>, StorageError> {
         if max_size == 0 {
             return Ok(vec![]);
         }
@@ -604,17 +664,11 @@ impl Ord for MissingBlock {
     fn cmp(&self, other: &Self) -> Ordering {
         let self_potential_level = match self.level {
             Some(level) => level,
-            None => match self.level_guess {
-                Some(level) => level,
-                None => 0
-            }
+            None => self.level_guess.unwrap_or(0),
         };
         let other_potential_level = match other.level {
             Some(level) => level,
-            None => match other.level_guess {
-                Some(level) => level,
-                None => 0
-            }
+            None => other.level_guess.unwrap_or(0),
         };
 
         // reverse, because we want lower level at begining
@@ -693,61 +747,61 @@ mod tests {
         // for block 1 in history [1, 20)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 1);
-            assert!(level >= 1 && level < 20);
+            assert!((1..20).contains(&level));
         }
 
         // for block 2 in history [20, 40)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 2);
-            assert!(level >= 20 && level < 40);
+            assert!((20..40).contains(&level));
         }
 
         // for block 3 in history [40, 60)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 3);
-            assert!(level >= 40 && level < 60);
+            assert!((40..60).contains(&level));
         }
 
         // for block 4 in history [60, 80)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 4);
-            assert!(level >= 60 && level < 80);
+            assert!((60..80).contains(&level));
         }
 
         // for block 5 in history [80, 100)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 100, 5, 5);
-            assert!(level >= 80 && level < 100);
+            assert!((80..100).contains(&level));
         }
 
         // for block 0 in history [0, 1)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 1, 0);
-            assert!(level >= 0 && level < 1);
+            assert!((0..1).contains(&level));
         }
 
         // corner case (for level 1 if there are two elements)
         // for block 0 in history [0, 1)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 2, 0);
-            assert!(level >= 0 && level < 1);
+            assert!((0..1).contains(&level));
         }
 
         // corner case (for level 1 if there are two elements)
         // for block 1 in history [1, 2)
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 2, 1);
-            assert!(level >= 1 && level < 2);
+            assert!((1..2).contains(&level));
         }
 
         // corner cases
         for _ in 0..100 {
             let level = BlockchainState::guess_level(&mut rng, 1, 3, 0);
-            assert!(level >= 0 && level < 1);
+            assert!((0..1).contains(&level));
             let level = BlockchainState::guess_level(&mut rng, 1, 3, 1);
-            assert!(level >= 1 && level < 2);
+            assert!((1..2).contains(&level));
             let level = BlockchainState::guess_level(&mut rng, 1, 3, 2);
-            assert!(level >= 1 && level < 2);
+            assert!((1..2).contains(&level));
         }
     }
 
@@ -767,17 +821,33 @@ mod tests {
         let blocksdb = data::init_blocks();
 
         // init with genesis
-        let (genesis_hash, genesis_header) = (blocksdb.block_hash("Genesis"), blocksdb.header("Genesis"));
+        let (genesis_hash, genesis_header) =
+            (blocksdb.block_hash("Genesis"), blocksdb.header("Genesis"));
         let chain_id = chain_id_from_block_hash(&genesis_hash);
         block_storage.put_block_header(&genesis_header)?;
-        block_meta_storage.put(&genesis_hash, &Meta::genesis_meta(&genesis_hash, &chain_id, true))?;
+        block_meta_storage.put(
+            &genesis_hash,
+            &Meta::genesis_meta(&genesis_hash, &chain_id, true),
+        )?;
 
         // store branch1 - root genesis
-        data::store_branch(&vec!["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"],
-                           &chain_id, &blocksdb, &block_storage, &block_meta_storage, &log);
+        data::store_branch(
+            &vec!["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"],
+            &chain_id,
+            &blocksdb,
+            &block_storage,
+            &block_meta_storage,
+            &log,
+        );
         // store branch2 - root A3
-        data::store_branch(&vec!["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"],
-                           &chain_id, &blocksdb, &block_storage, &block_meta_storage, &log);
+        data::store_branch(
+            &vec!["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"],
+            &chain_id,
+            &blocksdb,
+            &block_storage,
+            &block_meta_storage,
+            &log,
+        );
         // store branch3 - root A3 (C0, C1, C2 ... C62)
         let c_branch = {
             let mut b = Vec::with_capacity(10_000);
@@ -786,17 +856,33 @@ mod tests {
             }
             b
         };
-        data::store_branch(&c_branch.iter().map(|s| s.as_str()).collect::<Vec<&str>>(),
-                           &chain_id, &blocksdb, &block_storage, &block_meta_storage, &log);
+        data::store_branch(
+            &c_branch.iter().map(|s| s.as_str()).collect::<Vec<&str>>(),
+            &chain_id,
+            &blocksdb,
+            &block_storage,
+            &block_meta_storage,
+            &log,
+        );
 
         // check if reorg stored - A3 - should also contains successor A4 and B1 and C0
         let reorg_block_meta = block_meta_storage.get(&blocksdb.block_hash("A3"))?.unwrap();
-        assert!(reorg_block_meta.successors().contains(&blocksdb.block_hash("A4")));
-        assert!(reorg_block_meta.successors().contains(&blocksdb.block_hash("B1")));
-        assert!(reorg_block_meta.successors().contains(&blocksdb.block_hash("C0")));
+        assert!(reorg_block_meta
+            .successors()
+            .contains(&blocksdb.block_hash("A4")));
+        assert!(reorg_block_meta
+            .successors()
+            .contains(&blocksdb.block_hash("B1")));
+        assert!(reorg_block_meta
+            .successors()
+            .contains(&blocksdb.block_hash("C0")));
 
         // calculates and checks
-        let caboose = Some(Head::new(blocksdb.block_hash("Genesis"), Meta::GENESIS_LEVEL, vec![]));
+        let caboose = Some(Head::new(
+            blocksdb.block_hash("Genesis"),
+            Meta::GENESIS_LEVEL,
+            vec![],
+        ));
 
         data::assert_history(
             &["A7", "A6", "A5", "A4", "A3", "A2"],
@@ -806,7 +892,10 @@ mod tests {
                 caboose.clone(),
                 &blocksdb.block_hash("A8"),
                 6,
-                &Seed::new(&data::generate_key_string('s'), &data::generate_key_string('r')),
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
             )?,
         );
 
@@ -818,7 +907,10 @@ mod tests {
                 caboose.clone(),
                 &blocksdb.block_hash("B8"),
                 8,
-                &Seed::new(&data::generate_key_string('s'), &data::generate_key_string('r')),
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
             )?,
         );
 
@@ -830,7 +922,10 @@ mod tests {
                 caboose.clone(),
                 &blocksdb.block_hash("B8"),
                 4,
-                &Seed::new(&data::generate_key_string('s'), &data::generate_key_string('r')),
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
             )?,
         );
 
@@ -842,7 +937,10 @@ mod tests {
                 caboose.clone(),
                 &blocksdb.block_hash("A5"),
                 0,
-                &Seed::new(&data::generate_key_string('s'), &data::generate_key_string('r')),
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
             )?,
         );
 
@@ -854,19 +952,29 @@ mod tests {
                 caboose.clone(),
                 &blocksdb.block_hash("A5"),
                 100,
-                &Seed::new(&data::generate_key_string('s'), &data::generate_key_string('r')),
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
             )?,
         );
 
         data::assert_history(
-            &["C61", "C60", "C59", "C58", "C57", "C56", "C55", "C54", "C53", "C52", "C51", "C49", "C46", "C44", "C43", "C42", "C41", "C40", "C39", "C37", "C34", "C29", "C26", "C20", "C15", "C13", "C9", "C7", "C3"],
+            &[
+                "C61", "C60", "C59", "C58", "C57", "C56", "C55", "C54", "C53", "C52", "C51", "C49",
+                "C46", "C44", "C43", "C42", "C41", "C40", "C39", "C37", "C34", "C29", "C26", "C20",
+                "C15", "C13", "C9", "C7", "C3",
+            ],
             &blocksdb,
             BlockchainState::compute_history(
                 &block_meta_storage,
                 caboose,
                 &blocksdb.block_hash("C62"),
                 29,
-                &Seed::new(&data::generate_key_string('s'), &data::generate_key_string('r')),
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
             )?,
         );
 
@@ -875,10 +983,13 @@ mod tests {
 
     fn create_logger(level: Level) -> Logger {
         let drain = slog_async::Async::new(
-            slog_term::FullFormat::new(
-                slog_term::TermDecorator::new().build()
-            ).build().fuse()
-        ).build().filter_level(level).fuse();
+            slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+                .build()
+                .fuse(),
+        )
+        .build()
+        .filter_level(level)
+        .fuse();
 
         Logger::root(drain, slog::o!())
     }
@@ -896,27 +1007,40 @@ mod tests {
 
         macro_rules! init_block {
             ($blocks:ident, $name:expr, $block_hash_expected:expr, $block_header_hex_data:expr) => {
-                init_block!($blocks, $name, $block_hash_expected, $block_hash_expected, $block_header_hex_data);
+                init_block!(
+                    $blocks,
+                    $name,
+                    $block_hash_expected,
+                    $block_hash_expected,
+                    $block_header_hex_data
+                );
             };
 
             ($blocks:ident, $name:expr, $block_hash:expr, $block_hash_expected:expr, $block_header_hex_data:expr) => {
-                let block_hash = HashType::BlockHash.string_to_bytes($block_hash).expect("Failed to create block hash");
-                let block_hash_expected = HashType::BlockHash.string_to_bytes($block_hash_expected).expect("Failed to create block hash");
+                let block_hash = HashType::BlockHash
+                    .b58check_to_hash($block_hash)
+                    .expect("Failed to create block hash");
+                let block_hash_expected = HashType::BlockHash
+                    .b58check_to_hash($block_hash_expected)
+                    .expect("Failed to create block hash");
                 $blocks.insert(
                     $name,
                     (
                         block_hash.clone(),
                         BlockHeaderWithHash::new(
                             BlockHeader::from_bytes(
-                                hex::decode($block_header_hex_data).expect("Failed to decode hex data")
-                            ).expect("Failed to decode block header")
-                        ).expect("Failed to create block header with hash")
+                                hex::decode($block_header_hex_data)
+                                    .expect("Failed to decode hex data"),
+                            )
+                            .expect("Failed to decode block header"),
+                        )
+                        .expect("Failed to create block header with hash"),
                     ),
                 );
                 let (hash, header) = $blocks.get($name).unwrap();
                 assert_eq!(block_hash, *hash);
                 assert_eq!(block_hash_expected, *header.hash);
-            }
+            };
         }
 
         pub struct BlocksDb {
@@ -1080,37 +1204,54 @@ mod tests {
             init_block!(blocks, "C61", "BKvquefVTbCA1U5JXcUgxorXSqqufJyrnBXKsv1Uqz8Rh7yGiwY", "00000041008d73e24a7cbec1ceb084ccad7c4aee48cb9f4c0e45c1e73b6982d7cfb807ee3b000000000000015501c19a3aff0e22fe364d29bc97e1ff40f958e88fba666f8ca86a8afa86ae3e3c140000000c00000008000000000000004135b2016f0cf272eb96301a6b058d5b2f6fca697c7b55ee111801caf8c64a92cc00000003433631");
             init_block!(blocks, "C62", "BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm", "00000042001c85ccc235859958299792942c2b181cb80a5ec25597e2fdeda9def54e699bbb000000000000015e01913e75202147d6cad8a51aa3396844ba3a425f2173df24b6571509d2f3c403d80000000c0000000800000000000000426adb74d5a5336cc1a5917365dcc880eedd6743f3baa25a7499e971e293dff96e00000003433632");
 
-            BlocksDb {
-                blocks
-            }
+            BlocksDb { blocks }
         }
 
         pub(crate) fn store_branch(
             branch: &Vec<&str>,
             chain_id: &Vec<u8>,
-            blocks: &BlocksDb, block_storage: &BlockStorage, block_meta_storage: &BlockMetaStorage,
-            log: &Logger) {
-            let head_branch = branch
-                .iter()
-                .fold1(|predecessor, successor| {
-                    let new_block = blocks.header(predecessor);
-                    block_storage.put_block_header(&new_block).expect("failed to store block");
-                    block_meta_storage.put_block_header(&new_block, &chain_id, &log).expect("failed to store block metadata");
+            blocks: &BlocksDb,
+            block_storage: &BlockStorage,
+            block_meta_storage: &BlockMetaStorage,
+            log: &Logger,
+        ) {
+            let head_branch = branch.iter().fold1(|predecessor, successor| {
+                let new_block = blocks.header(predecessor);
+                block_storage
+                    .put_block_header(&new_block)
+                    .expect("failed to store block");
+                let meta = block_meta_storage
+                    .put_block_header(&new_block, &chain_id, &log)
+                    .expect("failed to store block metadata");
+                block_meta_storage
+                    .store_predecessors(&new_block.hash, &meta)
+                    .expect("failed to store block predecessors");
 
-                    let new_block = blocks.header(successor);
-                    block_storage.put_block_header(&new_block).expect("failed to store block");
-                    block_meta_storage.put_block_header(&new_block, &chain_id, &log).expect("failed to store block metadata");
+                let new_block = blocks.header(successor);
+                block_storage
+                    .put_block_header(&new_block)
+                    .expect("failed to store block");
+                let meta = block_meta_storage
+                    .put_block_header(&new_block, &chain_id, &log)
+                    .expect("failed to store block metadata");
+                block_meta_storage
+                    .store_predecessors(&new_block.hash, &meta)
+                    .expect("failed to store block predecessors");
 
-                    successor
-                });
+                successor
+            });
             assert_eq!(head_branch.unwrap(), branch.iter().last().unwrap());
 
             // check stored correctly (multi successors)
             branch.iter().fold1(|predecessor, successor| {
                 let predecessor_hash = blocks.block_hash(predecessor);
-                assert!(block_storage.contains(&predecessor_hash).expect("block not stored"));
+                assert!(block_storage
+                    .contains(&predecessor_hash)
+                    .expect("block not stored"));
 
-                let meta = block_meta_storage.get(&predecessor_hash).expect("block metadata not stored");
+                let meta = block_meta_storage
+                    .get(&predecessor_hash)
+                    .expect("block metadata not stored");
                 assert!(meta.is_some());
                 let meta = meta.unwrap();
 
@@ -1132,11 +1273,18 @@ mod tests {
         pub(crate) fn assert_history(
             expected_history: &[&'static str],
             blocks: &BlocksDb,
-            history: Vec<BlockHash>) {
-            assert_eq!(expected_history.len(), history.len(),
-                       "Expected: {:?}, but got: {:?}",
-                       expected_history,
-                       history.iter().map(|h| blocks.name(h)).collect::<Vec<String>>());
+            history: Vec<BlockHash>,
+        ) {
+            assert_eq!(
+                expected_history.len(),
+                history.len(),
+                "Expected: {:?}, but got: {:?}",
+                expected_history,
+                history
+                    .iter()
+                    .map(|h| blocks.name(h))
+                    .collect::<Vec<String>>()
+            );
 
             let expected_block = |idx: usize| -> BlockHash {
                 let b = expected_history[idx];
@@ -1144,8 +1292,13 @@ mod tests {
             };
 
             for (idx, bh) in history.iter().enumerate() {
-                assert_eq!(expected_block(idx), *bh,
-                           "Expected: {}, but got: {}", expected_history[idx], blocks.name(bh));
+                assert_eq!(
+                    expected_block(idx),
+                    *bh,
+                    "Expected: {}, but got: {}",
+                    expected_history[idx],
+                    blocks.name(bh)
+                );
             }
         }
     }

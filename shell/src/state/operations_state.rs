@@ -7,11 +7,13 @@ use std::collections::HashSet;
 use std::convert::TryInto;
 
 use crypto::hash::{BlockHash, ChainId};
-use storage::{BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsStorage, StorageError};
 use storage::persistent::PersistentStorage;
+use storage::{
+    BlockHeaderWithHash, IteratorMode, OperationsMetaStorage, OperationsStorage, StorageError,
+};
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::collections::{BlockData, UniqueBlockData};
+use crate::utils::collections::{BlockData, UniqueBlockData};
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,
@@ -36,11 +38,12 @@ impl OperationsState {
     /// If block header is not already present in storage, return `true`.
     ///
     /// Returns true, if validation_passes are completed (can happen, when validation_pass = 0)
-    pub fn process_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
+    pub fn process_block_header(
+        &mut self,
+        block_header: &BlockHeaderWithHash,
+    ) -> Result<bool, StorageError> {
         match self.operations_meta_storage.get(&block_header.hash)? {
-            Some(meta) => {
-                Ok(meta.is_complete())
-            }
+            Some(meta) => Ok(meta.is_complete()),
             None => {
                 if block_header.header.validation_pass() > 0 {
                     self.missing_operations_for_blocks.push(MissingOperations {
@@ -52,7 +55,9 @@ impl OperationsState {
                         level: block_header.header.level(),
                     });
                 }
-                let is_complate = self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
+                let is_complate = self
+                    .operations_meta_storage
+                    .put_block_header(block_header, &self.chain_id)?;
                 Ok(is_complate)
             }
         }
@@ -63,13 +68,16 @@ impl OperationsState {
     /// won't mark its operations as missing
     ///
     /// Returns true, if validation_passes are completed (can happen, when validation_pass = 0)
-    pub fn process_injected_block_header(&mut self, block_header: &BlockHeaderWithHash) -> Result<bool, StorageError> {
+    pub fn process_injected_block_header(
+        &mut self,
+        block_header: &BlockHeaderWithHash,
+    ) -> Result<bool, StorageError> {
         match self.operations_meta_storage.get(&block_header.hash)? {
-            Some(meta) => {
-                Ok(meta.is_complete())
-            }
+            Some(meta) => Ok(meta.is_complete()),
             None => {
-                let is_complete = self.operations_meta_storage.put_block_header(block_header, &self.chain_id)?;
+                let is_complete = self
+                    .operations_meta_storage
+                    .put_block_header(block_header, &self.chain_id)?;
                 Ok(is_complete)
             }
         }
@@ -80,15 +88,27 @@ impl OperationsState {
     /// If all block operations were processed return `true`.
     ///
     /// If there are still block operations to be processed return `false`.
-    pub fn process_block_operations(&mut self, message: &OperationsForBlocksMessage) -> Result<bool, StorageError> {
+    pub fn process_block_operations(
+        &mut self,
+        message: &OperationsForBlocksMessage,
+    ) -> Result<bool, StorageError> {
         self.operations_storage.put_operations(message)?;
         self.operations_meta_storage.put_operations(message)
     }
 
-    pub fn drain_missing_block_operations(&mut self, n: usize, level_max: i32) -> Vec<MissingOperations> {
+    pub fn drain_missing_block_operations(
+        &mut self,
+        n: usize,
+        level_max: i32,
+    ) -> Vec<MissingOperations> {
         (0..cmp::min(self.missing_operations_for_blocks.len(), n))
             .filter_map(|_| {
-                if self.missing_operations_for_blocks.peek().filter(|operations| operations.level <= level_max).is_some() {
+                if self
+                    .missing_operations_for_blocks
+                    .peek()
+                    .filter(|operations| operations.level <= level_max)
+                    .is_some()
+                {
                     self.missing_operations_for_blocks.pop()
                 } else {
                     None
@@ -97,9 +117,15 @@ impl OperationsState {
             .collect()
     }
 
-    pub fn push_missing_block_operations<Q: Iterator<Item=MissingOperations>>(&mut self, missing_operations: Q) -> Result<(), StorageError> {
+    pub fn push_missing_block_operations<Q: Iterator<Item = MissingOperations>>(
+        &mut self,
+        missing_operations: Q,
+    ) -> Result<(), StorageError> {
         for missing_operation in missing_operations {
-            if !self.operations_meta_storage.is_complete(&missing_operation.block_hash)? {
+            if !self
+                .operations_meta_storage
+                .is_complete(&missing_operation.block_hash)?
+            {
                 self.missing_operations_for_blocks.push(missing_operation);
             }
         }
@@ -166,7 +192,9 @@ impl PartialOrd for MissingOperations {
 
 impl Ord for MissingOperations {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.level, &self.block_hash).cmp(&(other.level, &other.block_hash)).reverse()
+        (self.level, &self.block_hash)
+            .cmp(&(other.level, &other.block_hash))
+            .reverse()
     }
 }
 

@@ -9,12 +9,12 @@ use std::sync::{Arc, Mutex};
 use itertools::Itertools;
 use serde::Serialize;
 use slog::{error, info, Logger};
-use warp::{reject, Rejection, Reply};
 use warp::http::StatusCode;
+use warp::{reject, Rejection, Reply};
 
 use crate::node_runner::{LightNodeRunnerError, LightNodeRunnerRef, NodeRpcIpPort};
 use crate::tezos_client_runner::{
-    BakeRequest, reply_with_client_output, SandboxWallets, TezosClientRunnerError,
+    reply_with_client_output, BakeRequest, SandboxWallets, TezosClientRunnerError,
     TezosClientRunnerRef, TezosProtcolActivationParameters,
 };
 
@@ -86,7 +86,10 @@ pub async fn start_node_with_config(
     peers.lock().unwrap().insert(node_ref.clone());
 
     info!(log, "Light-node started successfully!"; "node_ref" => format!("{}", &node_ref));
-    Ok(warp::reply::with_status(warp::reply::json(&node_ref), StatusCode::OK))
+    Ok(warp::reply::with_status(
+        warp::reply::json(&node_ref),
+        StatusCode::OK,
+    ))
 }
 
 pub async fn stop_node(
@@ -118,12 +121,18 @@ pub async fn stop_node(
 
     if errors.is_empty() {
         info!(log, "Sandbox node stopped!"; "node_ref" => format!("{}", &node_ref));
-        Ok(warp::reply::with_status(warp::reply::json(&""), StatusCode::OK))
+        Ok(warp::reply::with_status(
+            warp::reply::json(&""),
+            StatusCode::OK,
+        ))
     } else {
         error!(log, "Sandbox node stopped!";
                     "node_ref" => format!("{}", &node_ref),
                     "errors" => errors.join(", "));
-        Ok(warp::reply::with_status(warp::reply::json(&errors), StatusCode::OK))
+        Ok(warp::reply::with_status(
+            warp::reply::json(&errors),
+            StatusCode::OK,
+        ))
     }
 }
 
@@ -134,13 +143,13 @@ pub async fn list_nodes(
     info!(log, "Received request to list sandbox nodes...");
 
     // return all nodes
-    let mut nodes = peers.lock().unwrap()
-        .iter()
-        .cloned()
-        .collect_vec();
+    let mut nodes = peers.lock().unwrap().iter().cloned().collect_vec();
     nodes.sort_by_key(|k| k.port);
 
-    Ok(warp::reply::with_status(warp::reply::json(&nodes), StatusCode::OK))
+    Ok(warp::reply::with_status(
+        warp::reply::json(&nodes),
+        StatusCode::OK,
+    ))
 }
 
 pub async fn init_client_data(
@@ -155,8 +164,7 @@ pub async fn init_client_data(
     let mut client_runner = client_runner.write().unwrap();
     let client_output = client_runner.init_client_data(wallets, &node_ref)?;
 
-    reply_with_client_output(client_output, &log)
-        .map_err(|e| e.into())
+    reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
 
 pub async fn get_wallets(
@@ -169,7 +177,8 @@ pub async fn get_wallets(
     let node_ref = ensure_node(node_ref)?;
     let client_runner = client_runner.read().unwrap();
 
-    let wallets = client_runner.wallets(&node_ref)?
+    let wallets = client_runner
+        .wallets(&node_ref)?
         .values()
         .cloned()
         .collect::<SandboxWallets>();
@@ -190,8 +199,7 @@ pub async fn activate_protocol(
     let client_runner = client_runner.read().unwrap();
     let client_output = client_runner.activate_protocol(activation_parameters, &node_ref)?;
 
-    reply_with_client_output(client_output, &log)
-        .map_err(|e| e.into())
+    reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
 
 pub async fn bake_block_with_client(
@@ -206,8 +214,7 @@ pub async fn bake_block_with_client(
     let client_runner = client_runner.read().unwrap();
     let client_output = client_runner.bake_block(Some(request), &node_ref)?;
 
-    reply_with_client_output(client_output, &log)
-        .map_err(|e| e.into())
+    reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
 
 pub async fn bake_block_with_client_arbitrary(
@@ -221,20 +228,29 @@ pub async fn bake_block_with_client_arbitrary(
     let client_runner = client_runner.read().unwrap();
     let client_output = client_runner.bake_block(None, &node_ref)?;
 
-    reply_with_client_output(client_output, &log)
-        .map_err(|e| e.into())
+    reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
 
 pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply, Infallible> {
     let (code, error_message) = if err.is_not_found() {
         error!(log, "Rpc handle error"; "message" => "rpc not found");
-        (StatusCode::NOT_FOUND, ErrorMessage::generic(StatusCode::NOT_FOUND, "rpc not found", "".to_string()))
+        (
+            StatusCode::NOT_FOUND,
+            ErrorMessage::generic(StatusCode::NOT_FOUND, "rpc not found", "".to_string()),
+        )
     } else {
         if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
             // This error happens if the body could not be deserialized correctly
             let detail = format!("{}", e);
             error!(log, "Rpc handle error"; "message" => "Request deserialization errror", "detail" => detail.clone());
-            (StatusCode::BAD_REQUEST, ErrorMessage::generic(StatusCode::BAD_REQUEST, "Request deserialization errror", detail))
+            (
+                StatusCode::BAD_REQUEST,
+                ErrorMessage::generic(
+                    StatusCode::BAD_REQUEST,
+                    "Request deserialization errror",
+                    detail,
+                ),
+            )
         } else if let Some(tcre) = err.find::<TezosClientRunnerError>() {
             // Tezos client errors
             match tcre {
@@ -247,11 +263,18 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
                 | TezosClientRunnerError::SerdeError { .. } => {
                     let message = format!("{}", tcre);
                     error!(log, "Rpc handle error (tezos-client)"; "message" => message.clone());
-                    (StatusCode::BAD_REQUEST, ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()),
+                    )
                 }
                 TezosClientRunnerError::CallError { message } => {
                     error!(log, "Rpc handle error (tezos-client)"; "message" => format!("{:?}", message));
-                    (StatusCode::from_u16(message.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), message.clone())
+                    (
+                        StatusCode::from_u16(message.code)
+                            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        message.clone(),
+                    )
                 }
             }
         } else if let Some(lnre) = err.find::<LightNodeRunnerError>() {
@@ -264,19 +287,37 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
                 | LightNodeRunnerError::NodeNotRunning { .. } => {
                     let message = format!("{}", lnre);
                     error!(log, "Rpc handle error (light-node)"; "message" => message.clone());
-                    (StatusCode::BAD_REQUEST, ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()))
+                    (
+                        StatusCode::BAD_REQUEST,
+                        ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()),
+                    )
                 }
-                | LightNodeRunnerError::NodeStartupError { reason } => {
+                LightNodeRunnerError::NodeStartupError { reason } => {
                     match extract_field_name(&reason) {
                         Some(field_name) => {
                             let message = format!("{:?}", lnre);
                             error!(log, "Rpc handle error (light-node startup validation)"; "message" => message.clone(), "field_name" => field_name.clone());
-                            (StatusCode::INTERNAL_SERVER_ERROR, ErrorMessage::validation(StatusCode::INTERNAL_SERVER_ERROR, reason, field_name, message))
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                ErrorMessage::validation(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    reason,
+                                    field_name,
+                                    message,
+                                ),
+                            )
                         }
                         None => {
                             let message = format!("{:?}", lnre);
                             error!(log, "Rpc handle error (light-node startup)"; "message" => message.clone());
-                            (StatusCode::INTERNAL_SERVER_ERROR, ErrorMessage::generic(StatusCode::INTERNAL_SERVER_ERROR, reason, message))
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                ErrorMessage::generic(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    reason,
+                                    message,
+                                ),
+                            )
                         }
                     }
                 }
@@ -284,15 +325,29 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
         } else {
             let detail = format!("{:?}", err);
             error!(log, "Rpc handle error (light-node startup)"; "message" => "unhandled error occurred", "detail" => detail.clone());
-            (StatusCode::INTERNAL_SERVER_ERROR, ErrorMessage::generic(StatusCode::INTERNAL_SERVER_ERROR, "unhandled error occurred", detail))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorMessage::generic(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "unhandled error occurred",
+                    detail,
+                ),
+            )
         }
     };
 
-    Ok(warp::reply::with_status(warp::reply::json(&error_message), code))
+    Ok(warp::reply::with_status(
+        warp::reply::json(&error_message),
+        code,
+    ))
 }
 
 fn extract_field_name(message: &str) -> Option<String> {
-    let field_name = message.split_whitespace().filter(|s| s.starts_with("\'--")).map(|s| s.to_string()).collect::<Vec<String>>();
+    let field_name = message
+        .split_whitespace()
+        .filter(|s| s.starts_with("\'--"))
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
 
     if field_name.len() < 1 {
         None
@@ -302,18 +357,16 @@ fn extract_field_name(message: &str) -> Option<String> {
 }
 
 /// Resolves which peer we want to call
-pub fn resolve_node_from_request(peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>) -> Option<NodeRpcIpPort> {
+pub fn resolve_node_from_request(
+    peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>,
+) -> Option<NodeRpcIpPort> {
     // TODO: resolve some peer from request
-    peers.lock()
-        .unwrap()
-        .iter()
-        .next()
-        .map(|p| p.clone())
+    peers.lock().unwrap().iter().next().map(|p| p.clone())
 }
 
 fn ensure_node(node_ref: Option<NodeRpcIpPort>) -> Result<NodeRpcIpPort, TezosClientRunnerError> {
     match node_ref {
         Some(node_ref) => Ok(node_ref),
-        None => Err(TezosClientRunnerError::UnavailableSandboxNodeError)
+        None => Err(TezosClientRunnerError::UnavailableSandboxNodeError),
     }
 }

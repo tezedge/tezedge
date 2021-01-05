@@ -250,7 +250,7 @@ fn action_key_to_contract_address(key: &[String]) -> Option<ContractAddress> {
         // check if case 2.
         match SignaturePublicKeyHash::from_hex_hash_and_curve(&key[4..10].join(""), &key[3].as_str()) {
             Err(_) => None,
-            Ok(pubkey) => match contract_id_to_contract_address_for_index(pubkey.to_string().as_str()) {
+            Ok(pubkey) => match contract_id_to_contract_address_for_index(pubkey.to_string_representation().as_str()) {
                 Err(_) => None,
                 Ok(address) => Some(address)
             }
@@ -538,19 +538,19 @@ pub fn contract_id_to_contract_address_for_index(contract_id: &str) -> Result<Co
             match &contract_id[0..3] {
                 "tz1" => {
                     contract_address.extend(&[0, 0]);
-                    contract_address.extend(&HashType::ContractTz1Hash.string_to_bytes(contract_id)?);
+                    contract_address.extend(&HashType::ContractTz1Hash.b58check_to_hash(contract_id)?);
                 }
                 "tz2" => {
                     contract_address.extend(&[0, 1]);
-                    contract_address.extend(&HashType::ContractTz2Hash.string_to_bytes(contract_id)?);
+                    contract_address.extend(&HashType::ContractTz2Hash.b58check_to_hash(contract_id)?);
                 }
                 "tz3" => {
                     contract_address.extend(&[0, 2]);
-                    contract_address.extend(&HashType::ContractTz3Hash.string_to_bytes(contract_id)?);
+                    contract_address.extend(&HashType::ContractTz3Hash.b58check_to_hash(contract_id)?);
                 }
                 "KT1" => {
                     contract_address.push(1);
-                    contract_address.extend(&HashType::ContractKt1Hash.string_to_bytes(contract_id)?);
+                    contract_address.extend(&HashType::ContractKt1Hash.b58check_to_hash(contract_id)?);
                     contract_address.push(0);
                 }
                 _ => return Err(ConversionError::InvalidCurveTag { curve_tag: contract_id.to_string() })

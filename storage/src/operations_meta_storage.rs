@@ -267,7 +267,7 @@ mod tests {
     fn genesis_ops_initialized_success() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__opmeta_genesistest")?;
 
-        let k = HashType::BlockHash.string_to_bytes("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+        let k = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let v = Meta::genesis_meta(&vec![44; 4]);
         let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
@@ -373,7 +373,8 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        Ok(assert!(DB::destroy(&Options::default(), path).is_ok()))
+        assert!(DB::destroy(&Options::default(), path).is_ok());
+        Ok(())
     }
 
     #[test]
