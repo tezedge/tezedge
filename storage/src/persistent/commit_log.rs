@@ -1,19 +1,19 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{fmt, io};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use std::{fmt, io};
 
-use commitlog::{AppendError, CommitLog, LogOptions, Offset, ReadError, ReadLimit};
 use commitlog::message::MessageSet;
+use commitlog::{AppendError, CommitLog, LogOptions, Offset, ReadError, ReadLimit};
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-use crate::persistent::BincodeEncoded;
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
+use crate::persistent::BincodeEncoded;
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
@@ -21,26 +21,18 @@ pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 #[derive(Debug, Fail)]
 pub enum CommitLogError {
     #[fail(display = "Schema error: {}", error)]
-    SchemaError {
-        error: SchemaError
-    },
+    SchemaError { error: SchemaError },
     #[fail(display = "Failed to append record: {}", error)]
-    AppendError {
-        error: AppendError
-    },
+    AppendError { error: AppendError },
     #[fail(display = "Failed to read record at {}: {}", location, error)]
     ReadError {
         error: ReadError,
         location: Location,
     },
     #[fail(display = "Commit log I/O error {}", error)]
-    IOError {
-        error: io::Error
-    },
+    IOError { error: io::Error },
     #[fail(display = "Commit log {} is missing", name)]
-    MissingCommitLog {
-        name: &'static str
-    },
+    MissingCommitLog { name: &'static str },
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -56,7 +48,12 @@ impl From<io::Error> for CommitLogError {
 }
 
 impl slog::Value for CommitLogError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
@@ -99,41 +96,60 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
     fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError>;
 }
 
-
 impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     fn append(&self, value: &S::Value) -> Result<Location, CommitLogError> {
-        let cl = self.cl_handle(S::name())
+        let cl = self
+            .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let mut cl = cl.write().expect("Write lock failed");
         let bytes = value.encode()?;
-        let offset = cl.append_msg(&bytes)
+        let offset = cl
+            .append_msg(&bytes)
             .map_err(|error| CommitLogError::AppendError { error })?;
 
         Ok(Location(offset, bytes.len()))
     }
 
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError> {
-        let cl = self.cl_handle(S::name())
+        let cl = self
+            .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
-        let msg_buf = cl.read(location.0, fit_read_limit(location.1))
-            .map_err(|error| CommitLogError::ReadError { error, location: *location })?;
-        let bytes = msg_buf.iter().next().ok_or(CommitLogError::ReadError { error: ReadError::CorruptLog, location: *location })?;
+        let msg_buf = cl
+            .read(location.0, fit_read_limit(location.1))
+            .map_err(|error| CommitLogError::ReadError {
+                error,
+                location: *location,
+            })?;
+        let bytes = msg_buf.iter().next().ok_or(CommitLogError::ReadError {
+            error: ReadError::CorruptLog,
+            location: *location,
+        })?;
         let value = S::Value::decode(bytes.payload())?;
 
         Ok(value)
     }
 
     fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
-        let cl = self.cl_handle(S::name())
+        let cl = self
+            .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
-        let msg_buf = cl.read(range.0, fit_batch_read_limit(range.1, range.2))
-            .map_err(|error| CommitLogError::ReadError { error, location: Location(range.0, range.1) })?;
-        msg_buf.iter()
+        let msg_buf = cl
+            .read(range.0, fit_batch_read_limit(range.1, range.2))
+            .map_err(|error| CommitLogError::ReadError {
+                error,
+                location: Location(range.0, range.1),
+            })?;
+        msg_buf
+            .iter()
             .take(range.2 as usize)
-            .map(|message| S::Value::decode(message.payload()).
-                map_err(|_| CommitLogError::ReadError { error: ReadError::CorruptLog, location: Location(message.offset(), message.size() as usize) }))
+            .map(|message| {
+                S::Value::decode(message.payload()).map_err(|_| CommitLogError::ReadError {
+                    error: ReadError::CorruptLog,
+                    location: Location(message.offset(), message.size() as usize),
+                })
+            })
             .collect()
     }
 }
@@ -180,9 +196,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-        where
-            P: AsRef<Path>,
-            I: IntoIterator<Item=CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
@@ -278,13 +294,17 @@ mod tests {
             Location(7, 10),
             Location(8, 10),
             Location(9, 10),
-            Location(6, 10)
+            Location(6, 10),
         ];
         let ranges = fold_consecutive_locations(&locations);
-        assert_eq!(vec![
-            Range(1, 20, 2),
-            Range(5, 10, 1),
-            Range(7, 30, 3),
-            Range(6, 10, 1)], ranges);
+        assert_eq!(
+            vec![
+                Range(1, 20, 2),
+                Range(5, 10, 1),
+                Range(7, 30, 3),
+                Range(6, 10, 1)
+            ],
+            ranges
+        );
     }
 }

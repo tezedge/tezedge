@@ -8,12 +8,16 @@ use crypto::hash::BlockHash;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
+use storage::block_meta_storage::Meta;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, StorageError};
-use storage::block_meta_storage::Meta;
 
 /// Old naive implementation of find_block_at_distance kept only for benchmarking resons
-fn find_block_at_distance_old(storage: &BlockMetaStorage, block_hash: BlockHash, requested_distance: i32) -> Result<Option<BlockHash>, StorageError> {
+fn find_block_at_distance_old(
+    storage: &BlockMetaStorage,
+    block_hash: BlockHash,
+    requested_distance: i32,
+) -> Result<Option<BlockHash>, StorageError> {
     if requested_distance == 0 {
         return Ok(Some(block_hash));
     }
@@ -37,10 +41,10 @@ fn find_block_at_distance_old(storage: &BlockMetaStorage, block_hash: BlockHash,
                                 break None;
                             }
                         }
-                        None => break None
+                        None => break None,
                     }
                 }
-                None => break None
+                None => break None,
             };
 
             // we finish, if we found distance or if it is a genesis
@@ -78,19 +82,26 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
     let mut predecessor = k;
 
     // generate random block hashes, watch out for colissions
-    let block_hashes: Vec<BlockHash> = (1..number_of_blocks).map(|_| {
-        let mut random_hash: BlockHash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
-        // regenerate on collision
-        while block_hash_set.contains(&random_hash) {
-            random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
-        }
-        block_hash_set.insert(random_hash.clone());
-        random_hash
-    }).collect();
+    let block_hashes: Vec<BlockHash> = (1..number_of_blocks)
+        .map(|_| {
+            let mut random_hash: BlockHash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+            // regenerate on collision
+            while block_hash_set.contains(&random_hash) {
+                random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+            }
+            block_hash_set.insert(random_hash.clone());
+            random_hash
+        })
+        .collect();
 
     // add them to the mocked storage
     for (idx, block_hash) in block_hashes.iter().enumerate() {
-        let v = Meta::new(true, Some(predecessor.clone()), idx.try_into()?, vec![44; 4]);
+        let v = Meta::new(
+            true,
+            Some(predecessor.clone()),
+            idx.try_into()?,
+            vec![44; 4],
+        );
         storage.put(&block_hash, &v)?;
         storage.store_predecessors(&block_hash, &v)?;
         predecessor = block_hash.clone();
@@ -105,7 +116,9 @@ fn find_block_at_distance_benchmark(c: &mut Criterion) {
     // just, check if impl. is correct
     assert_eq!(
         find_block_at_distance_old(&storage, last_block_hash.clone(), 99_998).unwrap(),
-        storage.find_block_at_distance(last_block_hash.clone(), 99_998).unwrap()
+        storage
+            .find_block_at_distance(last_block_hash.clone(), 99_998)
+            .unwrap()
     );
 
     // run bench

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use failure::Fail;
 
@@ -44,7 +44,11 @@ impl Sequences {
         match generators.get(name) {
             Some(generator) => generator.clone(),
             None => {
-                let generator = Arc::new(SequenceGenerator::new(name.to_owned(), self.seq_batch_size, self.db.clone()));
+                let generator = Arc::new(SequenceGenerator::new(
+                    name.to_owned(),
+                    self.seq_batch_size,
+                    self.db.clone(),
+                ));
                 generators.insert(name.into(), generator.clone());
                 generator
             }
@@ -110,7 +114,8 @@ impl SequenceGenerator {
                 self.db.put(&self.seq_name, &seq_new)?;
 
                 // reset available counter
-                self.seq_available.store(i32::from(self.seq_batch_size) - 1, Ordering::SeqCst);
+                self.seq_available
+                    .store(i32::from(self.seq_batch_size) - 1, Ordering::SeqCst);
 
                 // notify waiting threads
                 self.guard.1.notify_all();
@@ -118,7 +123,9 @@ impl SequenceGenerator {
                 break seq;
             } else {
                 // wait until seq_available is positive number again
-                let _lock = self.guard.1.wait_while(self.guard.0.lock()?, |_| self.seq_available.load(Ordering::SeqCst) <= 0)?;
+                let _lock = self.guard.1.wait_while(self.guard.0.lock()?, |_| {
+                    self.seq_available.load(Ordering::SeqCst) <= 0
+                })?;
             }
         };
 
@@ -129,9 +136,7 @@ impl SequenceGenerator {
 #[derive(Debug, Fail)]
 pub enum SequenceError {
     #[fail(display = "Persistent storage error: {}", error)]
-    PersistentStorageError {
-        error: DBError
-    },
+    PersistentStorageError { error: DBError },
     #[fail(display = "Thread synchronization error")]
     SynchronizationError,
 }

@@ -4,8 +4,8 @@
 use failure::Error;
 
 use crypto::hash::HashType;
-use storage::*;
 use storage::tests_common::TmpStorage;
+use storage::*;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -47,7 +47,10 @@ fn test_put_block_header_twice() -> Result<(), Error> {
 
     // location shold not be updated, means, header is not rewritten or writen twice in commit_log
     let stored_location2 = storage.get_location(&block_header.hash)?.unwrap();
-    assert_eq!(stored_location1.block_header.0, stored_location2.block_header.0);
+    assert_eq!(
+        stored_location1.block_header.0,
+        stored_location2.block_header.0
+    );
 
     Ok(())
 }

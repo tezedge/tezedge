@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{ChainId, HashType};
 use tezos_messages::Head;
 
-use crate::persistent::{BincodeEncoded, Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{
+    default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
+    KeyValueStoreWithSchema, PersistentStorage, SchemaError,
+};
 use crate::StorageError;
 
 pub type ChainMetaStorageKv = dyn KeyValueStoreWithSchema<ChainMetaStorage> + Sync + Send;
@@ -48,12 +51,14 @@ pub trait ChainMetaStorageReader: Sync + Send {
 ///
 #[derive(Clone)]
 pub struct ChainMetaStorage {
-    kv: Arc<ChainMetaStorageKv>
+    kv: Arc<ChainMetaStorageKv>,
 }
 
 impl ChainMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        Self { kv: persistent_storage.kv() }
+        Self {
+            kv: persistent_storage.kv(),
+        }
     }
 
     #[inline]
@@ -92,13 +97,17 @@ impl ChainMetaStorage {
             .get(&MetaKey::key_test_chain_id(chain_id.clone()))
             .map(|result| match result {
                 Some(MetadataValue::TestChainId(value)) => Some(value),
-                _ => None
+                _ => None,
             })
             .map_err(StorageError::from)
     }
 
     #[inline]
-    pub fn set_test_chain_id(&self, chain_id: &ChainId, test_chain_id: &ChainId) -> Result<(), StorageError> {
+    pub fn set_test_chain_id(
+        &self,
+        chain_id: &ChainId,
+        test_chain_id: &ChainId,
+    ) -> Result<(), StorageError> {
         self.kv
             .put(
                 &MetaKey::key_test_chain_id(chain_id.clone()),
@@ -122,7 +131,7 @@ impl ChainMetaStorageReader for ChainMetaStorage {
             .get(&MetaKey::key_current_head(chain_id.clone()))
             .map(|result| match result {
                 Some(MetadataValue::Head(value)) => Some(value),
-                _ => None
+                _ => None,
             })
             .map_err(StorageError::from)
     }
@@ -133,7 +142,7 @@ impl ChainMetaStorageReader for ChainMetaStorage {
             .get(&MetaKey::key_caboose(chain_id.clone()))
             .map(|result| match result {
                 Some(MetadataValue::Head(value)) => Some(value),
-                _ => None
+                _ => None,
             })
             .map_err(StorageError::from)
     }
@@ -144,7 +153,7 @@ impl ChainMetaStorageReader for ChainMetaStorage {
             .get(&MetaKey::key_genesis(chain_id.clone()))
             .map(|result| match result {
                 Some(MetadataValue::Head(value)) => Some(value),
-                _ => None
+                _ => None,
             })
             .map_err(StorageError::from)
     }
@@ -245,7 +254,6 @@ impl BincodeEncoded for MetadataValue {}
 
 impl BincodeEncoded for Head {}
 
-
 #[cfg(test)]
 mod tests {
     use failure::Error;
@@ -263,14 +271,16 @@ mod tests {
 
         let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let block_1 = Head::new(
-            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            HashType::BlockHash
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
             vec![],
         );
 
         let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
-            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            HashType::BlockHash
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
             vec![],
         );
@@ -282,22 +292,37 @@ mod tests {
         // set for chain_id1
         index.set_current_head(&chain_id1, block_1.clone())?;
         assert!(index.get_current_head(&chain_id1)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().block_hash(), block_1.block_hash());
+        assert_eq!(
+            index.get_current_head(&chain_id1)?.unwrap().block_hash(),
+            block_1.block_hash()
+        );
         assert!(index.get_current_head(&chain_id2)?.is_none());
 
         // set for chain_id2
         index.set_current_head(&chain_id2, block_2.clone())?;
         assert!(index.get_current_head(&chain_id1)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().block_hash(), block_1.block_hash());
+        assert_eq!(
+            index.get_current_head(&chain_id1)?.unwrap().block_hash(),
+            block_1.block_hash()
+        );
         assert!(index.get_current_head(&chain_id2)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id2)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_current_head(&chain_id2)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
 
         // update for chain_id1
         index.set_current_head(&chain_id1, block_2.clone())?;
         assert!(index.get_current_head(&chain_id1)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id1)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_current_head(&chain_id1)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
         assert!(index.get_current_head(&chain_id2)?.is_some());
-        assert_eq!(index.get_current_head(&chain_id2)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_current_head(&chain_id2)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
 
         Ok(())
     }
@@ -309,14 +334,16 @@ mod tests {
 
         let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let block_1 = Head::new(
-            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            HashType::BlockHash
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
             vec![],
         );
 
         let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
-            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            HashType::BlockHash
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
             vec![],
         );
@@ -328,22 +355,37 @@ mod tests {
         // set for chain_id1
         index.set_caboose(&chain_id1, block_1.clone())?;
         assert!(index.get_caboose(&chain_id1)?.is_some());
-        assert_eq!(index.get_caboose(&chain_id1)?.unwrap().block_hash(), block_1.block_hash());
+        assert_eq!(
+            index.get_caboose(&chain_id1)?.unwrap().block_hash(),
+            block_1.block_hash()
+        );
         assert!(index.get_caboose(&chain_id2)?.is_none());
 
         // set for chain_id2
         index.set_caboose(&chain_id2, block_2.clone())?;
         assert!(index.get_caboose(&chain_id1)?.is_some());
-        assert_eq!(index.get_caboose(&chain_id1)?.unwrap().block_hash(), block_1.block_hash());
+        assert_eq!(
+            index.get_caboose(&chain_id1)?.unwrap().block_hash(),
+            block_1.block_hash()
+        );
         assert!(index.get_caboose(&chain_id2)?.is_some());
-        assert_eq!(index.get_caboose(&chain_id2)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_caboose(&chain_id2)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
 
         // update for chain_id1
         index.set_caboose(&chain_id1, block_2.clone())?;
         assert!(index.get_caboose(&chain_id1)?.is_some());
-        assert_eq!(index.get_caboose(&chain_id1)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_caboose(&chain_id1)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
         assert!(index.get_caboose(&chain_id2)?.is_some());
-        assert_eq!(index.get_caboose(&chain_id2)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_caboose(&chain_id2)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
 
         Ok(())
     }
@@ -355,14 +397,16 @@ mod tests {
 
         let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let block_1 = Head::new(
-            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            HashType::BlockHash
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
             1,
             vec![],
         );
 
         let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
         let block_2 = Head::new(
-            HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            HashType::BlockHash
+                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
             2,
             vec![],
         );
@@ -374,22 +418,37 @@ mod tests {
         // set for chain_id1
         index.set_genesis(&chain_id1, block_1.clone())?;
         assert!(index.get_genesis(&chain_id1)?.is_some());
-        assert_eq!(index.get_genesis(&chain_id1)?.unwrap().block_hash(), block_1.block_hash());
+        assert_eq!(
+            index.get_genesis(&chain_id1)?.unwrap().block_hash(),
+            block_1.block_hash()
+        );
         assert!(index.get_genesis(&chain_id2)?.is_none());
 
         // set for chain_id2
         index.set_genesis(&chain_id2, block_2.clone())?;
         assert!(index.get_genesis(&chain_id1)?.is_some());
-        assert_eq!(index.get_genesis(&chain_id1)?.unwrap().block_hash(), block_1.block_hash());
+        assert_eq!(
+            index.get_genesis(&chain_id1)?.unwrap().block_hash(),
+            block_1.block_hash()
+        );
         assert!(index.get_genesis(&chain_id2)?.is_some());
-        assert_eq!(index.get_genesis(&chain_id2)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_genesis(&chain_id2)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
 
         // update for chain_id1
         index.set_genesis(&chain_id1, block_2.clone())?;
         assert!(index.get_genesis(&chain_id1)?.is_some());
-        assert_eq!(index.get_genesis(&chain_id1)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_genesis(&chain_id1)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
         assert!(index.get_genesis(&chain_id2)?.is_some());
-        assert_eq!(index.get_genesis(&chain_id2)?.unwrap().block_hash(), block_2.block_hash());
+        assert_eq!(
+            index.get_genesis(&chain_id2)?.unwrap().block_hash(),
+            block_2.block_hash()
+        );
 
         Ok(())
     }

@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use failure::Fail;
-use rocksdb::{DB, DBIterator, Error, WriteOptions, WriteBatch};
+use rocksdb::{DBIterator, Error, WriteBatch, WriteOptions, DB};
 use serde::Serialize;
 
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
@@ -22,17 +22,11 @@ pub struct RocksDBStats {
 #[derive(Debug, Fail)]
 pub enum DBError {
     #[fail(display = "Schema error: {}", error)]
-    SchemaError {
-        error: SchemaError
-    },
+    SchemaError { error: SchemaError },
     #[fail(display = "RocksDB error: {}", error)]
-    RocksDBError {
-        error: Error
-    },
+    RocksDBError { error: Error },
     #[fail(display = "Column family {} is missing", name)]
-    MissingColumnFamily {
-        name: &'static str
-    },
+    MissingColumnFamily { name: &'static str },
 }
 
 impl From<SchemaError> for DBError {
@@ -48,7 +42,12 @@ impl From<Error> for DBError {
 }
 
 impl slog::Value for DBError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
@@ -105,7 +104,12 @@ pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     /// # Arguments
     /// * `key` - Value of key specified by schema
     /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn put_batch(&self, batch: &mut WriteBatch, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
+    fn put_batch(
+        &self,
+        batch: &mut WriteBatch,
+        key: &S::Key,
+        value: &S::Value,
+    ) -> Result<(), DBError>;
 
     /// Write batch into DB atomically
     ///
@@ -121,7 +125,8 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.put_cf_opt(cf, &key, &value, &default_write_options())
@@ -130,7 +135,8 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
 
     fn delete(&self, key: &S::Key) -> Result<(), DBError> {
         let key = key.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.delete_cf_opt(cf, &key, &default_write_options())
@@ -140,7 +146,8 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.merge_cf_opt(cf, &key, &value, &default_write_options())
@@ -149,7 +156,8 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
 
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
         let key = key.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         self.get_cf(cf, &key)
@@ -160,13 +168,17 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     }
 
     fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         let iter = match mode {
             IteratorMode::Start => self.iterator_cf(cf, rocksdb::IteratorMode::Start),
             IteratorMode::End => self.iterator_cf(cf, rocksdb::IteratorMode::End),
-            IteratorMode::From(key, direction) => self.iterator_cf(cf, rocksdb::IteratorMode::From(&key.encode()?, direction.into()))
+            IteratorMode::From(key, direction) => self.iterator_cf(
+                cf,
+                rocksdb::IteratorMode::From(&key.encode()?, direction.into()),
+            ),
         };
 
         Ok(IteratorWithSchema(iter, PhantomData))
@@ -174,25 +186,36 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
 
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError> {
         let key = key.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
-        Ok(IteratorWithSchema(self.prefix_iterator_cf(cf, key), PhantomData))
+        Ok(IteratorWithSchema(
+            self.prefix_iterator_cf(cf, key),
+            PhantomData,
+        ))
     }
 
     fn contains(&self, key: &S::Key) -> Result<bool, DBError> {
         let key = key.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         let val = self.get_pinned_cf(cf, &key)?;
         Ok(val.is_some())
     }
 
-    fn put_batch(&self, batch: &mut WriteBatch, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
+    fn put_batch(
+        &self,
+        batch: &mut WriteBatch,
+        key: &S::Key,
+        value: &S::Value,
+    ) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let cf = self.cf_handle(S::name())
+        let cf = self
+            .cf_handle(S::name())
             .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
 
         batch.put_cf(cf, &key, &value);
@@ -208,10 +231,12 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError> {
         let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
 
-        Ok(RocksDBStats{ mem_table_total: memory_usage_stats.mem_table_total,
-                      mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
-                      mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
-                      cache_total: memory_usage_stats.cache_total })
+        Ok(RocksDBStats {
+            mem_table_total: memory_usage_stats.mem_table_total,
+            mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
+            mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
+            cache_total: memory_usage_stats.cache_total,
+        })
     }
 }
 
@@ -224,13 +249,13 @@ fn default_write_options() -> WriteOptions {
 /// Database iterator extended by specific schema
 pub struct IteratorWithSchema<'a, S: KeyValueSchema>(DBIterator<'a>, PhantomData<S>);
 
-impl<'a, S: KeyValueSchema> Iterator for IteratorWithSchema<'a, S>
-{
+impl<'a, S: KeyValueSchema> Iterator for IteratorWithSchema<'a, S> {
     type Item = (Result<S::Key, SchemaError>, Result<S::Value, SchemaError>);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        self.0
+            .next()
             .map(|(k, v)| (S::Key::decode(&k), S::Value::decode(&v)))
     }
 }
@@ -256,4 +281,3 @@ pub enum IteratorMode<'a, S: KeyValueSchema> {
     End,
     From(&'a S::Key, Direction),
 }
-

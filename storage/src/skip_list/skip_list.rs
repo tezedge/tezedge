@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::persistent::{BincodeEncoded, Codec, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::persistent::sequence::SequenceGenerator;
-use crate::skip_list::{LEVEL_BASE, SkipListError, TryExtend};
+use crate::persistent::{BincodeEncoded, Codec, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::skip_list::content::{ListValueDatabase, NodeHeader, SkipListId};
 use crate::skip_list::lane::{Lane, LaneDatabase, TypedLane};
+use crate::skip_list::{SkipListError, TryExtend, LEVEL_BASE};
 
 pub type SkipListDatabase = dyn KeyValueStoreWithSchema<DatabaseBackedSkipList> + Sync + Send;
 
@@ -39,17 +39,26 @@ impl KeyValueSchema for DatabaseBackedSkipList {
 
 impl DatabaseBackedSkipList {
     /// Create new list in given database
-    pub fn new(list_id: SkipListId, db: Arc<rocksdb::DB>, sequence_gen: Arc<SequenceGenerator>) -> Result<Self, SkipListError> {
+    pub fn new(
+        list_id: SkipListId,
+        db: Arc<rocksdb::DB>,
+        sequence_gen: Arc<SequenceGenerator>,
+    ) -> Result<Self, SkipListError> {
         let value_db: Arc<ListValueDatabase> = db.clone();
         let lane_db: Arc<LaneDatabase> = db.clone();
         let list_db: Arc<SkipListDatabase> = db;
-        let state = list_db.get(&list_id)?
-            .unwrap_or_else(|| SkipListState {
-                levels: 1,
-                len: 0,
-            });
+        let state = list_db
+            .get(&list_id)?
+            .unwrap_or_else(|| SkipListState { levels: 1, len: 0 });
 
-        Ok(Self { list_db, lane_db, value_db, list_id, state, sequence_gen })
+        Ok(Self {
+            list_db,
+            lane_db,
+            value_db,
+            list_id,
+            state,
+            sequence_gen,
+        })
     }
 
     /// Find highest level, which we should traverse to hit the index
@@ -62,14 +71,24 @@ impl DatabaseBackedSkipList {
     }
 
     fn lane(&self, level: usize) -> Lane {
-        Lane::new(self.list_id, level, self.lane_db.clone(), self.value_db.clone(), self.sequence_gen.clone())
+        Lane::new(
+            self.list_id,
+            level,
+            self.lane_db.clone(),
+            self.value_db.clone(),
+            self.sequence_gen.clone(),
+        )
     }
 
     /// Rebuild state for given index
-    fn get_internal<K, V>(&self, index: usize, prefix: Option<&K>) -> Result<Option<BTreeMap<K, V>>, SkipListError>
-        where
-            K: Ord + Codec + Hash + Eq,
-            V: Codec
+    fn get_internal<K, V>(
+        &self,
+        index: usize,
+        prefix: Option<&K>,
+    ) -> Result<Option<BTreeMap<K, V>>, SkipListError>
+    where
+        K: Ord + Codec + Hash + Eq,
+        V: Codec,
     {
         // There is an sequential index on lowest level, if expected index is bigger than
         // length of chain, it is not stored, otherwise, IT MUST BE FOUND.
@@ -84,17 +103,21 @@ impl DatabaseBackedSkipList {
         loop {
             let lane_values = match prefix {
                 Some(prefix) => lane.get_prefix(pos.index(), prefix)? as Option<Vec<(K, V)>>,
-                None => lane.get_all(pos.index())? as Option<Vec<(K, V)>>
+                None => lane.get_all(pos.index())? as Option<Vec<(K, V)>>,
             };
 
             if let Some(list_value_map) = lane_values {
                 results.extend(list_value_map);
             } else {
                 return Err(SkipListError::InternalError {
-                    description: format!("Value not found in lanes, even thou it should: \
+                    description: format!(
+                        "Value not found in lanes, even thou it should: \
                                          current_level: {} | current_lane_index: {} | \
                                          current_index: {}",
-                                         lane.level(), pos.index(), pos.base_index()),
+                        lane.level(),
+                        pos.index(),
+                        pos.base_index()
+                    ),
                 });
             }
 
@@ -156,7 +179,8 @@ impl SkipList for DatabaseBackedSkipList {
 pub trait TypedSkipList<K: Codec, V: Codec>: SkipList {
     fn get(&self, index: usize) -> Result<Option<BTreeMap<K, V>>, SkipListError>;
 
-    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<BTreeMap<K, V>>, SkipListError>;
+    fn get_prefix(&self, index: usize, prefix: &K)
+        -> Result<Option<BTreeMap<K, V>>, SkipListError>;
 
     fn get_key(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError>;
 
@@ -164,16 +188,20 @@ pub trait TypedSkipList<K: Codec, V: Codec>: SkipList {
 }
 
 impl<K, V> TypedSkipList<K, V> for DatabaseBackedSkipList
-    where
-        K: Ord + Codec + Hash + Eq,
-        V: Codec
+where
+    K: Ord + Codec + Hash + Eq,
+    V: Codec,
 {
     /// Rebuild state for given index
     fn get(&self, index: usize) -> Result<Option<BTreeMap<K, V>>, SkipListError> {
         self.get_internal(index, None)
     }
 
-    fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<BTreeMap<K, V>>, SkipListError> {
+    fn get_prefix(
+        &self,
+        index: usize,
+        prefix: &K,
+    ) -> Result<Option<BTreeMap<K, V>>, SkipListError> {
         self.get_internal(index, Some(prefix))
     }
 
@@ -223,7 +251,9 @@ impl<K, V> TypedSkipList<K, V> for DatabaseBackedSkipList
 
             let start = pos.index() + 1 - LEVEL_BASE;
             for index in start..=pos.index() {
-                let list_value = lane.get_list_value(index)?.unwrap_or_else(|| panic!("Expected list value at: {:?}", &pos_higher));
+                let list_value = lane
+                    .get_list_value(index)?
+                    .unwrap_or_else(|| panic!("Expected list value at: {:?}", &pos_higher));
                 list_value_higher.merge(&list_value)?;
             }
 
@@ -235,7 +265,8 @@ impl<K, V> TypedSkipList<K, V> for DatabaseBackedSkipList
         self.state.levels = max(lane.level() + 1, self.state.levels);
         self.state.len += 1;
 
-        self.list_db.put(&self.list_id, &self.state)
+        self.list_db
+            .put(&self.list_id, &self.state)
             .map_err(SkipListError::from)
     }
 }

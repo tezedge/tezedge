@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 
 use failure::Fail;
@@ -82,7 +82,7 @@ macro_rules! num_codec {
                 Ok(value)
             }
         }
-    }
+    };
 }
 
 num_codec!(u8);
@@ -96,37 +96,45 @@ num_codec!(usize);
 
 pub trait BincodeEncoded: Sized + Serialize + for<'a> Deserialize<'a> {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        bincode::deserialize(bytes)
-            .map_err(|_| SchemaError::DecodeError)
+        bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError)
     }
 
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        bincode::serialize::<Self>(self)
-            .map_err(|_| SchemaError::EncodeError)
+        bincode::serialize::<Self>(self).map_err(|_| SchemaError::EncodeError)
     }
 }
 
-impl<T> Encoder for T where T: BincodeEncoded {
+impl<T> Encoder for T
+where
+    T: BincodeEncoded,
+{
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         T::encode(self)
     }
 }
 
-impl<T> Decoder for T where T: BincodeEncoded {
+impl<T> Decoder for T
+where
+    T: BincodeEncoded,
+{
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         T::decode(bytes)
     }
 }
 
 impl<K, V> BincodeEncoded for HashMap<K, V>
-    where K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a>,
-          V: Serialize + for<'a> Deserialize<'a>
-{}
+where
+    K: std::hash::Hash + Eq + Serialize + for<'a> Deserialize<'a>,
+    V: Serialize + for<'a> Deserialize<'a>,
+{
+}
 
 impl<K, V> BincodeEncoded for BTreeMap<K, V>
-    where K: Ord + Eq + Serialize + for<'a> Deserialize<'a>,
-          V: Serialize + for<'a> Deserialize<'a>
-{}
+where
+    K: Ord + Eq + Serialize + for<'a> Deserialize<'a>,
+    V: Serialize + for<'a> Deserialize<'a>,
+{
+}
 
 impl BincodeEncoded for () {}
 
@@ -145,9 +153,9 @@ impl BincodeEncoded for () {}
 macro_rules! num_from_slice {
     ($buf:expr, $from_idx:expr, $num:ident) => {{
         let mut bytes: [u8; std::mem::size_of::<$num>()] = Default::default();
-        bytes.copy_from_slice(&$buf[$from_idx .. $from_idx + std::mem::size_of::<$num>()]);
+        bytes.copy_from_slice(&$buf[$from_idx..$from_idx + std::mem::size_of::<$num>()]);
         $num::from_be_bytes(bytes)
-    }}
+    }};
 }
 
 #[inline]

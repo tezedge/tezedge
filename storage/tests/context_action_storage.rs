@@ -4,8 +4,8 @@
 use failure::Error;
 
 use crypto::hash::HashType;
-use storage::*;
 use storage::tests_common::TmpStorage;
+use storage::*;
 use tezos_context::channel::ContextAction;
 
 #[test]
@@ -16,10 +16,54 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     let block_hash_1 = HashType::BlockHash.b58check_to_hash(str_block_hash_1)?;
     let str_block_hash_2 = "BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ";
     let block_hash_2 = HashType::BlockHash.b58check_to_hash(str_block_hash_2)?;
-    let value_1_0 = ContextAction::Set { key: vec!("hello".to_string(), "this".to_string(), "is".to_string(), "dog".to_string()), value: vec![10, 200], operation_hash: None, block_hash: Some(str_block_hash_1.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0, ignored: false };
-    let value_1_1 = ContextAction::Set { key: vec!("hello".to_string(), "world".to_string()), value: vec![11, 200], operation_hash: None, block_hash: Some(str_block_hash_1.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0, ignored: false };
-    let value_2_0 = ContextAction::Set { key: vec!("nice".to_string(), "to meet you".to_string()), value: vec![20, 200], operation_hash: None, block_hash: Some(str_block_hash_2.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0, ignored: false };
-    let value_2_1 = ContextAction::Get { key: vec!("nice".to_string(), "to meet you".to_string()), value: vec![20, 200], operation_hash: None, block_hash: Some(str_block_hash_2.into()), context_hash: None, value_as_json: None, start_time: 0.0, end_time: 0.0 };
+    let value_1_0 = ContextAction::Set {
+        key: vec![
+            "hello".to_string(),
+            "this".to_string(),
+            "is".to_string(),
+            "dog".to_string(),
+        ],
+        value: vec![10, 200],
+        operation_hash: None,
+        block_hash: Some(str_block_hash_1.into()),
+        context_hash: None,
+        value_as_json: None,
+        start_time: 0.0,
+        end_time: 0.0,
+        ignored: false,
+    };
+    let value_1_1 = ContextAction::Set {
+        key: vec!["hello".to_string(), "world".to_string()],
+        value: vec![11, 200],
+        operation_hash: None,
+        block_hash: Some(str_block_hash_1.into()),
+        context_hash: None,
+        value_as_json: None,
+        start_time: 0.0,
+        end_time: 0.0,
+        ignored: false,
+    };
+    let value_2_0 = ContextAction::Set {
+        key: vec!["nice".to_string(), "to meet you".to_string()],
+        value: vec![20, 200],
+        operation_hash: None,
+        block_hash: Some(str_block_hash_2.into()),
+        context_hash: None,
+        value_as_json: None,
+        start_time: 0.0,
+        end_time: 0.0,
+        ignored: false,
+    };
+    let value_2_1 = ContextAction::Get {
+        key: vec!["nice".to_string(), "to meet you".to_string()],
+        value: vec![20, 200],
+        operation_hash: None,
+        block_hash: Some(str_block_hash_2.into()),
+        context_hash: None,
+        value_as_json: None,
+        start_time: 0.0,
+        end_time: 0.0,
+    };
 
     let mut storage = ContextActionStorage::new(tmp_storage.storage());
     storage.put_action(&block_hash_1, value_1_0)?;
@@ -29,7 +73,13 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
 
     // block hash 1
     let values = storage.get_by_block_hash(&block_hash_1)?;
-    assert_eq!(2, values.len(), "Was expecting vector of {} elements but instead found {}", 2, values.len());
+    assert_eq!(
+        2,
+        values.len(),
+        "Was expecting vector of {} elements but instead found {}",
+        2,
+        values.len()
+    );
     if let ContextAction::Set { value, .. } = values[0].action() {
         assert_eq!(&vec![10, 200], value);
     } else {
@@ -42,7 +92,13 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     }
     // block hash 2
     let values = storage.get_by_block_hash(&block_hash_2)?;
-    assert_eq!(2, values.len(), "Was expecting vector of {} elements but instead found {}", 2, values.len());
+    assert_eq!(
+        2,
+        values.len(),
+        "Was expecting vector of {} elements but instead found {}",
+        2,
+        values.len()
+    );
     if let ContextAction::Set { value, .. } = values[0].action() {
         assert_eq!(&vec![20, 200], value);
     } else {
@@ -75,7 +131,7 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
             "f9".to_string(),
             "3e".to_string(),
             "000003cb7d7842406496fc07288635562bfd17e176c4".to_string(),
-            "delegate_desactivation".to_string()
+            "delegate_desactivation".to_string(),
         ],
         value: vec![10, 200],
         operation_hash: None,
@@ -91,8 +147,18 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
     storage.put_action(&block_hash, value)?;
 
     // block hash 1
-    let values = storage.get_by_contract_address(&hex::decode("000003cb7d7842406496fc07288635562bfd17e176c4")?, None, 10)?;
-    assert_eq!(1, values.len(), "Was expecting vector of {} elements but instead found {}", 1, values.len());
+    let values = storage.get_by_contract_address(
+        &hex::decode("000003cb7d7842406496fc07288635562bfd17e176c4")?,
+        None,
+        10,
+    )?;
+    assert_eq!(
+        1,
+        values.len(),
+        "Was expecting vector of {} elements but instead found {}",
+        1,
+        values.len()
+    );
     assert_eq!(0, values[0].id());
     if let ContextAction::Set { value, .. } = values[0].action() {
         assert_eq!(&vec![10, 200], value);

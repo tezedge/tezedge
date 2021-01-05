@@ -4,10 +4,10 @@
 use std::hash::Hash;
 use std::sync::Arc;
 
-use crate::persistent::{Codec, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::persistent::sequence::SequenceGenerator;
-use crate::skip_list::{ListValue, SkipListError};
+use crate::persistent::{Codec, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::skip_list::content::{ListValueDatabase, NodeHeader, SkipListId, TypedListValue};
+use crate::skip_list::{ListValue, SkipListError};
 
 pub type LaneDatabase = dyn KeyValueStoreWithSchema<Lane> + Sync + Send;
 
@@ -20,21 +20,41 @@ pub struct Lane {
     level: usize,
     lane_db: Arc<LaneDatabase>,
     value_db: Arc<ListValueDatabase>,
-    sequence_gen: Arc<SequenceGenerator>
+    sequence_gen: Arc<SequenceGenerator>,
 }
 
 impl Lane {
     /// Create new lane handler for given database
-    pub fn new(list_id: SkipListId, level: usize, lane_db: Arc<LaneDatabase>, value_db: Arc<ListValueDatabase>, sequence_gen: Arc<SequenceGenerator>) -> Self {
-        Lane { list_id, level, lane_db, value_db, sequence_gen }
+    pub fn new(
+        list_id: SkipListId,
+        level: usize,
+        lane_db: Arc<LaneDatabase>,
+        value_db: Arc<ListValueDatabase>,
+        sequence_gen: Arc<SequenceGenerator>,
+    ) -> Self {
+        Lane {
+            list_id,
+            level,
+            lane_db,
+            value_db,
+            sequence_gen,
+        }
     }
 
     fn new_level(self, level: usize) -> Self {
-        Self { list_id: self.list_id, level, lane_db: self.lane_db, value_db: self.value_db, sequence_gen: self.sequence_gen }
+        Self {
+            list_id: self.list_id,
+            level,
+            lane_db: self.lane_db,
+            value_db: self.value_db,
+            sequence_gen: self.sequence_gen,
+        }
     }
 
     /// Get level of current handler
-    pub fn level(&self) -> usize { self.level }
+    pub fn level(&self) -> usize {
+        self.level
+    }
 
     /// Create handler for a lane on one lower level
     pub fn lower_lane(self) -> Self {
@@ -58,16 +78,17 @@ impl Lane {
     }
 
     pub fn get_list_value(&self, index: usize) -> Result<Option<ListValue>, SkipListError> {
-        self.lane_db.get(&self.node_header(index))
-            .map(|value_id| value_id.map(|value_id| ListValue::new(value_id, self.value_db.clone())))
+        self.lane_db
+            .get(&self.node_header(index))
+            .map(|value_id| {
+                value_id.map(|value_id| ListValue::new(value_id, self.value_db.clone()))
+            })
             .map_err(SkipListError::from)
     }
 
     pub fn put_list_value(&mut self, index: usize) -> Result<ListValue, SkipListError> {
         let value_id = match self.lane_db.get(&self.node_header(index))? {
-            Some(value_id) => {
-                value_id
-            }
+            Some(value_id) => value_id,
             None => {
                 // generate new unique value_id
                 let value_id = self.sequence_gen.next()? as usize;
@@ -101,9 +122,9 @@ pub trait TypedLane<K, V> {
 }
 
 impl<K, V> TypedLane<K, V> for Lane
-    where
-        K: Codec + Hash + Eq,
-        V: Codec
+where
+    K: Codec + Hash + Eq,
+    V: Codec,
 {
     fn get(&self, index: usize, key: &K) -> Result<Option<V>, SkipListError> {
         self.get_list_value(index)?
@@ -114,13 +135,21 @@ impl<K, V> TypedLane<K, V> for Lane
 
     fn get_prefix(&self, index: usize, prefix: &K) -> Result<Option<Vec<(K, V)>>, SkipListError> {
         self.get_list_value(index)?
-            .map(|list_value| list_value.iter_prefix(prefix).and_then(|i| i.collect::<Result<Vec<(K, V)>, SkipListError>>()))
+            .map(|list_value| {
+                list_value
+                    .iter_prefix(prefix)
+                    .and_then(|i| i.collect::<Result<Vec<(K, V)>, SkipListError>>())
+            })
             .transpose()
     }
 
     fn get_all(&self, index: usize) -> Result<Option<Vec<(K, V)>>, SkipListError> {
         self.get_list_value(index)?
-            .map(|list_value| list_value.iter().and_then(|i| i.collect::<Result<Vec<(K, V)>, SkipListError>>()))
+            .map(|list_value| {
+                list_value
+                    .iter()
+                    .and_then(|i| i.collect::<Result<Vec<(K, V)>, SkipListError>>())
+            })
             .transpose()
     }
 }

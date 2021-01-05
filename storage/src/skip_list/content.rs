@@ -3,16 +3,19 @@
 
 use std::sync::Arc;
 
-use failure::_core::marker::PhantomData;
 use failure::Fail;
-use rocksdb::{ColumnFamilyDescriptor, SliceTransform, Cache};
+use failure::_core::marker::PhantomData;
+use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use crate::num_from_slice;
-use crate::persistent::{BincodeEncoded, Codec, DBError, Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
 use crate::persistent::database::IteratorWithSchema;
 use crate::persistent::sequence::SequenceError;
-use crate::skip_list::{LEVEL_BASE, TryExtend};
+use crate::persistent::{
+    default_table_options, BincodeEncoded, Codec, DBError, Decoder, Encoder, KeyValueSchema,
+    KeyValueStoreWithSchema, SchemaError,
+};
+use crate::skip_list::{TryExtend, LEVEL_BASE};
 
 /// Structure for orientation in the list.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,7 +123,6 @@ impl NodeHeader {
 
 impl BincodeEncoded for NodeHeader {}
 
-
 pub type ListValueDatabase = dyn KeyValueStoreWithSchema<ListValue> + Sync + Send;
 
 pub struct ListValue {
@@ -136,7 +138,8 @@ impl ListValue {
     /// Merge two values into one, in-place
     pub fn merge(&mut self, other: &Self) -> Result<(), SkipListError> {
         for (key, value) in self.db.prefix_iterator(&ListValueKey::from_id(other.id))? {
-            self.db.put(&ListValueKey::new(self.id, &key?.key), &value?)?;
+            self.db
+                .put(&ListValueKey::new(self.id, &key?.key), &value?)?;
         }
 
         Ok(())
@@ -160,13 +163,19 @@ impl KeyValueSchema for ListValue {
 }
 
 impl<'a, K, V> TryExtend<(&'a K, &'a V)> for ListValue
-    where
-        K: Encoder + 'a,
-        V: Encoder + 'a
+where
+    K: Encoder + 'a,
+    V: Encoder + 'a,
 {
-    fn try_extend<T: IntoIterator<Item=(&'a K, &'a V)>>(&mut self, iter: T) -> Result<(), SkipListError> {
+    fn try_extend<T: IntoIterator<Item = (&'a K, &'a V)>>(
+        &mut self,
+        iter: T,
+    ) -> Result<(), SkipListError> {
         for (key, value) in iter {
-            self.db.put(&ListValueKey::new(self.id, &key.encode()?), &value.encode()?)?;
+            self.db.put(
+                &ListValueKey::new(self.id, &key.encode()?),
+                &value.encode()?,
+            )?;
         }
         Ok(())
     }
@@ -183,7 +192,8 @@ pub(crate) trait TypedListValue<'a, K, V> {
 impl<'a, K: Codec, V: Decoder> TypedListValue<'a, K, V> for ListValue {
     /// Get value from stored container
     fn get(&self, value: &K) -> Result<Option<V>, SkipListError> {
-        self.db.get(&ListValueKey::new(self.id, &value.encode()?))?
+        self.db
+            .get(&ListValueKey::new(self.id, &value.encode()?))?
             .map(|bytes| V::decode(&bytes))
             .transpose()
             .map_err(SkipListError::from)
@@ -206,7 +216,10 @@ pub struct Iter<'a, K, V> {
 impl<'a, K, V> Iter<'a, K, V> {
     fn create(id: usize, db: &'a Arc<ListValueDatabase>) -> Result<Self, SkipListError> {
         let inner = db.prefix_iterator(&ListValueKey::from_id(id))?;
-        Ok(Self { inner, _phantom: PhantomData })
+        Ok(Self {
+            inner,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -225,10 +238,18 @@ pub struct IterPrefix<'a, K, V> {
 }
 
 impl<'a, K: Encoder, V> IterPrefix<'a, K, V> {
-    fn create(id: usize, prefix: &'a K, db: &'a Arc<ListValueDatabase>) -> Result<Self, SkipListError> {
+    fn create(
+        id: usize,
+        prefix: &'a K,
+        db: &'a Arc<ListValueDatabase>,
+    ) -> Result<Self, SkipListError> {
         let prefix = prefix.encode()?;
         let inner = db.prefix_iterator(&ListValueKey::new(id, &prefix))?;
-        Ok(Self { inner, prefix, _phantom: PhantomData })
+        Ok(Self {
+            inner,
+            prefix,
+            _phantom: PhantomData,
+        })
     }
 }
 
@@ -236,7 +257,10 @@ impl<'a, K: Decoder, V: Decoder> Iterator for IterPrefix<'a, K, V> {
     type Item = Result<(K, V), SkipListError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)> = self.inner.next();
+        let next: Option<(
+            Result<ListValueKey, SchemaError>,
+            Result<Vec<u8>, SchemaError>,
+        )> = self.inner.next();
         if let Some((Ok(ListValueKey { key, .. }), _)) = &next {
             if !key.starts_with(&self.prefix) {
                 return None;
@@ -247,12 +271,18 @@ impl<'a, K: Decoder, V: Decoder> Iterator for IterPrefix<'a, K, V> {
     }
 }
 
-fn extract_and_decode<K: Decoder, V: Decoder>(value: Option<(Result<ListValueKey, SchemaError>, Result<Vec<u8>, SchemaError>)>) -> Option<Result<(K, V), SkipListError>> {
-    value.map(|(k, v)|
+fn extract_and_decode<K: Decoder, V: Decoder>(
+    value: Option<(
+        Result<ListValueKey, SchemaError>,
+        Result<Vec<u8>, SchemaError>,
+    )>,
+) -> Option<Result<(K, V), SkipListError>> {
+    value.map(|(k, v)| {
         k.map(|k| k.key)
             .and_then(|key| K::decode(&key))
             .and_then(|k| v.and_then(|value| V::decode(&value)).map(|v| (k, v)))
-            .map_err(SkipListError::from))
+            .map_err(SkipListError::from)
+    })
 }
 
 trait StartsWith<T> {
@@ -260,8 +290,8 @@ trait StartsWith<T> {
 }
 
 impl<T> StartsWith<T> for Vec<T>
-    where
-        T: Sized + Eq
+where
+    T: Sized + Eq,
 {
     fn starts_with(&self, needle: &[T]) -> bool {
         if needle.len() > self.len() {
@@ -289,7 +319,10 @@ impl ListValueKey {
     const IDX_KEY: usize = Self::IDX_ID + Self::LEN_ID;
 
     fn new(id: usize, key: &[u8]) -> Self {
-        Self { id, key: key.to_vec() }
+        Self {
+            id,
+            key: key.to_vec(),
+        }
     }
 
     fn from_id(id: usize) -> Self {
@@ -318,26 +351,22 @@ impl Encoder for ListValueKey {
     }
 }
 
-
 /// ID of the skip list
 pub type SkipListId = u16;
 
 #[derive(Debug, Fail)]
 pub enum SkipListError {
     #[fail(display = "Persistent storage error: {}", error)]
-    PersistentStorageError {
-        error: DBError,
-    },
-    #[fail(display = "Internal error occurred during skip list operation: {}", description)]
-    InternalError {
-        description: String,
-    },
+    PersistentStorageError { error: DBError },
+    #[fail(
+        display = "Internal error occurred during skip list operation: {}",
+        description
+    )]
+    InternalError { description: String },
     #[fail(display = "Index is out of skip list bounds")]
     OutOfBoundsError,
     #[fail(display = "List value sequence error: {}", error)]
-    SequenceError {
-        error: SequenceError
-    },
+    SequenceError { error: SequenceError },
 }
 
 impl From<DBError> for SkipListError {
@@ -348,7 +377,9 @@ impl From<DBError> for SkipListError {
 
 impl From<SchemaError> for SkipListError {
     fn from(error: SchemaError) -> Self {
-        SkipListError::PersistentStorageError { error: error.into() }
+        SkipListError::PersistentStorageError {
+            error: error.into(),
+        }
     }
 }
 
