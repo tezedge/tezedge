@@ -5,17 +5,21 @@ services:
   debugger:
     image: simplestakingcom/tezedge-debugger:latest
     network_mode: "service:rust-network"
+    privileged: true
     environment:
       - RUST_BACKTRACE=1
+      - P2P_PORT=9732
     depends_on:
       - rust-network
     volumes:
       - "rust-shared-data:/tmp/volume"
+      - "/sys/kernel/debug:/sys/kernel/debug:rw"
     entrypoint: ./tezedge-debugger
 
   rust-node:
-    image: simplestakingcom/tezedge:latest-release
+    image: simplestakingcom/tezedge:${TEZEDGE_IMAGE_TAG}
     network_mode: "service:rust-network"
+    command: "/light-node --config-file /tezedge.config --network delphi"
     depends_on:
       - rust-explorer
     logging:
@@ -45,7 +49,7 @@ services:
       - "3030:3030"       # sandbox launcher port
       # Debugger Ports must be specified on node service, because of debugger network_mode attaches
       # debugger's container to the node container, allowing it to analyze node's traffic
-      - "17732:13031"      # debugger RPC port
+      - "17732:17732"      # debugger RPC port
       - "10001:13131/udp"  # debugger syslog port
     entrypoint: sleep inf
 

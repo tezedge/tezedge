@@ -6,6 +6,7 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
 use std::string::FromUtf8Error;
+use std::convert::TryFrom;
 
 use failure::Fail;
 use merge::Merge;
@@ -60,6 +61,33 @@ impl From<LinuxData> for MemoryData {
 impl From<DarwinOsData> for MemoryData {
     fn from(data: DarwinOsData) -> Self {
         MemoryData::DarwinOs(data)
+    }
+}
+
+// TODO: implement for DarwinOsData, too
+impl TryFrom<LinuxData> for ProcessMemoryStats {
+    type Error = failure::Error;
+
+    fn try_from(data: LinuxData) -> Result<Self, Self::Error> {
+        let LinuxData {
+            size,
+            resident,
+            page_size,
+            ..
+        } = data;
+
+        let size = size.parse::<usize>()?;
+        let resident = resident.parse::<usize>()?;
+
+        // the size and page size are in Bytes, so we conwert it to Mega Bytes in a readable 
+        // fashion (divide by 1024 to get Kilo Bytes and another to get Mega Bytes)
+        let virtual_mem = size * page_size / 1024 / 1024;
+        let resident_mem = resident * page_size / 1024 / 1024;
+
+        Ok(ProcessMemoryStats {
+            virtual_mem,
+            resident_mem,
+        })
     }
 }
 
