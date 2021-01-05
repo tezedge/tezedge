@@ -48,6 +48,7 @@ use std::convert::TryInto;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Instant;
+use hex;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
@@ -269,6 +270,13 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
     }
 }
 
+// Calculates hash of tree
+// uses BLAKE2 binary 256 length hash function
+// hash is calculated as:
+// <number of child nodes (8 bytes)><CHILD NODE>
+// where:
+// - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
+// - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
 fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
 
@@ -280,6 +288,46 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
         hasher.update(&(HASH_LEN as u64).to_be_bytes());
         hasher.update(&v.entry_hash);
     });
+
+    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+}
+
+// Calculates hash of BLOB
+// uses BLAKE2 binary 256 length hash function
+// hash is calculated as <length of data (8 bytes)><data>
+fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
+    let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+    hasher.update(&(blob.len() as u64).to_be_bytes());
+    hasher.update(blob);
+
+    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+}
+
+// Calculates hash of commit
+// uses BLAKE2 binary 256 length hash function
+// hash is calculated as:
+// <hash length (8 bytes)><tree hash bytes>
+// <length of parent hash (8bytes)><parent hash bytes>
+// <time in epoch format (8bytes)
+// <commit author name length (8bytes)><commit author name bytes>
+// <commit message length (8bytes)><commit message bytes>
+fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
+    let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+    hasher.update(&(HASH_LEN as u64).to_be_bytes());
+    hasher.update(&commit.root_hash);
+
+    if commit.parent_commit_hash.is_none() {
+        hasher.update(&(0_u64).to_be_bytes());
+    } else {
+        hasher.update(&(1_u64).to_be_bytes()); // # of parents; we support only 1
+        hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes());
+        hasher.update(&commit.parent_commit_hash.unwrap());
+    }
+    hasher.update(&(commit.time as u64).to_be_bytes());
+    hasher.update(&(commit.author.len() as u64).to_be_bytes());
+    hasher.update(&commit.author.clone().into_bytes());
+    hasher.update(&(commit.message.len() as u64).to_be_bytes());
+    hasher.update(&commit.message.clone().into_bytes());
 
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
@@ -583,11 +631,11 @@ impl MerkleStorage {
         };
         let entry = Entry::Commit(new_commit.clone());
 
-        self.put_to_staging_area(&self.hash_commit(&new_commit)?, entry.clone())?;
+        self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone())?;
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = Vec::new();
         self.staged_indices = HashMap::new();
-        let last_commit_hash = self.hash_commit(&new_commit)?;
+        let last_commit_hash = hash_commit(&new_commit)?;
         self.last_commit_hash = Some(last_commit_hash);
 
         self.update_execution_stats("Commit".to_string(), None, &instant);
@@ -677,7 +725,7 @@ impl MerkleStorage {
                 Action::Set(set) =>  {
                     let root_hash = self.current_stage_tree_hash.unwrap();
                     let key = &set.key;
-                    let blob_hash = self.hash_blob(&set.value)?;
+                    let blob_hash = hash_blob(&set.value)?;
                     self.put_to_staging_area(&blob_hash, Entry::Blob(set.value.clone()))?;
                     let new_node = Node { entry_hash: blob_hash, node_kind: NodeKind::Leaf };
 
@@ -1058,39 +1106,10 @@ impl MerkleStorage {
 
     fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
         match entry {
-            Entry::Commit(commit) => self.hash_commit(&commit),
+            Entry::Commit(commit) => hash_commit(&commit),
             Entry::Tree(tree) => hash_tree(&tree),
-            Entry::Blob(blob) => self.hash_blob(blob),
+            Entry::Blob(blob) => hash_blob(blob),
         }
-    }
-
-    fn hash_commit(&self, commit: &Commit) -> Result<EntryHash, MerkleError> {
-        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(&(HASH_LEN as u64).to_be_bytes());
-        hasher.update(&commit.root_hash);
-
-        if commit.parent_commit_hash.is_none() {
-            hasher.update(&(0_u64).to_be_bytes());
-        } else {
-            hasher.update(&(1_u64).to_be_bytes()); // # of parents; we support only 1
-            hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes());
-            hasher.update(&commit.parent_commit_hash.unwrap());
-        }
-        hasher.update(&(commit.time as u64).to_be_bytes());
-        hasher.update(&(commit.author.len() as u64).to_be_bytes());
-        hasher.update(&commit.author.clone().into_bytes());
-        hasher.update(&(commit.message.len() as u64).to_be_bytes());
-        hasher.update(&commit.message.clone().into_bytes());
-
-        Ok(hasher.finalize_boxed().as_ref().try_into()?)
-    }
-
-    fn hash_blob(&self, blob: &ContextValue) -> Result<EntryHash, MerkleError> {
-        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(&(blob.len() as u64).to_be_bytes());
-        hasher.update(blob);
-
-        Ok(hasher.finalize_boxed().as_ref().try_into()?)
     }
 
     fn get_tree(&self, hash: &EntryHash) -> Result<Tree, MerkleError> {
@@ -1161,6 +1180,40 @@ impl MerkleStorage {
     /// Get last committed hash
     pub fn get_last_commit_hash(&self) -> Option<EntryHash> {
         self.last_commit_hash
+    }
+
+    fn get_staged_entries(&self) -> std::string::String{
+        let mut result =String::new();
+        for (hash, _,entry) in &self.staged{
+            match entry{
+                Entry::Blob(blob) => {
+                    result += &format!("{}: Value {:?}, \n", hex::encode(&hash[0..3]), blob);
+                }
+
+                Entry::Tree(tree) => {
+                    if tree.is_empty(){
+                        continue;
+                    }
+                    let tree_hash = &hash_tree(tree).unwrap()[0..3];
+                    result += &format!("{}: Tree {{", hex::encode(tree_hash));
+
+                    for (path, val) in tree {
+                        let kind = if let NodeKind::NonLeaf = val.node_kind {
+                            "Tree"
+                        }else{
+                            "Value/Leaf"
+                        };
+                        result += &format!("{}: {}({:?}), ", path, kind, hex::encode(&val.entry_hash[0..3]));
+                    }
+                    result += "}}\n";
+                }
+
+                Entry::Commit(_) => {
+                    panic!("commits must not occur in staged area");
+                }
+            }
+        }
+        return result;
     }
 
     /// Get various merkle storage statistics
@@ -1290,6 +1343,175 @@ mod tests {
     }
 
     #[test]
+    fn test_hash_of_value_1_blob() {
+        let expected_hash = "407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d".to_string();
+        
+        // hash is calculated as <length of data (8 bytes)><data>
+        let blob = vec![1];
+
+        // hexademical representation of above commit:
+        //
+        // value length (8 bytes)          ->  00 00 00 00 00 00 00 01
+        // value bytes                     ->  01
+
+        let mut bytes = String::new();
+        let value_length = "0000000000000001";
+        let value = "01";
+
+        println!("calculating hash of value: {:?}\n", blob);
+
+        println!("[hex] value_length : {}", value_length);
+        println!("[hex] value : {}", value);
+
+        bytes += &value_length;
+        bytes += &value;
+
+        println!("manually calculated haxedemical representation of value/blob: {}", bytes);
+
+        let mut hasher= VarBlake2b::new(HASH_LEN).unwrap();
+        hasher.update(hex::decode(bytes).unwrap());
+        let calcualted_hash = hex::encode(hasher.finalize_boxed().as_ref());
+
+        println!("calculated hash of the value/blob: {}", calcualted_hash);
+
+        assert_eq!(expected_hash, calcualted_hash);
+        assert_eq!(hex::encode(hash_blob(&blob).unwrap()), calcualted_hash);
+    }
+
+    #[test]
+    fn test_hash_of_commit() {
+        // Calculates hash of commit
+        // uses BLAKE2 binary 256 length hash function
+        // hash is calculated as:
+        // <hash length (8 bytes)><tree hash bytes>
+        // <length of parent hash (8bytes)><parent hash bytes>
+        // <time in epoch format (8bytes)
+        // <commit author name length (8bytes)><commit author name bytes>
+        // <commit message length (8bytes)><commit message bytes>
+        let expected_commit_hash = "e6de3fd37b1dc2b3c9d072ea67c2c5be1b55eeed9f5377b2bfc1228e6f9cb69b";
+        let dummy_commit = Commit{
+            parent_commit_hash: None,
+            root_hash: hex::decode("0d78b30e959c2a079e8ccb4ca19d428c95d29b2f02a35c1c58ef9c8972bc26aa").unwrap().try_into().unwrap(),
+            time: 0,
+            author: "Tezedge".to_string(),
+            message: "persist changes".to_string(),
+        };
+
+        // hexademical representation of above commit:
+        //
+        // hash length (8 bytes)           ->  00 00 00 00 00 00 00 20
+        // tree hash bytes                 ->  0d78b30e959c2a079e8ccb4ca19d428c95d29b2f02a35c1c58ef9c8972bc26aa
+        // parents count                   ->  00 00 00 00 00 00 00 00  (0)
+        // commit time                     ->  00 00 00 00 00 00 00 00  (0)
+        // commit author name length       ->  00 00 00 00 00 00 00 07  (7)
+        // commit author name ('Tezedge')  ->  54 65 7a 65 64 67 65     (Tezedge)
+        // commit message length           ->  00 00 00 00 00 00 00 0xf (15)
+
+        let mut bytes = String::new();
+        let hash_length = "0000000000000020"; // 32
+        let tree_hash = "0d78b30e959c2a079e8ccb4ca19d428c95d29b2f02a35c1c58ef9c8972bc26aa"; // tree hash bytes
+        let parents_count = "0000000000000000"; // 0
+        let commit_time = "0000000000000000"; // 0
+        let commit_author_name_length = "0000000000000007"; // 7
+        let commit_author_name = "54657a65646765"; // 'Tezedge'
+        let commit_message_length = "000000000000000f"; // 15
+        let commit_message = "70657273697374206368616e676573"; // 'persist changes'
+
+        println!("calculating hash of commit: \n\t{:?}\n", dummy_commit);
+
+        println!("[hex] hash_length : {}", hash_length);
+        println!("[hex] tree_hash : {}", tree_hash);
+        println!("[hex] parents_count : {}", parents_count);
+        println!("[hex] commit_time : {}", commit_time);
+        println!("[hex] commit_author_name_length : {}", commit_author_name_length);
+        println!("[hex] commit_author_name : {}", commit_author_name);
+        println!("[hex] commit_message_length : {}", commit_message_length);
+        println!("[hex] commit_message : {}", commit_message);
+
+        bytes += &hash_length;
+        bytes += &tree_hash;
+        bytes += &parents_count;
+        bytes += &commit_time;
+        bytes += &commit_author_name_length;
+        bytes += &commit_author_name;
+        bytes += &commit_message_length;
+        bytes += &commit_message;
+
+        println!("manually calculated haxedemical representation of commit: {}", bytes);
+
+        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+        hasher.update(hex::decode(bytes).unwrap());
+        let calculated_commit_hash = hasher.finalize_boxed();
+
+        println!("calculated hash of the commit: {}", hex::encode(calculated_commit_hash.as_ref()));
+
+        assert_eq!(calculated_commit_hash.as_ref(), hash_commit(&dummy_commit).unwrap());
+        assert_eq!(expected_commit_hash, hex::encode(calculated_commit_hash.as_ref()));
+    }
+
+    #[test]
+    fn test_hash_of_small_tree() {
+        // Calculates hash of tree
+        // uses BLAKE2 binary 256 length hash function
+        // hash is calculated as:
+        // <number of child nodes (8 bytes)><CHILD NODE>
+        // where:
+        // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
+        // - NODE TYPE - leaf node(0xff00000000000000) or internal node (0x0000000000000000)
+
+        let expected_tree_hash = "d49a53323107f2ae40b01eaa4e9bec4d02801daf60bab82dc2529e40d40fa917";
+        let mut dummy_tree = Tree::new();
+        let node = Node{
+            node_kind: NodeKind::Leaf,
+            entry_hash: hash_blob(&vec![1]).unwrap() // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
+        };
+        dummy_tree.insert("a".to_string(), node);
+
+        // hexademical representation of above tree:
+        //
+        // number of child nodes           ->  00 00 00 00 00 00 00 01  (1)
+        // node type                       ->  ff 00 00 00 00 00 00 00  (leaf node)
+        // length of string                ->  01                       (1)
+        // string                          ->  61                       ('a')
+        // length of hash                  ->  00 00 00 00 00 00 00 20  (32)
+        // hash                            ->  407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
+
+        let mut bytes = String::new();
+        let child_nodes = "0000000000000001";
+        let leaf_node = "ff00000000000000";
+        let string_length = "01";
+        let string_value = "61";
+        let hash_length = "0000000000000020";
+        let hash = "407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d";
+   
+        println!("calculating hash of tree: \n\t{:?}\n", dummy_tree);
+        println!("[hex] child nodes count: {}", child_nodes);
+        println!("[hex] leaf_node        : {}", leaf_node);
+        println!("[hex] string_length    : {}", string_length);
+        println!("[hex] string_value     : {}", string_value);
+        println!("[hex] hash_length      : {}", hash_length);
+        println!("[hex] hash             : {}", hash);
+        
+        bytes += &child_nodes;
+        bytes += &leaf_node;
+        bytes += &string_length;
+        bytes += &string_value;
+        bytes += &hash_length;
+        bytes += &hash;
+
+        println!("manually calculated haxedemical representation of tree: {}", bytes);
+        
+        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+        hasher.update(hex::decode(bytes).unwrap());
+        let calculated_tree_hash = hasher.finalize_boxed();
+
+        println!("calculated hash of the tree: {}", hex::encode(calculated_tree_hash.as_ref()));
+
+        assert_eq!(calculated_tree_hash.as_ref(), hash_tree(&dummy_tree).unwrap());
+        assert_eq!(calculated_tree_hash.as_ref(), hex::decode(expected_tree_hash).unwrap());
+    }
+
+    #[test]
     fn test_tree_hash() {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage("ms_test_tree_hash", &cache);
@@ -1324,6 +1546,64 @@ mod tests {
 
         assert_eq!([0xCA, 0x7B, 0xC7, 0x02], commit.unwrap()[0..4]);
         // full irmin hash: ca7bc7022ffbd35acc97f7defb00c486bb7f4d19a2d62790d5949775eb74f3c8
+    }
+
+    fn get_short_hash(hash: &EntryHash) -> String{
+        return hex::encode(&hash[0..3]);
+    }
+
+    fn get_staged_root_short_hash(storage: &mut MerkleStorage) -> String{
+        let tree = storage.get_staged_root().unwrap();
+        let hash = hash_tree(&tree).unwrap();
+        return get_short_hash(&hash);
+    }
+
+    #[test]
+    fn test_examples_from_article_about_storage() {
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let db_name = "test_examples_from_article_about_storage";
+        clean_db(db_name);
+        let mut storage = get_storage(db_name, &cache);
+
+        storage.set(&vec!["a".to_string()], &vec![1]);
+        storage.apply_actions_to_staging_area();
+        let root = get_staged_root_short_hash(& mut storage);
+        println!("SET [a] = 1\nROOT: {}", root);
+        println!("CONTENT {}", storage.get_staged_entries());
+        assert_eq!(root, "d49a53".to_string());
+
+        storage.set(&vec!["b".to_string(), "c".to_string()], &vec![1]);
+        storage.apply_actions_to_staging_area();
+        let root = get_staged_root_short_hash(& mut storage);
+        println!("\nSET [b,c] = 1\nROOT: {}", root);
+        print!("{}", storage.get_staged_entries());
+        assert_eq!(root, "ed8adf".to_string());
+
+        storage.set(&vec!["b".to_string(), "d".to_string()], &vec![2]);
+        storage.apply_actions_to_staging_area();
+        let root = get_staged_root_short_hash(& mut storage);
+        println!("\nSET [b,d] = 2\nROOT: {}", root);
+        print!("{}", storage.get_staged_entries());
+        assert_eq!(root, "437186".to_string());
+
+        storage.set(&vec!["a".to_string()], &vec![2]);
+        storage.apply_actions_to_staging_area();
+        let root = get_staged_root_short_hash(& mut storage);
+        println!("\nSET [a] = 2\nROOT: {}", root);
+        print!("{}", storage.get_staged_entries());
+        assert_eq!(root, "0d78b3".to_string());
+
+
+        let entries = storage.get_staged_entries();
+        let commit_hash = storage.commit(0, "Tezedge".to_string(), "persist changes".to_string()).unwrap();
+        storage.apply_actions_to_staging_area();
+        println!("\nCOMMIT time:0 author:'tezedge' message:'persist'");
+        println!("ROOT: {}", get_short_hash(&commit_hash));
+        if let Entry::Commit(c) = storage.get_entry(&commit_hash).unwrap() {
+            println!("{} : Commit{{time:{}, message:{}, author:{}, root_hash:{}, parent_commit_hash: None}}", get_short_hash(&commit_hash), c.time,  c.message, c.author, get_short_hash(&c.root_hash));
+        }
+        print!("{}", entries);
+        assert_eq!("e6de3f", get_short_hash(&commit_hash))
     }
 
     #[test]
