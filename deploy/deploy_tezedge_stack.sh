@@ -38,7 +38,7 @@ wait-for-debugger() {
 
 launch_stack() {
     # First, run the debugger
-    docker-compose -f docker-compose.debugger.yml run -d --name $DEBUGGER_CONTAINER_NAME --service-ports debugger
+    docker-compose -f docker-compose.debugger.yml run -d --name $DEBUGGER_CONTAINER_NAME --service-ports debugger --user root
     # Wait for the debugger to initilize
     wait-for-debugger http://localhost:17732/v2/log
     # Then run the node
