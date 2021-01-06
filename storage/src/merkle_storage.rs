@@ -2198,4 +2198,42 @@ mod tests {
             .unwrap()
         );
     }
+
+    #[test]
+    fn initializes_ref_counts_for_all_children_on_commit() {
+        let mut storage = get_empty_storage();
+
+        storage.set(&context_key!("a/b/c"), &vec![1]);
+        let commit_hash = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
+
+        let commit = storage.get_commit(&commit_hash).unwrap();
+        let root = storage.get_tree(&commit.root_hash).unwrap();
+        let a = get_tree_hash(&storage, &root, &context_key!("a"));
+        let ab = get_tree_hash(&storage, &root, &context_key!("a/b"));
+        let blob = get_blob_hash(&storage, &root, &context_key!("a/b/c"));
+
+        assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 1);
+    }
+
+    #[test]
+    fn increments_ref_count_for_multi_parent() {
+        let mut storage = get_empty_storage();
+
+        storage.set(&context_key!("a/b/c"), &vec![1]);
+        storage.commit(1, "Tezos".into(), "1".into()).unwrap();
+        storage.set(&context_key!("a/z"), &vec![1]);
+        let commit_hash = storage.commit(2, "Tezos".into(), "2".into()).unwrap();
+
+        let commit = storage.get_commit(&commit_hash).unwrap();
+        let root = storage.get_tree(&commit.root_hash).unwrap();
+        let a = get_tree_hash(&storage, &root, &context_key!("a"));
+        let ab = get_tree_hash(&storage, &root, &context_key!("a/b"));
+        let blob = get_blob_hash(&storage, &root, &context_key!("a/b/c"));
+
+        assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 2);
+        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 3);
+    }
 }
