@@ -172,6 +172,8 @@ pub struct MerkleStorage {
     perf_stats: MerklePerfStats,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
+    /// reference counts of entries for garbage collection
+    ref_counts: HashMap<EntryHash, u16>,
 }
 
 #[derive(Debug, Fail)]
@@ -368,6 +370,7 @@ impl MerkleStorage {
                 perpath: HashMap::new(),
             },
             actions: Arc::new(Vec::new()),
+            ref_counts: HashMap::new(),
         }
     }
 
@@ -772,6 +775,7 @@ impl MerkleStorage {
         self.staged_indices = HashMap::new();
         let last_commit_hash = hash_commit(&new_commit)?;
         self.last_commit_hash = Some(last_commit_hash);
+        self.inc_entry_ref_count(&entry);
 
         self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(last_commit_hash)
@@ -1254,6 +1258,66 @@ impl MerkleStorage {
         }
     }
 
+    /// Increment entry's ref_count.
+    ///
+    /// Also increments for every nested entry.
+    fn inc_entry_ref_count(&mut self, entry: &Entry) {
+        self._change_entry_ref_count(entry, false)
+    }
+
+    /// Decrements entry's `ref_count`.
+    ///
+    /// Also decrements for every nested entry.
+    /// Runs `gc_entry(entry)` on it if `ref_count` is zero.
+    fn dec_entry_ref_count(&mut self, entry: &Entry) {
+        self._change_entry_ref_count(entry, true)
+    }
+
+    fn _change_entry_ref_count(&mut self, entry: &Entry, decrement: bool) {
+        use std::collections::hash_map;
+        let hash = match self.hash_entry(entry) {
+            Ok(hash) => { hash }
+            Err(_) => { return; }
+        };
+
+        match self.ref_counts.entry(hash) {
+            hash_map::Entry::Vacant(e) if !decrement => { e.insert(1); }
+            hash_map::Entry::Occupied(mut e) => {
+                let count = e.get_mut();
+                if decrement {
+                    *count = count.checked_sub(1).unwrap_or(0);
+                } else {
+                    *count += 1;
+                }
+                if *count == 0 {
+                    self.gc_entry(entry);
+                }
+            }
+            hash_map::Entry::Vacant(_) if decrement => { self.gc_entry(entry); }
+            _ => { return; }
+        };
+
+        match entry {
+            Entry::Blob(_) => {}
+            Entry::Tree(tree) => {
+                for (_, child_node) in tree.iter() {
+                    if let Ok(entry) = self.get_entry(&child_node.entry_hash) {
+                        self._change_entry_ref_count(&entry, decrement);
+                    }
+                }
+            }
+            Entry::Commit(commit) => {
+                if let Ok(entry) = self.get_entry(&commit.root_hash) {
+                    self._change_entry_ref_count(&entry, decrement);
+                }
+            }
+        };
+    }
+
+    // TODO: implement garbage collection for entry
+    fn gc_entry(&mut self, entry: &Entry) {
+    }
+
     fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
         match entry {
             Entry::Commit(commit) => hash_commit(&commit),
@@ -1465,9 +1529,22 @@ mod tests {
 
     use super::*;
     use crate::in_memory::KVStore;
+    use crate::context_key;
 
     fn get_empty_storage() -> MerkleStorage {
         MerkleStorage::new(Box::new(KVStore::new()))
+    }
+
+    fn get_tree_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {
+        storage.hash_tree(&storage.find_tree(root, path).unwrap()).unwrap()
+    }
+
+    fn get_blob_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {
+        let parent_path = &path[..(path.len() - 1)];
+        storage
+            .find_tree(&root, parent_path).unwrap()
+            .get(path.last().unwrap()).unwrap()
+            .entry_hash
     }
 
     #[test]
