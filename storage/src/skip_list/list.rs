@@ -49,7 +49,7 @@ impl DatabaseBackedSkipList {
         let list_db: Arc<SkipListDatabase> = db;
         let state = list_db
             .get(&list_id)?
-            .unwrap_or_else(|| SkipListState { levels: 1, len: 0 });
+            .unwrap_or(SkipListState { levels: 1, len: 0 });
 
         Ok(Self {
             list_db,
@@ -154,6 +154,8 @@ pub trait SkipList {
 
     fn levels(&self) -> usize;
 
+    fn is_empty(&self) -> bool;
+
     fn contains(&self, index: usize) -> bool;
 }
 
@@ -162,6 +164,11 @@ impl SkipList for DatabaseBackedSkipList {
     #[inline]
     fn len(&self) -> usize {
         self.state.len
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.state.len > 0
     }
 
     #[inline]
@@ -218,17 +225,13 @@ where
         loop {
             if let Some(value) = lane.get(pos.index(), key)? as Option<V> {
                 return Ok(Some(value));
+            } else if pos.is_edge_node() && pos.level() < highest_level {
+                pos = pos.higher();
+                lane = lane.higher_lane();
+            } else if pos.index() == 0 {
+                return Ok(None);
             } else {
-                if pos.is_edge_node() && pos.level() < highest_level {
-                    pos = pos.higher();
-                    lane = lane.higher_lane();
-                } else {
-                    if pos.index() == 0 {
-                        return Ok(None);
-                    } else {
-                        pos = pos.prev();
-                    }
-                }
+                pos = pos.prev();
             }
         }
     }

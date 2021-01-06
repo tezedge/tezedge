@@ -42,8 +42,8 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use hex;
 use std::array::TryFromSliceError;
+use std::collections::hash_map::Entry as MapEntry;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
@@ -955,15 +955,17 @@ impl MerkleStorage {
 
                     let tree_is_empty = tree.is_empty();
 
-                    // Add mapping from hash to index
-                    if self.staged_indices.contains_key(&new_tree_hash) {
-                        // entry already exists in staging, increase its refcnt only
-                        // staged_indices will point to the other entry while this entry will be
-                        // unreachable (wasting space, but removing it would require changing all
-                        // other indices)
-                        self.increase_refcnt_for_staging_entry(&new_tree_hash)?;
-                    } else {
-                        self.staged_indices.insert(new_tree_hash, idx);
+                    match self.staged_indices.entry(new_tree_hash) {
+                        MapEntry::Occupied(_) => {
+                            // entry already exists in staging, increase its refcnt only
+                            // staged_indices will point to the other entry while this entry will be
+                            // unreachable (wasting space, but removing it would require changing all
+                            // other indices)
+                            self.increase_refcnt_for_staging_entry(&new_tree_hash)?;
+                        }
+                        MapEntry::Vacant(_) => {
+                            self.staged_indices.insert(new_tree_hash, idx);
+                        }
                     }
 
                     if tree_is_empty {
@@ -1267,7 +1269,7 @@ impl MerkleStorage {
         self.last_commit_hash
     }
 
-    fn get_staged_entries(&self) -> std::string::String {
+    pub fn get_staged_entries(&self) -> std::string::String {
         let mut result = String::new();
         for (hash, _, entry) in &self.staged {
             match entry {
@@ -1303,7 +1305,7 @@ impl MerkleStorage {
                 }
             }
         }
-        return result;
+        result
     }
 
     /// Get various merkle storage statistics
@@ -1396,11 +1398,11 @@ impl MerkleStorage {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::path::{Path, PathBuf};
-    use std::{env, fs};
-
+    // use hex;
     use assert_json_diff::assert_json_eq;
     use rocksdb::{Options, DB};
+    use std::path::{Path, PathBuf};
+    use std::{env, fs};
 
     use super::*;
 
@@ -1703,13 +1705,13 @@ mod tests {
     }
 
     fn get_short_hash(hash: &EntryHash) -> String {
-        return hex::encode(&hash[0..3]);
+        hex::encode(&hash[0..3])
     }
 
     fn get_staged_root_short_hash(storage: &mut MerkleStorage) -> String {
         let tree = storage.get_staged_root().unwrap();
         let hash = hash_tree(&tree).unwrap();
-        return get_short_hash(&hash);
+        get_short_hash(&hash)
     }
 
     #[test]
