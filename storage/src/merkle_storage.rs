@@ -2206,7 +2206,7 @@ mod tests {
     }
 
     #[test]
-    fn initializes_ref_counts_for_all_children_on_commit() {
+    fn test_initializes_ref_counts_for_all_children_on_commit() {
         let mut storage = get_empty_storage();
 
         storage.set(&context_key!("a/b/c"), &vec![1]);
@@ -2224,7 +2224,7 @@ mod tests {
     }
 
     #[test]
-    fn increments_ref_count_for_multi_parent() {
+    fn test_increments_ref_count_for_multi_parent() {
         let mut storage = get_empty_storage();
 
         storage.set(&context_key!("a/b/c"), &vec![1]);
@@ -2241,5 +2241,101 @@ mod tests {
         assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
         assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 2);
         assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 3);
+    }
+
+    #[test]
+    fn test_removes_blob_with_ref_count_0() {
+        let mut storage = get_empty_storage();
+
+        storage.set(&context_key!("a/b/c"), &vec![1]);
+        let commit_hash1 = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
+        storage.delete(&context_key!("a/b/c"));
+        storage.set(&context_key!("a/z"), &vec![2]);
+        let commit_hash2 = storage.commit(1, "Tezos".into(), "1".into()).unwrap();
+
+        let (a1, ab1, blob1, a2, blob2) = {
+            let get_root = |commit_hash: &EntryHash| {
+                let commit = storage.get_commit(commit_hash).unwrap();
+                storage.get_tree(&commit.root_hash).unwrap()
+            };
+            let root1 = get_root(&commit_hash1);
+            let root2 = get_root(&commit_hash2);
+            let a1 = get_tree_hash(&storage, &root1, &context_key!("a"));
+            let ab1 = get_tree_hash(&storage, &root1, &context_key!("a/b"));
+            let blob1 = get_blob_hash(&storage, &root1, &context_key!("a/b/c"));
+            let a2 = get_tree_hash(&storage, &root2, &context_key!("a"));
+            let blob2 = get_blob_hash(&storage, &root2, &context_key!("a/z"));
+
+            (a1, ab1, blob1, a2, blob2)
+        };
+
+        assert_eq!(*storage.ref_counts.get(&a1).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&ab1).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob1).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob2).unwrap(), 1);
+
+        // simulate commit removal
+        storage.dec_entry_ref_count(&storage.get_entry(&commit_hash1).unwrap());
+
+        assert!(storage.ref_counts.get(&a1).is_none());
+        assert!(storage.ref_counts.get(&ab1).is_none());
+        assert!(storage.ref_counts.get(&blob1).is_none());
+        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob2).unwrap(), 1);
+
+        assert!(matches!(storage.get_entry(&commit_hash1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(matches!(storage.get_entry(&a1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(matches!(storage.get_entry(&ab1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(matches!(storage.get_entry(&blob1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(storage.get_entry(&commit_hash2).is_ok());
+        assert!(storage.get_entry(&a2).is_ok());
+        assert!(storage.get_entry(&blob2).is_ok());
+    }
+
+    #[test]
+    fn test_keeps_blob_with_ref_count_decremented_to_1() {
+        let mut storage = get_empty_storage();
+
+        storage.set(&context_key!("a/b/c"), &vec![1]);
+        let commit_hash1 = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
+        storage.delete(&context_key!("a/b/c"));
+        storage.set(&context_key!("a/z"), &vec![1]);
+        let commit_hash2 = storage.commit(1, "Tezos".into(), "1".into()).unwrap();
+
+        let (a1, ab1, a2, blob) = {
+            let get_root = |commit_hash: &EntryHash| {
+                let commit = storage.get_commit(commit_hash).unwrap();
+                storage.get_tree(&commit.root_hash).unwrap()
+            };
+            let root1 = get_root(&commit_hash1);
+            let root2 = get_root(&commit_hash2);
+            let a1 = get_tree_hash(&storage, &root1, &context_key!("a"));
+            let ab1 = get_tree_hash(&storage, &root1, &context_key!("a/b"));
+            let a2 = get_tree_hash(&storage, &root2, &context_key!("a"));
+            let blob = get_blob_hash(&storage, &root2, &context_key!("a/z"));
+
+            (a1, ab1, a2, blob)
+        };
+
+        assert_eq!(*storage.ref_counts.get(&a1).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&ab1).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 2);
+
+        // simulate commit removal
+        storage.dec_entry_ref_count(&storage.get_entry(&commit_hash1).unwrap());
+
+        assert!(storage.ref_counts.get(&a1).is_none());
+        assert!(storage.ref_counts.get(&ab1).is_none());
+        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 1);
+
+        assert!(matches!(storage.get_entry(&commit_hash1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(matches!(storage.get_entry(&a1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(matches!(storage.get_entry(&ab1), Err(MerkleError::EntryNotFound { .. })));
+        assert!(storage.get_entry(&commit_hash2).is_ok());
+        assert!(storage.get_entry(&a2).is_ok());
+        assert!(storage.get_entry(&blob).is_ok());
     }
 }
