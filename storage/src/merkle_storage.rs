@@ -1275,12 +1275,14 @@ impl MerkleStorage {
 
     fn _change_entry_ref_count(&mut self, entry: &Entry, decrement: bool) {
         use std::collections::hash_map;
+        // TODO: retrieve hash for an entry instead of recalculating it,
+        // or pass it as a method argument.
         let hash = match self.hash_entry(entry) {
             Ok(hash) => { hash }
             Err(_) => { return; }
         };
 
-        match self.ref_counts.entry(hash) {
+        match self.ref_counts.entry(hash.clone()) {
             hash_map::Entry::Vacant(e) if !decrement => { e.insert(1); }
             hash_map::Entry::Occupied(mut e) => {
                 let count = e.get_mut();
@@ -1290,10 +1292,12 @@ impl MerkleStorage {
                     *count += 1;
                 }
                 if *count == 0 {
-                    self.gc_entry(entry);
+                    self.gc_entry(&hash);
                 }
             }
-            hash_map::Entry::Vacant(_) if decrement => { self.gc_entry(entry); }
+            hash_map::Entry::Vacant(_) if decrement => {
+                self.gc_entry(&hash);
+            }
             _ => { return; }
         };
 
@@ -1314,8 +1318,10 @@ impl MerkleStorage {
         };
     }
 
-    // TODO: implement garbage collection for entry
-    fn gc_entry(&mut self, entry: &Entry) {
+    /// removes entry from db and it's `ref_count`.
+    fn gc_entry(&mut self, entry_hash: &EntryHash) {
+        self.ref_counts.remove(entry_hash);
+        let _ = self.db.delete(entry_hash);
     }
 
     fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
