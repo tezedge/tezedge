@@ -1536,7 +1536,7 @@ mod tests {
     }
 
     fn get_tree_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {
-        storage.hash_tree(&storage.find_tree(root, path).unwrap()).unwrap()
+        hash_tree(&storage.find_tree(root, path).unwrap()).unwrap()
     }
 
     fn get_blob_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {
