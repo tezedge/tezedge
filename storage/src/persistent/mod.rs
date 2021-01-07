@@ -26,7 +26,7 @@ pub mod sequence;
 #[derive(Builder, Debug, Clone)]
 pub struct DbConfiguration {
     #[builder(default = "None")]
-    max_threads: Option<usize>,
+    pub max_threads: Option<usize>,
 }
 
 impl Default for DbConfiguration {
@@ -116,7 +116,12 @@ where
 #[derive(Clone)]
 pub struct PersistentStorage {
     /// key-value store
+    //TODO to be renamed to kv_db
     kv: Arc<DB>,
+    /// context store
+    kv_context: Arc<DB>,
+    /// context actions store
+    kv_context_actions: Arc<DB>,
     /// commit log store
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
@@ -125,20 +130,37 @@ pub struct PersistentStorage {
     merkle: Arc<RwLock<MerkleStorage>>,
 }
 
+pub enum StorageType {
+    Database,
+    Context,
+    ContextAction,
+}
+
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(
+        kv: Arc<DB>,
+        kv_context: Arc<DB>,
+        kv_context_actions: Arc<DB>,
+        clog: Arc<CommitLogs>,
+    ) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         Self {
             clog,
-            kv: kv.clone(),
+            kv,
+            kv_context: kv_context.clone(),
+            kv_context_actions,
             seq,
-            merkle: Arc::new(RwLock::new(MerkleStorage::new(kv))),
+            merkle: Arc::new(RwLock::new(MerkleStorage::new(kv_context))),
         }
     }
 
     #[inline]
-    pub fn kv(&self) -> Arc<DB> {
-        self.kv.clone()
+    pub fn kv(&self, storage: StorageType) -> Arc<DB> {
+        match storage {
+            StorageType::Context => self.kv_context.clone(),
+            StorageType::ContextAction => self.kv_context_actions.clone(),
+            StorageType::Database => self.kv.clone(),
+        }
     }
 
     #[inline]
