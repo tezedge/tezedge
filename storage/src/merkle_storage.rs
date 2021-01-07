@@ -1894,6 +1894,18 @@ mod tests {
     }
 
     #[test]
+    fn test_empty_commit_should_be_rejeted() {
+        let mut storage = get_empty_storage();
+        storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+
+        storage.set(&context_key!("a/b/c"), &vec![97]);
+        let commit = storage.commit(1, "Tezos".to_string(), "1".to_string());
+        let empty_commit = storage.commit(2, "Tezos".to_string(), "2".to_string());
+
+        assert_eq!(commit.unwrap(), empty_commit.unwrap());
+    }
+
+    #[test]
     fn test_get() {
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
