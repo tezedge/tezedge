@@ -2256,6 +2256,26 @@ mod tests {
     }
 
     #[test]
+    fn test_empty_rejected_commits_doesnt_increment_ref_count() {
+        let mut storage = get_empty_storage();
+
+        storage.set(&context_key!("a/b/c"), &vec![1]);
+        let commit_hash = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
+        // empty commit
+        storage.commit(1, "Tezos".into(), "empty1".into());
+
+        let commit = storage.get_commit(&commit_hash).unwrap();
+        let root = storage.get_tree(&commit.root_hash).unwrap();
+        let a = get_tree_hash(&storage, &root, &context_key!("a"));
+        let ab = get_tree_hash(&storage, &root, &context_key!("a/b"));
+        let blob = get_blob_hash(&storage, &root, &context_key!("a/b/c"));
+
+        assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 1);
+        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 1);
+    }
+
+    #[test]
     fn test_removes_blob_with_ref_count_0() {
         let mut storage = get_empty_storage();
 
