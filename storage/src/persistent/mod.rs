@@ -130,10 +130,9 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, sled_db: Arc<sled::Db>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
-        let merkle_db = sled_db.open_tree("merkle").unwrap();
-        let merkle = MerkleStorage::new(Box::new(crate::persistent::kv_store::KVStore::new(merkle_db)));
+        let merkle = MerkleStorage::new(Box::new(in_memory::KVStore::new()));
         Self {
             clog,
             kv: kv.clone(),

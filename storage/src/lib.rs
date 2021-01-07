@@ -507,11 +507,11 @@ pub mod tests_common {
                 ],
                 &cfg,
             )?;
-            let sled_db = sled::open(&path).unwrap();
+            // let sled_db = sled::open(&path).unwrap();
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(sled_db), Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
                 path,
                 remove_on_destroy,
             })
