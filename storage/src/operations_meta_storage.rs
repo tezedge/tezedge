@@ -9,12 +9,12 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::num_from_slice;
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::persistent::{
     default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
     PersistentStorage, SchemaError,
 };
+use crate::{num_from_slice, persistent::StorageType};
 use crate::{BlockHeaderWithHash, StorageError};
 
 /// Convenience type for operation meta storage database
@@ -29,7 +29,7 @@ pub struct OperationsMetaStorage {
 impl OperationsMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 

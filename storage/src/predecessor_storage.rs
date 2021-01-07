@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
-use crate::block_meta_storage::Meta;
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::persistent::{
     default_table_options, BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema,
     PersistentStorage,
 };
 use crate::StorageError;
+use crate::{block_meta_storage::Meta, persistent::StorageType};
 
 pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
 
@@ -41,7 +41,7 @@ pub struct PredecessorStorage {
 impl PredecessorStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 

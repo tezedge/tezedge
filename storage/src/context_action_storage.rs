@@ -15,7 +15,6 @@ use crypto::hash::{BlockHash, HashType};
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
-use crate::num_from_slice;
 use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::persistent::{
@@ -23,6 +22,7 @@ use crate::persistent::{
     KeyValueStoreWithSchema, PersistentStorage, SchemaError,
 };
 use crate::StorageError;
+use crate::{num_from_slice, persistent::StorageType};
 
 pub enum ContextHashType {
     Block,
@@ -73,12 +73,13 @@ pub struct ContextActionStorage {
 
 impl ContextActionStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        let storage = persistent_storage.kv(StorageType::ContextAction);
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::ContextAction),
             generator: persistent_storage.seq().generator(Self::name()),
-            context_by_block_index: ContextActionByBlockHashIndex::new(persistent_storage.kv()),
-            context_by_contract_index: ContextActionByContractIndex::new(persistent_storage.kv()),
-            context_by_type_index: ContextActionByTypeIndex::new(persistent_storage.kv()),
+            context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
+            context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
+            context_by_type_index: ContextActionByTypeIndex::new(storage),
         }
     }
 

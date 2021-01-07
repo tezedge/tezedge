@@ -11,7 +11,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::persistent::{
     default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
-    PersistentStorage, SchemaError,
+    PersistentStorage, SchemaError, StorageType,
 };
 use crate::StorageError;
 
@@ -34,7 +34,7 @@ pub struct OperationsStorage {
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 

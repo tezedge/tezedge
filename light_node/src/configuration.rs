@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -9,16 +8,26 @@ use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::{collections::HashMap, fmt::Debug};
 
 use clap::{App, Arg};
 
+use rocksdb::ColumnFamilyDescriptor;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use storage::persistent::{DbConfiguration, DbConfigurationBuilder};
+use storage;
+use storage::persistent::KeyValueSchema;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
+
+const STORAGES_COUNT: usize = 3;
+const MINIMAL_THREAD_COUNT: usize = 1;
+const DB_STORAGE_VERSION: i64 = 16;
+const DB_CONTEXT_STORAGE_VERSION: i64 = 16;
+const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 16;
+const LRU_CACHE_SIZE_32MB: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -34,9 +43,71 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
+pub trait ColumnFactory {
+    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor>;
+}
+#[derive(Debug, Clone)]
+pub struct DBTableInitializer {}
+
+#[derive(Debug, Clone)]
+pub struct ContextTableInitializer {}
+
+#[derive(Debug, Clone)]
+pub struct ContextActionsTableInitializer {}
+
+impl ColumnFactory for DBTableInitializer {
+    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
+        vec![
+            storage::block_storage::BlockPrimaryIndex::descriptor(cache),
+            storage::block_storage::BlockByLevelIndex::descriptor(cache),
+            storage::block_storage::BlockByContextHashIndex::descriptor(cache),
+            storage::BlockMetaStorage::descriptor(cache),
+            storage::OperationsStorage::descriptor(cache),
+            storage::OperationsMetaStorage::descriptor(cache),
+            storage::SystemStorage::descriptor(cache),
+            storage::persistent::sequence::Sequences::descriptor(cache),
+            storage::MempoolStorage::descriptor(cache),
+            storage::ChainMetaStorage::descriptor(cache),
+            storage::PredecessorStorage::descriptor(cache),
+        ]
+    }
+}
+
+impl ColumnFactory for ContextTableInitializer {
+    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
+        vec![
+            storage::SystemStorage::descriptor(cache),
+            storage::merkle_storage::MerkleStorage::descriptor(cache),
+        ]
+    }
+}
+
+impl ColumnFactory for ContextActionsTableInitializer {
+    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
+        vec![
+            storage::SystemStorage::descriptor(cache),
+            storage::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
+            storage::context_action_storage::ContextActionByContractIndex::descriptor(cache),
+            storage::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
+            storage::context_action_storage::ContextActionStorage::descriptor(cache),
+        ]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RocksDBConfig<C: ColumnFactory> {
+    pub cache_size: usize,
+    pub expected_db_version: i64,
+    pub db_path: PathBuf,
+    pub columns: C,
+    pub threads: Option<usize>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Storage {
-    pub db_cfg: DbConfiguration,
+    pub db: RocksDBConfig<DBTableInitializer>,
+    pub db_context: RocksDBConfig<ContextTableInitializer>,
+    pub db_context_actions: RocksDBConfig<ContextActionsTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
@@ -689,73 +760,95 @@ impl Environment {
                     }
                 },
             },
-            storage: crate::configuration::Storage {
-                tezos_data_dir: data_dir.clone(),
-                db_cfg: {
-                    let mut db_cfg = DbConfigurationBuilder::default();
+            storage: {
+                let path = args
+                    .value_of("bootstrap-db-path")
+                    .unwrap_or("")
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path");
+                let db_path = get_final_path(&data_dir, path);
 
-                    if let Some(value) = args.value_of("db-cfg-max-threads") {
-                        let max_treads = value
-                            .parse::<usize>()
-                            .expect("Provided value cannot be converted to number");
-                        db_cfg.max_threads(Some(max_treads));
-                    }
+                let threads_count = args.value_of("db-cfg-max-threads").map(|value| {
+                    value
+                        .parse::<usize>()
+                        .map(|val| std::cmp::min(MINIMAL_THREAD_COUNT, val / STORAGES_COUNT))
+                        .expect("Provided value cannot be converted to number")
+                });
 
-                    db_cfg.build().unwrap()
-                },
-                db_path: {
-                    let db_path = args
-                        .value_of("bootstrap-db-path")
-                        .unwrap_or("")
-                        .parse::<PathBuf>()
-                        .expect("Provided value cannot be converted to path");
-                    get_final_path(&data_dir, db_path)
-                },
-                store_context_actions: args
-                    .value_of("store-context-actions")
-                    .unwrap_or("true")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool"),
-                patch_context: {
-                    match args.value_of("sandbox-patch-context-json-file") {
-                        Some(path) => {
-                            let path = path
-                                .parse::<PathBuf>()
-                                .expect("Provided value cannot be converted to path");
-                            let path = get_final_path(&data_dir, path);
-                            match fs::read_to_string(&path) {
-                                Ok(content) => {
-                                    // validate valid json
-                                    if let Err(e) = serde_json::from_str::<
-                                        HashMap<String, serde_json::Value>,
-                                    >(&content)
-                                    {
-                                        panic!(
-                                            "Invalid json file: {}, reason: {}",
-                                            path.as_path().display().to_string(),
-                                            e
-                                        );
+                let db = RocksDBConfig {
+                    cache_size: LRU_CACHE_SIZE_32MB,
+                    expected_db_version: DB_STORAGE_VERSION,
+                    db_path: db_path.clone().join("db"),
+                    columns: DBTableInitializer {},
+                    threads: threads_count,
+                };
+                let db_context = RocksDBConfig {
+                    cache_size: LRU_CACHE_SIZE_32MB,
+                    expected_db_version: DB_CONTEXT_STORAGE_VERSION,
+                    db_path: db_path.join("context"),
+                    columns: ContextTableInitializer {},
+                    threads: threads_count,
+                };
+                let db_context_actions = RocksDBConfig {
+                    cache_size: LRU_CACHE_SIZE_32MB,
+                    expected_db_version: DB_CONTEXT_ACTIONS_STORAGE_VERSION,
+                    db_path: db_path.join("context_actions"),
+                    columns: ContextActionsTableInitializer {},
+                    threads: threads_count,
+                };
+                crate::configuration::Storage {
+                    tezos_data_dir: data_dir.clone(),
+                    db,
+                    db_context,
+                    db_context_actions,
+                    db_path: db_path,
+                    store_context_actions: args
+                        .value_of("store-context-actions")
+                        .unwrap_or("true")
+                        .parse::<bool>()
+                        .expect("Provided value cannot be converted to bool"),
+                    patch_context: {
+                        match args.value_of("sandbox-patch-context-json-file") {
+                            Some(path) => {
+                                let path = path
+                                    .parse::<PathBuf>()
+                                    .expect("Provided value cannot be converted to path");
+                                let path = get_final_path(&data_dir, path);
+                                match fs::read_to_string(&path) {
+                                    Ok(content) => {
+                                        // validate valid json
+                                        if let Err(e) = serde_json::from_str::<
+                                            HashMap<String, serde_json::Value>,
+                                        >(
+                                            &content
+                                        ) {
+                                            panic!(
+                                                "Invalid json file: {}, reason: {}",
+                                                path.as_path().display().to_string(),
+                                                e
+                                            );
+                                        }
+                                        Some(PatchContext {
+                                            key: "sandbox_parameter".to_string(),
+                                            json: content,
+                                        })
                                     }
-                                    Some(PatchContext {
-                                        key: "sandbox_parameter".to_string(),
-                                        json: content,
-                                    })
+                                    Err(e) => panic!("Cannot read file, reason: {}", e),
                                 }
-                                Err(e) => panic!("Cannot read file, reason: {}", e),
+                            }
+                            None => {
+                                // check default configuration, if any
+                                match environment::TEZOS_ENV.get(&tezos_network) {
+                                    None => panic!(
+                                        "No tezos environment configured for: {:?}",
+                                        tezos_network
+                                    ),
+                                    Some(cfg) => cfg.patch_context_genesis_parameters.clone(),
+                                }
                             }
                         }
-                        None => {
-                            // check default configuration, if any
-                            match environment::TEZOS_ENV.get(&tezos_network) {
-                                None => panic!(
-                                    "No tezos environment configured for: {:?}",
-                                    tezos_network
-                                ),
-                                Some(cfg) => cfg.patch_context_genesis_parameters.clone(),
-                            }
-                        }
-                    }
-                },
+                    },
+                }
             },
             identity: crate::configuration::Identity {
                 identity_json_file_path: {

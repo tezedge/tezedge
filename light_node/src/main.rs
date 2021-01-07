@@ -6,8 +6,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use configuration::{ColumnFactory, RocksDBConfig};
 use riker::actors::*;
-use rocksdb::Cache;
+use rocksdb::{Cache, DB};
 use slog::{crit, debug, error, info, o, warn, Drain, Logger};
 
 use logging::detailed_json;
@@ -23,15 +24,11 @@ use shell::mempool::init_mempool_state_storage;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
-use storage::context::TezedgeContext;
-use storage::merkle_storage::MerkleStorage;
-use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, open_kv, CommitLogSchema, KeyValueSchema, PersistentStorage};
+use storage::persistent::DbConfiguration;
+use storage::persistent::{open_cl, open_kv, CommitLogSchema, PersistentStorage};
 use storage::{
-    block_storage, check_database_compatibility, context_action_storage,
-    resolve_storage_init_chain_data, BlockMetaStorage, BlockStorage, ChainMetaStorage,
-    ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
-    PredecessorStorage, StorageInitInfo, SystemStorage,
+    check_database_compatibility, context::TezedgeContext, persistent::DBError,
+    resolve_storage_init_chain_data, BlockStorage, StorageInitInfo,
 };
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -467,6 +464,36 @@ fn block_on_actors(
     });
 }
 
+fn initialize_db<Factory: ColumnFactory>(
+    log: &Logger,
+    cache: &Cache,
+    config: &RocksDBConfig<Factory>,
+    env: &TezosEnvironmentConfiguration,
+) -> Result<Arc<DB>, DBError> {
+    let columns: Vec<_> = config.columns.create(cache);
+    let db = open_kv(
+        &config.db_path,
+        columns,
+        &DbConfiguration {
+            max_threads: config.threads,
+        },
+    )
+    .map(Arc::new)?;
+
+    match check_database_compatibility(db.clone(), config.expected_db_version, &env, &log) {
+        Ok(false) => Err(DBError::DatabaseIncompatibility {
+            name: format!(
+                "Database is incompatible with version {}",
+                config.expected_db_version
+            ),
+        }),
+        Err(e) => Err(DBError::DatabaseIncompatibility {
+            name: format!("Failed to verify database compatibility reason: '{}'", e),
+        }),
+        _ => Ok(db),
+    }
+}
+
 fn main() {
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
@@ -516,85 +543,76 @@ fn main() {
 
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
-    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
-
-    let schemas = vec![
-        block_storage::BlockPrimaryIndex::descriptor(&cache),
-        block_storage::BlockByLevelIndex::descriptor(&cache),
-        block_storage::BlockByContextHashIndex::descriptor(&cache),
-        BlockMetaStorage::descriptor(&cache),
-        OperationsStorage::descriptor(&cache),
-        OperationsMetaStorage::descriptor(&cache),
-        context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-        context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-        context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-        ContextActionStorage::descriptor(&cache),
-        MerkleStorage::descriptor(&cache),
-        SystemStorage::descriptor(&cache),
-        Sequences::descriptor(&cache),
-        MempoolStorage::descriptor(&cache),
-        ChainMetaStorage::descriptor(&cache),
-        PredecessorStorage::descriptor(&cache),
+    let cache = [
+        Cache::new_lru_cache(env.storage.db.cache_size).unwrap(),
+        Cache::new_lru_cache(env.storage.db_context.cache_size).unwrap(),
+        Cache::new_lru_cache(env.storage.db_context_actions.cache_size).unwrap(),
     ];
 
-    let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
-        Ok(db) => Arc::new(db),
+    let storages: Result<Vec<Arc<DB>>, DBError> = vec![
+        initialize_db(&log, &cache[0], &env.storage.db, &tezos_env),
+        initialize_db(&log, &cache[1], &env.storage.db_context, &tezos_env),
+        initialize_db(&log, &cache[2], &env.storage.db_context_actions, &tezos_env),
+    ]
+    .into_iter()
+    .collect();
+
+    let storages = match storages {
         Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to create RocksDB database at '{:?}'", &env.storage.db_path; "reason" => e),
+            crit!(
+                log,
+                "Failed to create initialize RocksDB databases '{:?}'",
+                e
+            ),
             actor_system
         ),
+        Ok(dbs) => dbs,
     };
-    debug!(log, "Loaded RocksDB database");
-
-    match check_database_compatibility(rocks_db.clone(), DATABASE_VERSION, &tezos_env, &log) {
-        Ok(false) => shutdown_and_exit!(
-            crit!(log, "Database incompatibility detected"),
-            actor_system
-        ),
-        Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to verify database compatibility"; "reason" => e),
-            actor_system
-        ),
-        _ => (),
-    }
-
-    let schemas = vec![BlockStorage::descriptor()];
 
     {
-        let commit_logs = match open_cl(&env.storage.db_path, schemas) {
+        let commit_logs = match open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()]) {
             Ok(commit_logs) => Arc::new(commit_logs),
             Err(e) => shutdown_and_exit!(
                 error!(log, "Failed to open commit logs"; "reason" => e),
                 actor_system
             ),
         };
+        if let [kv, kv_context, kv_actions] = &storages[..] {
+            debug!(log, "Loaded RocksDB databases");
 
-        let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
-        let tezedge_context = TezedgeContext::new(
-            BlockStorage::new(&persistent_storage),
-            persistent_storage.merkle(),
-        );
-        match resolve_storage_init_chain_data(
-            &tezos_env,
-            &env.storage.db_path,
-            &env.storage.tezos_data_dir,
-            &env.storage.patch_context,
-            &log,
-        ) {
-            Ok(init_data) => block_on_actors(
-                env,
-                tezos_env,
-                init_data,
-                Arc::new(tezos_identity),
-                actor_system,
-                persistent_storage,
-                tezedge_context,
-                log,
-            ),
-            Err(e) => shutdown_and_exit!(
-                error!(log, "Failed to resolve init storage chain data."; "reason" => e),
-                actor_system
-            ),
+            let persistent_storage = PersistentStorage::new(
+                kv.clone(),
+                kv_context.clone(),
+                kv_actions.clone(),
+                commit_logs,
+            );
+            let tezedge_context = TezedgeContext::new(
+                BlockStorage::new(&persistent_storage),
+                persistent_storage.merkle(),
+            );
+            match resolve_storage_init_chain_data(
+                &tezos_env,
+                &env.storage.db_path,
+                &env.storage.tezos_data_dir,
+                &env.storage.patch_context,
+                &log,
+            ) {
+                Ok(init_data) => block_on_actors(
+                    env,
+                    tezos_env,
+                    init_data,
+                    Arc::new(tezos_identity),
+                    actor_system,
+                    persistent_storage,
+                    tezedge_context,
+                    log,
+                ),
+                Err(e) => shutdown_and_exit!(
+                    error!(log, "Failed to resolve init storage chain data."; "reason" => e),
+                    actor_system
+                ),
+            }
+        } else {
         }
     }
 }

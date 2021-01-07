@@ -10,13 +10,13 @@ use slog::{warn, Logger};
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::num_from_slice;
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::persistent::{
     default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
     PersistentStorage, SchemaError,
 };
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
+use crate::{num_from_slice, persistent::StorageType};
 use crate::{BlockHeaderWithHash, StorageError};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
@@ -50,7 +50,7 @@ impl BlockMetaStorage {
 
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
             predecessors_index: PredecessorStorage::new(persistent_storage),
         }
     }

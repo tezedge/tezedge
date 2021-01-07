@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::operation::OperationMessage;
 
 use crate::persistent::{
     BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage,
-    SchemaError,
+    SchemaError, StorageType,
 };
 use crate::{num_from_slice, IteratorMode, StorageError};
 
@@ -64,7 +64,7 @@ pub struct MempoolStorage {
 impl MempoolStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 

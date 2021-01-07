@@ -11,7 +11,7 @@ use tezos_messages::Head;
 
 use crate::persistent::{
     default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
-    KeyValueStoreWithSchema, PersistentStorage, SchemaError,
+    KeyValueStoreWithSchema, PersistentStorage, SchemaError, StorageType,
 };
 use crate::StorageError;
 
@@ -57,7 +57,7 @@ pub struct ChainMetaStorage {
 impl ChainMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 
