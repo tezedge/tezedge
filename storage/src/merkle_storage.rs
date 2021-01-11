@@ -72,23 +72,23 @@ pub type ContextValue = Vec<u8>;
 pub type EntryHash = [u8; HASH_LEN];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-enum NodeKind {
+pub enum NodeKind {
     NonLeaf,
     Leaf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
+pub struct Node {
     node_kind: NodeKind,
     entry_hash: EntryHash,
 }
 
 // Tree must be an ordered structure for consistent hash in hash_tree
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead
-type Tree = BTreeMap<String, Node>;
+pub type Tree = BTreeMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-struct Commit {
+pub struct Commit {
     parent_commit_hash: Option<EntryHash>,
     root_hash: EntryHash,
     time: u64,
@@ -97,10 +97,20 @@ struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum Entry {
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
+}
+
+impl Entry {
+    pub fn get_type(&self) -> &'static str {
+        match self {
+            Entry::Blob(_) => "blob",
+            Entry::Tree(_) => "tree",
+            Entry::Commit(_) => "commit",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,6 +364,48 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     hasher.update(&commit.message.clone().into_bytes());
 
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
+}
+
+#[derive(Debug, Fail)]
+pub enum CheckEntryHashError {
+    #[fail(display = "MerkleError error: {:?}", error)]
+    MerkleError { error: MerkleError },
+    #[fail(display = "Calculated hash for {} not matching expected hash: expected {:?}, calculated {:?}", entry_type, calculated, expected)]
+    InvalidHashError { entry_type: String, calculated: String, expected: String }
+}
+
+impl From<MerkleError> for CheckEntryHashError {
+    fn from(error: MerkleError) -> Self { CheckEntryHashError::MerkleError { error } }
+}
+
+/// Recursively check if entry hash is valid
+pub fn check_entry_hash(storage: &MerkleStorage, hash: &EntryHash) -> Result<(), CheckEntryHashError> {
+    let entry = storage.get_entry(hash)?;
+    let entry_type = entry.get_type();
+
+    let calculated_hash = match entry {
+        Entry::Blob(blob) => { hash_blob(&blob)? }
+        Entry::Tree(tree) => {
+            for (k, v) in tree.iter() {
+                check_entry_hash(storage, &v.entry_hash)?;
+            }
+            hash_tree(&tree)?
+        }
+        Entry::Commit(commit) => {
+            check_entry_hash(storage, &commit.root_hash)?;
+            hash_commit(&commit)?
+        }
+    };
+
+    if &calculated_hash != hash {
+        return Err(CheckEntryHashError::InvalidHashError {
+            entry_type: entry_type.to_string(),
+            expected: HashType::ContextHash.hash_to_b58check(hash),
+            calculated: HashType::ContextHash.hash_to_b58check(&calculated_hash),
+        });
+    }
+
+    Ok(())
 }
 
 impl MerkleStorage {
