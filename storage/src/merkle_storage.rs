@@ -43,11 +43,12 @@
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use hex;
-use std::array::TryFromSliceError;
+use std::{array::TryFromSliceError, cell::RefCell, sync::RwLock};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use blake2::digest::{Update, VariableOutput};
@@ -59,7 +60,7 @@ use serde::Serialize;
 
 use crypto::hash::HashType;
 
-use crate::persistent;
+use crate::persistent::{self, Decoder, Encoder, SchemaError};
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
@@ -77,7 +78,7 @@ enum NodeKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
+pub struct Node {
     node_kind: NodeKind,
     entry_hash: EntryHash,
 }
@@ -87,7 +88,7 @@ struct Node {
 type Tree = BTreeMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-struct Commit {
+pub struct Commit {
     parent_commit_hash: Option<EntryHash>,
     root_hash: EntryHash,
     time: u64,
@@ -96,10 +97,24 @@ struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum Entry {
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
+}
+
+// TODO: implement me
+impl Encoder for Entry {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        //TODO fix
+        Ok(vec![])
+    }
+}
+// TODO: implement me
+impl Decoder for Entry {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        Ok(Entry::Blob(vec![]))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,18 +144,20 @@ enum Action {
 pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
 
 pub type RefCnt = usize;
-
+struct Backend{}
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
     db: Arc<MerkleStorageKV>,
+    db2: Mutex<InMemoryBackend>,
+    // db2: Box<dyn MerkleStorageStorageBackend>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
     staged_indices: HashMap<EntryHash, usize>,
     last_commit_hash: Option<EntryHash>,
-    /// storage latency statistics
+    /// storage latency statistics 
     perf_stats: MerklePerfStats,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
@@ -252,7 +269,7 @@ impl KeyValueSchema for MerkleStorage {
     // keys is hash of Entry
     type Key = EntryHash;
     // Entry (serialized)
-    type Value = Vec<u8>;
+    type Value = Entry;
 
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
@@ -346,10 +363,75 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
+fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
+    match entry {
+        Entry::Commit(commit) => hash_commit(&commit),
+        Entry::Tree(tree) => hash_tree(&tree),
+        Entry::Blob(blob) => hash_blob(blob),
+    }
+}
+
+// TODO: we could store only Entry, and calculate before transaction excutions
+// then maybe we could cache some of the Tree nodes and utilze that ?
+pub type WriteTransaction = Vec<(EntryHash, Entry)>; 
+pub trait MerkleStorageStorageBackend {
+    // TODO currently only those 2 are sufficient for merkle storage use case, 
+    // more can be implementd in the fufture
+    fn execute(& self, t: WriteTransaction) -> Result<(),MerkleError>;
+    fn get(&self,key: &EntryHash) -> Option<Entry>;
+}
+
+pub struct InMemoryBackend {
+    // all operations on RocketDb(KeyValueStoreWithSchema) backend does not require
+    // to use mutable reference - to fit into that scenario RefCell is used to allow
+    // modifications of in_memory_data on immutable reference to KeyValueStore
+    in_memory_data: RefCell<HashMap<EntryHash, Entry>>,
+}
+
+// common interface for old rocketdb backend and new in memory implementation
+impl MerkleStorageStorageBackend for InMemoryBackend {
+
+    fn execute(& self, transaction: WriteTransaction) -> Result<(),MerkleError>{
+        //probably needs a mutex but we are using ARC only to fit into existing interface but still ....
+        for t in transaction.iter() {
+            let x = match t.1 {
+                Entry::Tree(_) => { String::from("tree") },
+                Entry::Blob(_) => { String::from("blob") },
+                Entry::Commit(_) => { String::from("commit") },
+            };
+
+            match t.1.clone() {
+                Entry::Tree(_) => { self.in_memory_data.borrow_mut().insert(t.0, t.1.clone()); }
+                Entry::Commit(_) => { self.in_memory_data.borrow_mut().insert(t.0, t.1.clone()); }
+                Entry::Blob(_) => { self.in_memory_data.borrow_mut().insert(t.0, t.1.clone()); }
+                // Entry::Tree(_) => { self.in_memory_data.insert(t.0, t.1.clone()); }
+                // Entry::Commit(_) => { self.in_memory_data.insert(t.0, t.1.clone()); }
+                // Entry::Blob(_) => { self.in_memory_data.insert(t.0, t.1.clone()); }
+            }
+            println!("executing {} => {:?}", x, t.0);
+        }
+        return Ok(());
+    }
+
+    fn get(&self,key: &EntryHash) -> Option<Entry>{
+        self.in_memory_data.borrow().get(key).map(|e| e.clone())
+        // self.in_memory_data.get(key).map(|e| e.clone())
+    }
+}
+
+impl InMemoryBackend {
+    pub fn new() -> InMemoryBackend {
+        InMemoryBackend {
+            in_memory_data: RefCell::new(HashMap::new()),
+        }
+    }
+}
+
 impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
+            db2: Mutex::new(InMemoryBackend::new()),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1138,13 +1220,16 @@ impl MerkleStorage {
 
     /// Persists an entry and its descendants from staged area to database on disk.
     fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+        // let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+        let mut batch :WriteTransaction = vec![];
 
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
 
         // atomically write all entries in one batch to DB
-        self.db.write_batch(batch)?;
+        // self.db.write_batch(batch)?;
+        // TODO: handle output
+        self.db2.lock().unwrap().execute(batch);
 
         Ok(())
     }
@@ -1153,11 +1238,12 @@ impl MerkleStorage {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        batch: &mut WriteBatch,
+        batch: &mut WriteTransaction,
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+        // self.db
+        //     .put_batch(batch, &hash_entry(entry)?, entry)?;
+        batch.push((hash_entry(entry)?, entry.clone()));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1181,14 +1267,6 @@ impl MerkleStorage {
                 Err(err) => Err(err),
                 Ok(entry) => self.get_entries_recursively(&entry, batch),
             },
-        }
-    }
-
-    fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
-        match entry {
-            Entry::Commit(commit) => hash_commit(&commit),
-            Entry::Tree(tree) => hash_tree(&tree),
-            Entry::Blob(blob) => hash_blob(blob),
         }
     }
 
@@ -1221,24 +1299,26 @@ impl MerkleStorage {
     }
 
     fn get_entry_db(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        let entry_bytes = self.db.get(hash)?;
-        match entry_bytes {
-            None => Err(MerkleError::EntryNotFound {
-                hash: HashType::ContextHash.hash_to_b58check(hash),
-            }),
-            Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-        }
+        self.db2.lock().unwrap().get(hash).ok_or_else(||
+            MerkleError::EntryNotFound {hash: HashType::ContextHash.hash_to_b58check(hash)})
+        // entry_bytes.map
+        // match entry_bytes {
+        //     None => Err(MerkleError::EntryNotFound {
+        //         hash: HashType::ContextHash.hash_to_b58check(hash),
+        //     }),
+        //     Some(entry_bytes) => Ok(entry_bytes
+        //     ),
+        // }
     }
     /// Get entry from staging area or look up in DB if not found
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
             None => {
-                let entry_bytes = self.db.get(hash)?;
-                match entry_bytes {
+                match self.db2.lock().unwrap().get(hash) {
                     None => Err(MerkleError::EntryNotFound {
                         hash: HashType::ContextHash.hash_to_b58check(hash),
                     }),
-                    Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
+                    Some(entry) => Ok(entry),
                 }
             }
             Some(entry) => Ok(entry.clone()),
