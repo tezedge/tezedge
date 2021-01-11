@@ -1317,6 +1317,12 @@ impl MerkleStorage {
         }
     }
 
+    /// GC old commit and it's children which aren't referenced in other commits.
+    pub fn gc_commit(&mut self, commit_hash: &EntryHash) {
+        let entry = self.get_entry(commit_hash).unwrap();
+        self.dec_entry_ref_count(&entry);
+    }
+
     /// Increment entry's ref_count.
     ///
     /// Also increments for every nested entry.
