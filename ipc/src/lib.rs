@@ -5,8 +5,9 @@
 //! Provides IPC communication.
 //!
 //! The IPC is implemented as unix domain sockets. Functionality is similar to how network sockets work.
+//!
+//! TODO: TE-292 - investigate/reimplement
 
-use std::env;
 use std::fs;
 use std::io;
 use std::io::prelude::*;
@@ -15,13 +16,13 @@ use std::marker::PhantomData;
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::{env, thread};
 
 use failure::Fail;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use timeout_io::Acceptor;
 
 /// IPC communication errors
 #[derive(Debug, Fail)]
@@ -32,8 +33,10 @@ pub enum IpcError {
     ReceiveMessageError { reason: io::Error },
     #[fail(display = "Send error: {}", reason)]
     SendError { reason: io::Error },
-    #[fail(display = "Accept connection timed out, reason: {}", reason)]
-    AcceptTimeout { reason: timeout_io::TimeoutIoError },
+    #[fail(display = "Accept connection timed out, timout: {:?}", timeout)]
+    AcceptTimeout { timeout: Duration },
+    #[fail(display = "Receive message timed out - handle WouldBlock scenario if needed")]
+    ReceiveMessageTimeouted,
     #[fail(display = "Connection error: {}", reason)]
     ConnectionError { reason: io::Error },
     #[fail(display = "Serialization error: {}", reason)]
@@ -53,7 +56,7 @@ impl<S> IpcSender<S> {
     /// Close IPC channel and release associated resources.
     ///
     /// This closes only the sending part of the IPC channel.
-    pub fn shutdown(&self) -> Result<(), io::Error> {
+    fn shutdown(&self) -> Result<(), io::Error> {
         self.0.shutdown(Shutdown::Write)
     }
 
@@ -100,13 +103,16 @@ impl<R> IpcReceiver<R> {
     /// Close IPC channel and release associated resources.
     ///
     /// This closes only the receiving part of the IPC channel.
-    pub fn shutdown(&self) -> Result<(), io::Error> {
+    fn shutdown(&self) -> Result<(), io::Error> {
         self.0.shutdown(Shutdown::Read)
     }
 
-    /// Set read timeout
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.0.set_read_timeout(timeout)
+    }
+
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.0.set_nonblocking(nonblocking)
     }
 }
 
@@ -114,12 +120,34 @@ impl<R> IpcReceiver<R>
 where
     R: for<'de> Deserialize<'de>,
 {
+    /// Try to receive message with read_timeout,
+    /// In case of timeout, can be IpcError::ReceiveMessageTimeouted handled
+    ///
+    /// `read_timeout` - set read timeout before receive
+    /// `reset_read_timeout` - set read timeout after receive
+    pub fn try_receive(
+        &mut self,
+        read_timeout: Option<Duration>,
+        reset_read_timeout: Option<Duration>,
+    ) -> Result<R, IpcError> {
+        self.set_read_timeout(read_timeout)
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        let receive_result = self.receive();
+        self.set_read_timeout(reset_read_timeout)
+            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+        receive_result
+    }
+
     /// Read bytes from established IPC channel and deserialize into a rust type.
     pub fn receive(&mut self) -> Result<R, IpcError> {
         let mut msg_len_buf = [0; 8];
-        self.0
-            .read_exact(&mut msg_len_buf)
-            .map_err(|err| IpcError::ReceiveMessageLengthError { reason: err })?;
+        self.0.read_exact(&mut msg_len_buf).map_err(|err| {
+            if err.kind() == io::ErrorKind::WouldBlock {
+                IpcError::ReceiveMessageTimeouted
+            } else {
+                IpcError::ReceiveMessageLengthError { reason: err }
+            }
+        })?;
 
         let msg_len = usize::from_be_bytes(msg_len_buf);
 
@@ -159,8 +187,6 @@ where
     R: for<'de> Deserialize<'de>,
     S: Serialize,
 {
-    const ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
-
     /// Bind IpcServer to random socket in temp folder
     pub fn bind() -> Result<Self, IpcError> {
         let path = temp_sock();
@@ -184,23 +210,62 @@ where
         })
     }
 
-    /// Accept new connection a return sender/receiver for it
-    pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
-        let stream = self
-            .listener
-            .try_accept(Self::ACCEPT_TIMEOUT)
-            .map_err(|e| IpcError::AcceptTimeout { reason: e })?;
-        split(stream)
-            .map_err(|err| IpcError::SplitError { reason: err })
-            .map(|(r, s)| {
-                // On macOS and FreeBSD new sockets inherit flags from accepting fd,
-                // but we expect this to be in blocking by default.
-                if cfg!(target_os = "macos") || cfg!(target_os = "freebsd") {
-                    s.0.set_nonblocking(false)
-                        .expect("Failed set_nonblocking after accept")
+    /// Try to accept new connection a return sender/receiver for it
+    /// In case of timeout, can be IpcError::AcceptTimeout handled
+    ///
+    /// `timeout` - timeout for wairing to a new connection
+    ///
+    /// Returns `blocking` receiver a `blocking` sender
+    pub fn try_accept(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
+        // allow non-blocking, because we dont want to wait forever, so we handle WouldBlock case
+        self.listener
+            .set_nonblocking(true)
+            .map_err(|err| IpcError::ConnectionError { reason: err })?;
+
+        // TODO: TE-292 - investigate/reimplement
+        // timeout_io::Acceptor was used here, but it caused occasioanly very strange errors:
+        // - in debug mode - "Other { desc: "Os {\n    code: 9,\n    kind: Other,\n    message: \"Bad file descriptor\",\n}"
+        // - in release mode - Segmentation fault
+        //
+        // probably, because it sets non_blocking differentlly:
+        // https://github.com/KizzyCode/timeout_io/blob/master/libselect/libselect_unix.c
+        //
+        // so this was removed, and used direct listener.set_nonblocking, which handles, like this:
+        // https://github.com/rust-lang/rust/blob/master/library/std/src/sys/unix/net.rs
+
+        // very simple retry logic
+        let deadline = Instant::now() + timeout;
+        let stream = loop {
+            match self.listener.accept() {
+                Ok(connection) => break connection,
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    if deadline.checked_duration_since(Instant::now()).is_some() {
+                        // ok, lets retry
+                        thread::sleep(Duration::from_millis(50))
+                    } else {
+                        // deadline is over
+                        return Err(IpcError::AcceptTimeout { timeout });
+                    }
                 }
-                (r, s)
-            })
+                Err(e) => {
+                    return Err(IpcError::ConnectionError { reason: e });
+                }
+            }
+        };
+
+        // return back blocking mode (maybe not needed)
+        self.listener
+            .set_nonblocking(false)
+            .map_err(|err| IpcError::ConnectionError { reason: err })?;
+
+        // splitted receiver/sender are supposed to be blocking
+        // maybe it is enought to set non_blocking to the [`stream`], but we make sure,
+        // also On macOS and FreeBSD new sockets inherit flags from accepting fd,
+        // but we expect this to be in blocking by default.
+        split(stream.0, false, false)
     }
 
     /// Create new IpcClient for this server
@@ -244,7 +309,7 @@ where
     pub fn connect(&self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
         let stream = UnixStream::connect(&self.path)
             .map_err(|err| IpcError::ConnectionError { reason: err })?;
-        split(stream).map_err(|err| IpcError::SplitError { reason: err })
+        split(stream, false, false)
     }
 }
 
@@ -260,13 +325,29 @@ pub fn temp_sock() -> PathBuf {
     temp_dir.join(chars + ".sock")
 }
 
-fn split<R, S>(stream: UnixStream) -> Result<(IpcReceiver<R>, IpcSender<S>), io::Error>
+fn split<R, S>(
+    stream: UnixStream,
+    receiver_non_blocking: bool,
+    sender_non_blocking: bool,
+) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError>
 where
     R: for<'de> Deserialize<'de>,
     S: Serialize,
 {
-    Ok((
-        IpcReceiver(stream.try_clone()?, PhantomData),
-        IpcSender(stream, PhantomData),
-    ))
+    let receiver = IpcReceiver(
+        stream
+            .try_clone()
+            .map_err(|err| IpcError::SplitError { reason: err })?,
+        PhantomData,
+    );
+    receiver
+        .set_nonblocking(receiver_non_blocking)
+        .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+
+    let sender = IpcSender(stream, PhantomData);
+    sender
+        .set_nonblocking(sender_non_blocking)
+        .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
+
+    Ok((receiver, sender))
 }

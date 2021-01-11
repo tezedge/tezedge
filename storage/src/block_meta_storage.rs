@@ -859,7 +859,7 @@ mod tests {
 
     #[test]
     fn find_block_at_distance_heavy_test() -> Result<(), Error> {
-        const BLOCK_COUNT: usize = 1_500;
+        const BLOCK_COUNT: usize = 1_025;
 
         // block_hashes starts with level 1 (genesis not included)
         let (storage, _, block_hashes) =

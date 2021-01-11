@@ -94,8 +94,12 @@ impl TezosApiConnectionPool {
         initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection<RunnerType>, PoolError>>,
     ) -> TezosApiConnectionPool {
         // create manager
-        let manager =
-            ProtocolRunnerManager::<RunnerType>::new(pool_name.clone(), endpoint_cfg, log.clone());
+        let manager = ProtocolRunnerManager::<RunnerType>::new(
+            pool_name.clone(),
+            pool_cfg.connection_timeout,
+            endpoint_cfg,
+            log.clone(),
+        );
 
         // create pool for ffi protocol runner connections
         let pool = r2d2::Pool::builder()

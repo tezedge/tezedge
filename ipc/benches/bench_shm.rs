@@ -101,7 +101,7 @@ fn bench_uds(b: &mut Bencher) {
     assert!(child_pid > 0);
 
     let mut server: IpcServer<BenchData, BenchData> = IpcServer::bind_path(&sock_path).unwrap();
-    let (mut rx, mut tx) = server.accept().unwrap();
+    let (mut rx, mut tx) = server.try_accept(Duration::from_secs(3)).unwrap();
 
     let mut rng = rand::thread_rng();
     let bench_data = BenchData {

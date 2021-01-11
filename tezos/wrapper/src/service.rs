@@ -314,17 +314,20 @@ impl IpcCmdServer {
     const IO_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Create new IPC endpoint
-    pub fn new(configuration: ProtocolEndpointConfiguration) -> Self {
-        IpcCmdServer(IpcServer::bind_path(&temp_sock()).unwrap(), configuration)
+    pub fn try_new(configuration: ProtocolEndpointConfiguration) -> Result<Self, IpcError> {
+        Ok(IpcCmdServer(
+            IpcServer::bind_path(&temp_sock())?,
+            configuration,
+        ))
     }
 
     /// Start accepting incoming IPC connection.
     ///
     /// Returns a [`protocol controller`](ProtocolController) if new IPC channel is successfully created.
     /// This is a blocking operation.
-    pub fn accept(&mut self) -> Result<ProtocolController, IpcError> {
-        let (rx, tx) = self.0.accept()?;
-        // configure IO timeouts
+    pub fn try_accept(&mut self, timeout: Duration) -> Result<ProtocolController, IpcError> {
+        let (rx, tx) = self.0.try_accept(timeout)?;
+        // configure default IO timeouts
         rx.set_read_timeout(Some(Self::IO_TIMEOUT))
             .and(tx.set_write_timeout(Some(Self::IO_TIMEOUT)))
             .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
@@ -332,6 +335,7 @@ impl IpcCmdServer {
         Ok(ProtocolController {
             io: RefCell::new(IpcIO { rx, tx }),
             configuration: self.1.clone(),
+            shutting_down: false,
         })
     }
 }
@@ -343,13 +347,16 @@ pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
 /// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
 /// * `IpcEvtServer` is used to create IPC channel over which events are transmitted from protocol runner to the tezedge node.
 impl IpcEvtServer {
-    pub fn new() -> Self {
-        IpcEvtServer(IpcServer::bind_path(&temp_sock()).unwrap())
+    pub fn try_new() -> Result<Self, IpcError> {
+        Ok(IpcEvtServer(IpcServer::bind_path(&temp_sock())?))
     }
 
     /// Synchronously wait for new incoming IPC connection.
-    pub fn accept(&mut self) -> Result<IpcReceiver<ContextAction>, IpcError> {
-        let (rx, _) = self.0.accept()?;
+    pub fn try_accept(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<IpcReceiver<ContextAction>, IpcError> {
+        let (rx, _) = self.0.try_accept(timeout)?;
         Ok(rx)
     }
 }
@@ -363,6 +370,8 @@ struct IpcIO {
 pub struct ProtocolController {
     io: RefCell<IpcIO>,
     configuration: ProtocolEndpointConfiguration,
+    /// Indicates that was triggered shutting down
+    shutting_down: bool,
 }
 
 /// Provides convenience methods for IPC communication.
@@ -386,16 +395,12 @@ impl ProtocolController {
     ) -> Result<ApplyBlockResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(request))?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::APPLY_BLOCK_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::APPLY_BLOCK_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::ApplyBlockResult(result) => {
                 result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into())
             }
@@ -417,16 +422,12 @@ impl ProtocolController {
                 protocol_hash,
                 protocol_data,
             ))?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::AssertEncodingForProtocolDataResult(result) => result.map_err(|err| {
                 ProtocolError::AssertEncodingForProtocolDataError { reason: err }.into()
             }),
@@ -444,16 +445,12 @@ impl ProtocolController {
         let mut io = self.io.borrow_mut();
         io.tx
             .send(&ProtocolMessage::BeginApplicationCall(request))?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::BEGIN_APPLICATION_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::BEGIN_APPLICATION_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::BeginApplicationResult(result) => {
                 result.map_err(|err| ProtocolError::BeginApplicationError { reason: err }.into())
             }
@@ -471,16 +468,12 @@ impl ProtocolController {
         let mut io = self.io.borrow_mut();
         io.tx
             .send(&ProtocolMessage::BeginConstructionCall(request))?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::BEGIN_CONSTRUCTION_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::BEGIN_CONSTRUCTION_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::BeginConstructionResult(result) => {
                 result.map_err(|err| ProtocolError::BeginConstructionError { reason: err }.into())
             }
@@ -498,16 +491,12 @@ impl ProtocolController {
         let mut io = self.io.borrow_mut();
         io.tx
             .send(&ProtocolMessage::ValidateOperationCall(request))?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::VALIDATE_OPERATION_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::VALIDATE_OPERATION_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::ValidateOperationResponse(result) => {
                 result.map_err(|err| ProtocolError::ValidateOperationError { reason: err }.into())
             }
@@ -524,16 +513,12 @@ impl ProtocolController {
     ) -> Result<ComputePathResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ComputePathCall(request))?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::COMPUTE_PATH_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::COMPUTE_PATH_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::ComputePathResponse(result) => {
                 result.map_err(|err| ProtocolError::ComputePathError { reason: err }.into())
             }
@@ -550,16 +535,12 @@ impl ProtocolController {
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&msg)?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::RpcResponse(result) => {
                 result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into())
             }
@@ -584,16 +565,12 @@ impl ProtocolController {
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
         io.tx.send(&msg)?;
+
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::CALL_PROTOCOL_RPC_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::HelpersPreapplyResponse(result) => {
                 result.map_err(|err| ProtocolError::HelpersPreapplyError { reason: err }.into())
             }
@@ -627,7 +604,11 @@ impl ProtocolController {
         let mut io = self.io.borrow_mut();
         io.tx
             .send(&ProtocolMessage::ChangeRuntimeConfigurationCall(settings))?;
-        match io.rx.receive()? {
+
+        match io.rx.try_receive(
+            Some(IpcCmdServer::IO_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::ChangeRuntimeConfigurationResult(result) => result.map_err(|err| {
                 ProtocolError::TezosRuntimeConfigurationError { reason: err }.into()
             }),
@@ -689,17 +670,10 @@ impl ProtocolController {
 
         // wait for response
         // this might take a while, so we will use unusually long timeout
-        io.rx
-            .set_read_timeout(Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-        let receive_result = io.rx.receive();
-        // restore default timeout setting
-        io.rx
-            .set_read_timeout(Some(IpcCmdServer::IO_TIMEOUT))
-            .map_err(|err| IpcError::SocketConfigurationError { reason: err })?;
-
-        // process response
-        match receive_result? {
+        match io.rx.try_receive(
+            Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::InitProtocolContextResult(result) => {
                 if result.is_ok() {
                     // if context is initialized, and is not readonly, means is write, for wich we wait
@@ -729,10 +703,20 @@ impl ProtocolController {
     }
 
     /// Gracefully shutdown protocol runner
-    pub fn shutdown(&self) -> Result<(), ProtocolServiceError> {
+    pub fn shutdown(&mut self) -> Result<(), ProtocolServiceError> {
+        if self.shutting_down {
+            // shutdown was already triggered before
+            return Ok(());
+        }
+        self.shutting_down = true;
+
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ShutdownCall)?;
-        match io.rx.receive()? {
+
+        match io.rx.try_receive(
+            Some(IpcCmdServer::IO_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::ShutdownResult => Ok(()),
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
@@ -800,7 +784,11 @@ impl ProtocolController {
                     .max_operations_ttl,
             },
         ))?;
-        match io.rx.receive()? {
+
+        match io.rx.try_receive(
+            Some(IpcCmdServer::IO_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
             NodeMessage::CommitGenesisResultData(result) => {
                 result.map_err(|err| ProtocolError::GenesisResultDataError { reason: err }.into())
             }
@@ -814,7 +802,9 @@ impl ProtocolController {
 impl Drop for ProtocolController {
     fn drop(&mut self) {
         // try to gracefully shutdown protocol runner
-        let _ = self.shutdown();
+        if !self.shutting_down {
+            let _ = self.shutdown();
+        }
     }
 }
 
@@ -828,22 +818,22 @@ pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
-    pub fn new(
+    pub fn try_new(
         endpoint_name: &str,
         configuration: ProtocolEndpointConfiguration,
         log: Logger,
-    ) -> ProtocolRunnerEndpoint<Runner> {
-        let cmd_server = IpcCmdServer::new(configuration.clone());
+    ) -> Result<ProtocolRunnerEndpoint<Runner>, IpcError> {
+        let cmd_server = IpcCmdServer::try_new(configuration.clone())?;
 
         let (evt_server, evt_server_path) = if configuration.need_event_server {
-            let evt_server = IpcEvtServer::new();
+            let evt_server = IpcEvtServer::try_new()?;
             let evt_server_path = evt_server.0.path.clone();
             (Some(evt_server), Some(evt_server_path))
         } else {
             (None, None)
         };
 
-        ProtocolRunnerEndpoint {
+        Ok(ProtocolRunnerEndpoint {
             runner: Runner::new(
                 configuration,
                 cmd_server.0.client().path(),
@@ -853,7 +843,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
             commands: cmd_server,
             events: evt_server,
             log,
-        }
+        })
     }
 
     /// Starts protocol runner sub-process just once and you can take care of it

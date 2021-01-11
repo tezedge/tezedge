@@ -171,7 +171,7 @@ pub mod infra {
             let apply_protocol_runner = common::protocol_runner_executable_path();
             let mut apply_protocol_runner_endpoint = ProtocolRunnerEndpoint::<
                 ExecutableProtocolRunner,
-            >::new(
+            >::try_new(
                 &format!("{}_write_runner", name),
                 ProtocolEndpointConfiguration::new(
                     TezosRuntimeConfiguration {
@@ -187,7 +187,7 @@ pub mod infra {
                     true,
                 ),
                 log.clone(),
-            );
+            )?;
             let (apply_restarting_feature, apply_protocol_commands, apply_protocol_events) =
                 match apply_protocol_runner_endpoint.start_in_restarting_mode() {
                     Ok(restarting_feature) => {
