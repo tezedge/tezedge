@@ -150,7 +150,7 @@ pub struct MerkleStorage {
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
     db: Arc<MerkleStorageKV>,
-    db2: Mutex<InMemoryBackend>,
+    db2: Mutex<Box<dyn MerkleStorageStorageBackend + Send>>,
     // db2: Box<dyn MerkleStorageStorageBackend>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
@@ -431,7 +431,7 @@ impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
-            db2: Mutex::new(InMemoryBackend::new()),
+            db2: Mutex::new(Box::new(InMemoryBackend::new())),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1513,6 +1513,12 @@ mod tests {
     fn clean_db(db_name: &str) {
         let _ = DB::destroy(&Options::default(), get_db_name(db_name));
         let _ = fs::remove_dir_all(get_db_name(db_name));
+    }
+
+    #[test]
+    fn test_dummy(){
+        let args: Vec<String> = env::args().collect();
+        println!("{:?}", args);
     }
 
     #[test]
