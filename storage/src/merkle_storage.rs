@@ -424,6 +424,20 @@ impl InMemoryBackend {
     }
 }
 
+// common interface for old rocketdb backend and new in memory implementation
+impl MerkleStorageStorageBackend for MerkleStorageKV {
+
+    fn execute(& self, transaction: WriteTransaction) -> Result<(),MerkleError>{
+      
+        return Ok(());
+    }
+
+    fn get(&self,key: &EntryHash) -> Option<Entry>{
+        // self.in_memory_data.lock().unwrap().borrow().get(key).map(|e| e.clone())
+        None
+    }
+}
+
 impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
