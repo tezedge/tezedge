@@ -142,15 +142,15 @@ enum Action {
 }
 
 pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
-
+pub type Backend = dyn MerkleStorageBackend + Sync + Send;
 pub type RefCnt = usize;
-struct Backend{}
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
     db: Arc<MerkleStorageKV>,
-    db2: Arc<dyn MerkleStorageStorageBackend + Sync + Send>,
+    db2: Arc<Backend>,
+    db3: Arc<Backend>,
     // db2: Box<dyn MerkleStorageStorageBackend>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
@@ -374,7 +374,7 @@ fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
 // TODO: we could store only Entry, and calculate before transaction excutions
 // then maybe we could cache some of the Tree nodes and utilze that ?
 pub type WriteTransaction = Vec<(EntryHash, Entry)>; 
-pub trait MerkleStorageStorageBackend {
+pub trait MerkleStorageBackend {
     // TODO currently only those 2 are sufficient for merkle storage use case, 
     // more can be implementd in the fufture
     fn execute(& self, t: WriteTransaction) -> Result<(),MerkleError>;
@@ -390,7 +390,7 @@ pub struct InMemoryBackend {
 }
 
 // common interface for old rocketdb backend and new in memory implementation
-impl MerkleStorageStorageBackend for InMemoryBackend {
+impl MerkleStorageBackend for InMemoryBackend {
 
     fn execute(& self, transaction: WriteTransaction) -> Result<(),MerkleError>{
         //probably needs a mutex but we are using ARC only to fit into existing interface but still ....
@@ -425,10 +425,10 @@ impl InMemoryBackend {
 }
 
 // common interface for old rocketdb backend and new in memory implementation
-impl MerkleStorageStorageBackend for MerkleStorageKV {
+impl MerkleStorageBackend for MerkleStorageKV {
 
     fn execute(& self, transaction: WriteTransaction) -> Result<(),MerkleError>{
-      
+        
         return Ok(());
     }
 
@@ -441,8 +441,9 @@ impl MerkleStorageStorageBackend for MerkleStorageKV {
 impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
-            db,
+            db: db.clone(),
             db2: Arc::new(InMemoryBackend::new()),
+            db3: db.clone(),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
