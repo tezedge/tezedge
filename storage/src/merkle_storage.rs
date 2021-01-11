@@ -467,8 +467,15 @@ impl MerkleStorage {
                     self.delete(&key)?;
                 }
             },
-            ContextAction::Commit { author, message, date, .. } => {
-                self.commit(*date as u64, author.to_string(), message.to_string())?;
+            ContextAction::Commit { author, message, date, new_context_hash, .. } => {
+                let commit_hash = self.commit(*date as u64, author.to_string(), message.to_string())?;
+                assert_eq!(
+                    &commit_hash,
+                    &new_context_hash[..],
+                    "Invalid commit_hash detected while applying context action to MerkleStorage, expected: {}, but was: {}",
+                    HashType::ContextHash.hash_to_b58check(&new_context_hash),
+                    HashType::ContextHash.hash_to_b58check(&commit_hash),
+                );
             },
             ContextAction::Checkout { context_hash, .. } => {
                 self.checkout(context_hash.as_slice().try_into()?)?;
