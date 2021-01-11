@@ -150,7 +150,7 @@ pub struct MerkleStorage {
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
     db: Arc<MerkleStorageKV>,
-    db2: Mutex<Box<dyn MerkleStorageStorageBackend + Send>>,
+    db2: Arc<dyn MerkleStorageStorageBackend + Sync + Send>,
     // db2: Box<dyn MerkleStorageStorageBackend>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
@@ -385,7 +385,8 @@ pub struct InMemoryBackend {
     // all operations on RocketDb(KeyValueStoreWithSchema) backend does not require
     // to use mutable reference - to fit into that scenario RefCell is used to allow
     // modifications of in_memory_data on immutable reference to KeyValueStore
-    in_memory_data: RefCell<HashMap<EntryHash, Entry>>,
+    in_memory_data: Mutex<RefCell<HashMap<EntryHash, Entry>>>,
+    // in_memory_data: RefCell<HashMap<EntryHash, Entry>>,
 }
 
 // common interface for old rocketdb backend and new in memory implementation
@@ -401,12 +402,9 @@ impl MerkleStorageStorageBackend for InMemoryBackend {
             };
 
             match t.1.clone() {
-                Entry::Tree(_) => { self.in_memory_data.borrow_mut().insert(t.0, t.1.clone()); }
-                Entry::Commit(_) => { self.in_memory_data.borrow_mut().insert(t.0, t.1.clone()); }
-                Entry::Blob(_) => { self.in_memory_data.borrow_mut().insert(t.0, t.1.clone()); }
-                // Entry::Tree(_) => { self.in_memory_data.insert(t.0, t.1.clone()); }
-                // Entry::Commit(_) => { self.in_memory_data.insert(t.0, t.1.clone()); }
-                // Entry::Blob(_) => { self.in_memory_data.insert(t.0, t.1.clone()); }
+                Entry::Tree(_) => { self.in_memory_data.lock().unwrap().borrow_mut().insert(t.0, t.1.clone()); }
+                Entry::Commit(_) => { self.in_memory_data.lock().unwrap().borrow_mut().insert(t.0, t.1.clone()); }
+                Entry::Blob(_) => { self.in_memory_data.lock().unwrap().borrow_mut().insert(t.0, t.1.clone()); }
             }
             println!("executing {} => {:?}", x, t.0);
         }
@@ -414,15 +412,14 @@ impl MerkleStorageStorageBackend for InMemoryBackend {
     }
 
     fn get(&self,key: &EntryHash) -> Option<Entry>{
-        self.in_memory_data.borrow().get(key).map(|e| e.clone())
-        // self.in_memory_data.get(key).map(|e| e.clone())
+        self.in_memory_data.lock().unwrap().borrow().get(key).map(|e| e.clone())
     }
 }
 
 impl InMemoryBackend {
     pub fn new() -> InMemoryBackend {
         InMemoryBackend {
-            in_memory_data: RefCell::new(HashMap::new()),
+            in_memory_data: Mutex::new(RefCell::new(HashMap::new())),
         }
     }
 }
@@ -431,7 +428,7 @@ impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
-            db2: Mutex::new(Box::new(InMemoryBackend::new())),
+            db2: Arc::new(InMemoryBackend::new()),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1229,7 +1226,7 @@ impl MerkleStorage {
         // atomically write all entries in one batch to DB
         // self.db.write_batch(batch)?;
         // TODO: handle output
-        self.db2.lock().unwrap().execute(batch);
+        self.db2.execute(batch);
 
         Ok(())
     }
@@ -1299,7 +1296,7 @@ impl MerkleStorage {
     }
 
     fn get_entry_db(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        self.db2.lock().unwrap().get(hash).ok_or_else(||
+        self.db2.get(hash).ok_or_else(||
             MerkleError::EntryNotFound {hash: HashType::ContextHash.hash_to_b58check(hash)})
         // entry_bytes.map
         // match entry_bytes {
@@ -1314,7 +1311,7 @@ impl MerkleStorage {
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
             None => {
-                match self.db2.lock().unwrap().get(hash) {
+                match self.db2.get(hash) {
                     None => Err(MerkleError::EntryNotFound {
                         hash: HashType::ContextHash.hash_to_b58check(hash),
                     }),
