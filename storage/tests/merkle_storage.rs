@@ -28,7 +28,7 @@ struct GetBlockResponse {
 
 #[derive(Serialize, Deserialize)]
 struct GetBlockResponseMetadata {
-    level: GetBlockResponseMetadataLevel,
+    level: Option<GetBlockResponseMetadataLevel>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -114,11 +114,12 @@ fn test_merkle_storage_gc() {
             }
             merkle.apply_context_action(&action).unwrap();
         }
+        println!("applied block: {}", index + 1);
 
-        let (cycle, cycle_position) = (
-            block.metadata.level.cycle,
-            block.metadata.level.cycle_position,
-        );
+        let (cycle, cycle_position) = match block.metadata.level {
+            None => (0, 0),
+            Some(level) => (level.cycle, level.cycle_position),
+        };
 
         if cycle != 0 && cycle_position == 0 && prev_cycle_commits.len() > 0 {
             for commit_hash in prev_cycle_commits.into_iter() {
