@@ -185,6 +185,7 @@ mod tests {
         };
         let encoded_bytes = expected.encode()?;
         let decoded = OperationKey::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+        assert_eq!(expected, decoded);
+        Ok(())
     }
 }

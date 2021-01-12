@@ -133,12 +133,10 @@ impl ContextActionStorage {
                     sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX))
                         .into_iter(),
                 )
+            } else if let Some(limit) = limit {
+                self.load_indexes(base_iterator.take(limit))
             } else {
-                if let Some(limit) = limit {
-                    self.load_indexes(base_iterator.take(limit))
-                } else {
-                    self.load_indexes(base_iterator)
-                }
+                self.load_indexes(base_iterator)
             }
         } else {
             let mut base_iterator = self
@@ -162,12 +160,10 @@ impl ContextActionStorage {
                 } else {
                     Ok(Default::default())
                 }
+            } else if let Some(limit) = limit {
+                self.load_indexes(base_iterator.take(limit))
             } else {
-                if let Some(limit) = limit {
-                    self.load_indexes(base_iterator.take(limit))
-                } else {
-                    self.load_indexes(base_iterator)
-                }
+                self.load_indexes(base_iterator)
             }
         }
     }
@@ -694,11 +690,11 @@ impl ContextActionByTypeIndex {
     }
 
     #[inline]
-    fn get_by_action_type_iterator<'a>(
-        &'a self,
+    fn get_by_action_type_iterator(
+        &self,
         action_type: ContextActionType,
         cursor_id: Option<SequenceNumber>,
-    ) -> Result<impl Iterator<Item = u64> + 'a, StorageError> {
+    ) -> Result<impl Iterator<Item = u64> + '_, StorageError> {
         let iterate_from_key = cursor_id.map_or_else(
             || ContextActionByTypeIndexKey::from_action_type_prefix(action_type),
             |cursor_id| ContextActionByTypeIndexKey::new(action_type, cursor_id),
@@ -996,11 +992,7 @@ pub mod sorted_intersect {
             })
         });
 
-        if let Some((_, true)) = value {
-            true
-        } else {
-            false
-        }
+        matches!(value, Some((_, true)))
     }
 }
 
@@ -1020,7 +1012,8 @@ mod tests {
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByContractIndexKey::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+        assert_eq!(expected, decoded);
+        Ok(())
     }
 
     #[test]
@@ -1031,7 +1024,8 @@ mod tests {
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+        assert_eq!(expected, decoded);
+        Ok(())
     }
 
     #[test]
@@ -1042,7 +1036,8 @@ mod tests {
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+        assert_eq!(expected, decoded);
+        Ok(())
     }
 
     #[test]
@@ -1058,10 +1053,11 @@ mod tests {
         }
         .encode()?;
 
-        Ok(assert_eq!(
+        assert_eq!(
             Ordering::Less,
             ContextActionByContractIndexKey::reverse_id_comparator(&a, &b)
-        ))
+        );
+        Ok(())
     }
 
     #[test]

@@ -303,7 +303,8 @@ mod tests {
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+        assert_eq!(expected, decoded);
+        Ok(())
     }
 
     #[test]

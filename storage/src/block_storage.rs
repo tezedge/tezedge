@@ -626,11 +626,11 @@ mod tests {
             .unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
-            for i in vec![1161, 66441, 905, 66185, 649, 65929, 393, 65673] {
+            for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {
                 index.put(
-                    i,
+                    *i,
                     &BlockStorageColumnsLocation {
-                        block_header: Location::new(i as u64),
+                        block_header: Location::new(*i as u64),
                         block_json_data: None,
                         block_additional_data: None,
                     },
