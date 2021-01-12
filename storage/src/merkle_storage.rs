@@ -53,15 +53,15 @@ use std::time::Instant;
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
 use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch};
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::Deserialize;
 use serde::Serialize;
 
 use crypto::hash::HashType;
 
-use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
+use crate::persistent::{self, Decoder, Encoder, SchemaError};
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
 
 const HASH_LEN: usize = 32;
@@ -69,7 +69,6 @@ const HASH_LEN: usize = 32;
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
 pub type EntryHash = [u8; HASH_LEN];
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 enum NodeKind {
     NonLeaf,
@@ -77,7 +76,7 @@ enum NodeKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
+pub struct Node {
     node_kind: NodeKind,
     entry_hash: EntryHash,
 }
@@ -87,7 +86,7 @@ struct Node {
 type Tree = BTreeMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-struct Commit {
+pub struct Commit {
     parent_commit_hash: Option<EntryHash>,
     root_hash: EntryHash,
     time: u64,
@@ -96,10 +95,21 @@ struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum Entry {
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
+}
+
+impl Encoder for Entry {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        bincode::serialize(self).map_err(|_| SchemaError::EncodeError {})
+    }
+}
+impl Decoder for Entry {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError {})
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,9 +137,7 @@ enum Action {
 }
 
 pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
-
 pub type RefCnt = usize;
-
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
@@ -227,6 +235,7 @@ impl Default for OperationLatencies {
         }
     }
 }
+pub type WriteTransaction = Vec<(EntryHash, Entry)>;
 
 // Latency statistics indexed by operation name (e.g. "Set")
 pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
@@ -252,7 +261,7 @@ impl KeyValueSchema for MerkleStorage {
     // keys is hash of Entry
     type Key = EntryHash;
     // Entry (serialized)
-    type Value = Vec<u8>;
+    type Value = Entry;
 
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
@@ -346,10 +355,18 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
+fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
+    match entry {
+        Entry::Commit(commit) => hash_commit(&commit),
+        Entry::Tree(tree) => hash_tree(&tree),
+        Entry::Blob(blob) => hash_blob(blob),
+    }
+}
+
 impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
-            db,
+            db: db.clone(),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1140,13 +1157,16 @@ impl MerkleStorage {
 
     /// Persists an entry and its descendants from staged area to database on disk.
     fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+        // let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+        let mut batch: WriteTransaction = vec![];
 
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
 
         // atomically write all entries in one batch to DB
-        self.db.write_batch(batch)?;
+        // self.db.write_batch(batch)?;
+        // TODO: handle output
+        self.db.write(batch)?;
 
         Ok(())
     }
@@ -1155,11 +1175,9 @@ impl MerkleStorage {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        batch: &mut WriteBatch,
+        batch: &mut WriteTransaction,
     ) -> Result<(), MerkleError> {
-        // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+        batch.push((hash_entry(entry)?, entry.clone()));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1183,14 +1201,6 @@ impl MerkleStorage {
                 Err(err) => Err(err),
                 Ok(entry) => self.get_entries_recursively(&entry, batch),
             },
-        }
-    }
-
-    fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
-        match entry {
-            Entry::Commit(commit) => hash_commit(&commit),
-            Entry::Tree(tree) => hash_tree(&tree),
-            Entry::Blob(blob) => hash_blob(blob),
         }
     }
 
@@ -1223,26 +1233,21 @@ impl MerkleStorage {
     }
 
     fn get_entry_db(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        let entry_bytes = self.db.get(hash)?;
-        match entry_bytes {
-            None => Err(MerkleError::EntryNotFound {
+        self.db
+            .get(hash)?
+            .ok_or_else(|| MerkleError::EntryNotFound {
                 hash: HashType::ContextHash.hash_to_b58check(hash),
-            }),
-            Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-        }
+            })
     }
     /// Get entry from staging area or look up in DB if not found
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
-            None => {
-                let entry_bytes = self.db.get(hash)?;
-                match entry_bytes {
-                    None => Err(MerkleError::EntryNotFound {
-                        hash: HashType::ContextHash.hash_to_b58check(hash),
-                    }),
-                    Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-                }
-            }
+            None => match self.db.get(hash)? {
+                None => Err(MerkleError::EntryNotFound {
+                    hash: HashType::ContextHash.hash_to_b58check(hash),
+                }),
+                Some(entry) => Ok(entry),
+            },
             Some(entry) => Ok(entry.clone()),
         }
     }
@@ -1398,13 +1403,13 @@ impl MerkleStorage {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    // use hex;
+    use super::*;
     use assert_json_diff::assert_json_eq;
+    use persistent::InMemoryStorage;
     use rocksdb::{Options, DB};
+    use rstest::rstest;
     use std::path::{Path, PathBuf};
     use std::{env, fs};
-
-    use super::*;
 
     /// Open DB at path, used in tests
     fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
@@ -1428,19 +1433,41 @@ mod tests {
         open_db(get_db_name(db_name), &cache)
     }
 
-    fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
-        MerkleStorage::new(Arc::new(get_db(dn_name, &cache)))
+    type StorageFactory = fn(&str, &Cache) -> MerkleStorage;
+    type StoragePrune = fn(&str) -> ();
+
+    fn create_rocksdb_storage(db_name: &str, cache: &Cache) -> MerkleStorage {
+        let db_name = &(db_name.to_owned() + "_rocksdb");
+        MerkleStorage::new(Arc::new(get_db(db_name, &cache)))
     }
 
-    fn clean_db(db_name: &str) {
+    fn create_in_memory_storage(db_name: &str, _cache: &Cache) -> MerkleStorage {
+        let db_name = &(db_name.to_owned() + "_inmem");
+        MerkleStorage::new(Arc::new(InMemoryStorage::new(get_db_name(db_name))))
+    }
+
+    fn prune_rocksdb_storage(db_name: &str) {
+        let db_name = &(db_name.to_owned() + "_rocksdb");
         let _ = DB::destroy(&Options::default(), get_db_name(db_name));
         let _ = fs::remove_dir_all(get_db_name(db_name));
     }
 
-    #[test]
-    fn test_duplicate_entry_in_staging() {
+    fn prune_in_memory_storage(db_name: &str) {
+        let db_name = &(db_name.to_owned() + "_inmem");
+        let _ = fs::remove_dir_all(get_db_name(db_name));
+    }
+
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_duplicate_entry_in_staging(get_storage: StorageFactory, clean_db: StoragePrune) {
+        let db_path = "ms_test_duplicate_entry";
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_duplicate_entry", &cache);
+        clean_db(db_path);
+        let mut storage = get_storage(db_path, &cache);
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
@@ -1663,10 +1690,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_tree_hash() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_tree_hash(get_storage: StorageFactory, clean_db: StoragePrune) {
+        let db_path = "ms_test_tree_hash";
+        clean_db(db_path);
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_tree_hash", &cache);
+        let mut storage = get_storage(db_path, &cache);
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
@@ -1687,10 +1721,17 @@ mod tests {
         assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
     }
 
-    #[test]
-    fn test_commit_hash() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_commit_hash(get_storage: StorageFactory, clean_db: StoragePrune) {
+        let db_path = "ms_test_commit_hash";
+        clean_db(db_path);
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_commit_hash", &cache);
+        let mut storage = get_storage(db_path, &cache);
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
@@ -1713,9 +1754,16 @@ mod tests {
         let hash = hash_tree(&tree).unwrap();
         get_short_hash(&hash)
     }
-
-    #[test]
-    fn test_examples_from_article_about_storage() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_examples_from_article_about_storage(
+        get_storage: StorageFactory,
+        clean_db: StoragePrune,
+    ) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db_name = "test_examples_from_article_about_storage";
         clean_db(db_name);
@@ -1763,10 +1811,17 @@ mod tests {
         assert_eq!("e6de3f", get_short_hash(&commit_hash))
     }
 
-    #[test]
-    fn test_multiple_commit_hash() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_multiple_commit_hash(get_storage: StorageFactory, clean_db: StoragePrune) {
+        let db_path = "ms_test_multiple_commit_hash";
+        clean_db(db_path);
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_multiple_commit_hash", &cache);
+        let mut storage = get_storage(db_path, &cache);
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
@@ -1783,8 +1838,13 @@ mod tests {
         assert_eq!([0x9B, 0xB0, 0x0D, 0x6E], commit.unwrap()[0..4]);
     }
 
-    #[test]
-    fn test_get() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_get_from_saved_database(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_get_test";
         clean_db(db_name);
 
@@ -1836,8 +1896,13 @@ mod tests {
         assert_eq!(storage.get_history(&commit2, key_eab).unwrap(), vec![7u8]);
     }
 
-    #[test]
-    fn test_mem() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_mem(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_mem";
         clean_db(db_name);
 
@@ -1859,8 +1924,13 @@ mod tests {
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
     }
 
-    #[test]
-    fn test_dirmem() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_dirmem(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_dirmem";
         clean_db(db_name);
 
@@ -1883,8 +1953,13 @@ mod tests {
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
     }
 
-    #[test]
-    fn test_copy() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_copy(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_copy";
         clean_db(db_name);
 
@@ -1903,8 +1978,13 @@ mod tests {
         // TODO test copy over commits
     }
 
-    #[test]
-    fn test_delete() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_delete(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_delete";
         clean_db(db_name);
 
@@ -1920,8 +2000,13 @@ mod tests {
         assert!(storage.get_history(&commit1, &key_abx).is_err());
     }
 
-    #[test]
-    fn test_deleted_entry_available() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_deleted_entry_available(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_deleted_entry_available";
         clean_db(db_name);
 
@@ -1936,8 +2021,13 @@ mod tests {
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    #[test]
-    fn test_delete_in_separate_commit() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_delete_in_separate_commit(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_delete_in_separate_commit";
         clean_db(db_name);
 
@@ -1955,11 +2045,15 @@ mod tests {
         assert!(storage.get_history(&commit2, &key_abx).is_err());
     }
 
-    #[test]
-    fn test_checkout() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_checkout(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_checkout";
         clean_db(db_name);
-
         let commit1;
         let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -1990,13 +2084,15 @@ mod tests {
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
     }
 
-    #[test]
-    fn test_persistence_over_reopens() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_persistence_over_reopens(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_persistence_over_reopens";
-        {
-            clean_db(db_name);
-        }
-
+        clean_db(db_name);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let commit1;
         {
@@ -2013,17 +2109,26 @@ mod tests {
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    // Test a DB error by writing into a read-only database.
-    #[test]
-    fn test_db_error() {
-        let db_name = "ms_test_db_error";
+    // Test a Rocks DB error by writing into a read-only database.
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage)
+    )]
+    fn test_db_error(get_storage: StorageFactory, clean_db: StoragePrune) {
+        let db_name = String::from("ms_test_db_error");
         {
-            clean_db(db_name);
+            clean_db(&db_name);
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            get_storage(db_name, &cache);
+            get_storage(&db_name, &cache);
         }
 
-        let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
+        let db = DB::open_for_read_only(
+            &Options::default(),
+            get_db_name(&(db_name + "_rocksdb")),
+            true,
+        )
+        .unwrap();
         let mut storage = MerkleStorage::new(Arc::new(db));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
@@ -2032,8 +2137,13 @@ mod tests {
     }
 
     // Test getting entire tree in string format for JSON RPC
-    #[test]
-    fn test_get_context_tree_by_prefix() {
+    #[rstest(
+        get_storage,
+        clean_db,
+        case(create_rocksdb_storage, prune_rocksdb_storage),
+        case(create_in_memory_storage, prune_in_memory_storage)
+    )]
+    fn test_get_context_tree_by_prefix(get_storage: StorageFactory, clean_db: StoragePrune) {
         let db_name = "ms_test_get_context_tree_by_prefix";
         {
             clean_db(db_name);
