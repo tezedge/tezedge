@@ -99,6 +99,9 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
+    // TODO: if needed, can go to cfg
+    const IPC_ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
+
     /// Create new actor instance.
     ///
     /// If the actor is successfully created then reference to the actor is returned.
@@ -138,7 +141,7 @@ impl ChainFeeder {
                 let mut ipc_server = ipc_server;
 
                 while apply_block_run.load(Ordering::Acquire) {
-                    match ipc_server.accept() {
+                    match ipc_server.try_accept(Self::IPC_ACCEPT_TIMEOUT) {
                         Ok(protocol_controller) => match feed_chain_to_protocol(
                             &tezos_env,
                             &init_storage_data,

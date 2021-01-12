@@ -10,4 +10,8 @@ failure = "0.1"
 failure_derive = "0.1"
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
-timeout_io = "0.6.0"
+
+[dev-dependencies]
+serial_test = "0.5"
+libc = "0.2.65"
+ipmpsc = "0.3"

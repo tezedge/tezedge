@@ -1448,9 +1448,11 @@ dependencies = [
  "bincode",
  "failure",
  "failure_derive",
+ "ipmpsc",
+ "libc",
  "rand 0.7.3",
  "serde 1.0.117",
- "timeout_io",
+ "serial_test",
 ]
 
 [[package]]
@@ -3328,9 +3330,7 @@ dependencies = [
  "failure_derive",
  "getset",
  "ipc",
- "ipmpsc",
  "lazy_static",
- "libc",
  "nix 0.19.1",
  "r2d2",
  "rand 0.7.3",
@@ -3380,15 +3380,6 @@ dependencies = [
  "libc",
  "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "timeout_io"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d89ed29f92507ee770ef31f747ec1ad5ba7d8989a9f3489783da7d19a155c60"
-dependencies = [
- "cc",
 ]
 
 [[package]]

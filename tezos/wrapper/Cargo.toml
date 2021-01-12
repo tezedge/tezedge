@@ -21,8 +21,3 @@ ipc = { path = "../../ipc" }
 crypto = { path = "../../crypto" }
 tezos_api = { path = "../api" }
 tezos_context = { path = "../context" }
-
-[dev-dependencies]
-libc = "0.2.65"
-ipmpsc = "0.3"
-rand = "0.7.3"

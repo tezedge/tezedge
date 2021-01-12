@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use failure::Error;
 use riker::actors::*;
@@ -34,6 +35,9 @@ pub struct ContextListener {
 pub type ContextListenerRef = ActorRef<ContextListenerMsg>;
 
 impl ContextListener {
+    // TODO: if needed, can go to cfg
+    const IPC_ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
+
     /// Create new actor instance.
     ///
     /// This actor spawns a new thread in which it listens for incoming events from the `protocol_runner`.
@@ -60,6 +64,7 @@ impl ContextListener {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
+                        Self::IPC_ACCEPT_TIMEOUT,
                         &mut context_action_storage,
                         &mut context,
                         &log,
@@ -182,13 +187,14 @@ fn store_action(
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
+    event_server_accept_timeout: Duration,
     context_action_storage: &mut ContextActionStorage,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
     store_context_actions: bool,
 ) -> Result<(), Error> {
     info!(log, "Waiting for connection from protocol runner");
-    let mut rx = event_server.accept()?;
+    let mut rx = event_server.try_accept(event_server_accept_timeout)?;
     info!(
         log,
         "Received connection from protocol runner. Starting to process context events."

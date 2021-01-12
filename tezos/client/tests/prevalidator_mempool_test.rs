@@ -76,7 +76,6 @@ fn test_begin_construction_and_validate_operation() -> Result<(), failure::Error
 
     // apply block 1 and block 2
     let last_block = apply_blocks_1_2(&chain_id, genesis_block_header);
-    assert!(true);
 
     // let's initialize prevalidator for current head
     let prevalidator = client::begin_construction(BeginConstructionRequest {
