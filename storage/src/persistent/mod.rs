@@ -10,6 +10,7 @@ use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
+pub use in_memory_backend::InMemoryStorage;
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::merkle_storage::MerkleStorage;
@@ -18,6 +19,7 @@ use crate::persistent::sequence::Sequences;
 pub mod codec;
 pub mod commit_log;
 pub mod database;
+pub mod in_memory_backend;
 pub mod schema;
 pub mod sequence;
 
