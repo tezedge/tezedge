@@ -4,7 +4,8 @@
 use std::convert::TryInto;
 use std::error::Error;
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
+use std::thread;
 use serde::{Serialize, Deserialize};
 use crypto::hash::{HashType, BlockHash};
 use rocksdb::{DB, Cache, Options};
@@ -128,28 +129,49 @@ impl Iterator for BlocksIterator {
     }
 }
 
+type BlockAndActions = (BlockHeaderWithHash, Vec<ContextAction>);
+
+fn recv_blocks(
+    block_storage: BlockStorage,
+    ctx_action_storage: ContextActionStorage,
+) -> impl Iterator<Item = BlockAndActions> {
+    let genesis_block_hash = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv").unwrap();
+    let (tx, rx) = mpsc::sync_channel(8);
+
+    thread::spawn(move || {
+        for block in BlocksIterator::new(block_storage, &genesis_block_hash, 8) {
+            let mut actions = ctx_action_storage.get_by_block_hash(&block.hash).unwrap();
+            actions.sort_by_key(|x| x.id);
+            let actions = actions.into_iter().map(|x| x.action).collect();
+            if let Err(_) = tx.send((block, actions)) {
+                dbg!("blocks receiver disconnected, shutting down sender thread");
+                return;
+            }
+        }
+    });
+
+    rx.into_iter()
+}
+
 #[test]
 fn test_merkle_storage_gc() {
-    let genesis_block_hash = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv").unwrap();
-    let blocks_limit = 256;
     let persistent_storage = init_persistent_storage();
-
-    let ctx_action_storage = ContextActionStorage::new(&persistent_storage);
-    let block_storage = BlockStorage::new(&persistent_storage);
-    let blocks_iter = BlocksIterator::new(block_storage, &genesis_block_hash, blocks_limit);
 
     let (mut prev_cycle_commits, mut commits) = (vec![], vec![]);
 
-    for block in blocks_iter {
+    let block_storage = BlockStorage::new(&persistent_storage);
+    let ctx_action_storage = ContextActionStorage::new(&persistent_storage);
+
+    for (block, actions) in recv_blocks(block_storage, ctx_action_storage) {
         println!("applying block: {}", block.header.level());
+
         let merkle_rwlock = persistent_storage.merkle();
         let mut merkle = merkle_rwlock.write().unwrap();
 
         let mut actions = ctx_action_storage.get_by_block_hash(&block.hash).unwrap();
         actions.sort_by_key(|x| x.id);
 
-        for action in actions.into_iter().map(|x| x.action) {
-            // println!("applying action: ", action.)
+        for action in actions.into_iter() {
             if let ContextAction::Commit { new_context_hash, .. } = &action {
                 commits.push(new_context_hash[..].try_into().unwrap());
             }
