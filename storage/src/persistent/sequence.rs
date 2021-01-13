@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-use std::sync::{Arc, Condvar, Mutex, PoisonError};
-use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
-
 use failure::Fail;
+use std::cmp::Ordering as Ord;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
 
@@ -44,7 +44,11 @@ impl Sequences {
         match generators.get(name) {
             Some(generator) => generator.clone(),
             None => {
-                let generator = Arc::new(SequenceGenerator::new(name.to_owned(), self.seq_batch_size, self.db.clone()));
+                let generator = Arc::new(SequenceGenerator::new(
+                    name.to_owned(),
+                    self.seq_batch_size,
+                    self.db.clone(),
+                ));
                 generators.insert(name.into(), generator.clone());
                 generator
             }
@@ -93,32 +97,39 @@ impl SequenceGenerator {
         let seq = loop {
             let available = self.seq_available.fetch_add(-1, Ordering::SeqCst);
 
-            if available > 0 {
-                // no need to allocate new sequence numbers yet
-                let seq = self.seq_cur.fetch_add(1, Ordering::SeqCst);
-                break seq;
-            } else if available == 0 {
-                // last pre-allocated sequence numbers was allocated now, we have to perform a new allocation
-                let seq = self.seq_cur.fetch_add(1, Ordering::SeqCst);
+            match available.cmp(&0) {
+                Ord::Greater => {
+                    // no need to allocate new sequence numbers yet
+                    let seq = self.seq_cur.fetch_add(1, Ordering::SeqCst);
+                    break seq;
+                }
+                Ord::Equal => {
+                    // last pre-allocated sequence numbers was allocated now, we have to perform a new allocation
+                    let seq = self.seq_cur.fetch_add(1, Ordering::SeqCst);
 
-                // obtain mutex lock to ensure exclusive access to the database
-                let _allocated = self.guard.0.lock()?;
+                    // obtain mutex lock to ensure exclusive access to the database
+                    let _allocated = self.guard.0.lock()?;
 
-                // pre-allocate sequence numbers
-                let seq_prev = self.db.get(&self.seq_name)?.unwrap_or(0);
-                let seq_new = seq_prev + u64::from(self.seq_batch_size);
-                self.db.put(&self.seq_name, &seq_new)?;
+                    // pre-allocate sequence numbers
+                    let seq_prev = self.db.get(&self.seq_name)?.unwrap_or(0);
+                    let seq_new = seq_prev + u64::from(self.seq_batch_size);
+                    self.db.put(&self.seq_name, &seq_new)?;
 
-                // reset available counter
-                self.seq_available.store(i32::from(self.seq_batch_size) - 1, Ordering::SeqCst);
+                    // reset available counter
+                    self.seq_available
+                        .store(i32::from(self.seq_batch_size) - 1, Ordering::SeqCst);
 
-                // notify waiting threads
-                self.guard.1.notify_all();
+                    // notify waiting threads
+                    self.guard.1.notify_all();
 
-                break seq;
-            } else {
-                // wait until seq_available is positive number again
-                let _lock = self.guard.1.wait_while(self.guard.0.lock()?, |_| self.seq_available.load(Ordering::SeqCst) <= 0)?;
+                    break seq;
+                }
+                Ord::Less => {
+                    // wait until seq_available is positive number again
+                    let _lock = self.guard.1.wait_while(self.guard.0.lock()?, |_| {
+                        self.seq_available.load(Ordering::SeqCst) <= 0
+                    })?;
+                }
             }
         };
 
@@ -129,9 +140,7 @@ impl SequenceGenerator {
 #[derive(Debug, Fail)]
 pub enum SequenceError {
     #[fail(display = "Persistent storage error: {}", error)]
-    PersistentStorageError {
-        error: DBError
-    },
+    PersistentStorageError { error: DBError },
     #[fail(display = "Thread synchronization error")]
     SynchronizationError,
 }

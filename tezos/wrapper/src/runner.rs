@@ -24,7 +24,7 @@ pub enum ProtocolRunnerError {
     )]
     SpawnError { reason: io::Error },
     #[fail(
-        display = "Failed to terminate/kill tezos protocol wrapper sub-process: {}",
+        display = "Failed to terminate/kill tezos protocol wrapper sub-process, reason: {}",
         reason
     )]
     TerminateError { reason: String },

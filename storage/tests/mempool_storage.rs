@@ -6,8 +6,8 @@ use std::time::SystemTime;
 use failure::Error;
 
 use storage::mempool_storage::MempoolOperationType;
-use storage::MempoolStorage;
 use storage::tests_common::TmpStorage;
+use storage::MempoolStorage;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -22,7 +22,9 @@ fn mempool_storage_read_write() -> Result<(), Error> {
     let ttl = SystemTime::now();
 
     storage.put_known_valid(operation.clone(), ttl)?;
-    let block_header_res = storage.get(MempoolOperationType::KnownValid, operation_hash.clone())?.unwrap();
+    let block_header_res = storage
+        .get(MempoolOperationType::KnownValid, operation_hash.clone())?
+        .unwrap();
     assert_eq!(block_header_res, operation);
 
     assert!(storage.find(&operation_hash)?.is_some());

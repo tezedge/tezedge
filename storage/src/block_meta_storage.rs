@@ -5,16 +5,19 @@ use std::sync::Arc;
 
 use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
-use slog::{Logger, warn};
+use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::{BlockHeaderWithHash, StorageError};
 use crate::num_from_slice;
-use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
-use crate::predecessor_storage::{PredecessorStorage, PredecessorKey};
+use crate::persistent::{
+    default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
+    PersistentStorage, SchemaError,
+};
+use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
+use crate::{BlockHeaderWithHash, StorageError};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
@@ -22,10 +25,18 @@ pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
 
     /// Returns n-th predecessor for block_hash
-    fn find_block_at_distance(&self, block_hash: BlockHash, distance: i32) -> Result<Option<BlockHash>, StorageError>;
+    fn find_block_at_distance(
+        &self,
+        block_hash: BlockHash,
+        distance: i32,
+    ) -> Result<Option<BlockHash>, StorageError>;
 
     /// Return ancestors of requested [block_hash] according to max_ttl (something like limit) sorted by [BlockHash] bytes
-    fn get_live_blocks(&self, block_hash: BlockHash, max_ttl: usize) -> Result<Vec<BlockHash>, StorageError>;
+    fn get_live_blocks(
+        &self,
+        block_hash: BlockHash,
+        max_ttl: usize,
+    ) -> Result<Vec<BlockHash>, StorageError>;
 }
 
 #[derive(Clone)]
@@ -38,12 +49,20 @@ impl BlockMetaStorage {
     const STORED_PREDECESSORS_SIZE: u32 = 12;
 
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        BlockMetaStorage { kv: persistent_storage.kv(), predecessors_index: PredecessorStorage::new(persistent_storage) }
+        BlockMetaStorage {
+            kv: persistent_storage.kv(),
+            predecessors_index: PredecessorStorage::new(persistent_storage),
+        }
     }
 
     /// Creates/updates metadata record in storage from given block header
     /// Returns block metadata
-    pub fn put_block_header(&self, block_header: &BlockHeaderWithHash, chain_id: &ChainId, log: &Logger) -> Result<Meta, StorageError> {
+    pub fn put_block_header(
+        &self,
+        block_header: &BlockHeaderWithHash,
+        chain_id: &ChainId,
+        log: &Logger,
+    ) -> Result<Meta, StorageError> {
         // create/update record for block
         let block_metadata = match self.get(&block_header.hash)? {
             Some(mut meta) => {
@@ -136,38 +155,46 @@ impl BlockMetaStorage {
         Ok(block_metadata)
     }
 
-    pub fn store_predecessors(&self, block_hash: &BlockHash, block_meta: &Meta) -> Result<(), StorageError> {
-        self.predecessors_index.store_predecessors(block_hash, block_meta, Self::STORED_PREDECESSORS_SIZE)?;
+    pub fn store_predecessors(
+        &self,
+        block_hash: &BlockHash,
+        block_meta: &Meta,
+    ) -> Result<(), StorageError> {
+        self.predecessors_index.store_predecessors(
+            block_hash,
+            block_meta,
+            Self::STORED_PREDECESSORS_SIZE,
+        )?;
         Ok(())
     }
 
     #[inline]
     pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
-        self.kv.merge(block_hash, meta)
-            .map_err(StorageError::from)
+        self.kv.merge(block_hash, meta).map_err(StorageError::from)
     }
 
     #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
-        self.kv.get(block_hash)
-            .map_err(StorageError::from)
+        self.kv.get(block_hash).map_err(StorageError::from)
     }
 
     #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv.iterator(mode)
-            .map_err(StorageError::from)
+        self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
 
 impl BlockMetaStorageReader for BlockMetaStorage {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
-        self.kv.get(block_hash)
-            .map_err(StorageError::from)
+        self.kv.get(block_hash).map_err(StorageError::from)
     }
 
     // NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
-    fn find_block_at_distance(&self, block_hash: BlockHash, requested_distance: i32) -> Result<Option<BlockHash>, StorageError> {
+    fn find_block_at_distance(
+        &self,
+        block_hash: BlockHash,
+        requested_distance: i32,
+    ) -> Result<Option<BlockHash>, StorageError> {
         if requested_distance == 0 {
             return Ok(Some(block_hash));
         }
@@ -182,7 +209,7 @@ impl BlockMetaStorageReader for BlockMetaStorage {
             if distance == 1 {
                 // distance is 1, return the direct prdecessor
                 let key = PredecessorKey::new(block_hash, 0);
-                return self.predecessors_index.get(&key)
+                return self.predecessors_index.get(&key);
             } else {
                 let (mut power, mut rest) = closest_power_two_and_rest(distance)?;
 
@@ -194,19 +221,23 @@ impl BlockMetaStorageReader for BlockMetaStorage {
                 let key = PredecessorKey::new(block_hash.clone(), power);
                 if let Some(pred) = self.predecessors_index.get(&key)? {
                     if rest == 0 {
-                        return Ok(Some(pred))
+                        return Ok(Some(pred));
                     } else {
                         block_hash = pred;
                         distance = rest;
                     }
                 } else {
-                    return Ok(None) // reached genesis
+                    return Ok(None); // reached genesis
                 }
             }
         }
     }
 
-    fn get_live_blocks(&self, block_hash: BlockHash, max_ttl: usize) -> Result<Vec<BlockHash>, StorageError> {
+    fn get_live_blocks(
+        &self,
+        block_hash: BlockHash,
+        max_ttl: usize,
+    ) -> Result<Vec<BlockHash>, StorageError> {
         // Note: tezos ocaml for max_ttl=60 returns 61 blocks
         let mut live_blocks_counter = max_ttl + 1;
         let mut live_blocks = Vec::with_capacity(live_blocks_counter);
@@ -223,10 +254,10 @@ impl BlockMetaStorageReader for BlockMetaStorage {
                     Some(predecessor) => {
                         live_blocks.push(predecessor.clone());
                         current = predecessor
-                    },
+                    }
                     None => {
                         // Note: if not predecessor, means, that we are done, genesis does not have predecessor
-                        break
+                        break;
                     }
                 }
             }
@@ -243,7 +274,7 @@ impl BlockMetaStorageReader for BlockMetaStorage {
 /// and the rest (distance = 2^closest_power + rest)
 fn closest_power_two_and_rest(distance: i32) -> Result<(u32, i32), StorageError> {
     if distance < 0 {
-        return Err(StorageError::PredecessorLookupError)
+        return Err(StorageError::PredecessorLookupError);
     }
 
     let base: i32 = 2;
@@ -275,23 +306,35 @@ const IDX_SUCCESSOR_COUNT: usize = IDX_CHAIN_ID + LEN_CHAIN_ID;
 const IDX_SUCCESSOR: usize = IDX_SUCCESSOR_COUNT + std::mem::size_of::<usize>();
 
 const BLANK_BLOCK_HASH: [u8; LEN_BLOCK_HASH] = [0; LEN_BLOCK_HASH];
-const LEN_FIXED_META: usize = std::mem::size_of::<u8>() + LEN_BLOCK_HASH + std::mem::size_of::<i32>() + LEN_CHAIN_ID + std::mem::size_of::<usize>();
+const LEN_FIXED_META: usize = std::mem::size_of::<u8>()
+    + LEN_BLOCK_HASH
+    + std::mem::size_of::<i32>()
+    + LEN_CHAIN_ID
+    + std::mem::size_of::<usize>();
 
 const fn total_len(predecessors_count: usize) -> usize {
     LEN_FIXED_META + (predecessors_count * LEN_BLOCK_HASH)
 }
 
 macro_rules! is_applied {
-    ($mask:expr) => {{ ($mask & MASK_IS_APPLIED) != 0 }}
+    ($mask:expr) => {{
+        ($mask & MASK_IS_APPLIED) != 0
+    }};
 }
 macro_rules! has_predecessor {
-    ($mask:expr) => {{ ($mask & MASK_HAS_PREDECESSOR) != 0 }}
+    ($mask:expr) => {{
+        ($mask & MASK_HAS_PREDECESSOR) != 0
+    }};
 }
 macro_rules! has_successor {
-    ($mask:expr) => {{ ($mask & MASK_HAS_SUCCESSOR) != 0 }}
+    ($mask:expr) => {{
+        ($mask & MASK_HAS_SUCCESSOR) != 0
+    }};
 }
 macro_rules! successors_count {
-    ($bytes:expr) => {{ num_from_slice!($bytes, IDX_SUCCESSOR_COUNT, usize) }}
+    ($bytes:expr) => {{
+        num_from_slice!($bytes, IDX_SUCCESSOR_COUNT, usize)
+    }};
 }
 
 /// Meta information for the block
@@ -314,7 +357,11 @@ impl Meta {
     pub const GENESIS_LEVEL: i32 = 0;
 
     /// Create Metadata for specific genesis block
-    pub fn genesis_meta(genesis_hash: &BlockHash, genesis_chain_id: &ChainId, is_applied: bool) -> Self {
+    pub fn genesis_meta(
+        genesis_hash: &BlockHash,
+        genesis_chain_id: &ChainId,
+        is_applied: bool,
+    ) -> Self {
         Meta {
             is_applied,
             predecessor: Some(genesis_hash.clone()), // this is what we want
@@ -324,7 +371,12 @@ impl Meta {
         }
     }
 
-    pub fn new(is_applied: bool, predecessor: Option<BlockHash>, level: Level, chain_id: ChainId) -> Self {
+    pub fn new(
+        is_applied: bool,
+        predecessor: Option<BlockHash>,
+        level: Level,
+        chain_id: ChainId,
+    ) -> Self {
         Self {
             is_applied,
             predecessor,
@@ -347,7 +399,13 @@ impl Decoder for Meta {
             // predecessor
             let predecessor = if has_predecessor!(mask) {
                 let block_hash = bytes[IDX_PREDECESSOR..IDX_LEVEL].to_vec();
-                assert_eq!(LEN_BLOCK_HASH, block_hash.len(), "Predecessor expected length is {} but found {}", LEN_BLOCK_HASH, block_hash.len());
+                assert_eq!(
+                    LEN_BLOCK_HASH,
+                    block_hash.len(),
+                    "Predecessor expected length is {} but found {}",
+                    LEN_BLOCK_HASH,
+                    block_hash.len()
+                );
                 Some(block_hash)
             } else {
                 None
@@ -364,16 +422,36 @@ impl Decoder for Meta {
                 if has_successor!(mask) {
                     for i in 0..count {
                         let next_successor_index = IDX_SUCCESSOR + (i * LEN_BLOCK_HASH);
-                        let block_hash = bytes[next_successor_index..(next_successor_index + LEN_BLOCK_HASH)].to_vec();
-                        assert_eq!(LEN_BLOCK_HASH, block_hash.len(), "Successor expected length is {} but found {}", LEN_BLOCK_HASH, block_hash.len());
+                        let block_hash = bytes
+                            [next_successor_index..(next_successor_index + LEN_BLOCK_HASH)]
+                            .to_vec();
+                        assert_eq!(
+                            LEN_BLOCK_HASH,
+                            block_hash.len(),
+                            "Successor expected length is {} but found {}",
+                            LEN_BLOCK_HASH,
+                            block_hash.len()
+                        );
                         successors.push(block_hash);
                     }
                 }
                 successors
             };
 
-            assert_eq!(LEN_CHAIN_ID, chain_id.len(), "Chain ID expected length is {} but found {}", LEN_CHAIN_ID, chain_id.len());
-            Ok(Meta { predecessor, successors, is_applied: is_processed, level, chain_id })
+            assert_eq!(
+                LEN_CHAIN_ID,
+                chain_id.len(),
+                "Chain ID expected length is {} but found {}",
+                LEN_CHAIN_ID,
+                chain_id.len()
+            );
+            Ok(Meta {
+                predecessor,
+                successors,
+                is_applied: is_processed,
+                level,
+                chain_id,
+            })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -399,19 +477,26 @@ impl Encoder for Meta {
         value.push(mask);
         match &self.predecessor {
             Some(predecessor) => value.extend(predecessor),
-            None => value.extend(&BLANK_BLOCK_HASH)
+            None => value.extend(&BLANK_BLOCK_HASH),
         }
         value.extend(&self.level.to_be_bytes());
         value.extend(&self.chain_id);
         value.extend(&successors_count.to_be_bytes());
         if successors_count > 0 {
-            self.successors
-                .iter()
-                .for_each(|successor| {
-                    value.extend(successor);
-                });
+            self.successors.iter().for_each(|successor| {
+                value.extend(successor);
+            });
         }
-        assert_eq!(total_len, value.len(), "Invalid size. mask={:?}, predecessor={:?}, successors={:?}, level={:?}, data={:?}", mask, &self.predecessor, &self.successors, self.level, &value);
+        assert_eq!(
+            total_len,
+            value.len(),
+            "Invalid size. mask={:?}, predecessor={:?}, successors={:?}, level={:?}, data={:?}",
+            mask,
+            &self.predecessor,
+            &self.successors,
+            self.level,
+            &value
+        );
 
         Ok(value)
     }
@@ -433,13 +518,22 @@ impl KeyValueSchema for BlockMetaStorage {
     }
 }
 
-fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut MergeOperands) -> Option<Vec<u8>> {
+fn merge_meta_value(
+    _new_key: &[u8],
+    existing_val: Option<&[u8]>,
+    operands: &mut MergeOperands,
+) -> Option<Vec<u8>> {
     let mut result = existing_val.map(|v| v.to_vec());
 
     for op in operands {
         match result {
             Some(ref mut val) => {
-                assert!(LEN_FIXED_META <= val.len(), "Value length is incorrect. Was expecting at least {} but instead found {}", LEN_FIXED_META, val.len());
+                assert!(
+                    LEN_FIXED_META <= val.len(),
+                    "Value length is incorrect. Was expecting at least {} but instead found {}",
+                    LEN_FIXED_META,
+                    val.len()
+                );
 
                 let mask_val = val[IDX_MASK];
                 let mask_op = op[IDX_MASK];
@@ -449,21 +543,29 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
 
                 // if op has predecessor and val has not, copy it from op to val
                 if has_predecessor!(mask_op) && !has_predecessor!(mask_val) {
-                    val.splice(IDX_PREDECESSOR..IDX_LEVEL, op[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned());
+                    val.splice(
+                        IDX_PREDECESSOR..IDX_LEVEL,
+                        op[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned(),
+                    );
                 }
 
                 // replace op (successors count + successors) to val
                 let val_successors_count = successors_count!(val);
                 let op_successors_count = successors_count!(op);
-                if (has_successor!(mask_op) && !has_successor!(mask_val)) || (val_successors_count != op_successors_count) {
+                if (has_successor!(mask_op) && !has_successor!(mask_val))
+                    || (val_successors_count != op_successors_count)
+                {
                     val.truncate(LEN_FIXED_META);
-                    val.splice(IDX_SUCCESSOR_COUNT.., op[IDX_SUCCESSOR_COUNT..].iter().cloned());
+                    val.splice(
+                        IDX_SUCCESSOR_COUNT..,
+                        op[IDX_SUCCESSOR_COUNT..].iter().cloned(),
+                    );
                 }
 
                 let total_len = total_len(op_successors_count);
                 assert_eq!(total_len, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", total_len, val.len());
             }
-            None => result = Some(op.to_vec())
+            None => result = Some(op.to_vec()),
         }
     }
 
@@ -472,16 +574,16 @@ fn merge_meta_value(_new_key: &[u8], existing_val: Option<&[u8]>, operands: &mut
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
     use std::collections::HashSet;
     use std::convert::TryInto;
+    use std::path::Path;
 
     use failure::Error;
     use rand::Rng;
 
     use crypto::hash::HashType;
 
-    use crate::persistent::{DbConfiguration, open_kv};
+    use crate::persistent::{open_kv, DbConfiguration};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -505,7 +607,8 @@ mod tests {
     fn genesis_block_initialized_success() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__blockmeta_genesistest")?;
 
-        let k = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
+        let k = HashType::BlockHash
+            .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
         let chain_id = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
         let v = Meta::genesis_meta(&k, &chain_id, true);
         let storage = BlockMetaStorage::new(tmp_storage.storage());
@@ -604,7 +707,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() {
-        use rocksdb::{Options, DB, Cache};
+        use rocksdb::{Cache, Options, DB};
 
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
@@ -613,7 +716,12 @@ mod tests {
 
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let db = open_kv(path, vec![BlockMetaStorage::descriptor(&cache)], &DbConfiguration::default()).unwrap();
+            let db = open_kv(
+                path,
+                vec![BlockMetaStorage::descriptor(&cache)],
+                &DbConfiguration::default(),
+            )
+            .unwrap();
             let k = vec![44; 32];
             let mut v = Meta {
                 is_applied: false,
@@ -656,7 +764,10 @@ mod tests {
     }
 
     /// Create and return a storage with [number_of_blocks] blocks and the last BlockHash in it
-    fn init_mocked_storage(number_of_blocks: usize, storage_name: &str) -> Result<(BlockMetaStorage, BlockHash, Vec<BlockHash>), Error> {
+    fn init_mocked_storage(
+        number_of_blocks: usize,
+        storage_name: &str,
+    ) -> Result<(BlockMetaStorage, BlockHash, Vec<BlockHash>), Error> {
         let tmp_storage = TmpStorage::create(storage_name)?;
         let storage = BlockMetaStorage::new(tmp_storage.storage());
         let mut block_hash_set = HashSet::new();
@@ -674,22 +785,29 @@ mod tests {
         let mut predecessor = k;
 
         // generate random block hashes, watch out for colissions, save them to a vector for later use
-        // this vector is our reference point (It allows us to compare the retriebved block hash 
-        // from the storage with the block hash in vector which was insertd sequently thus the 
+        // this vector is our reference point (It allows us to compare the retriebved block hash
+        // from the storage with the block hash in vector which was insertd sequently thus the
         // we can  deduct its level from its index in the vector)
-        let block_hashes: Vec<BlockHash> = (1..number_of_blocks).map(|_| {
-            let mut random_hash: BlockHash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
-            // regenerate on collision
-            while block_hash_set.contains(&random_hash) {
-                random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
-            }
-            block_hash_set.insert(random_hash.clone());
-            random_hash
-        }).collect();
+        let block_hashes: Vec<BlockHash> = (1..number_of_blocks)
+            .map(|_| {
+                let mut random_hash: BlockHash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+                // regenerate on collision
+                while block_hash_set.contains(&random_hash) {
+                    random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+                }
+                block_hash_set.insert(random_hash.clone());
+                random_hash
+            })
+            .collect();
 
         // add them to the mocked storage
         for (idx, block_hash) in block_hashes.iter().enumerate() {
-            let v = Meta::new(true, Some(predecessor.clone()), idx.try_into()?, vec![44; 4]);
+            let v = Meta::new(
+                true,
+                Some(predecessor.clone()),
+                idx.try_into()?,
+                vec![44; 4],
+            );
             storage.put(&block_hash, &v)?;
             storage.store_predecessors(&block_hash, &v)?;
             predecessor = block_hash.clone();
@@ -703,45 +821,37 @@ mod tests {
         const BLOCK_COUNT: usize = 100_000;
 
         // block_hashes starts with level 1 (genesis not included)
-        let (storage, last_block_hash, block_hashes) = init_mocked_storage(BLOCK_COUNT, "__find_block_at_distance_teststorage")?;
+        let (storage, last_block_hash, block_hashes) =
+            init_mocked_storage(BLOCK_COUNT, "__find_block_at_distance_teststorage")?;
 
         // from the last block, go to distance BLOCK_COUNT - 2 -> should be level 1
-        let res = storage.find_block_at_distance(block_hashes[BLOCK_COUNT - 2].clone(), BLOCK_COUNT as i32 - 2)?;
+        let res = storage.find_block_at_distance(
+            block_hashes[BLOCK_COUNT - 2].clone(),
+            BLOCK_COUNT as i32 - 2,
+        )?;
         assert!(res.is_some());
-        assert_eq!(
-            block_hashes[0],
-            res.unwrap()
-        );
+        assert_eq!(block_hashes[0], res.unwrap());
 
-        // from the last block, go to distance BLOCK_COUNT - BLOCK_COUNT / 2 -> should be hash on 
-        let res = storage.find_block_at_distance(block_hashes[BLOCK_COUNT - 2].clone(), BLOCK_COUNT as i32 / 2)?;
+        // from the last block, go to distance BLOCK_COUNT - BLOCK_COUNT / 2 -> should be hash on
+        let res = storage.find_block_at_distance(
+            block_hashes[BLOCK_COUNT - 2].clone(),
+            BLOCK_COUNT as i32 / 2,
+        )?;
         assert!(res.is_some());
-        assert_eq!(
-            block_hashes[BLOCK_COUNT / 2 - 2],
-            res.unwrap()
-        );
+        assert_eq!(block_hashes[BLOCK_COUNT / 2 - 2], res.unwrap());
 
-        // from the bloc on level 10, go to distance BLOCK_COUNT - BLOCK_COUNT / 2 -> should be hash on 
+        // from the bloc on level 10, go to distance BLOCK_COUNT - BLOCK_COUNT / 2 -> should be hash on
         let res = storage.find_block_at_distance(block_hashes[9].clone(), 5)?;
         assert!(res.is_some());
-        assert_eq!(
-            block_hashes[4],
-            res.unwrap()
-        );
+        assert_eq!(block_hashes[4], res.unwrap());
 
         // get the direct predecessor using find_block_at_distance
         let res = storage.find_block_at_distance(block_hashes[9].clone(), 1)?;
         assert!(res.is_some());
-        assert_eq!(
-            block_hashes[8],
-            res.unwrap()
-        );
+        assert_eq!(block_hashes[8], res.unwrap());
         for i in 1..BLOCK_COUNT - 2 {
             let res = storage.find_block_at_distance(last_block_hash.clone(), i as i32)?;
-            assert_eq!(
-                block_hashes[BLOCK_COUNT - i - 2],
-                res.unwrap()
-            )
+            assert_eq!(block_hashes[BLOCK_COUNT - i - 2], res.unwrap())
         }
 
         Ok(())
@@ -749,10 +859,11 @@ mod tests {
 
     #[test]
     fn find_block_at_distance_heavy_test() -> Result<(), Error> {
-        const BLOCK_COUNT: usize = 1_500;
+        const BLOCK_COUNT: usize = 1_025;
 
         // block_hashes starts with level 1 (genesis not included)
-        let (storage, _, block_hashes) = init_mocked_storage(BLOCK_COUNT, "__find_block_at_distance_heavy_teststorage")?;
+        let (storage, _, block_hashes) =
+            init_mocked_storage(BLOCK_COUNT, "__find_block_at_distance_heavy_teststorage")?;
 
         // So called 'ultimate' test, tests all blocks with all possible distances
         for (idx, hash) in block_hashes.iter().enumerate() {
@@ -762,10 +873,7 @@ mod tests {
             }
             for i in 1..idx {
                 let res = storage.find_block_at_distance(hash.to_vec(), i as i32)?;
-                assert_eq!(
-                    block_hashes[idx - i],
-                    res.unwrap()
-                )
+                assert_eq!(block_hashes[idx - i], res.unwrap())
             }
         }
 

@@ -8,14 +8,14 @@ use failure::Error;
 use slog::{Drain, Level, Logger};
 
 use crypto::hash::{chain_id_from_block_hash, ContextHash, HashType};
-use storage::*;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
+use storage::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides};
-use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::Head;
 
 #[test]
 fn test_storage() -> Result<(), Error> {
@@ -40,7 +40,7 @@ fn test_storage() -> Result<(), Error> {
         },
         bootstrap_lookup_addresses: vec![
             "bootstrap.zeronet.fun".to_string(),
-            "bootzero.tzbeta.net".to_string()
+            "bootzero.tzbeta.net".to_string(),
         ],
         version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
         protocol_overrides: ProtocolOverrides {
@@ -52,12 +52,19 @@ fn test_storage() -> Result<(), Error> {
     };
 
     // initialize empty storage
-    let init_data = resolve_storage_init_chain_data(&tezos_env, &tmp_storage_dir, &context_dir, &None, &log);
+    let init_data =
+        resolve_storage_init_chain_data(&tezos_env, &tmp_storage_dir, &context_dir, &None, &log);
     assert!(init_data.is_ok());
 
     let init_data = init_data.unwrap();
-    assert_eq!(init_data.genesis_block_header_hash, HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?);
-    assert_eq!(init_data.chain_id, chain_id_from_block_hash(&HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?));
+    assert_eq!(
+        init_data.genesis_block_header_hash,
+        HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?
+    );
+    assert_eq!(
+        init_data.chain_id,
+        chain_id_from_block_hash(&HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?)
+    );
 
     // load current head (non)
     let current_head = chain_meta_storage.get_current_head(&init_data.chain_id);
@@ -69,7 +76,8 @@ fn test_storage() -> Result<(), Error> {
     assert!(genesis.is_none());
 
     // simulate commit genesis in two steps
-    let new_context_hash: ContextHash = HashType::ContextHash.b58check_to_hash("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
+    let new_context_hash: ContextHash = HashType::ContextHash
+        .b58check_to_hash("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
     let _ = initialize_storage_with_genesis_block(
         &block_storage,
         &init_data,
@@ -94,48 +102,75 @@ fn test_storage() -> Result<(), Error> {
 
     // check genesis is on genesis
     assert_eq!(
-        chain_meta_storage.get_genesis(&init_data.chain_id)?.expect("Genesis should be set").block_hash(),
+        chain_meta_storage
+            .get_genesis(&init_data.chain_id)?
+            .expect("Genesis should be set")
+            .block_hash(),
         &init_data.genesis_block_header_hash
     );
 
     // check caboose is on genesis
     assert_eq!(
-        chain_meta_storage.get_caboose(&init_data.chain_id)?.expect("Caboose should be set").block_hash(),
+        chain_meta_storage
+            .get_caboose(&init_data.chain_id)?
+            .expect("Caboose should be set")
+            .block_hash(),
         &init_data.genesis_block_header_hash
     );
 
     // check current head is on genesis
     assert_eq!(
-        chain_meta_storage.get_current_head(&init_data.chain_id)?.expect("Current header should be set").block_hash(),
+        chain_meta_storage
+            .get_current_head(&init_data.chain_id)?
+            .expect("Current header should be set")
+            .block_hash(),
         &init_data.genesis_block_header_hash
     );
 
     // genesis is stored with replaced context hash
-    let genesis = block_storage.get(&init_data.genesis_block_header_hash)?.expect("Genesis was not stored!");
+    let genesis = block_storage
+        .get(&init_data.genesis_block_header_hash)?
+        .expect("Genesis was not stored!");
     assert_eq!(new_context_hash, genesis.header.context().clone());
 
     // genesis is stored with replaced context hash
-    let genesis = block_storage.get_by_context_hash(&new_context_hash)?.expect("Genesis was not assigned to context_hash!");
+    let genesis = block_storage
+        .get_by_context_hash(&new_context_hash)?
+        .expect("Genesis was not assigned to context_hash!");
     assert_eq!(new_context_hash, genesis.header.context().clone());
 
     // check genesis jsons
-    let (_, data) = block_storage.get_with_json_data(&init_data.genesis_block_header_hash)?.expect("No json data was saved");
-    assert_eq!(data.block_header_proto_json(), &commit_genesis_result.block_header_proto_json);
-    assert_eq!(data.block_header_proto_metadata_json(), &commit_genesis_result.block_header_proto_metadata_json);
-    assert_eq!(data.operations_proto_metadata_json(), &commit_genesis_result.operations_proto_metadata_json);
+    let (_, data) = block_storage
+        .get_with_json_data(&init_data.genesis_block_header_hash)?
+        .expect("No json data was saved");
+    assert_eq!(
+        data.block_header_proto_json(),
+        &commit_genesis_result.block_header_proto_json
+    );
+    assert_eq!(
+        data.block_header_proto_metadata_json(),
+        &commit_genesis_result.block_header_proto_metadata_json
+    );
+    assert_eq!(
+        data.operations_proto_metadata_json(),
+        &commit_genesis_result.operations_proto_metadata_json
+    );
 
     // simulate apply block
     let block = make_test_block_header()?;
     block_storage.put_block_header(&block)?;
     block_meta_storage.put_block_header(&block, &init_data.chain_id, &log)?;
-    let mut metadata = block_meta_storage.get(&block.hash)?.expect("No metadata was saved");
+    let mut metadata = block_meta_storage
+        .get(&block.hash)?
+        .expect("No metadata was saved");
     assert!(!metadata.is_applied());
 
     // save apply result
     let apply_result = ApplyBlockResponse {
         last_allowed_fork_level: 5,
         max_operations_ttl: 6,
-        context_hash: HashType::ContextHash.b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
+        context_hash: HashType::ContextHash
+            .b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
         block_header_proto_json: "{block_header_proto_json}".to_string(),
         block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
         operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),
@@ -163,28 +198,67 @@ fn test_storage() -> Result<(), Error> {
 
     // check if data stored
     assert!(metadata.is_applied());
-    let metadata = block_meta_storage.get(&block.hash)?.expect("No metadata was found");
+    let metadata = block_meta_storage
+        .get(&block.hash)?
+        .expect("No metadata was found");
     assert!(metadata.is_applied());
 
     // check additional
-    let (_, data) = block_storage.get_with_additional_data(&block.hash)?.expect("No additional data was saved");
-    assert_eq!(data.max_operations_ttl(), apply_result.max_operations_ttl as u16);
-    assert_eq!(data.last_allowed_fork_level(), apply_result.last_allowed_fork_level);
-    assert_eq!(block_additional_data.max_operations_ttl(), apply_result.max_operations_ttl as u16);
-    assert_eq!(block_additional_data.last_allowed_fork_level(), apply_result.last_allowed_fork_level);
+    let (_, data) = block_storage
+        .get_with_additional_data(&block.hash)?
+        .expect("No additional data was saved");
+    assert_eq!(
+        data.max_operations_ttl(),
+        apply_result.max_operations_ttl as u16
+    );
+    assert_eq!(
+        data.last_allowed_fork_level(),
+        apply_result.last_allowed_fork_level
+    );
+    assert_eq!(
+        block_additional_data.max_operations_ttl(),
+        apply_result.max_operations_ttl as u16
+    );
+    assert_eq!(
+        block_additional_data.last_allowed_fork_level(),
+        apply_result.last_allowed_fork_level
+    );
 
     // check json
-    let (_, data) = block_storage.get_with_json_data(&block.hash)?.expect("No json data was saved");
-    assert_eq!(data.block_header_proto_json(), &apply_result.block_header_proto_json);
-    assert_eq!(data.block_header_proto_metadata_json(), &apply_result.block_header_proto_metadata_json);
-    assert_eq!(data.operations_proto_metadata_json(), &apply_result.operations_proto_metadata_json);
-    assert_eq!(block_json_data.block_header_proto_json(), &apply_result.block_header_proto_json);
-    assert_eq!(block_json_data.block_header_proto_metadata_json(), &apply_result.block_header_proto_metadata_json);
-    assert_eq!(block_json_data.operations_proto_metadata_json(), &apply_result.operations_proto_metadata_json);
+    let (_, data) = block_storage
+        .get_with_json_data(&block.hash)?
+        .expect("No json data was saved");
+    assert_eq!(
+        data.block_header_proto_json(),
+        &apply_result.block_header_proto_json
+    );
+    assert_eq!(
+        data.block_header_proto_metadata_json(),
+        &apply_result.block_header_proto_metadata_json
+    );
+    assert_eq!(
+        data.operations_proto_metadata_json(),
+        &apply_result.operations_proto_metadata_json
+    );
+    assert_eq!(
+        block_json_data.block_header_proto_json(),
+        &apply_result.block_header_proto_json
+    );
+    assert_eq!(
+        block_json_data.block_header_proto_metadata_json(),
+        &apply_result.block_header_proto_metadata_json
+    );
+    assert_eq!(
+        block_json_data.operations_proto_metadata_json(),
+        &apply_result.operations_proto_metadata_json
+    );
 
     // load current head - should be changed
     assert_eq!(
-        chain_meta_storage.get_current_head(&init_data.chain_id)?.expect("Current header should be set").block_hash(),
+        chain_meta_storage
+            .get_current_head(&init_data.chain_id)?
+            .expect("Current header should be set")
+            .block_hash(),
         &block.hash
     );
 
@@ -199,12 +273,18 @@ fn make_test_block_header() -> Result<BlockHeaderWithHash, Error> {
 
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    Path::new(out_dir.as_str())
-        .join(Path::new(dir_name))
+    Path::new(out_dir.as_str()).join(Path::new(dir_name))
 }
 
 fn create_logger() -> Logger {
-    let drain = slog_async::Async::new(slog_term::FullFormat::new(slog_term::TermDecorator::new().build()).build().fuse()).build().filter_level(Level::Info).fuse();
+    let drain = slog_async::Async::new(
+        slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+            .build()
+            .fuse(),
+    )
+    .build()
+    .filter_level(Level::Info)
+    .fuse();
 
     Logger::root(drain, slog::o!())
 }

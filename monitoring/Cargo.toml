@@ -1,13 +1,11 @@
 [package]
 name = "monitoring"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
 erased-serde = "0.3"
-failure = "0.1"
-rand = "0.7.3"
 riker = "0.4"
 ws = "*"
 serde = "1.0"
@@ -18,5 +16,7 @@ slog_derive = "0.1.1"
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
-storage = { path = "../storage" }
 tezos_messages = { path = "../tezos/messages" }
+
+[dev-dependencies]
+rand = "0.7.3"

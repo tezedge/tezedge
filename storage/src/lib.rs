@@ -3,7 +3,7 @@
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
 
-use std::convert::{TryInto, TryFrom};
+use std::convert::{TryFrom, TryInto};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -13,39 +13,48 @@ use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
-use tezos_api::environment::{OPERATION_LIST_LIST_HASH_EMPTY, TezosEnvironmentConfiguration, TezosEnvironmentError};
+use tezos_api::environment::{
+    TezosEnvironmentConfiguration, TezosEnvironmentError, OPERATION_LIST_LIST_HASH_EMPTY,
+};
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
-use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
+use tezos_messages::Head;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
-pub use crate::block_storage::{BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder, BlockStorage, BlockStorageReader};
+pub use crate::block_storage::{
+    BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
+    BlockStorage, BlockStorageReader,
+};
 pub use crate::chain_meta_storage::ChainMetaStorage;
-pub use crate::context_action_storage::{ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage};
+pub use crate::context_action_storage::{
+    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
+};
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
-pub use crate::operations_storage::{OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader};
-use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
+pub use crate::operations_storage::{
+    OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
+};
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
-pub use crate::system_storage::SystemStorage;
+use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
+pub use crate::system_storage::SystemStorage;
 
-pub mod persistent;
-pub mod merkle_storage;
-pub mod operations_storage;
-pub mod operations_meta_storage;
-pub mod block_storage;
 pub mod block_meta_storage;
+pub mod block_storage;
+pub mod chain_meta_storage;
+pub mod context;
 pub mod context_action_storage;
 pub mod mempool_storage;
-pub mod system_storage;
-pub mod skip_list;
-pub mod context;
-pub mod chain_meta_storage;
+pub mod merkle_storage;
+pub mod operations_meta_storage;
+pub mod operations_storage;
+pub mod persistent;
 pub mod predecessor_storage;
+pub mod skip_list;
+pub mod system_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -77,7 +86,11 @@ impl Encoder for BlockHeaderWithHash {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = vec![];
         result.extend(&self.hash);
-        result.extend(self.header.as_bytes().map_err(|_| SchemaError::EncodeError)?);
+        result.extend(
+            self.header
+                .as_bytes()
+                .map_err(|_| SchemaError::EncodeError)?,
+        );
         Ok(result)
     }
 }
@@ -86,8 +99,12 @@ impl Decoder for BlockHeaderWithHash {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         let hash = bytes[0..HashType::BlockHash.size()].to_vec();
-        let header = BlockHeader::from_bytes(&bytes[HashType::BlockHash.size()..]).map_err(|_| SchemaError::DecodeError)?;
-        Ok(BlockHeaderWithHash { hash, header: Arc::new(header) })
+        let header = BlockHeader::from_bytes(&bytes[HashType::BlockHash.size()..])
+            .map_err(|_| SchemaError::DecodeError)?;
+        Ok(BlockHeaderWithHash {
+            hash,
+            header: Arc::new(header),
+        })
     }
 }
 
@@ -95,29 +112,19 @@ impl Decoder for BlockHeaderWithHash {
 #[derive(Debug, Fail)]
 pub enum StorageError {
     #[fail(display = "Database error: {}", error)]
-    DBError {
-        error: DBError
-    },
+    DBError { error: DBError },
     #[fail(display = "Commit log error: {}", error)]
-    CommitLogError {
-        error: CommitLogError
-    },
+    CommitLogError { error: CommitLogError },
     #[fail(display = "Key is missing in storage")]
     MissingKey,
     #[fail(display = "Column is not valid")]
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
-    SequenceError {
-        error: SequenceError
-    },
+    SequenceError { error: SequenceError },
     #[fail(display = "Tezos environment configuration error: {}", error)]
-    TezosEnvironmentError {
-        error: TezosEnvironmentError
-    },
+    TezosEnvironmentError { error: TezosEnvironmentError },
     #[fail(display = "Message hash error: {}", error)]
-    MessageHashError {
-        error: MessageHashError
-    },
+    MessageHashError { error: MessageHashError },
     #[fail(display = "Predecessor lookup failed")]
     PredecessorLookupError,
 }
@@ -142,7 +149,9 @@ impl From<CommitLogError> for StorageError {
 
 impl From<SchemaError> for StorageError {
     fn from(error: SchemaError) -> Self {
-        StorageError::DBError { error: error.into() }
+        StorageError::DBError {
+            error: error.into(),
+        }
     }
 }
 
@@ -159,7 +168,12 @@ impl From<TezosEnvironmentError> for StorageError {
 }
 
 impl slog::Value for StorageError {
-    fn serialize(&self, _record: &slog::Record, key: slog::Key, serializer: &mut dyn slog::Serializer) -> slog::Result {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
 }
@@ -173,11 +187,13 @@ pub struct StorageInitInfo {
 }
 
 /// Resolve main chain id and genesis header from configuration
-pub fn resolve_storage_init_chain_data(tezos_env: &TezosEnvironmentConfiguration,
-                                       storage_db_path: &Path,
-                                       context_db_path: &Path,
-                                       patch_context: &Option<PatchContext>,
-                                       log: &Logger) -> Result<StorageInitInfo, StorageError> {
+pub fn resolve_storage_init_chain_data(
+    tezos_env: &TezosEnvironmentConfiguration,
+    storage_db_path: &Path,
+    context_db_path: &Path,
+    patch_context: &Option<PatchContext>,
+    log: &Logger,
+) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
         chain_id: tezos_env.main_chain_id()?,
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
@@ -206,21 +222,23 @@ pub fn store_applied_block_result(
     block_meta_storage: &BlockMetaStorage,
     block_hash: &BlockHash,
     block_result: ApplyBlockResponse,
-    block_metadata: &mut block_meta_storage::Meta) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
-
+    block_metadata: &mut block_meta_storage::Meta,
+) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
     // store result data - json and additional data
     let block_json_data = BlockJsonDataBuilder::default()
         .block_header_proto_json(block_result.block_header_proto_json)
         .block_header_proto_metadata_json(block_result.block_header_proto_metadata_json)
         .operations_proto_metadata_json(block_result.operations_proto_metadata_json)
-        .build().unwrap();
+        .build()
+        .unwrap();
     block_storage.put_block_json_data(&block_hash, block_json_data.clone())?;
 
     // store additional data
     let block_additional_data = BlockAdditionalDataBuilder::default()
         .max_operations_ttl(block_result.max_operations_ttl.try_into().unwrap())
         .last_allowed_fork_level(block_result.last_allowed_fork_level)
-        .build().unwrap();
+        .build()
+        .unwrap();
     block_storage.put_block_additional_data(&block_hash, block_additional_data.clone())?;
 
     // TODO: check context checksum or context_hash
@@ -244,23 +262,30 @@ pub fn store_commit_genesis_result(
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
     init_storage_data: &StorageInitInfo,
-    bock_result: CommitGenesisResult) -> Result<BlockJsonData, StorageError> {
-
+    bock_result: CommitGenesisResult,
+) -> Result<BlockJsonData, StorageError> {
     // store data for genesis
     let genesis_block_hash = &init_storage_data.genesis_block_header_hash;
     let chain_id = &init_storage_data.chain_id;
 
     // if everything is stored and ok, we can considere genesis block as applied
     // if storage is empty, initialize with genesis
-    block_meta_storage.put(&genesis_block_hash, &block_meta_storage::Meta::genesis_meta(&genesis_block_hash, chain_id, true))?;
-    operations_meta_storage.put(&genesis_block_hash, &operations_meta_storage::Meta::genesis_meta(chain_id))?;
+    block_meta_storage.put(
+        &genesis_block_hash,
+        &block_meta_storage::Meta::genesis_meta(&genesis_block_hash, chain_id, true),
+    )?;
+    operations_meta_storage.put(
+        &genesis_block_hash,
+        &operations_meta_storage::Meta::genesis_meta(chain_id),
+    )?;
 
     // store result data - json and additional data
     let block_json_data = BlockJsonDataBuilder::default()
         .block_header_proto_json(bock_result.block_header_proto_json)
         .block_header_proto_metadata_json(bock_result.block_header_proto_metadata_json)
         .operations_proto_metadata_json(bock_result.operations_proto_metadata_json)
-        .build().unwrap();
+        .build()
+        .unwrap();
     block_storage.put_block_json_data(&genesis_block_hash, block_json_data.clone())?;
 
     // set genesis as current head - it is empty storage
@@ -279,7 +304,7 @@ pub fn store_commit_genesis_result(
 
             Ok(block_json_data)
         }
-        None => Err(StorageError::MissingKey)
+        None => Err(StorageError::MissingKey),
     }
 }
 
@@ -297,14 +322,17 @@ pub fn initialize_storage_with_genesis_block(
     init_storage_data: &StorageInitInfo,
     tezos_env: &TezosEnvironmentConfiguration,
     context_hash: &ContextHash,
-    log: &Logger) -> Result<BlockHeaderWithHash, StorageError> {
-
+    log: &Logger,
+) -> Result<BlockHeaderWithHash, StorageError> {
     // TODO: check context checksum or context_hash
 
     // store genesis
     let genesis_with_hash = BlockHeaderWithHash {
         hash: init_storage_data.genesis_block_header_hash.clone(),
-        header: Arc::new(tezos_env.genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?),
+        header: Arc::new(
+            tezos_env
+                .genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?,
+        ),
     };
     let _ = block_storage.put_block_header(&genesis_with_hash)?;
 
@@ -313,7 +341,8 @@ pub fn initialize_storage_with_genesis_block(
     let block_additional_data = BlockAdditionalDataBuilder::default()
         .max_operations_ttl(genesis_additional_data.max_operations_ttl)
         .last_allowed_fork_level(genesis_additional_data.last_allowed_fork_level)
-        .build().unwrap();
+        .build()
+        .unwrap();
     block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data)?;
 
     // context assign
@@ -331,7 +360,8 @@ pub fn check_database_compatibility(
     db: Arc<rocksdb::DB>,
     expected_database_version: i64,
     tezos_env: &TezosEnvironmentConfiguration,
-    log: &Logger) -> Result<bool, StorageError> {
+    log: &Logger,
+) -> Result<bool, StorageError> {
     let mut system_info = SystemStorage::new(db);
     let db_version_ok = match system_info.get_db_version()? {
         Some(db_version) => db_version == expected_database_version,
@@ -344,28 +374,33 @@ pub fn check_database_compatibility(
         error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
     }
 
-    let tezos_env_main_chain_id = tezos_env.main_chain_id().map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
+    let tezos_env_main_chain_id = tezos_env
+        .main_chain_id()
+        .map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
     let tezos_env_main_chain_name = &tezos_env.version;
 
-    let (chain_id_ok, previous_chain_name, requested_chain_name) = match system_info.get_chain_id()? {
-        Some(chain_id) => {
-            let previous_chain_name = match system_info.get_chain_name()? {
-                Some(chn) => chn,
-                None => "-unknown-".to_string()
-            };
+    let (chain_id_ok, previous_chain_name, requested_chain_name) =
+        match system_info.get_chain_id()? {
+            Some(chain_id) => {
+                let previous_chain_name = match system_info.get_chain_name()? {
+                    Some(chn) => chn,
+                    None => "-unknown-".to_string(),
+                };
 
-            if chain_id == tezos_env_main_chain_id && previous_chain_name.eq(tezos_env_main_chain_name.as_str()) {
-                (true, previous_chain_name, tezos_env_main_chain_name)
-            } else {
-                (false, previous_chain_name, tezos_env_main_chain_name)
+                if chain_id == tezos_env_main_chain_id
+                    && previous_chain_name.eq(tezos_env_main_chain_name.as_str())
+                {
+                    (true, previous_chain_name, tezos_env_main_chain_name)
+                } else {
+                    (false, previous_chain_name, tezos_env_main_chain_name)
+                }
             }
-        }
-        None => {
-            system_info.set_chain_id(&tezos_env_main_chain_id)?;
-            system_info.set_chain_name(&tezos_env_main_chain_name)?;
-            (true, "-none-".to_string(), tezos_env_main_chain_name)
-        }
-    };
+            None => {
+                system_info.set_chain_id(&tezos_env_main_chain_id)?;
+                system_info.set_chain_name(&tezos_env_main_chain_name)?;
+                (true, "-none-".to_string(), tezos_env_main_chain_name)
+            }
+        };
 
     if !chain_id_ok {
         error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
@@ -378,17 +413,17 @@ pub fn check_database_compatibility(
 }
 
 pub mod tests_common {
-    use std::{env, fs};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
+    use std::{env, fs};
 
     use failure::Error;
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
     use crate::mempool_storage::MempoolStorage;
-    use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
+    use crate::persistent::*;
     use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 
     use super::*;
@@ -402,8 +437,7 @@ pub mod tests_common {
     impl TmpStorage {
         pub fn create_to_out_dir(dir_name: &str) -> Result<Self, Error> {
             let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined - check build.rs");
-            let path = Path::new(out_dir.as_str())
-                .join(Path::new(dir_name));
+            let path = Path::new(out_dir.as_str()).join(Path::new(dir_name));
             Self::create(path)
         }
 
@@ -411,7 +445,11 @@ pub mod tests_common {
             Self::initialize(path, true, true)
         }
 
-        pub fn initialize<P: AsRef<Path>>(path: P, remove_if_exists: bool, remove_on_destroy: bool) -> Result<Self, Error> {
+        pub fn initialize<P: AsRef<Path>>(
+            path: P,
+            remove_if_exists: bool,
+            remove_on_destroy: bool,
+        ) -> Result<Self, Error> {
             let path = path.as_ref().to_path_buf();
             // remove previous data if exists
             if Path::new(&path).exists() && remove_if_exists {
@@ -423,30 +461,32 @@ pub mod tests_common {
             // create common RocksDB block cache to be shared among column families
             let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
-            let kv = open_kv(&path, vec![
-                block_storage::BlockPrimaryIndex::descriptor(&cache),
-                block_storage::BlockByLevelIndex::descriptor(&cache),
-                block_storage::BlockByContextHashIndex::descriptor(&cache),
-                BlockMetaStorage::descriptor(&cache),
-                OperationsStorage::descriptor(&cache),
-                OperationsMetaStorage::descriptor(&cache),
-                context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-                context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-                context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-                MerkleStorage::descriptor(&cache),
-                SystemStorage::descriptor(&cache),
-                Sequences::descriptor(&cache),
-                DatabaseBackedSkipList::descriptor(&cache),
-                Lane::descriptor(&cache),
-                ListValue::descriptor(&cache),
-                MempoolStorage::descriptor(&cache),
-                ContextActionStorage::descriptor(&cache),
-                ChainMetaStorage::descriptor(&cache),
-                PredecessorStorage::descriptor(&cache),
-            ], &cfg)?;
-            let clog = open_cl(&path, vec![
-                BlockStorage::descriptor(),
-            ])?;
+            let kv = open_kv(
+                &path,
+                vec![
+                    block_storage::BlockPrimaryIndex::descriptor(&cache),
+                    block_storage::BlockByLevelIndex::descriptor(&cache),
+                    block_storage::BlockByContextHashIndex::descriptor(&cache),
+                    BlockMetaStorage::descriptor(&cache),
+                    OperationsStorage::descriptor(&cache),
+                    OperationsMetaStorage::descriptor(&cache),
+                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+                    MerkleStorage::descriptor(&cache),
+                    SystemStorage::descriptor(&cache),
+                    Sequences::descriptor(&cache),
+                    DatabaseBackedSkipList::descriptor(&cache),
+                    Lane::descriptor(&cache),
+                    ListValue::descriptor(&cache),
+                    MempoolStorage::descriptor(&cache),
+                    ContextActionStorage::descriptor(&cache),
+                    ChainMetaStorage::descriptor(&cache),
+                    PredecessorStorage::descriptor(&cache),
+                ],
+                &cfg,
+            )?;
+            let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),

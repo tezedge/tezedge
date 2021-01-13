@@ -79,7 +79,11 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
                     .unwrap_or_else(|| panic!("No values found for {}", name));
                 let encoding = field.get_encoding();
 
-                bytes_sz += encode_any(data, value, encoding)?;
+                bytes_sz = bytes_sz
+                    .checked_add(encode_any(data, value, encoding)?)
+                    .ok_or_else(|| {
+                        Error::custom("Encoded message size overflow while encoding a record field")
+                    })?;
             }
 
             Ok(bytes_sz)
@@ -96,7 +100,11 @@ fn encode_tuple(data: &mut Vec<u8>, value: &Value, encodings: &[Encoding]) -> Re
         let mut bytes_sz: usize = 0;
         for (index, encoding) in encodings.iter().enumerate() {
             if let Some(value) = values.get(index) {
-                bytes_sz += encode_any(data, value, encoding)?;
+                bytes_sz = bytes_sz
+                    .checked_add(encode_any(data, value, encoding)?)
+                    .ok_or_else(|| {
+                        Error::custom("Encoded message size overflow while encoding a tuple item")
+                    })?;
             } else {
                 return Err(Error::encoding_mismatch(
                     &Encoding::Tup(encodings.to_vec()),
@@ -208,7 +216,9 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             Value::String(v) => {
                 data.put_u32(v.len() as u32);
                 data.put_slice(v.as_bytes());
-                Ok(size_of::<u32>() + v.len())
+                size_of::<u32>().checked_add(v.len()).ok_or_else(|| {
+                    Error::custom("Encoded message size overflow while encoding a string")
+                })
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         },
@@ -230,7 +240,11 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     for value in values {
                         encode_value(data, value, list_inner_encoding)?;
                     }
-                    Ok(data.len() - data_len_before_write)
+                    data.len()
+                        .checked_sub(data_len_before_write)
+                        .ok_or_else(|| {
+                            Error::custom("Encoded message size overflow while encoding a list")
+                        })
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             }
@@ -245,7 +259,11 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                             _ => return Err(Error::custom(format!("Encoding::Bytes could be applied only to &[u8] value but found: {:?}", value)))
                         }
                     }
-                    Ok(data.len() - data_len_before_write)
+                    data.len()
+                        .checked_sub(data_len_before_write)
+                        .ok_or_else(|| {
+                            Error::custom("Encoded message size overflow while encoding bytes")
+                        })
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             }
@@ -262,7 +280,14 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     }
 
                     // count of bytes written
-                    let bytes_sz = data.len() - data_len_before_write;
+                    let bytes_sz =
+                        data.len()
+                            .checked_sub(data_len_before_write)
+                            .ok_or_else(|| {
+                                Error::custom(
+                                    "Encoded message size overflow while encoding a hash value",
+                                )
+                            })?;
 
                     // check if writen bytes is equal to expected hash size
                     if bytes_sz == hash_type.size() {
@@ -283,7 +308,11 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                 Some(option_value) => {
                     data.put_u8(types::BYTE_VAL_SOME);
                     let bytes_sz = encode_value(data, option_value, option_encoding)?;
-                    Ok(size_of::<u8>() + bytes_sz)
+                    size_of::<u8>().checked_add(bytes_sz).ok_or_else(|| {
+                        Error::custom(
+                            "Encoded message size overflow while encoding an option value",
+                        )
+                    })
                 }
                 None => {
                     data.put_u8(types::BYTE_VAL_NONE);
@@ -297,7 +326,11 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                 Some(option_value) => {
                     data.put_u8(types::BYTE_FIELD_SOME);
                     let bytes_sz = encode_value(data, option_value, option_encoding)?;
-                    Ok(size_of::<u8>() + bytes_sz)
+                    size_of::<u8>().checked_add(bytes_sz).ok_or_else(|| {
+                        Error::custom(
+                            "Encoded message size overflow while encoding an optional field",
+                        )
+                    })
                 }
                 None => {
                     data.put_u8(types::BYTE_FIELD_NONE);
@@ -322,7 +355,11 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             // update size
             bytes_sz_slice.write_u32::<BigEndian>(bytes_sz as u32)?;
 
-            Ok(data.len() - data_len_before_write)
+            data.len()
+                .checked_sub(data_len_before_write)
+                .ok_or_else(|| {
+                    Error::custom("Encoded message size overflow while encoding a dynamic value")
+                })
         }
         Encoding::Sized(sized_size, sized_encoding) => {
             // write data
@@ -349,7 +386,13 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                             // encode value
                             encode_value(data, tag_value, tag.get_encoding())?;
 
-                            Ok(data.len() - data_len_before_write)
+                            data.len()
+                                .checked_sub(data_len_before_write)
+                                .ok_or_else(|| {
+                                    Error::custom(
+                                        "Encoded message size overflow while encoding a tag",
+                                    )
+                                })
                         }
                         None => Err(Error::custom(format!(
                             "No tag found for variant: {}",
@@ -365,7 +408,9 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                             // write tag id
                             write_tag_id(data, *tag_sz, tag.get_id())?;
 
-                            Ok(data.len() - data_len_before_write)
+                            data.len().checked_sub(data_len_before_write).ok_or_else(|| {
+                                Error::custom("Encoded message size overflow while encoding an enum value")
+                            })
                         }
                         None => Err(Error::custom(format!(
                             "No tag found for variant: {}",
@@ -458,7 +503,9 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
             data.put_u8(n)
         }
 
-        Ok(data.len() - data_len_before_write)
+        data.len()
+            .checked_sub(data_len_before_write)
+            .ok_or_else(|| Error::custom("Encoded message size overflow while encoding a Z data"))
     }
 }
 

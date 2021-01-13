@@ -3,6 +3,7 @@
 
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 use std::{error, fmt};
 
 use failure::_core::marker::PhantomData;
@@ -21,7 +22,8 @@ pub enum PoolError {
     SpawnRunnerError {
         error: ProtocolRunnerError,
     },
-    IpcAcceptError {
+    IpcError {
+        reason: String,
         error: IpcError,
     },
     InitContextError {
@@ -36,7 +38,7 @@ impl fmt::Display for PoolError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match *self {
             PoolError::SpawnRunnerError { ref error } => write!(f, "Create pool connection error - fail to spawn sub-process, reason: {:?}", error),
-            PoolError::IpcAcceptError { ref error } => write!(f, "Create pool connection error - fail to accept IPC for sub-process, reason: {:?}", error),
+            PoolError::IpcError { ref reason, ref error } => write!(f, "Create pool connection IPC error - {}, error: {:?}", reason, error),
             PoolError::InitContextError { ref message, ref error } => write!(f, "Create pool connection error - fail to initialize context, message: {}, reason: {:?}", message, error),
         }
     }
@@ -83,6 +85,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
 pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
     pool_name: String,
     pool_name_counter: AtomicUsize,
+    pool_connection_timeout: Duration,
 
     pub endpoint_cfg: ProtocolEndpointConfiguration,
     pub log: Logger,
@@ -90,14 +93,18 @@ pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
+    const MIN_ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
+
     pub fn new(
         pool_name: String,
+        pool_connection_timeout: Duration,
         endpoint_cfg: ProtocolEndpointConfiguration,
         log: Logger,
     ) -> Self {
         Self {
             pool_name,
             pool_name_counter: AtomicUsize::new(1),
+            pool_connection_timeout,
             endpoint_cfg,
             log,
             _phantom: PhantomData,
@@ -112,11 +119,15 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         );
 
         // crate protocol runner endpoint
-        let protocol_endpoint = ProtocolRunnerEndpoint::<Runner>::new(
+        let protocol_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
             &endpoint_name,
             self.endpoint_cfg.clone(),
             self.log.new(o!("endpoint" => endpoint_name.clone())),
-        );
+        )
+        .map_err(|error| PoolError::IpcError {
+            reason: "fail to setup protocol runner endpoint".to_string(),
+            error,
+        })?;
 
         // start sub-process
         let (mut subprocess, mut protocol_commands) = match protocol_endpoint.start() {
@@ -130,8 +141,14 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             }
         };
 
+        // count accept_timeout according to connection_timeout
+        let accept_timeout = match self.pool_connection_timeout.checked_div(3) {
+            Some(conn_timeout) => std::cmp::max(Self::MIN_ACCEPT_TIMEOUT, conn_timeout),
+            None => Self::MIN_ACCEPT_TIMEOUT,
+        };
+
         // start IPC connection
-        let api = match protocol_commands.accept() {
+        let api = match protocol_commands.try_accept(accept_timeout) {
             Ok(controller) => controller,
             Err(e) => {
                 error!(self.log, "Failed to accept IPC connection on sub-process (so terminate sub-process)"; "endpoint" => endpoint_name, "reason" => format!("{:?}", &e));
@@ -142,7 +159,10 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
                 ) {
                     warn!(self.log, "Failed to terminate/kill protocol runner (create connection)"; "reason" => e);
                 }
-                return Err(PoolError::IpcAcceptError { error: e });
+                return Err(PoolError::IpcError {
+                    reason: "fail to accept IPC for sub-process".to_string(),
+                    error: e,
+                });
             }
         };
 

@@ -12,8 +12,11 @@ use crypto::hash::{HashType, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 
-use crate::{IteratorMode, num_from_slice, StorageError};
-use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage,
+    SchemaError,
+};
+use crate::{num_from_slice, IteratorMode, StorageError};
 
 /// Convenience type for operation meta storage database
 pub type MempoolStorageKV = dyn KeyValueStoreWithSchema<MempoolStorage> + Sync + Send;
@@ -30,7 +33,7 @@ impl MempoolOperationType {
     pub fn to_u8(&self) -> u8 {
         match self {
             MempoolOperationType::Pending => 0,
-            MempoolOperationType::KnownValid => 1
+            MempoolOperationType::KnownValid => 1,
         }
     }
 
@@ -38,7 +41,7 @@ impl MempoolOperationType {
         match num {
             0 => Ok(MempoolOperationType::Pending),
             1 => Ok(MempoolOperationType::KnownValid),
-            invalid_num => Err(MempoolOperationTypeParseError(invalid_num))
+            invalid_num => Err(MempoolOperationTypeParseError(invalid_num)),
         }
     }
 }
@@ -55,26 +58,41 @@ impl fmt::Display for MempoolOperationTypeParseError {
 /// Operation metadata storage
 #[derive(Clone)]
 pub struct MempoolStorage {
-    kv: Arc<MempoolStorageKV>
+    kv: Arc<MempoolStorageKV>,
 }
 
 impl MempoolStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        Self { kv: persistent_storage.kv() }
+        Self {
+            kv: persistent_storage.kv(),
+        }
     }
 
     #[inline]
-    pub fn put_pending(&mut self, message: OperationMessage, time_to_live: SystemTime) -> Result<(), StorageError> {
+    pub fn put_pending(
+        &mut self,
+        message: OperationMessage,
+        time_to_live: SystemTime,
+    ) -> Result<(), StorageError> {
         self.put(MempoolOperationType::Pending, message, time_to_live)
     }
 
     #[inline]
-    pub fn put_known_valid(&mut self, message: OperationMessage, time_to_live: SystemTime) -> Result<(), StorageError> {
+    pub fn put_known_valid(
+        &mut self,
+        message: OperationMessage,
+        time_to_live: SystemTime,
+    ) -> Result<(), StorageError> {
         self.put(MempoolOperationType::KnownValid, message, time_to_live)
     }
 
     #[inline]
-    pub fn put(&mut self, operation_type: MempoolOperationType, operation: OperationMessage, time_to_live: SystemTime) -> Result<(), StorageError> {
+    pub fn put(
+        &mut self,
+        operation_type: MempoolOperationType,
+        operation: OperationMessage,
+        time_to_live: SystemTime,
+    ) -> Result<(), StorageError> {
         let key = MempoolKey {
             operation_type,
             operation_hash: operation.message_hash()?,
@@ -84,14 +102,21 @@ impl MempoolStorage {
             time_to_live,
         };
 
-        self.kv.put(&key, &value)
-            .map_err(StorageError::from)
+        self.kv.put(&key, &value).map_err(StorageError::from)
     }
 
     #[inline]
-    pub fn get(&self, operation_type: MempoolOperationType, operation_hash: OperationHash) -> Result<Option<OperationMessage>, StorageError> {
-        let key = MempoolKey { operation_type, operation_hash };
-        self.kv.get(&key)
+    pub fn get(
+        &self,
+        operation_type: MempoolOperationType,
+        operation_hash: OperationHash,
+    ) -> Result<Option<OperationMessage>, StorageError> {
+        let key = MempoolKey {
+            operation_type,
+            operation_hash,
+        };
+        self.kv
+            .get(&key)
             .map(|value| value.map(|value| value.operation))
             .map_err(StorageError::from)
     }
@@ -100,19 +125,26 @@ impl MempoolStorage {
     pub fn delete(&self, operation_hash: &OperationHash) -> Result<(), StorageError> {
         // TODO: implement correctly and effectively
 
-        let key = MempoolKey { operation_type: MempoolOperationType::Pending, operation_hash: operation_hash.clone() };
-        self.kv.delete(&key)
-            .map_err(StorageError::from)?;
+        let key = MempoolKey {
+            operation_type: MempoolOperationType::Pending,
+            operation_hash: operation_hash.clone(),
+        };
+        self.kv.delete(&key).map_err(StorageError::from)?;
 
-        let key = MempoolKey { operation_type: MempoolOperationType::KnownValid, operation_hash: operation_hash.clone() };
-        self.kv.delete(&key)
-            .map_err(StorageError::from)?;
+        let key = MempoolKey {
+            operation_type: MempoolOperationType::KnownValid,
+            operation_hash: operation_hash.clone(),
+        };
+        self.kv.delete(&key).map_err(StorageError::from)?;
 
         Ok(())
     }
 
     #[inline]
-    pub fn find(&self, operation_hash: &OperationHash) -> Result<Option<OperationMessage>, StorageError> {
+    pub fn find(
+        &self,
+        operation_hash: &OperationHash,
+    ) -> Result<Option<OperationMessage>, StorageError> {
         // TODO: implement correctly and effectively
 
         // check pendings
@@ -149,7 +181,6 @@ impl KeyValueSchema for MempoolStorage {
     }
 }
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MempoolKey {
     operation_type: MempoolOperationType,
@@ -181,10 +212,14 @@ impl Encoder for MempoolKey {
 impl Decoder for MempoolKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if bytes.len() == Self::LEN_KEY {
-            let operation_type = MempoolOperationType::from_u8(num_from_slice!(bytes, Self::IDX_TYPE, u8))
-                .map_err(|_| SchemaError::DecodeError)?;
+            let operation_type =
+                MempoolOperationType::from_u8(num_from_slice!(bytes, Self::IDX_TYPE, u8))
+                    .map_err(|_| SchemaError::DecodeError)?;
             let operation_hash = bytes[Self::IDX_HASH..Self::IDX_HASH + Self::LEN_HASH].to_vec();
-            Ok(MempoolKey { operation_type, operation_hash })
+            Ok(MempoolKey {
+                operation_type,
+                operation_hash,
+            })
         } else {
             Err(SchemaError::DecodeError)
         }

@@ -3,13 +3,16 @@
 
 use std::sync::Arc;
 
-use rocksdb::{ColumnFamilyDescriptor, SliceTransform, Cache};
+use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::{Decoder, default_table_options, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, SchemaError};
+use crate::persistent::{
+    default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
+    PersistentStorage, SchemaError,
+};
 use crate::StorageError;
 
 pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
@@ -17,17 +20,22 @@ pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + 
 pub trait OperationsStorageReader: Sync + Send {
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError>;
 
-    fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError>;
+    fn get_operations(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Vec<OperationsForBlocksMessage>, StorageError>;
 }
 
 #[derive(Clone)]
 pub struct OperationsStorage {
-    kv: Arc<OperationsStorageKV>
+    kv: Arc<OperationsStorageKV>,
 }
 
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        Self { kv: persistent_storage.kv() }
+        Self {
+            kv: persistent_storage.kv(),
+        }
     }
 
     #[inline]
@@ -40,21 +48,26 @@ impl OperationsStorage {
     }
 
     #[inline]
-    pub fn put(&self, key: &OperationKey, value: &OperationsForBlocksMessage) -> Result<(), StorageError> {
-        self.kv.put(key, value)
-            .map_err(StorageError::from)
+    pub fn put(
+        &self,
+        key: &OperationKey,
+        value: &OperationsForBlocksMessage,
+    ) -> Result<(), StorageError> {
+        self.kv.put(key, value).map_err(StorageError::from)
     }
 }
 
 impl OperationsStorageReader for OperationsStorage {
     #[inline]
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError> {
-        self.kv.get(key)
-            .map_err(StorageError::from)
+        self.kv.get(key).map_err(StorageError::from)
     }
 
     #[inline]
-    fn get_operations(&self, block_hash: &BlockHash) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
+    fn get_operations(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Vec<OperationsForBlocksMessage>, StorageError> {
         let key = OperationKey {
             block_hash: block_hash.clone(),
             validation_pass: 0,
@@ -77,7 +90,9 @@ impl KeyValueSchema for OperationsStorage {
 
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
-        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(HashType::BlockHash.size()));
+        cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(
+            HashType::BlockHash.size(),
+        ));
         cf_opts.set_memtable_prefix_bloom_ratio(0.2);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
@@ -107,7 +122,11 @@ impl<'a> From<&'a OperationsForBlock> for OperationKey {
     fn from(ops: &'a OperationsForBlock) -> Self {
         OperationKey {
             block_hash: ops.hash().clone(),
-            validation_pass: if ops.validation_pass() >= 0 { ops.validation_pass() as u8 } else { 0 },
+            validation_pass: if ops.validation_pass() >= 0 {
+                ops.validation_pass() as u8
+            } else {
+                0
+            },
         }
     }
 }
@@ -138,19 +157,16 @@ impl Encoder for OperationKey {
 impl Decoder for OperationsForBlocksMessage {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        OperationsForBlocksMessage::from_bytes(bytes)
-            .map_err(|_| SchemaError::DecodeError)
+        OperationsForBlocksMessage::from_bytes(bytes).map_err(|_| SchemaError::DecodeError)
     }
 }
 
 impl Encoder for OperationsForBlocksMessage {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        self.as_bytes()
-            .map_err(|_| SchemaError::EncodeError)
+        self.as_bytes().map_err(|_| SchemaError::EncodeError)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -163,11 +179,13 @@ mod tests {
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = OperationKey {
-            block_hash: HashType::BlockHash.b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+            block_hash: HashType::BlockHash
+                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
             validation_pass: 4,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = OperationKey::decode(&encoded_bytes)?;
-        Ok(assert_eq!(expected, decoded))
+        assert_eq!(expected, decoded);
+        Ok(())
     }
 }

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use rocksdb::{ColumnFamilyDescriptor, Cache};
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 
 use crate::persistent::codec::Codec;
 use crate::persistent::default_table_options;
@@ -36,7 +36,7 @@ pub trait CommitLogSchema {
 
     fn descriptor() -> CommitLogDescriptor {
         CommitLogDescriptor {
-            name: Self::name().into()
+            name: Self::name().into(),
         }
     }
 

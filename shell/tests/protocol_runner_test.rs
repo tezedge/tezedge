@@ -4,12 +4,13 @@
 extern crate test;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use failure::format_err;
 use serial_test::serial;
-use slog::{error, info, warn, Level, Logger};
+use slog::{error, info, o, warn, Level, Logger};
 
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
@@ -58,7 +59,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
         let handle = thread::spawn(
             move || -> Result<InitProtocolContextResult, failure::Error> {
                 // init protocol read or write
-                match protocol.accept() {
+                match protocol.try_accept(Duration::from_secs(3)) {
                     Ok(proto) => Ok({
                         if flag_readonly {
                             proto.init_protocol_for_read()?
@@ -120,7 +121,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
 
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
-    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<Runner>::new(
+    let protocol_runner_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
         &endpoint_name,
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
@@ -135,8 +136,8 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
             log_level,
             false,
         ),
-        log.clone(),
-    );
+        log.new(o!("endpoint" => endpoint_name.clone())),
+    )?;
 
     // start subprocess
     let (subprocess, protocol_commands) = match protocol_runner_endpoint.start() {
@@ -149,7 +150,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
                 "Error to start test_protocol_runner_endpoint: {} - error: {:?}",
                 protocol_runner.as_os_str().to_str().unwrap_or("-none-"),
                 e
-            ))
+            ));
         }
     };
 
@@ -186,11 +187,13 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
             "test_one_writeable_endpoint".to_string(),
             context_db_path.clone(),
         )?;
-    let genesis_context_hash = write_context_commands
-        .accept()?
+
+    let mut write_api = write_context_commands.try_accept(Duration::from_secs(3))?;
+    let genesis_context_hash = write_api
         .init_protocol_for_write(true, &None)?
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
+    write_api.shutdown()?;
     let _ =
         ExecutableProtocolRunner::wait_and_terminate_ref(&mut subprocess, Duration::from_secs(5));
 
@@ -220,12 +223,12 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
 
     // create pool
     let pool_name = "test_pool_with_readonly_context";
-    let pool_wrapper = TezosApiConnectionPool::new_with_readonly_context(
+    let pool_wrapper = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
         pool_name.to_string(),
         pool_cfg,
         endpoint_cfg,
         log,
-    );
+    ));
 
     // create readonly pool pool
     let pool = &pool_wrapper.pool;
@@ -304,6 +307,10 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         let api3 = &con3.api;
         assert!(api3.genesis_result_data(&genesis_context_hash).is_ok());
     }
+
+    // 3 managed and all idle
+    assert_eq!(3, pool.state().connections);
+    assert_eq!(3, pool.state().idle_connections);
 
     // wait 35 seconds: connections are recreated after: <max_lifetime + 30> seconds
     thread::sleep(Duration::from_secs(40));

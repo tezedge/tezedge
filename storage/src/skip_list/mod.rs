@@ -20,11 +20,11 @@
 
 pub use crate::skip_list::content::{Bucket, ListValue, SkipListError};
 pub use crate::skip_list::lane::{Lane, TypedLane};
-pub use crate::skip_list::skip_list::{DatabaseBackedSkipList, SkipList, TypedSkipList};
+pub use crate::skip_list::list::{DatabaseBackedSkipList, SkipList, TypedSkipList};
 
 mod content;
 mod lane;
-mod skip_list;
+mod list;
 
 pub(crate) const LEVEL_BASE: usize = 8;
 

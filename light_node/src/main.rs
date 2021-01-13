@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use riker::actors::*;
 use rocksdb::Cache;
-use slog::{crit, debug, error, info, warn, Drain, Logger};
+use slog::{crit, debug, error, info, o, warn, Drain, Logger};
 
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
@@ -266,24 +266,31 @@ fn block_on_actors(
     ));
 
     // tezos protocol runner endpoint for applying blocks to chain
-    let mut apply_blocks_protocol_runner_endpoint =
-        ProtocolRunnerEndpoint::<ExecutableProtocolRunner>::new(
-            "apply_blocks_protocol_runner_endpoint",
-            ProtocolEndpointConfiguration::new(
-                TezosRuntimeConfiguration {
-                    log_enabled: env.logging.ocaml_log_enabled,
-                    no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
-                    debug_mode: env.storage.store_context_actions,
-                },
-                tezos_env.clone(),
-                env.enable_testchain,
-                &env.storage.tezos_data_dir,
-                &env.ffi.protocol_runner,
-                env.logging.level,
-                true,
-            ),
-            log.clone(),
-        );
+    let mut apply_blocks_protocol_runner_endpoint = match ProtocolRunnerEndpoint::<
+        ExecutableProtocolRunner,
+    >::try_new(
+        "apply_blocks_protocol_runner_endpoint",
+        ProtocolEndpointConfiguration::new(
+            TezosRuntimeConfiguration {
+                log_enabled: env.logging.ocaml_log_enabled,
+                no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
+                debug_mode: env.storage.store_context_actions,
+            },
+            tezos_env.clone(),
+            env.enable_testchain,
+            &env.storage.tezos_data_dir,
+            &env.ffi.protocol_runner,
+            env.logging.level,
+            true,
+        ),
+        log.new(o!("endpoint" => "apply_blocks_protocol_runner_endpoint")),
+    ) {
+        Ok(endpoint) => endpoint,
+        Err(e) => shutdown_and_exit!(
+            error!(log, "Failed to configure protocol runner endpoint"; "name" => "apply_blocks_protocol_runner_endpoint", "reason" => format!("{:?}", e)),
+            actor_system
+        ),
+    };
     let (
         apply_blocks_protocol_runner_endpoint_run_feature,
         apply_block_protocol_events,
@@ -384,8 +391,6 @@ fn block_on_actors(
         network_channel,
         websocket_handler,
         shell_channel.clone(),
-        &persistent_storage,
-        &init_storage_data,
     )
     .expect("Failed to create monitor actor");
     let _ = RpcServer::actor(

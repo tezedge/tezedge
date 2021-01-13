@@ -3,15 +3,18 @@
 
 use std::sync::Arc;
 
-use serde::{Serialize, Deserialize};
 use rocksdb::{Cache, ColumnFamilyDescriptor};
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
-use crate::StorageError;
-use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage, BincodeEncoded};
-use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::block_meta_storage::Meta;
+use crate::persistent::database::{IteratorMode, IteratorWithSchema};
+use crate::persistent::{
+    default_table_options, BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema,
+    PersistentStorage,
+};
+use crate::StorageError;
 
 pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
 
@@ -38,29 +41,39 @@ pub struct PredecessorStorage {
 impl PredecessorStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv()
+            kv: persistent_storage.kv(),
         }
     }
 
-    pub fn store_predecessors(&self, block_hash: &BlockHash, block_meta: &Meta, stored_predecessors_size: u32) -> Result<(), StorageError> {
+    pub fn store_predecessors(
+        &self,
+        block_hash: &BlockHash,
+        block_meta: &Meta,
+        stored_predecessors_size: u32,
+    ) -> Result<(), StorageError> {
         if let Some(direct_predecessor) = block_meta.predecessor() {
             // genesis
             if direct_predecessor == block_hash {
-                return Ok(())
+                return Ok(());
             } else {
                 // put the direct predecessor to slot 0
-                self.put(&PredecessorKey::new(block_hash.clone(), 0), direct_predecessor)?;
+                self.put(
+                    &PredecessorKey::new(block_hash.clone(), 0),
+                    direct_predecessor,
+                )?;
 
                 // fill other slots
                 let mut predecessor = direct_predecessor.clone();
                 for predecessor_exponent_slot in 1..stored_predecessors_size {
-                    let predecessor_key = PredecessorKey::new(predecessor, predecessor_exponent_slot - 1);
+                    let predecessor_key =
+                        PredecessorKey::new(predecessor, predecessor_exponent_slot - 1);
                     if let Some(p) = self.get(&predecessor_key)? {
-                        let key = PredecessorKey::new(block_hash.clone(), predecessor_exponent_slot);
+                        let key =
+                            PredecessorKey::new(block_hash.clone(), predecessor_exponent_slot);
                         self.put(&key, &p)?;
                         predecessor = p;
                     } else {
-                        return Ok(())
+                        return Ok(());
                     }
                 }
             }
@@ -70,21 +83,24 @@ impl PredecessorStorage {
     }
 
     #[inline]
-    pub fn put(&self, key: &PredecessorKey, predeccessor_hash: &BlockHash) -> Result<(), StorageError> {
-        self.kv.put(key, predeccessor_hash)
+    pub fn put(
+        &self,
+        key: &PredecessorKey,
+        predeccessor_hash: &BlockHash,
+    ) -> Result<(), StorageError> {
+        self.kv
+            .put(key, predeccessor_hash)
             .map_err(StorageError::from)
     }
 
     #[inline]
     pub fn get(&self, key: &PredecessorKey) -> Result<Option<BlockHash>, StorageError> {
-        self.kv.get(key)
-            .map_err(StorageError::from)
+        self.kv.get(key).map_err(StorageError::from)
     }
 
     #[inline]
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv.iterator(mode)
-            .map_err(StorageError::from)
+        self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
 

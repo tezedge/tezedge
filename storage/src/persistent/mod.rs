@@ -5,21 +5,21 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use derive_builder::Builder;
-use rocksdb::{BlockBasedOptions, ColumnFamilyDescriptor, DB, Options, Cache};
+use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
+pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
-use crate::persistent::sequence::Sequences;
 use crate::merkle_storage::MerkleStorage;
+use crate::persistent::sequence::Sequences;
 
-pub mod sequence;
 pub mod codec;
-pub mod schema;
-pub mod database;
 pub mod commit_log;
+pub mod database;
+pub mod schema;
+pub mod sequence;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -31,9 +31,7 @@ pub struct DbConfiguration {
 
 impl Default for DbConfiguration {
     fn default() -> Self {
-        DbConfigurationBuilder::default()
-            .build()
-            .unwrap()
+        DbConfigurationBuilder::default().build().unwrap()
     }
 }
 
@@ -43,12 +41,11 @@ impl Default for DbConfiguration {
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
 pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=ColumnFamilyDescriptor>,
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = ColumnFamilyDescriptor>,
 {
-    DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs)
-        .map_err(DBError::from)
+    DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
 }
 
 /// Create default database configuration options,
@@ -69,7 +66,7 @@ fn default_kv_options(cfg: &DbConfiguration) -> Options {
     // resolve thread count to use
     let num_of_threads = match cfg.max_threads {
         Some(num) => std::cmp::min(num, num_cpus::get()),
-        None => num_cpus::get()
+        None => num_cpus::get(),
     };
     // rocksdb default is 1, so we increase only, if above 1
     if num_of_threads > 1 {
@@ -86,7 +83,6 @@ fn default_kv_options(cfg: &DbConfiguration) -> Options {
 pub fn default_table_options(cache: &Cache) -> Options {
     // default db options
     let mut db_opts = Options::default();
-
 
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
     db_opts.set_level_compaction_dynamic_level_bytes(true);
@@ -109,13 +105,12 @@ pub fn default_table_options(cache: &Cache) -> Options {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=CommitLogDescriptor>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
-
 
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
@@ -165,7 +160,10 @@ impl PersistentStorage {
         let clog = self.clog.flush();
         let kv = self.kv.flush();
         if clog.is_err() || kv.is_err() {
-            println!("Failed to flush DBs. clog_err: {:?}, kv_err: {:?}", clog, kv);
+            println!(
+                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}",
+                clog, kv
+            );
         }
     }
 }
