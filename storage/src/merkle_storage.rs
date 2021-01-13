@@ -834,7 +834,7 @@ impl MerkleStorage {
         self.staged_indices = HashMap::new();
         let last_commit_hash = hash_commit(&new_commit)?;
         self.last_commit_hash = Some(last_commit_hash);
-        self.inc_entry_ref_count(&entry);
+        self.inc_entry_ref_count(&last_commit_hash);
 
         self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(last_commit_hash)
@@ -1319,35 +1319,30 @@ impl MerkleStorage {
 
     /// GC old commit and it's children which aren't referenced in other commits.
     pub fn gc_commit(&mut self, commit_hash: &EntryHash) {
-        let entry = self.get_entry(commit_hash).unwrap();
-        self.dec_entry_ref_count(&entry);
+        self.dec_entry_ref_count(commit_hash);
     }
 
     /// Increment entry's ref_count.
     ///
     /// Also increments for every nested entry.
-    fn inc_entry_ref_count(&mut self, entry: &Entry) {
-        self._change_entry_ref_count(entry, false)
+    fn inc_entry_ref_count(&mut self, entry_hash: &EntryHash) {
+        self._change_entry_ref_count(entry_hash, false)
     }
 
     /// Decrements entry's `ref_count`.
     ///
     /// Also decrements for every nested entry.
     /// Runs `gc_entry(entry)` on it if `ref_count` is zero.
-    fn dec_entry_ref_count(&mut self, entry: &Entry) {
-        self._change_entry_ref_count(entry, true)
+    fn dec_entry_ref_count(&mut self, entry_hash: &EntryHash) {
+        self._change_entry_ref_count(entry_hash, true)
     }
 
-    fn _change_entry_ref_count(&mut self, entry: &Entry, decrement: bool) {
+    fn _change_entry_ref_count(&mut self, entry_hash: &EntryHash, decrement: bool) {
         use std::collections::hash_map;
-        // TODO: retrieve hash for an entry instead of recalculating it,
-        // or pass it as a method argument.
-        let hash = match self.hash_entry(entry) {
-            Ok(hash) => { hash }
-            Err(_) => { return; }
-        };
 
-        match self.ref_counts.entry(hash.clone()) {
+        let entry = self.get_entry(entry_hash);
+
+        match self.ref_counts.entry(entry_hash.clone()) {
             hash_map::Entry::Vacant(e) if !decrement => { e.insert(1); }
             hash_map::Entry::Occupied(mut e) => {
                 let count = e.get_mut();
@@ -1357,28 +1352,25 @@ impl MerkleStorage {
                     *count += 1;
                 }
                 if *count == 0 {
-                    self.gc_entry(&hash);
+                    self.gc_entry(entry_hash);
                 }
             }
             hash_map::Entry::Vacant(_) if decrement => {
-                self.gc_entry(&hash);
+                self.gc_entry(entry_hash);
             }
             _ => { return; }
         };
 
         match entry {
-            Entry::Blob(_) => {}
-            Entry::Tree(tree) => {
-                for (_, child_node) in tree.iter() {
-                    if let Ok(entry) = self.get_entry(&child_node.entry_hash) {
-                        self._change_entry_ref_count(&entry, decrement);
-                    }
+            Err(_) => {}
+            Ok(Entry::Blob(_)) => {}
+            Ok(Entry::Tree(tree)) => {
+                for (key, child_node) in tree.iter() {
+                    self._change_entry_ref_count(&child_node.entry_hash, decrement);
                 }
             }
-            Entry::Commit(commit) => {
-                if let Ok(entry) = self.get_entry(&commit.root_hash) {
-                    self._change_entry_ref_count(&entry, decrement);
-                }
+            Ok(Entry::Commit(commit)) => {
+                self._change_entry_ref_count(&commit.root_hash, decrement);
             }
         };
     }
@@ -2373,7 +2365,7 @@ mod tests {
         assert_eq!(*storage.ref_counts.get(&blob2).unwrap(), 1);
 
         // simulate commit removal
-        storage.dec_entry_ref_count(&storage.get_entry(&commit_hash1).unwrap());
+        storage.dec_entry_ref_count(&commit_hash1);
 
         assert!(storage.ref_counts.get(&a1).is_none());
         assert!(storage.ref_counts.get(&ab1).is_none());
@@ -2421,7 +2413,7 @@ mod tests {
         assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 2);
 
         // simulate commit removal
-        storage.dec_entry_ref_count(&storage.get_entry(&commit_hash1).unwrap());
+        storage.dec_entry_ref_count(&commit_hash1);
 
         assert!(storage.ref_counts.get(&a1).is_none());
         assert!(storage.ref_counts.get(&ab1).is_none());
