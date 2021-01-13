@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Giganode1/2 to default mainnet bootstrap peers
+- Nothing.
 
 ### Changed
 
@@ -24,11 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Protocol runner restarting and IPC accept handling
+- Nothing.
 
 ### Security
 
 - Nothing.
+
+## [0.9.1] - 2021-01-13
+
+### Added
+
+- Giganode1/2 to default mainnet bootstrap peers
+
+### Fixed
+
+- Protocol runner restarting and IPC accept handling
 
 ## [0.9.0] - 2021-01-05
 
@@ -213,7 +223,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/simplestaking/tezedge/releases/v0.9.1
 [0.9.0]: https://github.com/simplestaking/tezedge/releases/v0.9.0
 [0.8.0]: https://github.com/simplestaking/tezedge/releases/v0.8.0
 [0.7.2]: https://github.com/simplestaking/tezedge/releases/v0.7.2
