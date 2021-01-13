@@ -1811,7 +1811,6 @@ version = "0.10.0"
 dependencies = [
  "crypto",
  "erased-serde",
- "failure",
  "networking",
  "rand 0.7.3",
  "riker",
@@ -1820,7 +1819,6 @@ dependencies = [
  "shell",
  "slog",
  "slog_derive",
- "storage",
  "tezos_messages",
  "ws",
 ]

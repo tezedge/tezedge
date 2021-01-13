@@ -219,7 +219,7 @@ impl<Runner: ProtocolRunner + 'static>
     }
 
     fn on_release(&self, mut conn: ProtocolRunnerConnection<Runner>) {
-        info!(conn.log, "Closing connection for protocol runner");
+        debug!(conn.log, "Closing connection for protocol runner");
         conn.terminate_subprocess();
         info!(
             conn.log,
@@ -241,7 +241,7 @@ impl<Runner: ProtocolRunner + 'static>
     }
 
     fn on_release(&self, mut conn: ProtocolRunnerConnection<Runner>) {
-        info!(conn.log, "Closing connection for protocol runner");
+        debug!(conn.log, "Closing connection for protocol runner");
         conn.terminate_subprocess();
         info!(
             conn.log,

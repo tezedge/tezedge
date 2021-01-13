@@ -7,19 +7,22 @@ extern crate test;
 ///
 /// (Tests are ignored, because they need protocol-runner binary)
 /// Runs like: `PROTOCOL_RUNNER=./target/release/protocol-runner cargo test --release -- --ignored`
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use lazy_static::lazy_static;
 use serial_test::serial;
 
+use crypto::hash::OperationHash;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_identity::Identity;
+use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
 use tezos_messages::p2p::encoding::prelude::Mempool;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
@@ -564,9 +567,12 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
 
+    ///////////////////////
+    // BOOOSTRAP to 1324 //
+    ///////////////////////
     // connect mocked node peer with test data set
     let clocks = Instant::now();
-    let mocked_peer_node = test_node_peer::TestNodePeer::connect(
+    let mut mocked_peer_node = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
@@ -595,6 +601,97 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         current_head_reached.elapsed()
     );
 
+    /////////////////////
+    // MEMPOOL testing //
+    /////////////////////
+    // Node - check current mempool state, should be on last applied block 1324
+    {
+        let block_hash_1324 = db.block_hash(1324)?;
+        node.wait_for_mempool_on_head(
+            "mempool_head_1324",
+            block_hash_1324.clone(),
+            (Duration::from_secs(30), Duration::from_millis(250)),
+        )?;
+
+        let current_mempool_state = node
+            .current_mempool_state_storage
+            .read()
+            .expect("Failed to obtain lock");
+        match current_mempool_state.head() {
+            Some(head) => assert_eq!(head, &block_hash_1324),
+            None => panic!("No head in mempool, but we expect one!"),
+        }
+
+        // check operations in mempool - should by empty all
+        assert!(current_mempool_state.result().applied.is_empty());
+        assert!(current_mempool_state.result().branch_delayed.is_empty());
+        assert!(current_mempool_state.result().branch_refused.is_empty());
+        assert!(current_mempool_state.result().refused.is_empty());
+    }
+
+    // client sends to node: current head 1324 + operations from 1325 as pending
+    let operations_from_1325: Vec<OperationHash> = db
+        .get_operations(&db.block_hash(1325)?)?
+        .iter()
+        .flatten()
+        .map(|a| a.message_hash().expect("Failed to decode operation has"))
+        .collect();
+    mocked_peer_node.clear_mempool();
+    mocked_peer_node.send_msg(CurrentHeadMessage::new(
+        node.tezos_env.main_chain_id()?,
+        db.block_header(1324)?,
+        Mempool::new(vec![], operations_from_1325.clone()),
+    ))?;
+
+    let operations_from_1325 = HashSet::from_iter(operations_from_1325);
+    // Node - check mempool current state after operations 1325 (all should be applied)
+    {
+        // node - we expect here message for every operation to finish
+        node.wait_for_mempool_contains_operations(
+            "node_mempool_operations_from_1325",
+            &operations_from_1325,
+            (Duration::from_secs(10), Duration::from_millis(250)),
+        )?;
+
+        let current_mempool_state = node
+            .current_mempool_state_storage
+            .read()
+            .expect("Failed to obtain lock");
+        assert_eq!(
+            operations_from_1325.len(),
+            current_mempool_state.result().applied.len()
+        );
+        for op in &operations_from_1325 {
+            assert!(current_mempool_state
+                .result()
+                .applied
+                .iter()
+                .any(|a| a.hash.eq(op)))
+        }
+        assert!(current_mempool_state.result().branch_delayed.is_empty());
+        assert!(current_mempool_state.result().branch_refused.is_empty());
+        assert!(current_mempool_state.result().refused.is_empty());
+    }
+
+    // Client - check mempool, if received throught p2p all known_valid
+    {
+        mocked_peer_node.wait_for_mempool_contains_operations(
+            "client_mempool_operations_from_1325",
+            &operations_from_1325,
+            (Duration::from_secs(10), Duration::from_millis(250)),
+        )?;
+
+        let test_mempool = mocked_peer_node
+            .test_mempool
+            .read()
+            .expect("Failed to obtain lock");
+        assert!(test_mempool.pending().is_empty());
+        assert_eq!(test_mempool.known_valid().len(), operations_from_1325.len());
+        for op in &operations_from_1325 {
+            assert!(test_mempool.known_valid().contains(op));
+        }
+    }
+
     // stop nodes
     drop(node);
     drop(mocked_peer_node);
@@ -619,13 +716,13 @@ mod test_data {
 
     use failure::format_err;
 
-    use crypto::hash::{BlockHash, ContextHash};
+    use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::ApplyBlockRequest;
     use tezos_messages::p2p::binary_message::MessageHash;
     use tezos_messages::p2p::encoding::block_header::Level;
     use tezos_messages::p2p::encoding::prelude::{
-        BlockHeader, OperationsForBlock, OperationsForBlocksMessage,
+        BlockHeader, Operation, OperationsForBlock, OperationsForBlocksMessage,
     };
 
     use crate::samples::OperationsForBlocksMessageKey;
@@ -635,6 +732,7 @@ mod test_data {
         requests: Vec<String>,
         headers: HashMap<BlockHash, (Level, ContextHash)>,
         operations: HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
+        operation_hashes: HashMap<OperationHash, Level>,
     }
 
     impl Db {
@@ -646,17 +744,29 @@ mod test_data {
             ),
         ) -> Db {
             let mut headers: HashMap<BlockHash, (Level, ContextHash)> = HashMap::new();
+            let mut operation_hashes: HashMap<OperationHash, Level> = HashMap::new();
 
             // init headers
             for (idx, request) in requests.iter().enumerate() {
+                let level = to_level(idx);
                 let request =
                     crate::samples::from_captured_bytes(request).expect("Failed to parse request");
+
                 let block = request
                     .block_header
                     .message_hash()
                     .expect("Failed to decode message_hash");
                 let context_hash: ContextHash = request.block_header.context().clone();
-                headers.insert(block, (to_level(idx), context_hash));
+                headers.insert(block, (level, context_hash));
+
+                for ops in request.operations {
+                    for op in ops {
+                        operation_hashes.insert(
+                            op.message_hash().expect("Failed to compute message hash"),
+                            level,
+                        );
+                    }
+                }
             }
 
             Db {
@@ -664,6 +774,7 @@ mod test_data {
                 requests,
                 headers,
                 operations,
+                operation_hashes,
             }
         }
 
@@ -671,6 +782,37 @@ mod test_data {
             match self.headers.get(block_hash) {
                 Some((level, _)) => Ok(Some(self.captured_requests(*level)?.block_header)),
                 None => Ok(None),
+            }
+        }
+
+        pub fn get_operation(
+            &self,
+            operation_hash: &OperationHash,
+        ) -> Result<Option<Operation>, failure::Error> {
+            match self.operation_hashes.get(operation_hash) {
+                Some(level) => {
+                    let mut found = None;
+                    for ops in self.captured_requests(*level)?.operations {
+                        for op in ops {
+                            if op.message_hash()?.eq(operation_hash) {
+                                found = Some(op);
+                                break;
+                            }
+                        }
+                    }
+                    Ok(found)
+                }
+                None => Ok(None),
+            }
+        }
+
+        pub fn get_operations(
+            &self,
+            block_hash: &BlockHash,
+        ) -> Result<Vec<Vec<Operation>>, failure::Error> {
+            match self.headers.get(block_hash) {
+                Some((level, _)) => Ok(self.captured_requests(*level)?.operations),
+                None => Ok(vec![]),
             }
         }
 
@@ -757,7 +899,7 @@ mod test_cases_data {
     use tezos_messages::p2p::encoding::block_header::Level;
     use tezos_messages::p2p::encoding::prelude::{
         BlockHeader, BlockHeaderBuilder, BlockHeaderMessage, CurrentBranch, CurrentBranchMessage,
-        PeerMessage, PeerMessageResponse,
+        OperationMessage, PeerMessage, PeerMessageResponse,
     };
 
     use crate::test_data::Db;
@@ -973,6 +1115,15 @@ mod test_cases_data {
                 }
                 Ok(responses)
             }
+            PeerMessage::GetOperations(request) => {
+                let mut responses: Vec<PeerMessageResponse> = Vec::new();
+                for operation_hash in request.get_operations() {
+                    if let Some(operation) = db.get_operation(operation_hash)? {
+                        responses.push(OperationMessage::from(operation).into());
+                    }
+                }
+                Ok(responses)
+            }
             _ => Ok(vec![]),
         }
     }
@@ -1025,9 +1176,11 @@ mod test_cases_data {
 
 /// Test node peer, which simulates p2p remote peer, communicates through real p2p socket
 mod test_node_peer {
+    use std::collections::HashSet;
     use std::net::{Shutdown, SocketAddr};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
+    use std::thread;
     use std::time::{Duration, SystemTime};
 
     use futures::lock::Mutex;
@@ -1036,11 +1189,12 @@ mod test_node_peer {
     use tokio::runtime::{Handle, Runtime};
     use tokio::time::timeout;
 
+    use crypto::hash::OperationHash;
     use networking::p2p::peer;
     use networking::p2p::peer::{Bootstrap, BootstrapOutput, Local};
     use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
     use tezos_identity::Identity;
-    use tezos_messages::p2p::encoding::prelude::{PeerMessage, PeerMessageResponse};
+    use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
     use tezos_messages::p2p::encoding::version::NetworkVersion;
 
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
@@ -1055,6 +1209,9 @@ mod test_node_peer {
         tokio_executor: Handle,
         /// Message sender
         tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
+
+        /// Client mempool for testing
+        pub test_mempool: Arc<RwLock<Mempool>>,
     }
 
     impl TestNodePeer {
@@ -1077,7 +1234,9 @@ mod test_node_peer {
             let connected = Arc::new(AtomicBool::new(false));
             let tx = Arc::new(Mutex::new(None));
             let identity = Arc::new(identity);
+            let test_mempool = Arc::new(RwLock::new(Mempool::default()));
             {
+                let test_mempool = test_mempool.clone();
                 let identity = identity.clone();
                 let connected = connected.clone();
                 let tx = tx.clone();
@@ -1107,7 +1266,7 @@ mod test_node_peer {
                                     connected.store(true, Ordering::Release);
 
                                     // process messages
-                                    Self::begin_process_incoming(name, rx, tx, connected, log, server_address, handle_message_callback).await;
+                                    Self::begin_process_incoming(name, rx, tx, connected, log, server_address, test_mempool, handle_message_callback).await;
                                 }
                                 Err(e) => {
                                     error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
@@ -1131,6 +1290,7 @@ mod test_node_peer {
                 connected,
                 tokio_executor,
                 tx,
+                test_mempool,
             }
         }
 
@@ -1142,6 +1302,7 @@ mod test_node_peer {
             connected: Arc<AtomicBool>,
             log: Logger,
             peer_address: SocketAddr,
+            test_mempool: Arc<RwLock<Mempool>>,
             handle_message_callback: fn(
                 PeerMessageResponse,
             )
@@ -1155,6 +1316,30 @@ mod test_node_peer {
                         Ok(msg) => {
                             let msg_type = msg_type(&msg);
                             trace!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
+
+                            // we collect here simple Mempool
+                            for m in msg.messages() {
+                                if let PeerMessage::CurrentHead(current_head) = m {
+                                    let mut test_mempool =
+                                        test_mempool.write().expect("Failed to lock");
+                                    let mut known_valid: Vec<OperationHash> =
+                                        test_mempool.known_valid().clone();
+                                    let mut pending = test_mempool.pending().clone();
+
+                                    for op in current_head.current_mempool().known_valid() {
+                                        if !known_valid.contains(op) {
+                                            known_valid.push(op.clone());
+                                        }
+                                    }
+                                    for op in current_head.current_mempool().pending() {
+                                        if !pending.contains(op) {
+                                            pending.push(op.clone());
+                                        }
+                                    }
+
+                                    *test_mempool = Mempool::new(known_valid, pending);
+                                }
+                            }
 
                             // apply callback
                             match handle_message_callback(msg) {
@@ -1254,6 +1439,42 @@ mod test_node_peer {
             result
         }
 
+        // TODO: refactor with async/condvar, not to block main thread
+        pub fn wait_for_mempool_contains_operations(
+            &self,
+            marker: &str,
+            expected_operations: &HashSet<OperationHash>,
+            (timeout, delay): (Duration, Duration),
+        ) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+
+            let result = loop {
+                let mempool_state = self.test_mempool.read().expect("Failed to obtain lock");
+
+                let mut operations = HashSet::default();
+                operations.extend(mempool_state.known_valid().clone());
+                operations.extend(mempool_state.pending().clone());
+
+                if contains_all_keys(&operations, expected_operations) {
+                    info!(self.log, "[{}] All expected operations found in mempool", self.name; "marker" => marker);
+                    break Ok(());
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    thread::sleep(delay);
+                } else {
+                    break Err(failure::format_err!("[{}] wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", self.name, timeout, delay, marker));
+                }
+            };
+            result
+        }
+
+        pub fn clear_mempool(&mut self) {
+            let mut test_mempool = self.test_mempool.write().expect("Failed to obtain lock");
+            *test_mempool = Mempool::default();
+        }
+
         pub fn stop(&mut self) {
             self.connected.store(false, Ordering::Release);
         }
@@ -1292,6 +1513,16 @@ mod test_node_peer {
             })
             .collect::<Vec<&str>>()
             .join(",")
+    }
+
+    fn contains_all_keys(set: &HashSet<OperationHash>, keys: &HashSet<OperationHash>) -> bool {
+        let mut contains_counter = 0;
+        for key in keys {
+            if set.contains(key) {
+                contains_counter += 1;
+            }
+        }
+        contains_counter == keys.len()
     }
 }
 

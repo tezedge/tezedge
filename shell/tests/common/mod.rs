@@ -487,11 +487,11 @@ pub mod infra {
                     .current_mempool_state_storage
                     .read()
                     .expect("Failed to obtain lock");
-                let operations = mempool_state.operations();
-                if contains_all_keys(operations, expected_operations) {
+                if contains_all_keys(mempool_state.operations(), expected_operations) {
                     info!(self.log, "[NODE] All expected operations found in mempool"; "marker" => marker);
                     break Ok(());
                 }
+                drop(mempool_state);
 
                 // kind of simple retry policy
                 if start.elapsed()?.le(&timeout) {

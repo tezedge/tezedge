@@ -391,8 +391,6 @@ fn block_on_actors(
         network_channel,
         websocket_handler,
         shell_channel.clone(),
-        &persistent_storage,
-        &init_storage_data,
     )
     .expect("Failed to create monitor actor");
     let _ = RpcServer::actor(

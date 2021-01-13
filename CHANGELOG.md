@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- Giganode1/2 to default mainnet bootstrap peers
 
 ### Changed
 
