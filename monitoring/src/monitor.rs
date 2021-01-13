@@ -7,17 +7,12 @@ use std::time::Duration;
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{warn, Logger};
 
-use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::{
     subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
 };
-use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::persistent::PersistentStorage;
-use storage::{BlockMetaStorage, ChainMetaStorage, IteratorMode, StorageInitInfo};
 use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::handlers::handler_messages::HandlerMessage;
 use crate::{
@@ -56,18 +51,10 @@ impl Monitor {
         event_channel: NetworkChannelRef,
         msg_channel: ActorRef<WebsocketHandlerMsg>,
         shell_channel: ShellChannelRef,
-        persistent_storage: &PersistentStorage,
-        init_storage_data: &StorageInitInfo,
     ) -> Result<MonitorRef, CreateError> {
         sys.actor_of_props::<Monitor>(
             Self::name(),
-            Props::new_args((
-                event_channel,
-                msg_channel,
-                shell_channel,
-                persistent_storage.clone(),
-                init_storage_data.chain_id.clone(),
-            )),
+            Props::new_args((event_channel, msg_channel, shell_channel)),
         )
     }
 
@@ -108,46 +95,22 @@ impl
         NetworkChannelRef,
         ActorRef<WebsocketHandlerMsg>,
         ShellChannelRef,
-        PersistentStorage,
-        ChainId,
     )> for Monitor
 {
     fn create_args(
-        (event_channel, msg_channel, shell_channel, persistent_storage, chain_id): (
+        (event_channel, msg_channel, shell_channel): (
             NetworkChannelRef,
             ActorRef<WebsocketHandlerMsg>,
             ShellChannelRef,
-            PersistentStorage,
-            ChainId,
         ),
     ) -> Self {
-        let blocks_meta = BlockMetaStorage::new(&persistent_storage);
-        let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
-        // TODO: TE-184 - monitor - count all downloaded blocks - is this necessery?
-        // get downloaded count
-        let downloaded = if let Ok(iter) = blocks_meta.iter(IteratorMode::Start) {
-            iter.count()
-        } else {
-            0
-        };
-        // get last header level
-        let level: Level = chain_meta_storage
-            .get_current_head(&chain_id)
-            .unwrap_or(None)
-            .map(|head| head.into())
-            .unwrap_or(0);
-
-        let mut bootstrap_monitor = BootstrapMonitor::new();
-        bootstrap_monitor.set_downloaded_blocks(downloaded);
-        bootstrap_monitor.set_level(level as usize);
-
         Self {
             network_channel: event_channel,
             shell_channel,
             msg_channel,
             peer_monitors: HashMap::new(),
-            bootstrap_monitor,
-            blocks_monitor: BlocksMonitor::new(4096, downloaded),
+            bootstrap_monitor: BootstrapMonitor::default(),
+            blocks_monitor: BlocksMonitor::new(4096, 0),
             block_application_monitor: ApplicationMonitor::new(),
             chain_monitor: ChainMonitor::new(),
         }

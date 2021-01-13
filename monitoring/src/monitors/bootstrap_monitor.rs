@@ -22,9 +22,8 @@ pub(crate) struct BootstrapMonitor {
     last_snapshot: Instant,
 }
 
-impl BootstrapMonitor {
-    pub fn new() -> Self {
-        let now = Instant::now();
+impl Default for BootstrapMonitor {
+    fn default() -> Self {
         Self {
             level: 0,
             downloaded_blocks: 0,
@@ -33,11 +32,13 @@ impl BootstrapMonitor {
             downloaded_per_snapshot: 0,
             headers_per_session: 0,
             headers_per_snapshot: 0,
-            session_start: now,
-            last_snapshot: now,
+            session_start: Instant::now(),
+            last_snapshot: Instant::now(),
         }
     }
+}
 
+impl BootstrapMonitor {
     #[inline]
     pub fn set_level(&mut self, level: usize) {
         // only set peer current head level for values higher than the current level
@@ -47,10 +48,7 @@ impl BootstrapMonitor {
             level
         }
     }
-    #[inline]
-    pub fn set_downloaded_blocks(&mut self, downloaded_blocks: usize) {
-        self.level = downloaded_blocks
-    }
+
     #[inline]
     pub fn missing_blocks(&self) -> usize {
         if self.level >= self.downloaded_per_session {
@@ -64,6 +62,7 @@ impl BootstrapMonitor {
     pub fn increase_block_count(&mut self) {
         self.increase_block_count_by(1);
     }
+
     #[inline]
     pub fn increase_block_count_by(&mut self, count: usize) {
         self.downloaded_per_snapshot += count;
@@ -74,16 +73,19 @@ impl BootstrapMonitor {
     pub fn increase_headers_count(&mut self) {
         self.increase_headers_count_by(1)
     }
+
     #[inline]
     pub fn increase_headers_count_by(&mut self, count: usize) {
         self.headers_per_session += count;
         self.headers_per_snapshot += count;
         self.downloaded_headers += count;
     }
+
     #[inline]
     pub fn average_download_rate(&self) -> f32 {
         self.downloaded_per_session as f32 / self.session_start.elapsed().as_secs_f32()
     }
+
     #[inline]
     pub fn average_header_download_rate(&self) -> f32 {
         self.headers_per_session as f32 / self.session_start.elapsed().as_secs_f32()
