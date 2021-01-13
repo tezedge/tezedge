@@ -166,7 +166,11 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
                 block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
                 protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
             },
-            bootstrap_lookup_addresses: vec!["boot.tzbeta.net".to_string()],
+            bootstrap_lookup_addresses: vec![
+                "boot.tzbeta.net".to_string(),
+                "116.202.172.21".to_string(), /* giganode_1 */
+                "95.216.45.62".to_string(),   /* giganode_2 */
+            ],
             version: "TEZOS_MAINNET".to_string(),
             protocol_overrides: ProtocolOverrides {
                 user_activated_upgrades: vec![
