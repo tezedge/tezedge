@@ -469,22 +469,22 @@ impl MerkleStorage {
                 if !ignored {
                     self.set(&key, &value)?;
                 }
-            },
+            }
             ContextAction::Copy { to_key, from_key, ignored, .. } => {
                 if !ignored {
                     self.copy(&from_key, &to_key)?;
                 }
-            },
+            }
             ContextAction::Delete { key, ignored, .. } => {
                 if !ignored {
                     self.delete(&key)?;
                 }
-            },
+            }
             ContextAction::RemoveRecursively { key, ignored, .. } => {
                 if !ignored {
                     self.delete(&key)?;
                 }
-            },
+            }
             ContextAction::Commit { author, message, date, new_context_hash, .. } => {
                 let commit_hash = self.commit(*date as u64, author.to_string(), message.to_string())?;
                 assert_eq!(
@@ -494,11 +494,11 @@ impl MerkleStorage {
                     HashType::ContextHash.hash_to_b58check(&new_context_hash),
                     HashType::ContextHash.hash_to_b58check(&commit_hash),
                 );
-            },
+            }
             ContextAction::Checkout { context_hash, .. } => {
                 self.checkout(context_hash.as_slice().try_into()?)?;
-            },
-            _ => (),
+            }
+            _ => {}
         };
         Ok(())
     }
