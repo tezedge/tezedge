@@ -201,7 +201,7 @@ pub struct MerkleStorage {
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
     /// reference counts of entries for garbage collection
-    ref_counts: HashMap<EntryHash, u16>,
+    ref_counts: HashMap<EntryHash, u32>,
 }
 
 #[derive(Debug, Fail)]
