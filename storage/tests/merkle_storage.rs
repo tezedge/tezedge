@@ -70,14 +70,35 @@ fn init_persistent_storage() -> PersistentStorage {
 struct BlocksIterator {
     block_storage: BlockStorage,
     blocks: std::vec::IntoIter<BlockHeaderWithHash>,
-    last_hash: Option<BlockHash>,
+    next_block_chunk_hash: Option<BlockHash>,
     limit: usize,
 }
 
 impl BlocksIterator {
     pub fn new(block_storage: BlockStorage, start_block_hash: &BlockHash, limit: usize) -> Self {
-        let blocks = Self::get_blocks_after_block(&block_storage, &start_block_hash, limit).into_iter();
-        Self { block_storage, blocks, limit, last_hash: None }
+        let blocks = Self::get_blocks_after_block(&block_storage, &start_block_hash, limit);
+        let mut this = Self { block_storage, limit, next_block_chunk_hash: None, blocks: vec![].into_iter() };
+
+        this.get_and_set_blocks(start_block_hash);
+        this
+    }
+
+    fn get_and_set_blocks(&mut self, from_block_hash: &BlockHash) -> Result<(), ()> {
+        let mut new_blocks = Self::get_blocks_after_block(
+            &self.block_storage,
+            from_block_hash,
+            self.limit,
+        );
+
+        if new_blocks.len() == 0 {
+            return Err(());
+        }
+        if new_blocks.len() >= self.limit {
+            self.next_block_chunk_hash = Some(new_blocks.pop().unwrap().hash);
+        }
+        self.blocks = new_blocks.into_iter();
+
+        Ok(())
     }
 
     fn get_blocks_after_block(
@@ -94,27 +115,15 @@ impl Iterator for BlocksIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.blocks.next() {
-            Some(block) => {
-                self.last_hash = Some(block.hash.clone());
-                Some(block)
-            }
+            Some(block) => Some(block),
             None => {
-                let last_hash = self.last_hash.take();
-                if last_hash.is_none() {
-                    return None;
+                if let Some(next_block_chunk_hash) = self.next_block_chunk_hash.take() {
+                    if self.get_and_set_blocks(&next_block_chunk_hash).is_ok() {
+                        return self.next();
+                    }
                 }
-                let new_blocks = Self::get_blocks_after_block(
-                    &self.block_storage,
-                    &last_hash.unwrap(),
-                    self.limit,
-                );
-
-                if new_blocks.len() == 0 {
-                    return None;
-                }
-                self.blocks = new_blocks.into_iter();
-                self.next()
-            }
+                None
+            },
         }
     }
 }
