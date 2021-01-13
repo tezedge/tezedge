@@ -14,7 +14,7 @@ use storage::*;
 use in_memory::KVStore;
 use context_action_storage::ContextAction;
 use merkle_storage::{MerkleStorage, MerkleError, Entry, check_entry_hash};
-use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv_readonly};
+use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};
 use persistent::sequence::Sequences;
 
 // fn get_cycles_for_block(persistent_storage: &PersistentStorage, context_hash: &ContextHash) -> i32 {
@@ -38,28 +38,31 @@ fn init_persistent_storage() -> PersistentStorage {
     // let env = crate::configuration::Environment::from_args();
     let db_path = "/tmp/tezedge/light-node";
 
+    // create common RocksDB block cache to be shared among column families
+    // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
+    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
+
     let schemas = vec![
-        block_storage::BlockPrimaryIndex::name(),
-        block_storage::BlockByLevelIndex::name(),
-        block_storage::BlockByContextHashIndex::name(),
-        BlockMetaStorage::name(),
-        OperationsStorage::name(),
-        OperationsMetaStorage::name(),
-        context_action_storage::ContextActionByBlockHashIndex::name(),
-        context_action_storage::ContextActionByContractIndex::name(),
-        context_action_storage::ContextActionByTypeIndex::name(),
-        ContextActionStorage::name(),
-        SystemStorage::name(),
-        Sequences::name(),
-        MempoolStorage::name(),
-        ChainMetaStorage::name(),
-        PredecessorStorage::name(),
+        block_storage::BlockPrimaryIndex::descriptor(&cache),
+        block_storage::BlockByLevelIndex::descriptor(&cache),
+        block_storage::BlockByContextHashIndex::descriptor(&cache),
+        BlockMetaStorage::descriptor(&cache),
+        OperationsStorage::descriptor(&cache),
+        OperationsMetaStorage::descriptor(&cache),
+        context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+        context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+        context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+        ContextActionStorage::descriptor(&cache),
+        SystemStorage::descriptor(&cache),
+        Sequences::descriptor(&cache),
+        MempoolStorage::descriptor(&cache),
+        ChainMetaStorage::descriptor(&cache),
+        PredecessorStorage::descriptor(&cache),
+        MerkleStorage::descriptor(&cache),
     ];
 
     let opts = DbConfiguration::default();
-    let rocks_db = Arc::new(
-        open_kv_readonly(db_path, schemas, &opts).unwrap()
-    );
+    let rocks_db = Arc::new(open_kv(db_path, schemas, &opts).unwrap());
     let commit_logs = match open_cl(db_path, vec![BlockStorage::descriptor()]) {
         Ok(commit_logs) => Arc::new(commit_logs),
         Err(e) => panic!(e),

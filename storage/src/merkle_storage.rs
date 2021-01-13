@@ -56,13 +56,14 @@ use blake2::VarBlake2b;
 use failure::{Fail, Error};
 use serde::Deserialize;
 use serde::Serialize;
+use rocksdb::{ColumnFamilyDescriptor, Cache};
 
 use crypto::hash::HashType;
 
 use crate::kv_store::{
     KVStore as KVStoreBase, WriteBatch, ApplyBatch,
     BasicWriteBatch, KVStoreError};
-use crate::persistent::BincodeEncoded;
+use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 use crate::context_action_storage::{ContextAction, ContextActionStorage};
 
 const HASH_LEN: usize = 32;
@@ -165,6 +166,23 @@ where T:
 
 pub type MerkleStorageKVStoreError = KVStoreError;
 pub type MerkleStorageKVStore = Box<dyn KVStore>;
+
+impl KeyValueSchema for MerkleStorage {
+    // keys is hash of Entry
+    type Key = EntryHash;
+    // Entry (serialized)
+    type Value = Vec<u8>;
+
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let cf_opts = default_table_options(cache);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    #[inline]
+    fn name() -> &'static str {
+        "merkle_storage"
+    }
+}
 
 pub type RefCnt = usize;
 
