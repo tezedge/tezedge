@@ -280,7 +280,7 @@ impl Write for FileAppender {
             let result = receiver.recv().map_err(|_| {
                 io::Error::new(io::ErrorKind::Other, "Log file compression thread aborted")
             })?;
-            if let Err(_) = result {
+            if result.is_err() {
                 return Err(io::Error::new(
                     io::ErrorKind::Other,
                     "Log file compression failed",
