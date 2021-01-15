@@ -189,7 +189,6 @@ impl FileAppender {
             if self.rotate_compress {
                 let (plain_path, temp_gz_path) = self.rotated_paths_for_compression()?;
                 let (tx, rx) = mpsc::channel();
-
                 fs::rename(&self.path, &plain_path)?;
                 thread::spawn(move || {
                     let result = Self::compress(plain_path, temp_gz_path, rotated_path);
@@ -276,6 +275,19 @@ impl Write for FileAppender {
         if self.written_size >= self.rotate_size {
             self.rotate()?;
         }
+
+        if let Some(receiver) = &self.wait_compression {
+            let result = receiver.recv().map_err(|_| {
+                io::Error::new(io::ErrorKind::Other, "Log file compression thread aborted")
+            })?;
+            if result.is_err() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Log file compression failed",
+                ));
+            }
+            self.wait_compression = None;
+        }
         Ok(())
     }
 }
@@ -292,9 +304,6 @@ fn default_rotate_keep() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
-    use std::time::Duration;
-
     use tempfile::{Builder as TempDirBuilder, TempDir};
 
     use super::*;
@@ -315,26 +324,26 @@ mod tests {
             .build();
 
         write!(appender, "hello");
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(!dir.path().join("foo.log.1").exists());
 
         write!(appender, "world");
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(!dir.path().join("foo.log.1").exists());
         assert!(!dir.path().join("foo.log.2").exists());
         assert!(!dir.path().join("foo.log.3").exists());
 
         write!(appender, format!("vec(0): {:?}", vec![0; 128]));
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(dir.path().join("foo.log.1").exists());
         assert!(!dir.path().join("foo.log.2").exists());
         assert!(!dir.path().join("foo.log.3").exists());
 
         write!(appender, format!("vec(1): {:?}", vec![0; 128]));
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(dir.path().join("foo.log.1").exists());
         assert!(dir.path().join("foo.log.2").exists());
@@ -351,25 +360,25 @@ mod tests {
             .build();
 
         write!(appender, "hello");
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(!dir.path().join("foo.log.1").exists());
 
         write!(appender, "world");
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(!dir.path().join("foo.log.1.gz").exists());
         assert!(!dir.path().join("foo.log.2.gz").exists());
 
         write!(appender, format!("vec(0): {:?}", vec![0; 128]));
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(dir.path().join("foo.log.1.gz").exists());
         assert!(!dir.path().join("foo.log.2.gz").exists());
         assert!(!dir.path().join("foo.log.3.gz").exists());
 
         write!(appender, format!("vec(1): {:?}", vec![0; 128]));
-        thread::sleep(Duration::from_millis(50));
+        appender.flush().unwrap();
         assert!(dir.path().join("foo.log").exists());
         assert!(dir.path().join("foo.log.1.gz").exists());
         assert!(dir.path().join("foo.log.2.gz").exists());
