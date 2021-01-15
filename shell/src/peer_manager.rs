@@ -481,8 +481,9 @@ impl Receive<ShellChannelMsg> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
         if let ShellChannelMsg::ShuttingDown(_) = msg {
-            self.shutting_down = true;
             unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
+            self.shutting_down = true;
+            self.rx_run.store(false, Ordering::Release);
         }
     }
 }
@@ -661,13 +662,15 @@ async fn begin_listen_incoming(
 
     while rx_run.load(Ordering::Acquire) {
         if let Ok((stream, address)) = listener.accept().await {
-            peer_manager.tell(
-                AcceptPeer {
-                    stream: Arc::new(Mutex::new(Some(stream))),
-                    address,
-                },
-                None,
-            );
+            if rx_run.load(Ordering::Acquire) {
+                peer_manager.tell(
+                    AcceptPeer {
+                        stream: Arc::new(Mutex::new(Some(stream))),
+                        address,
+                    },
+                    None,
+                );
+            }
         }
     }
 
