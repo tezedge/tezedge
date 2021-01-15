@@ -498,6 +498,15 @@ impl MerkleStorage {
             ContextAction::Checkout { context_hash, .. } => {
                 self.checkout(context_hash.as_slice().try_into()?)?;
             }
+            ContextAction::Get { key, value, .. } => {
+                assert_eq!(&self.get(key)?, value);
+            }
+            ContextAction::Mem { key, value, .. } => {
+                assert_eq!(&self.mem(key)?, value);
+            }
+            ContextAction::DirMem { key, value, .. } => {
+                assert_eq!(&self.dirmem(key)?, value);
+            }
             _ => {}
         };
         Ok(())
