@@ -17,7 +17,7 @@ slog = { version = "2.5", features = ["max_level_trace"] }
 slog-async = "2.5"
 slog-json = "2.3"
 slog-term = "2.6"
-tokio = { version = "0.2", features = ["rt-threaded", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "signal"] }
 # Local dependencies
 logging = { path = "../logging" }
 tezos_api = { path = "../tezos/api" }

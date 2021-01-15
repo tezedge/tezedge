@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
@@ -13,6 +13,7 @@ use slog::{debug, info, Logger, o, trace, warn};
 use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
+use tokio::io::AsyncWriteExt;
 
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::hash::{CryptoboxPublicKeyHash, HashType};
@@ -103,8 +104,8 @@ impl From<crypto::CryptoError> for PeerError {
     }
 }
 
-impl From<tokio::time::Elapsed> for PeerError {
-    fn from(timeout: tokio::time::Elapsed) -> Self {
+impl From<tokio::time::error::Elapsed> for PeerError {
+    fn from(timeout: tokio::time::error::Elapsed) -> Self {
         PeerError::NetworkError {
             message: "Connection timeout",
             error: timeout.into(),
@@ -507,8 +508,8 @@ async fn begin_process_incoming(mut rx: EncryptedMessageReader, net: Network, my
     debug!(log, "Shutting down peer connection");
     let mut tx_lock = net.tx.lock().await;
     if let Some(tx) = tx_lock.take() {
-        let socket = rx.unsplit(tx);
-        match socket.shutdown(Shutdown::Both) {
+        let mut socket = rx.unsplit(tx);
+        match socket.shutdown().await {
             Ok(()) => debug!(log, "Connection shutdown successful"; "socket" => format!("{:?}", socket)),
             Err(err) => debug!(log, "Failed to shutdown connection"; "err" => format!("{:?}", err), "socket" => format!("{:?}", socket)),
         }

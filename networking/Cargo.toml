@@ -11,9 +11,9 @@ futures = "0.3"
 hex = "0.4"
 riker = "0.4"
 slog = "2.5"
-tokio = { version = "0.2", features = ["io-util", "time", "tcp", "rt-core"] }
+tokio = { version = "1", features = ["time", "net"] }
 # local dependencies
+crypto = { path = "../crypto" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
-crypto = { path = "../crypto" }

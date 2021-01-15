@@ -119,12 +119,12 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
 }
 
 fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runtime::Runtime {
-    let mut builder = tokio::runtime::Builder::new();
     // use threaded work staling scheduler
-    builder.threaded_scheduler().enable_all();
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.enable_all();
     // set number of threads in a thread pool
     if env.tokio_threads > 0 {
-        builder.core_threads(env.tokio_threads);
+        builder.worker_threads(env.tokio_threads);
     }
     // build runtime
     builder.build().expect("Failed to create tokio runtime")
@@ -316,7 +316,7 @@ fn block_on_actors(
 
     let current_mempool_state_storage = init_mempool_state_storage();
 
-    let mut tokio_runtime = create_tokio_runtime(&env);
+    let tokio_runtime = create_tokio_runtime(&env);
 
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");

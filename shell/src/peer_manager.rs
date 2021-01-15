@@ -654,7 +654,7 @@ async fn begin_listen_incoming(
     let listener_address = format!("0.0.0.0:{}", listener_port)
         .parse::<SocketAddr>()
         .expect("Failed to parse listener address");
-    let mut listener = TcpListener::bind(&listener_address)
+    let listener = TcpListener::bind(&listener_address)
         .await
         .expect("Failed to bind to address");
     info!(log, "Start to listen for incoming p2p connections"; "port" => listener_port);
