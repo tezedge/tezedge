@@ -518,8 +518,7 @@ pub mod infra {
     }
 
     fn create_tokio_runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new()
-            .threaded_scheduler()
+        tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("Failed to create tokio runtime")

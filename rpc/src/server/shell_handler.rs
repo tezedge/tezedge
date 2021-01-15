@@ -4,8 +4,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use bytes::buf::BufExt;
 use failure::format_err;
+use hyper::body::Buf;
 use hyper::{Body, Method, Request};
 use serde::Serialize;
 

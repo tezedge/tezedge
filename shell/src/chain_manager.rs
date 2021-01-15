@@ -2389,8 +2389,7 @@ pub mod tests {
     }
 
     fn create_tokio_runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new()
-            .threaded_scheduler()
+        tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("Failed to create tokio runtime")
@@ -2447,7 +2446,7 @@ pub mod tests {
         let log = create_logger(Level::Debug);
         let storage = TmpStorage::create_to_out_dir("__test_resolve_is_bootstrapped")?;
 
-        let mut tokio_runtime = create_tokio_runtime();
+        let tokio_runtime = create_tokio_runtime();
         let actor_system = SystemBuilder::new()
             .name("test_actors_apply_blocks_and_check_context")
             .log(log.clone())

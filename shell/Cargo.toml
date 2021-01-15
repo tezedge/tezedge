@@ -10,17 +10,17 @@ dns-lookup = "1.0.1"
 failure = "0.1"
 futures = "0.3"
 hex = "0.4"
-itertools = "0.9"
+itertools = "0.10"
 lazy_static = "1.4"
 nix = "0.19"
 page_size = "0.4.1"
 rand = "0.7.3"
-regex = "1.3.1"
+regex = "1.4"
 riker = "0.4"
-slog = "2.5"
+slog = "2.7"
 serde = "1.0"
 serde_json = "1.0"
-tokio = { version = "0.2", features = ["time", "tcp", "rt-threaded"] }
+tokio = { version = "1", features = ["time"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
@@ -34,7 +34,7 @@ tezos_wrapper = { path = "../tezos/wrapper" }
 [dev-dependencies]
 r2d2 = "0.8.9"
 serial_test = "0.5"
-slog-async = "2.5"
+slog-async = "2.6"
 slog-term = "2.6"
 tezos_encoding = { path = "../tezos/encoding" }
 zip = "0.5.5"

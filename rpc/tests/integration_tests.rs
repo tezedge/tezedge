@@ -4,9 +4,9 @@
 use std::env;
 
 use assert_json_diff::assert_json_eq_no_panic;
-use bytes::buf::BufExt;
 use enum_iterator::IntoEnumIterator;
 use failure::format_err;
+use hyper::body::Buf;
 use hyper::Client;
 use itertools::Itertools;
 use rand::prelude::SliceRandom;

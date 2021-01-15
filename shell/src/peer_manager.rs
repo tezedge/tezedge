@@ -481,8 +481,9 @@ impl Receive<ShellChannelMsg> for PeerManager {
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
         if let ShellChannelMsg::ShuttingDown(_) = msg {
-            self.shutting_down = true;
             unsubscribe_from_dead_letters(ctx.system.dead_letters(), ctx.myself());
+            self.shutting_down = true;
+            self.rx_run.store(false, Ordering::Release);
         }
     }
 }
@@ -654,20 +655,22 @@ async fn begin_listen_incoming(
     let listener_address = format!("0.0.0.0:{}", listener_port)
         .parse::<SocketAddr>()
         .expect("Failed to parse listener address");
-    let mut listener = TcpListener::bind(&listener_address)
+    let listener = TcpListener::bind(&listener_address)
         .await
         .expect("Failed to bind to address");
     info!(log, "Start to listen for incoming p2p connections"; "port" => listener_port);
 
     while rx_run.load(Ordering::Acquire) {
         if let Ok((stream, address)) = listener.accept().await {
-            peer_manager.tell(
-                AcceptPeer {
-                    stream: Arc::new(Mutex::new(Some(stream))),
-                    address,
-                },
-                None,
-            );
+            if rx_run.load(Ordering::Acquire) {
+                peer_manager.tell(
+                    AcceptPeer {
+                        stream: Arc::new(Mutex::new(Some(stream))),
+                        address,
+                    },
+                    None,
+                );
+            }
         }
     }
 

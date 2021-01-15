@@ -4,7 +4,6 @@
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
 use riker::actors::*;
@@ -119,12 +118,12 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
 }
 
 fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runtime::Runtime {
-    let mut builder = tokio::runtime::Builder::new();
     // use threaded work staling scheduler
-    builder.threaded_scheduler().enable_all();
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.enable_all();
     // set number of threads in a thread pool
     if env.tokio_threads > 0 {
-        builder.core_threads(env.tokio_threads);
+        builder.worker_threads(env.tokio_threads);
     }
     // build runtime
     builder.build().expect("Failed to create tokio runtime")
@@ -316,7 +315,7 @@ fn block_on_actors(
 
     let current_mempool_state_storage = init_mempool_state_storage();
 
-    let mut tokio_runtime = create_tokio_runtime(&env);
+    let tokio_runtime = create_tokio_runtime(&env);
 
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
@@ -413,6 +412,7 @@ fn block_on_actors(
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
+        use tokio::time::timeout;
 
         signal::ctrl_c()
             .await
@@ -427,7 +427,7 @@ fn block_on_actors(
         // stop restarting feature
         apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
-        info!(log, "Sending shutdown notification to actors");
+        info!(log, "Sending shutdown notification to actors (1/5)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -437,13 +437,15 @@ fn block_on_actors(
         );
 
         // give actors some time to shut down
-        thread::sleep(Duration::from_secs(2));
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
-        info!(log, "Shutting down actors");
-        let _ = actor_system.shutdown().await;
-        info!(log, "Shutdown actors complete");
+        info!(log, "Shutting down actors (2/5)");
+        match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
+            Ok(_) => info!(log, "Shutdown actors complete"),
+            Err(_) => info!(log, "Shutdown actors did not finish to timeout (10s)"),
+        };
 
-        info!(log, "Shutting down protocol runner pools");
+        info!(log, "Shutting down protocol runner pools (3/5)");
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
@@ -459,11 +461,11 @@ fn block_on_actors(
         };
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Flushing databases");
+        info!(log, "Flushing databases (4/5)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete");
+        info!(log, "Shutdown complete (5/5)");
     });
 }
 

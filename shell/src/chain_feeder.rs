@@ -169,6 +169,7 @@ impl ChainFeeder {
                     }
                 }
 
+                info!(log, "Chain feeder thread finished");
                 Ok(())
             })
         };

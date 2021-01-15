@@ -1177,7 +1177,7 @@ mod test_cases_data {
 /// Test node peer, which simulates p2p remote peer, communicates through real p2p socket
 mod test_node_peer {
     use std::collections::HashSet;
-    use std::net::{Shutdown, SocketAddr};
+    use std::net::SocketAddr;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -1185,6 +1185,7 @@ mod test_node_peer {
 
     use futures::lock::Mutex;
     use slog::{crit, debug, error, info, trace, warn, Logger};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpStream;
     use tokio::runtime::{Handle, Runtime};
     use tokio::time::timeout;
@@ -1374,8 +1375,8 @@ mod test_node_peer {
 
             debug!(log, "[{}] Shutting down peer connection", name; "ip" => format!("{:?}", &peer_address));
             if let Some(tx) = tx.lock().await.take() {
-                let socket = rx.unsplit(tx);
-                match socket.shutdown(Shutdown::Both) {
+                let mut socket = rx.unsplit(tx);
+                match socket.shutdown().await {
                     Ok(()) => {
                         debug!(log, "[{}] Connection shutdown successful", name; "socket" => format!("{:?}", socket))
                     }

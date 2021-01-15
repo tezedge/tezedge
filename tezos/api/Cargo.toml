@@ -18,5 +18,5 @@ crypto = { path = "../../crypto" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
-assert-json-diff = "1.0.0"
+assert-json-diff = "1.1"
 hex = "0.4"
