@@ -51,6 +51,11 @@ fn block_header_with_hash_decode_empty() {
 }
 
 #[test]
-fn block_header_with_hash_decode_underflow() {
+fn block_header_with_hash_decode_incomplete_hash() {
     assert!(matches!(BlockHeaderWithHash::decode(&[0; HashType::BlockHash.size() - 1]), Err(_)));
+}
+
+#[test]
+fn block_header_with_hash_decode_no_header() {
+    assert!(matches!(BlockHeaderWithHash::decode(&[0; HashType::BlockHash.size()]), Err(_)));
 }
