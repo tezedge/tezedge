@@ -49,6 +49,7 @@ use std::convert::TryInto;
 use std::hash::Hash;
 use std::time::Instant;
 use std::sync::Arc;
+use std::ops::{Deref, DerefMut};
 use hex;
 
 use blake2::digest::{Update, VariableOutput};
@@ -60,9 +61,7 @@ use rocksdb::{ColumnFamilyDescriptor, Cache};
 
 use crypto::hash::HashType;
 
-use crate::kv_store::{
-    KVStore as KVStoreBase, WriteBatch, ApplyBatch,
-    BasicWriteBatch, KVStoreError};
+use crate::kv_store::{KVStore as KVStoreBase, KVStoreError};
 use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 use crate::context_action_storage::{ContextAction, ContextActionStorage};
 
@@ -138,12 +137,13 @@ enum Action {
     Remove(RemoveAction),
 }
 
+pub type MerkleStorageKVStore = crate::in_memory::KVStore<EntryHash, ContextValue>;
+
 pub trait KVStore:
     KVStoreBase<
-        Error = MerkleStorageKVStoreError,
+        Error = KVStoreError,
         Key = EntryHash,
         Value = ContextValue>
-    + ApplyBatch<BasicWriteBatch<EntryHash, ContextValue>, MerkleStorageKVStoreError>
     + Send
     + Sync
 {
@@ -155,17 +155,132 @@ pub trait KVStore:
 impl<T> KVStore for T
 where T:
     KVStoreBase<
-        Error = MerkleStorageKVStoreError,
+        Error = KVStoreError,
         Key = EntryHash,
         Value = ContextValue>
-    + ApplyBatch<BasicWriteBatch<EntryHash, ContextValue>, MerkleStorageKVStoreError>
     + Send
     + Sync
 {
 }
 
-pub type MerkleStorageKVStoreError = KVStoreError;
-pub type MerkleStorageKVStore = Box<dyn KVStore>;
+use std::sync::RwLock;
+use std::thread;
+use std::sync::mpsc;
+use std::mem;
+use std::collections::{HashSet, VecDeque};
+
+/// Commands used by KVStoreGCed to interact with thread.
+enum CmdMsg {
+    StartNewCycle,
+    MarkReused(EntryHash),
+}
+
+/// Garbage Collected Key Value Store
+struct KVStoreGCed<T: KVStore> {
+    stores: Arc<RwLock<Vec<T>>>,
+    current: T,
+    thread: thread::JoinHandle<()>,
+    msg: mpsc::Sender<CmdMsg>,
+}
+
+fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
+where T: KVStore,
+      S: Deref<Target = Vec<T>>,
+{
+    stores.iter().rev()
+        .find_map(|store| store.get(key).unwrap_or(None))
+}
+
+fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
+where T: KVStore,
+      S: Deref<Target = Vec<T>>,
+{
+    stores.iter().rev().enumerate()
+        .find(|(_, store)| store.contains(key).unwrap_or(false))
+        .map(|(index, _)| index)
+}
+
+fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
+where T: KVStore,
+      S: Deref<Target = Vec<T>>,
+{
+    stores.iter().rev()
+        .find(|store| store.contains(key).unwrap_or(false))
+        .is_some()
+}
+
+/// finds in which store key is stored and deletes it
+fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<ContextValue>
+where T: KVStore,
+      S: DerefMut<Target = Vec<T>>,
+{
+    stores.iter_mut().rev()
+        .find_map(|store| store.delete(key).unwrap_or(None))
+}
+
+fn kvstore_gc_thread_fn<T: KVStore>(
+    stores: Arc<RwLock<Vec<T>>>,
+    rx: mpsc::Receiver<CmdMsg>,
+) {
+    let len = stores.read().unwrap().len();
+}
+
+impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
+    pub fn new(cycle_count: usize) -> Self {
+        assert!(cycle_count > 1, "cycle_count less than 2 for KVStoreGCed not supported");
+
+        let (tx, rx) = mpsc::channel();
+        let stores = Arc::new(RwLock::new(
+            (0..(cycle_count - 1)).map(|_| Default::default()).collect()
+        ));
+
+        Self {
+            stores: stores.clone(),
+            thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx)),
+            msg: tx,
+            current: Default::default(),
+        }
+    }
+
+    pub fn is_persisted(&self) -> bool { false }
+
+    fn stores_get(&self, key: &EntryHash) -> Option<ContextValue> {
+        stores_get(&self.stores.read().unwrap(), key)
+    }
+
+    fn stores_contains(&self, key: &EntryHash) -> bool {
+        stores_contains(&self.stores.read().unwrap(), key)
+    }
+
+    pub fn get(&self, key: &EntryHash) -> Option<ContextValue> {
+        self.current.get(key)
+            .unwrap_or(None)
+            .or_else(|| self.stores_get(key))
+    }
+
+    pub fn contains(&self, key: &EntryHash) -> bool {
+        self.current.contains(key).unwrap_or(false)
+            || self.stores_contains(key)
+    }
+
+    pub fn put(
+        &mut self,
+        key: EntryHash,
+        value: ContextValue,
+    ) -> Result<(), KVStoreError> {
+        self.current.put(key, value)
+    }
+
+    pub fn mark_reused(&mut self, key: EntryHash) {
+        let _ = self.msg.send(CmdMsg::MarkReused(key));
+    }
+
+    pub fn start_new_cycle(&mut self) {
+        let mut stores = self.stores.write().unwrap();
+        stores.push(mem::take(&mut self.current));
+        // let _ = self.msg.send(CmdMsg::StartNewCycle);
+    }
+}
 
 impl KeyValueSchema for MerkleStorage {
     // keys is hash of Entry
@@ -190,7 +305,7 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: MerkleStorageKVStore,
+    db: KVStoreGCed<MerkleStorageKVStore>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -208,7 +323,7 @@ pub struct MerkleStorage {
 pub enum MerkleError {
     /// External libs errors
     #[fail(display = "KVStore error: {:?}", error)]
-    DBError { error: MerkleStorageKVStoreError },
+    DBError { error: KVStoreError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
 
@@ -241,8 +356,8 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
 }
 
-impl From<MerkleStorageKVStoreError> for MerkleError {
-    fn from(error: MerkleStorageKVStoreError) -> Self {
+impl From<KVStoreError> for MerkleError {
+    fn from(error: KVStoreError) -> Self {
         MerkleError::DBError { error }
     }
 }
@@ -427,9 +542,9 @@ pub fn check_entry_hash(storage: &MerkleStorage, hash: &EntryHash) -> Result<(),
 }
 
 impl MerkleStorage {
-    pub fn new(db: MerkleStorageKVStore) -> Self {
+    pub fn new() -> Self {
         MerkleStorage {
-            db,
+            db: KVStoreGCed::new(5),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -855,16 +970,20 @@ impl MerkleStorage {
         };
         let entry = Entry::Commit(new_commit.clone());
 
-        self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone())?;
+        let new_commit_hash = hash_commit(&new_commit)?;
+        self.put_to_staging_area(&new_commit_hash, entry.clone())?;
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = Vec::new();
         self.staged_indices = HashMap::new();
-        let last_commit_hash = hash_commit(&new_commit)?;
-        self.last_commit_hash = Some(last_commit_hash);
-        self.inc_entry_ref_count(&last_commit_hash);
+        self.last_commit_hash = Some(new_commit_hash.clone());
 
         self.update_execution_stats("Commit".to_string(), None, &instant);
-        Ok(last_commit_hash)
+        Ok(new_commit_hash)
+    }
+
+    pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
+        self.db.start_new_cycle();
+        Ok(())
     }
 
     /// Set key/val to the staging area.
@@ -1293,119 +1412,39 @@ impl MerkleStorage {
         Ok(Some(idx))
     }
 
-    /// Persists an entry and its descendants from staged area to database on disk.
     fn persist_staged_entry_to_db(&mut self, entry: &Entry) -> Result<(), MerkleError> {
-        // batch containing DB key values to persist
-        let mut batch = BasicWriteBatch::new();
-
-        // build list of entries to be persisted
-        self.get_entries_recursively(entry, &mut batch)?;
-
-        // atomically write all entries in one batch to DB
-        self.db.apply_batch(batch)?;
-
-        Ok(())
-    }
-
-    /// Builds vector of entries to be persisted to DB, recursively
-    fn get_entries_recursively(
-        &self,
-        entry: &Entry,
-        batch: &mut BasicWriteBatch<EntryHash, ContextValue>,
-    ) -> Result<(), MerkleError> {
-        // add entry to batch
-        batch.put(
-            self.hash_entry(entry)?,
+        let entry_hash = self.hash_entry(entry)?;
+        self.db.put(
+            entry_hash.clone(),
             bincode::serialize(entry)?,
         );
+        self.db.mark_reused(entry_hash);
 
         match entry {
             Entry::Blob(_) => Ok(()),
             Entry::Tree(tree) => {
                 // Go through all descendants and gather errors. Remap error if there is a failure
                 // anywhere in the recursion paths. TODO: is revert possible?
-                tree.iter()
-                    .map(
-                        |(_, child_node)| match self.staged_get(&child_node.entry_hash) {
-                            None => Ok(()),
-                            Some(entry) => self.get_entries_recursively(entry, batch),
-                        },
-                    )
-                    .find_map(|res| match res {
-                        Ok(_) => None,
-                        Err(err) => Some(Err(err)),
-                    })
-                    .unwrap_or(Ok(()))
+                for (_, child_node) in tree.iter() {
+                    let node_entry = self.staged_get(&child_node.entry_hash).cloned();
+                    match node_entry {
+                        None => {},
+                        Some(entry) => self.persist_staged_entry_to_db(&entry)?,
+                    }
+                }
+                Ok(())
+            }
+            Entry::Commit(commit) => {
+                match self.get_entry(&commit.root_hash) {
+                    Err(err) => Err(err),
+                    Ok(entry) => self.persist_staged_entry_to_db(&entry),
+                }
             }
             Entry::Commit(commit) => match self.get_entry(&commit.root_hash) {
                 Err(err) => Err(err),
                 Ok(entry) => self.get_entries_recursively(&entry, batch),
             },
         }
-    }
-
-    /// GC old commit and it's children which aren't referenced in other commits.
-    pub fn gc_commit(&mut self, commit_hash: &EntryHash) {
-        self.dec_entry_ref_count(commit_hash);
-    }
-
-    /// Increment entry's ref_count.
-    ///
-    /// Also increments for every nested entry.
-    fn inc_entry_ref_count(&mut self, entry_hash: &EntryHash) {
-        self._change_entry_ref_count(entry_hash, false)
-    }
-
-    /// Decrements entry's `ref_count`.
-    ///
-    /// Also decrements for every nested entry.
-    /// Runs `gc_entry(entry)` on it if `ref_count` is zero.
-    fn dec_entry_ref_count(&mut self, entry_hash: &EntryHash) {
-        self._change_entry_ref_count(entry_hash, true)
-    }
-
-    fn _change_entry_ref_count(&mut self, entry_hash: &EntryHash, decrement: bool) {
-        use std::collections::hash_map;
-
-        let entry = self.get_entry(entry_hash);
-
-        match self.ref_counts.entry(entry_hash.clone()) {
-            hash_map::Entry::Vacant(e) if !decrement => { e.insert(1); }
-            hash_map::Entry::Occupied(mut e) => {
-                let count = e.get_mut();
-                if decrement {
-                    *count = count.checked_sub(1).unwrap_or(0);
-                } else {
-                    *count += 1;
-                }
-                if *count == 0 {
-                    self.gc_entry(entry_hash);
-                }
-            }
-            hash_map::Entry::Vacant(_) if decrement => {
-                self.gc_entry(entry_hash);
-            }
-            _ => { return; }
-        };
-
-        match entry {
-            Err(_) => {}
-            Ok(Entry::Blob(_)) => {}
-            Ok(Entry::Tree(tree)) => {
-                for (key, child_node) in tree.iter() {
-                    self._change_entry_ref_count(&child_node.entry_hash, decrement);
-                }
-            }
-            Ok(Entry::Commit(commit)) => {
-                self._change_entry_ref_count(&commit.root_hash, decrement);
-            }
-        };
-    }
-
-    /// removes entry from db and it's `ref_count`.
-    fn gc_entry(&mut self, entry_hash: &EntryHash) {
-        self.ref_counts.remove(entry_hash);
-        let _ = self.db.delete(entry_hash);
     }
 
     fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
@@ -1445,7 +1484,7 @@ impl MerkleStorage {
     }
 
     fn get_entry_db(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        let entry_bytes = self.db.get(hash)?;
+        let entry_bytes = self.db.get(hash);
         match entry_bytes {
             None => Err(MerkleError::EntryNotFound {
                 hash: HashType::ContextHash.hash_to_b58check(hash),
@@ -1457,7 +1496,7 @@ impl MerkleStorage {
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
             None => {
-                let entry_bytes = self.db.get(hash)?;
+                let entry_bytes = self.db.get(hash);
                 match entry_bytes {
                     None => Err(MerkleError::EntryNotFound {
                         hash: HashType::ContextHash.hash_to_b58check(hash),
@@ -2299,159 +2338,5 @@ mod tests {
             )
             .unwrap()
         );
-    }
-
-    #[test]
-    fn test_initializes_ref_counts_for_all_children_on_commit() {
-        let mut storage = get_empty_storage();
-
-        storage.set(&context_key!("a/b/c"), &vec![1]);
-        let commit_hash = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
-
-        let commit = storage.get_commit(&commit_hash).unwrap();
-        let root = storage.get_tree(&commit.root_hash).unwrap();
-        let a = get_tree_hash(&storage, &root, &context_key!("a"));
-        let ab = get_tree_hash(&storage, &root, &context_key!("a/b"));
-        let blob = get_blob_hash(&storage, &root, &context_key!("a/b/c"));
-
-        assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 1);
-    }
-
-    #[test]
-    fn test_increments_ref_count_for_multi_parent() {
-        let mut storage = get_empty_storage();
-
-        storage.set(&context_key!("a/b/c"), &vec![1]);
-        storage.commit(1, "Tezos".into(), "1".into()).unwrap();
-        storage.set(&context_key!("a/z"), &vec![1]);
-        let commit_hash = storage.commit(2, "Tezos".into(), "2".into()).unwrap();
-
-        let commit = storage.get_commit(&commit_hash).unwrap();
-        let root = storage.get_tree(&commit.root_hash).unwrap();
-        let a = get_tree_hash(&storage, &root, &context_key!("a"));
-        let ab = get_tree_hash(&storage, &root, &context_key!("a/b"));
-        let blob = get_blob_hash(&storage, &root, &context_key!("a/b/c"));
-
-        assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 2);
-        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 3);
-    }
-
-    #[test]
-    fn test_empty_rejected_commits_doesnt_increment_ref_count() {
-        let mut storage = get_empty_storage();
-
-        storage.set(&context_key!("a/b/c"), &vec![1]);
-        let commit_hash = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
-        // empty commit
-        storage.commit(1, "Tezos".into(), "empty1".into());
-
-        let commit = storage.get_commit(&commit_hash).unwrap();
-        let root = storage.get_tree(&commit.root_hash).unwrap();
-        let a = get_tree_hash(&storage, &root, &context_key!("a"));
-        let ab = get_tree_hash(&storage, &root, &context_key!("a/b"));
-        let blob = get_blob_hash(&storage, &root, &context_key!("a/b/c"));
-
-        assert_eq!(*storage.ref_counts.get(&a).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&ab).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 1);
-    }
-
-    #[test]
-    fn test_removes_blob_with_ref_count_0() {
-        let mut storage = get_empty_storage();
-
-        storage.set(&context_key!("a/b/c"), &vec![1]);
-        let commit_hash1 = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
-        storage.delete(&context_key!("a/b/c"));
-        storage.set(&context_key!("a/z"), &vec![2]);
-        let commit_hash2 = storage.commit(1, "Tezos".into(), "1".into()).unwrap();
-
-        let (a1, ab1, blob1, a2, blob2) = {
-            let get_root = |commit_hash: &EntryHash| {
-                let commit = storage.get_commit(commit_hash).unwrap();
-                storage.get_tree(&commit.root_hash).unwrap()
-            };
-            let root1 = get_root(&commit_hash1);
-            let root2 = get_root(&commit_hash2);
-            let a1 = get_tree_hash(&storage, &root1, &context_key!("a"));
-            let ab1 = get_tree_hash(&storage, &root1, &context_key!("a/b"));
-            let blob1 = get_blob_hash(&storage, &root1, &context_key!("a/b/c"));
-            let a2 = get_tree_hash(&storage, &root2, &context_key!("a"));
-            let blob2 = get_blob_hash(&storage, &root2, &context_key!("a/z"));
-
-            (a1, ab1, blob1, a2, blob2)
-        };
-
-        assert_eq!(*storage.ref_counts.get(&a1).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&ab1).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob1).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob2).unwrap(), 1);
-
-        // simulate commit removal
-        storage.dec_entry_ref_count(&commit_hash1);
-
-        assert!(storage.ref_counts.get(&a1).is_none());
-        assert!(storage.ref_counts.get(&ab1).is_none());
-        assert!(storage.ref_counts.get(&blob1).is_none());
-        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob2).unwrap(), 1);
-
-        assert!(matches!(storage.get_entry(&commit_hash1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(matches!(storage.get_entry(&a1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(matches!(storage.get_entry(&ab1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(matches!(storage.get_entry(&blob1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(storage.get_entry(&commit_hash2).is_ok());
-        assert!(storage.get_entry(&a2).is_ok());
-        assert!(storage.get_entry(&blob2).is_ok());
-    }
-
-    #[test]
-    fn test_keeps_blob_with_ref_count_decremented_to_1() {
-        let mut storage = get_empty_storage();
-
-        storage.set(&context_key!("a/b/c"), &vec![1]);
-        let commit_hash1 = storage.commit(0, "Tezos".into(), "Genesis".into()).unwrap();
-        storage.delete(&context_key!("a/b/c"));
-        storage.set(&context_key!("a/z"), &vec![1]);
-        let commit_hash2 = storage.commit(1, "Tezos".into(), "1".into()).unwrap();
-
-        let (a1, ab1, a2, blob) = {
-            let get_root = |commit_hash: &EntryHash| {
-                let commit = storage.get_commit(commit_hash).unwrap();
-                storage.get_tree(&commit.root_hash).unwrap()
-            };
-            let root1 = get_root(&commit_hash1);
-            let root2 = get_root(&commit_hash2);
-            let a1 = get_tree_hash(&storage, &root1, &context_key!("a"));
-            let ab1 = get_tree_hash(&storage, &root1, &context_key!("a/b"));
-            let a2 = get_tree_hash(&storage, &root2, &context_key!("a"));
-            let blob = get_blob_hash(&storage, &root2, &context_key!("a/z"));
-
-            (a1, ab1, a2, blob)
-        };
-
-        assert_eq!(*storage.ref_counts.get(&a1).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&ab1).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 2);
-
-        // simulate commit removal
-        storage.dec_entry_ref_count(&commit_hash1);
-
-        assert!(storage.ref_counts.get(&a1).is_none());
-        assert!(storage.ref_counts.get(&ab1).is_none());
-        assert_eq!(*storage.ref_counts.get(&a2).unwrap(), 1);
-        assert_eq!(*storage.ref_counts.get(&blob).unwrap(), 1);
-
-        assert!(matches!(storage.get_entry(&commit_hash1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(matches!(storage.get_entry(&a1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(matches!(storage.get_entry(&ab1), Err(MerkleError::EntryNotFound { .. })));
-        assert!(storage.get_entry(&commit_hash2).is_ok());
-        assert!(storage.get_entry(&a2).is_ok());
-        assert!(storage.get_entry(&blob).is_ok());
     }
 }
