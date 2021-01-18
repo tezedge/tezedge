@@ -44,3 +44,13 @@ fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
     let decoded = BlockHeaderWithHash::decode(&encoded_bytes)?;
     Ok(assert_eq!(expected, decoded))
 }
+
+#[test]
+fn block_header_with_hash_decode_empty() {
+    assert!(matches!(BlockHeaderWithHash::decode(&[]), Err(_)));
+}
+
+#[test]
+fn block_header_with_hash_decode_underflow() {
+    assert!(matches!(BlockHeaderWithHash::decode(&[0; HashType::BlockHash.size() - 1]), Err(_)));
+}
