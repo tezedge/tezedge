@@ -3,6 +3,7 @@
 
 use std::{convert::TryInto, sync::Arc};
 
+use crypto::hash::HashType;
 use failure::Error;
 
 use storage::persistent::{Decoder, Encoder};
@@ -33,4 +34,25 @@ fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
     let encoded_bytes = expected.encode()?;
     let decoded = BlockHeaderWithHash::decode(&encoded_bytes)?;
     Ok(assert_eq!(expected, decoded))
+}
+
+#[test]
+fn block_header_with_hash_decode_empty() {
+    assert!(matches!(BlockHeaderWithHash::decode(&[]), Err(_)));
+}
+
+#[test]
+fn block_header_with_hash_decode_incomplete_hash() {
+    assert!(matches!(
+        BlockHeaderWithHash::decode(&[0; HashType::BlockHash.size() - 1]),
+        Err(_)
+    ));
+}
+
+#[test]
+fn block_header_with_hash_decode_no_header() {
+    assert!(matches!(
+        BlockHeaderWithHash::decode(&[0; HashType::BlockHash.size()]),
+        Err(_)
+    ));
 }
