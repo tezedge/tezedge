@@ -221,6 +221,82 @@ fn kvstore_gc_thread_fn<T: KVStore>(
     rx: mpsc::Receiver<CmdMsg>,
 ) {
     let len = stores.read().unwrap().len();
+    let mut reused_keys = vec![HashSet::new(); len];
+    let mut todo_keys: VecDeque<EntryHash> = VecDeque::new();
+    loop {
+        let wait_for_events = reused_keys.len() == len;
+
+        let msg = if wait_for_events {
+            match rx.recv() {
+                Ok(value) => Some(value),
+                Err(_) => break,
+            }
+        } else {
+            match rx.try_recv() {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            }
+        };
+
+        match msg {
+            Some(CmdMsg::StartNewCycle) => {
+                reused_keys.push(Default::default());
+            },
+            Some(CmdMsg::MarkReused(key)) => {
+                // TODO: refactor so that `mark_reused` isn't called
+                // unless key was in MerkleStorage::db
+                if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
+                    // since gc might be slow and this vec can grow,
+                    // we need to calculate offset from the end instead.
+                    let reused_keys_index = reused_keys.len() - len + index;
+                    for hs in reused_keys[0..reused_keys_index].iter_mut() {
+                        hs.remove(&key);
+                    }
+                    reused_keys[reused_keys_index].insert(key);
+                }
+            }
+            None => {}
+        }
+
+        if reused_keys.len() > len && reused_keys[0].len() > 0 {
+            todo_keys.extend(mem::take(&mut reused_keys[0]).into_iter());
+        }
+
+        if todo_keys.len() > 0 {
+            let keys: Vec<_> = todo_keys.drain(..(todo_keys.len().min(16))).collect();
+            let mut stores = stores.write().unwrap();
+            for key in keys.into_iter() {
+                let entry_bytes = match stores_get(&stores, &key) {
+                    Some(value) => value,
+                    None => continue,
+                };
+                let entry: Entry = match bincode::deserialize(&entry_bytes) {
+                    Ok(value) => value,
+                    Err(_) => continue
+                };
+                stores.last_mut().unwrap().put(key.clone(), entry_bytes).unwrap();
+
+                match entry {
+                    Entry::Blob(_) => {}
+                    Entry::Tree(tree) => {
+                        let children = tree.into_iter()
+                            .map(|(_, node)| node.entry_hash);
+                        todo_keys.extend(children);
+                    }
+                    Entry::Commit(commit) => {
+                        todo_keys.push_back(commit.root_hash);
+                    }
+                }
+            }
+        }
+
+        if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
+            reused_keys.drain(..1);
+            stores.write().unwrap().drain(..1);
+        }
+    }
+
+    println!("MerkleStorage GC thread shut down!");
 }
 
 impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
@@ -276,7 +352,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     pub fn start_new_cycle(&mut self) {
         let mut stores = self.stores.write().unwrap();
         stores.push(mem::take(&mut self.current));
-        // let _ = self.msg.send(CmdMsg::StartNewCycle);
+        let _ = self.msg.send(CmdMsg::StartNewCycle);
     }
 }
 

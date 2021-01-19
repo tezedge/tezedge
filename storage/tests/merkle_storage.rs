@@ -171,9 +171,6 @@ fn test_merkle_storage_gc() {
         let merkle_rwlock = persistent_storage.merkle();
         let mut merkle = merkle_rwlock.write().unwrap();
 
-        let mut actions = ctx_action_storage.get_by_block_hash(&block.hash).unwrap();
-        actions.sort_by_key(|x| x.id);
-
         for action in actions.into_iter() {
             if let ContextAction::Commit { new_context_hash, .. } = &action {
                 commits.push(new_context_hash[..].try_into().unwrap());
@@ -187,13 +184,12 @@ fn test_merkle_storage_gc() {
         // let cycles = get_cycles_for_block(&persistent_storage, &context_hash);
         let cycles = 4096;
 
-        if level % cycles == 0 && level > 0 && prev_cycle_commits.len() > 0 {
-            println!("clearing previous cycle");
-            for commit_hash in prev_cycle_commits.into_iter() {
-                merkle.gc_commit(&commit_hash);
-            }
+        if level % cycles == 0 && level > 0 {
+            merkle.start_new_cycle().unwrap();
 
-            assert!(matches!(check_commit_hashes(&merkle, &commits[..]), Ok(_)));
+            // TODO: check for commits previous cycles which should have
+            // been preserved as well.
+            check_commit_hashes(&merkle, &commits[..]).unwrap();
 
             prev_cycle_commits = commits;
             commits = vec![];
