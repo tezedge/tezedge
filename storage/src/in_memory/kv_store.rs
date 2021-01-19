@@ -56,6 +56,10 @@ where K: Ord,
     fn contains(&self, key: &Self::Key) -> Result<bool, Self::Error> {
         Ok(self.kv_map.contains_key(key))
     }
+
+    fn len(&self) -> Result<usize, Self::Error> {
+        Ok(self.kv_map.len())
+    }
 }
 
 impl<K, V> ApplyBatch<BasicWriteBatch<K, V>, KVStoreError> for KVStore<K, V>

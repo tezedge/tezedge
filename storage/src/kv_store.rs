@@ -53,6 +53,8 @@ pub trait KVStore {
     fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error>;
 
     fn contains(&self, key: &Self::Key) -> Result<bool, Self::Error>;
+
+    fn len(&self) -> Result<usize, Self::Error>;
 }
 
 pub trait ApplyBatch<WB, E>

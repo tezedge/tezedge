@@ -56,6 +56,10 @@ where K: Codec,
     fn contains(&self, key: &Self::Key) -> Result<bool, Self::Error> {
         Ok(self.db.contains_key(key.encode()?)?)
     }
+
+    fn len(&self) -> Result<usize, Self::Error> {
+        Ok(self.db.len())
+    }
 }
 
 impl<K, V> ApplyBatch<BasicWriteBatch<K, V>, KVStoreError> for KVStore<K, V>
