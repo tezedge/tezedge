@@ -42,14 +42,17 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
+use std::thread;
+use std::mem;
 use std::array::TryFromSliceError;
 use std::collections::hash_map::Entry as MapEntry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::time::Instant;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc, RWLock};
 use std::ops::{Deref, DerefMut};
+use std::iter::FromIterator;
 use hex;
 
 use blake2::digest::{Update, VariableOutput};
@@ -163,11 +166,6 @@ where T:
 {
 }
 
-use std::sync::RwLock;
-use std::thread;
-use std::sync::mpsc;
-use std::mem;
-use std::collections::{HashSet, VecDeque};
 
 /// Commands used by KVStoreGCed to interact with thread.
 enum CmdMsg {
@@ -520,30 +518,47 @@ impl From<MerkleError> for CheckEntryHashError {
 }
 
 /// Recursively check if entry hash is valid
-pub fn check_entry_hash(storage: &MerkleStorage, hash: &EntryHash) -> Result<(), CheckEntryHashError> {
-    let entry = storage.get_entry(hash)?;
-    let entry_type = entry.get_type();
+pub fn check_commit_hashes(storage: &MerkleStorage, commits: &[EntryHash]) -> Result<(), CheckEntryHashError> {
+    let mut entries = VecDeque::from_iter(commits.iter().cloned());
+    let mut checked = HashSet::new();
 
-    let calculated_hash = match entry {
-        Entry::Blob(blob) => { hash_blob(&blob)? }
-        Entry::Tree(tree) => {
-            for (k, v) in tree.iter() {
-                check_entry_hash(storage, &v.entry_hash)?;
+    loop {
+        let entry_hash = match entries.pop_front() {
+            Some(hash) => hash,
+            None => break,
+        };
+        if checked.contains(&entry_hash) {
+            continue;
+        }
+
+        let entry = storage.get_entry(&entry_hash)?;
+        let entry_type = entry.get_type();
+
+        let calculated_hash = match entry {
+            Entry::Blob(blob) => { hash_blob(&blob)? }
+            Entry::Tree(tree) => {
+                let hash = hash_tree(&tree)?;
+                for (_, node) in tree.into_iter() {
+                    entries.push_back(node.entry_hash);
+                }
+                hash
             }
-            hash_tree(&tree)?
-        }
-        Entry::Commit(commit) => {
-            check_entry_hash(storage, &commit.root_hash)?;
-            hash_commit(&commit)?
-        }
-    };
+            Entry::Commit(commit) => {
+                let hash = hash_commit(&commit)?;
+                entries.push_back(commit.root_hash);
+                hash
+            }
+        };
 
-    if &calculated_hash != hash {
-        return Err(CheckEntryHashError::InvalidHashError {
-            entry_type: entry_type.to_string(),
-            expected: HashType::ContextHash.hash_to_b58check(hash),
-            calculated: HashType::ContextHash.hash_to_b58check(&calculated_hash),
-        });
+        if &calculated_hash != &entry_hash {
+            return Err(CheckEntryHashError::InvalidHashError {
+                entry_type: entry_type.to_string(),
+                expected: HashType::ContextHash.hash_to_b58check(&entry_hash),
+                calculated: HashType::ContextHash.hash_to_b58check(&calculated_hash),
+            });
+        }
+
+        checked.insert(entry_hash);
     }
 
     Ok(())

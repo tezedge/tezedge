@@ -13,7 +13,7 @@ use rocksdb::{DB, Cache, Options};
 use storage::*;
 use in_memory::KVStore;
 use context_action_storage::ContextAction;
-use merkle_storage::{MerkleStorage, MerkleError, Entry, check_entry_hash};
+use merkle_storage::{MerkleStorage, MerkleError, Entry, check_commit_hashes};
 use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};
 use persistent::sequence::Sequences;
 
@@ -193,9 +193,7 @@ fn test_merkle_storage_gc() {
                 merkle.gc_commit(&commit_hash);
             }
 
-            for commit_hash in commits.iter() {
-                assert!(matches!(check_entry_hash(&merkle, commit_hash), Ok(_)));
-            }
+            assert!(matches!(check_commit_hashes(&merkle, &commits[..]), Ok(_)));
 
             prev_cycle_commits = commits;
             commits = vec![];
