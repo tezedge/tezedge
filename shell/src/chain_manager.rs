@@ -1636,6 +1636,10 @@ impl ChainManager {
             pred_header: (&*predecessor.header).clone(),
             operations: ApplyBlockRequest::convert_operations(operations),
             max_operations_ttl: predecessor_additional_data.max_operations_ttl() as i32,
+            predecessor_block_metadata_hash: predecessor_additional_data
+                .block_metadata_hash()
+                .clone(),
+            predecessor_ops_metadata_hash: predecessor_additional_data.ops_metadata_hash().clone(),
         })
     }
 

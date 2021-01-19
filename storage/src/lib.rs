@@ -237,6 +237,23 @@ pub fn store_applied_block_result(
     let block_additional_data = BlockAdditionalDataBuilder::default()
         .max_operations_ttl(block_result.max_operations_ttl.try_into().unwrap())
         .last_allowed_fork_level(block_result.last_allowed_fork_level)
+        .block_metadata_hash(block_result.block_metadata_hash)
+        .ops_metadata_hash({
+            // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
+            //       So, we need to add the same handling, because this attributes contributes to context_hash
+            //       They, store it, only if [`validation_passes > 0`], this measn that we have some operations
+            match &block_result.ops_metadata_hashes {
+                Some(hashes) => {
+                    if hashes.is_empty() {
+                        None
+                    } else {
+                        block_result.ops_metadata_hash
+                    }
+                }
+                None => None,
+            }
+        })
+        .ops_metadata_hashes(block_result.ops_metadata_hashes)
         .build()
         .unwrap();
     block_storage.put_block_additional_data(&block_hash, block_additional_data.clone())?;
@@ -341,6 +358,9 @@ pub fn initialize_storage_with_genesis_block(
     let block_additional_data = BlockAdditionalDataBuilder::default()
         .max_operations_ttl(genesis_additional_data.max_operations_ttl)
         .last_allowed_fork_level(genesis_additional_data.last_allowed_fork_level)
+        .block_metadata_hash(None)
+        .ops_metadata_hash(None)
+        .ops_metadata_hashes(None)
         .build()
         .unwrap();
     block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data)?;

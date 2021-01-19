@@ -50,7 +50,7 @@ enum ProtocolMessage {
     ValidateOperationCall(ValidateOperationRequest),
     ProtocolRpcCall(ProtocolRpcRequest),
     HelpersPreapplyOperationsCall(ProtocolRpcRequest),
-    HelpersPreapplyBlockCall(ProtocolRpcRequest),
+    HelpersPreapplyBlockCall(HelpersPreapplyBlockRequest),
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
@@ -591,7 +591,7 @@ impl ProtocolController {
     /// Call helpers_preapply_block shell service
     pub fn helpers_preapply_block(
         &self,
-        request: ProtocolRpcRequest,
+        request: HelpersPreapplyBlockRequest,
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
     }

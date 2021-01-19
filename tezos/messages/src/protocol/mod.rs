@@ -16,6 +16,7 @@ pub mod proto_005;
 pub mod proto_005_2;
 pub mod proto_006;
 pub mod proto_007;
+pub mod proto_008;
 
 pub fn get_constants_for_rpc(
     bytes: &[u8],
@@ -83,6 +84,12 @@ pub fn get_constants_for_rpc(
         }
         proto_007::PROTOCOL_HASH => {
             use crate::protocol::proto_007::constants::{ParametricConstants, FIXED};
+            let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
+            param.extend(FIXED.clone().as_map());
+            Ok(Some(param))
+        }
+        proto_008::PROTOCOL_HASH => {
+            use crate::protocol::proto_008::constants::{ParametricConstants, FIXED};
             let mut param = ParametricConstants::from_bytes(bytes)?.as_map();
             param.extend(FIXED.clone().as_map());
             Ok(Some(param))

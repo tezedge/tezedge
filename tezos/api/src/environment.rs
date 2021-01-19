@@ -33,6 +33,7 @@ pub enum TezosEnvironment {
     Babylonnet,
     Carthagenet,
     Delphinet,
+    Edonet,
     Mainnet,
     Zeronet,
     Sandbox,
@@ -50,6 +51,7 @@ impl FromStr for TezosEnvironment {
             "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
             "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
             "delphinet" | "delphi" => Ok(TezosEnvironment::Delphinet),
+            "edonet" | "edo" => Ok(TezosEnvironment::Edonet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
             "sandbox" => Ok(TezosEnvironment::Sandbox),
@@ -147,6 +149,34 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "13.53.41.201".to_string(),
         ],
         version: "TEZOS_DELPHINET_2020-09-04T07:08:53Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+        }),
+    });
+
+    env.insert(TezosEnvironment::Edonet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2020-11-30T12:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "51.75.246.56:9733".to_string(),
+            "edonet.tezos.co.il".to_string(),
+            "46.245.179.161:9733".to_string(),
+            "edonet.smartpy.io".to_string(),
+            "188.40.128.216:29732".to_string(),
+            "51.79.165.131".to_string(),
+            "edonet.boot.tezostaquito.io".to_string(),
+            "95.216.228.228:9733".to_string(),
+        ],
+        version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
         protocol_overrides: ProtocolOverrides {
             user_activated_upgrades: vec![],
             user_activated_protocol_overrides: vec![],

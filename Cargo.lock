@@ -2542,6 +2542,7 @@ dependencies = [
  "hex",
  "hyper 0.14.2",
  "itertools 0.10.0",
+ "lazy_static",
  "path-tree",
  "rand 0.7.3",
  "rayon",

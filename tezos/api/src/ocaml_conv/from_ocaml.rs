@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    FfiPath, OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlProtocolHash,
+    FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlContextHash, OCamlHash,
+    OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
+    OCamlProtocolHash,
 };
 use crate::ffi::{
     Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
@@ -10,7 +12,10 @@ use crate::ffi::{
     ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse,
     ValidateOperationResult,
 };
-use crypto::hash::{BlockHash, ContextHash, Hash, OperationHash, ProtocolHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ContextHash, Hash, OperationHash, OperationMetadataHash,
+    OperationMetadataListListHash, ProtocolHash,
+};
 use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlInt,
     OCamlInt32, OCamlList, ToRust,
@@ -32,6 +37,12 @@ from_ocaml_hash!(OCamlOperationHash, OperationHash);
 from_ocaml_hash!(OCamlBlockHash, BlockHash);
 from_ocaml_hash!(OCamlContextHash, ContextHash);
 from_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
+from_ocaml_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+from_ocaml_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
+from_ocaml_hash!(
+    OCamlOperationMetadataListListHash,
+    OperationMetadataListListHash
+);
 
 impl_from_ocaml_record! {
     ForkingTestchainData {
@@ -51,6 +62,9 @@ impl_from_ocaml_record! {
         last_allowed_fork_level: OCamlInt32,
         forking_testchain: bool,
         forking_testchain_data: Option<ForkingTestchainData>,
+        block_metadata_hash: Option<OCamlBlockMetadataHash>,
+        ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
+        ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 

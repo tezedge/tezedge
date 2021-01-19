@@ -18,7 +18,9 @@ use serde::Serialize;
 use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use storage::context::ContextApi;
 use storage::{context_key, num_from_slice, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
-use tezos_api::ffi::{ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest};
+use tezos_api::ffi::{
+    HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
+};
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::{
@@ -26,6 +28,7 @@ use tezos_messages::protocol::{
     proto_003 as proto_003_constants, proto_004 as proto_004_constants,
     proto_005 as proto_005_constants, proto_005_2 as proto_005_2_constants,
     proto_006 as proto_006_constants, proto_007 as proto_007_constants,
+    proto_008 as proto_008_constants,
 };
 
 use crate::helpers::get_context_hash;
@@ -38,6 +41,7 @@ mod proto_004;
 mod proto_005_2;
 mod proto_006;
 mod proto_007;
+mod proto_008;
 
 /// Return generated baking rights.
 ///
@@ -148,6 +152,17 @@ pub(crate) fn check_and_get_baking_rights(
                 env.tezedge_context(),
             )
         }
+        proto_008_constants::PROTOCOL_HASH => {
+            proto_008::rights_service::check_and_get_baking_rights(
+                context_proto_params,
+                level,
+                delegate,
+                cycle,
+                max_priority,
+                has_all,
+                env.tezedge_context(),
+            )
+        }
         _ => panic!(
             "Missing baking rights implemetation for protocol: {}, protocol is not yet supported!",
             hash
@@ -247,6 +262,16 @@ pub(crate) fn check_and_get_endorsing_rights(
         }
         proto_007_constants::PROTOCOL_HASH => {
             proto_007::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                env.tezedge_context(),
+            )
+        }
+        proto_008_constants::PROTOCOL_HASH => {
+            proto_008::rights_service::check_and_get_endorsing_rights(
                 context_proto_params,
                 level,
                 delegate,
@@ -401,10 +426,31 @@ pub(crate) fn preapply_block(
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
 ) -> Result<serde_json::value::Value, failure::Error> {
-    let request =
-        create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+    let block_storage = BlockStorage::new(env.persistent_storage());
+    let (block_header, (predecessor_block_metadata_hash, predecessor_ops_metadata_hash)) =
+        match block_storage.get_with_additional_data(&block_hash)? {
+            Some((block_header, block_header_additional_data)) => {
+                (block_header, block_header_additional_data.into())
+            }
+            None => bail!(
+                "No block header found for hash: {}",
+                HashType::BlockHash.hash_to_b58check(&block_hash)
+            ),
+        };
 
-    // TODO: TE-192 - refactor to protocol runner call
+    // create request to ffi
+    let request = HelpersPreapplyBlockRequest {
+        protocol_rpc_request: ProtocolRpcRequest {
+            chain_arg: chain_param.to_string(),
+            block_header: block_header.header.as_ref().clone(),
+            request: rpc_request,
+            chain_id,
+        },
+        predecessor_block_metadata_hash,
+        predecessor_ops_metadata_hash,
+    };
+
+    // TODO: retry?
     let response = env
         .tezos_readonly_api()
         .pool

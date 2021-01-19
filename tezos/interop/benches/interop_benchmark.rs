@@ -112,6 +112,9 @@ fn criterion_benchmark(c: &mut Criterion) {
                 .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
                 .unwrap(),
         }),
+        block_metadata_hash: None,
+        ops_metadata_hashes: None,
+        ops_metadata_hash: None,
     };
 
     let _ignored = runtime::execute(move || {
@@ -134,6 +137,8 @@ fn criterion_benchmark(c: &mut Criterion) {
             .operations(ApplyBlockRequest::convert_operations(
                 block_operations_from_hex(HEADER_HASH, sample_operations_for_request_decoded()),
             ))
+            .predecessor_block_metadata_hash(None)
+            .predecessor_ops_metadata_hash(None)
             .build()
             .unwrap();
 

@@ -48,7 +48,7 @@ mod configuration;
 mod identity;
 mod system;
 
-const DATABASE_VERSION: i64 = 16;
+const DATABASE_VERSION: i64 = 17;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{

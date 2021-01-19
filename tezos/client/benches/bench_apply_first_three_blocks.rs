@@ -74,6 +74,8 @@ fn apply_first_three_blocks(
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })?;
     perf_log.push(format!("- 1. apply: {:?}", clocks.elapsed()));
     assert_eq!(
@@ -96,6 +98,8 @@ fn apply_first_three_blocks(
             test_data::block_header_level2_operations(),
         )),
         max_operations_ttl: apply_block_result.max_operations_ttl,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })?;
     perf_log.push(format!("- 2. apply: {:?}", clocks.elapsed()));
     assert_eq!(
@@ -118,6 +122,8 @@ fn apply_first_three_blocks(
             test_data::block_header_level3_operations(),
         )),
         max_operations_ttl: apply_block_result.max_operations_ttl,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })?;
     perf_log.push(format!("- 3. apply: {:?}", clocks.elapsed()));
     assert_eq!(

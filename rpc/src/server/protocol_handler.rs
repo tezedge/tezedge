@@ -38,7 +38,6 @@ pub async fn baking_rights(
     let cycle = query.get_str("cycle");
     let has_all = query.contains_key("all");
 
-    // list -> context, persistent, state odizolovat
     match services::protocol::check_and_get_baking_rights(
         block_hash,
         level,
