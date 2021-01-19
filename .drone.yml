@@ -6,6 +6,7 @@
 # - carthagenet-offline-tests (runs snapshoted local ocaml nodes and rust node)
 # - delphinet-offline-tests (runs snapshoted local ocaml nodes and rust node)
 # - edonet-offline-tests (runs snapshoted local ocaml nodes and rust node)
+# - mainnet-offline-tests (runs snapshoted local ocaml nodes and rust node)
 ##############################################################################################################
 # Ocaml stuff is based on image tezos/tezos:v8 (if released new one, fell free to upgrade it here)
 ##############################################################################################################
@@ -197,6 +198,7 @@ steps:
     ref:
       exclude:
         - refs/pull/*/head
+        - feature/edo
 
 # prepare and compiles (async) bench for target branch (only for PR)
 - name: compile-benchmarks-for-target-branch
@@ -250,6 +252,10 @@ steps:
   commands:
     - /artifacts/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
     - /artifacts/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
+  when:
+    ref:
+      exclude:
+        - feature/edo
 
 - name: apply/block-context-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -268,6 +274,10 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/actors_apply_blocks_test --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
+  when:
+    ref:
+      exclude:
+        - feature/edo
 
 - name: current-branch/head-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -287,6 +297,10 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_branch_on_level3_then_current_head_level4
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_heads_to_level3
+  when:
+    ref:
+      exclude:
+        - feature/edo
 
 - name: simple-reorg-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -305,6 +319,10 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_reorg_with_different_current_branches
+  when:
+    ref:
+      exclude:
+        - feature/edo
 
 - name: multipass-blacklist-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -323,6 +341,10 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
+  when:
+    ref:
+      exclude:
+        - feature/edo
 
 - name: bootstrap-and-mempool-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -341,6 +363,10 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
+  when:
+    ref:
+      exclude:
+        - feature/edo
 
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -1368,12 +1394,12 @@ steps:
 # just run ocaml 3 carthagenet snapshoted nodes
 - name: ocaml-node-run-1
   user: root
-  image: tezos/tezos:v8.1
+  image: tezos/tezos:v8.0
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-carthage-snapshot-data-1
+    - name: ocaml-node-carthagenet-snapshot-data-1
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip1.txt
@@ -1384,12 +1410,12 @@ steps:
 
 - name: ocaml-node-run-2
   user: root
-  image: tezos/tezos:v8.1
+  image: tezos/tezos:v8.0
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-carthage-snapshot-data-2
+    - name: ocaml-node-carthagenet-snapshot-data-2
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip2.txt
@@ -1400,12 +1426,12 @@ steps:
 
 - name: ocaml-node-run-3
   user: root
-  image: tezos/tezos:v8.1
+  image: tezos/tezos:v8.0
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-carthage-snapshot-data-3
+    - name: ocaml-node-carthagenet-snapshot-data-3
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip3.txt
@@ -1575,15 +1601,15 @@ volumes:
   - name: build
     host:
       path: /etc/tezedge-ci/build
-  - name: ocaml-node-carthage-snapshot-data-1
+  - name: ocaml-node-carthagenet-snapshot-data-1
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-carthage-snapshot-data-1
-  - name: ocaml-node-carthage-snapshot-data-2
+      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-1
+  - name: ocaml-node-carthagenet-snapshot-data-2
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-carthage-snapshot-data-2
-  - name: ocaml-node-carthage-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-2
+  - name: ocaml-node-carthagenet-snapshot-data-3
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-carthage-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-3
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-ci/data/tezedge-node
@@ -1602,6 +1628,7 @@ trigger:
   branch:
     - master
     - develop
+    - feature/edo
 
 depends_on:
   - build-and-tests

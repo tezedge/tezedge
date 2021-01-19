@@ -16,6 +16,7 @@ use lazy_static::lazy_static;
 use serial_test::serial;
 
 use crypto::hash::OperationHash;
+use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
@@ -25,15 +26,14 @@ use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
 use tezos_messages::p2p::encoding::prelude::Mempool;
-use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 mod common;
 mod samples;
 
 lazy_static! {
-    pub static ref NETWORK_VERSION: NetworkVersion = NetworkVersion::new("TEST_CHAIN".to_string(), 0, 0);
+    pub static ref SHELL_COMPATIBILITY_VERSION: ShellCompatibilityVersion = ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![0], vec![0]);
     pub static ref NODE_P2P_PORT: u16 = 1234; // TODO: maybe some logic to verify and get free port
-    pub static ref NODE_P2P_CFG: (P2p, NetworkVersion) = (
+    pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
             listener_port: NODE_P2P_PORT.clone(),
             bootstrap_lookup_addresses: vec![],
@@ -43,7 +43,7 @@ lazy_static! {
             bootstrap_peers: vec![],
             peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
         },
-        NETWORK_VERSION.clone(),
+        SHELL_COMPATIBILITY_VERSION.clone(),
     );
     pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64);
 }
@@ -1194,9 +1194,9 @@ mod test_node_peer {
     use networking::p2p::peer;
     use networking::p2p::peer::{Bootstrap, BootstrapOutput, Local};
     use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
+    use networking::ShellCompatibilityVersion;
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
-    use tezos_messages::p2p::encoding::version::NetworkVersion;
 
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
     const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -1219,7 +1219,7 @@ mod test_node_peer {
         pub fn connect(
             name: &'static str,
             connect_to_node_port: u16,
-            network_version: NetworkVersion,
+            shell_compatibility_version: ShellCompatibilityVersion,
             identity: Identity,
             log: Logger,
             tokio_runtime: &Runtime,
@@ -1250,7 +1250,7 @@ mod test_node_peer {
                             let local = Arc::new(Local::new(
                                 1235,
                                 identity,
-                                Arc::new(network_version),
+                                Arc::new(shell_compatibility_version),
                             ));
                             let bootstrap = Bootstrap::outgoing(
                                 stream,
@@ -1616,7 +1616,7 @@ mod test_actor {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
                 NetworkChannelMsg::PeerCreated(_) => {}
-                NetworkChannelMsg::PeerBootstrapped(peer_id, _) => {
+                NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
                         peer_id.peer_public_key_hash.clone(),
                         "CONNECTED".to_string(),

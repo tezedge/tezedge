@@ -524,7 +524,7 @@ impl ChainManager {
         } = self;
 
         match msg {
-            NetworkChannelMsg::PeerBootstrapped(peer_id, peer_metadata) => {
+            NetworkChannelMsg::PeerBootstrapped(peer_id, peer_metadata, _) => {
                 let peer = PeerState::new(peer_id, &peer_metadata);
                 // store peer
                 let actor_uri = peer.peer_id.peer_ref.uri().clone();
@@ -2363,6 +2363,7 @@ pub mod tests {
     use crypto::hash::CryptoboxPublicKeyHash;
     use networking::p2p::network_channel::NetworkChannel;
     use networking::p2p::peer::Peer;
+    use networking::ShellCompatibilityVersion;
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
     use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -2415,7 +2416,11 @@ pub mod tests {
             network_channel,
             3011,
             node_identity,
-            Arc::new(NetworkVersion::new("testet".to_string(), 0, 0)),
+            Arc::new(ShellCompatibilityVersion::new(
+                "testet".to_string(),
+                vec![0],
+                vec![0],
+            )),
             tokio_runtime.handle().clone(),
             &socket_address,
         )

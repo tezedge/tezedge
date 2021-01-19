@@ -234,7 +234,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     None,
                 );
             }
-            NetworkChannelMsg::PeerBootstrapped(peer_id, _) => {
+            NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                 if let Some(monitor) = self.peer_monitors.get_mut(peer_id.peer_ref.uri()) {
                     monitor.public_key = Some(peer_id.peer_id_marker.clone());
                 }

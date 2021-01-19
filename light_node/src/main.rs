@@ -14,6 +14,7 @@ use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
+use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
@@ -36,7 +37,6 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
-use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
 use tezos_wrapper::service::ProtocolRunnerEndpoint;
 use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -49,8 +49,6 @@ mod identity;
 mod system;
 
 const DATABASE_VERSION: i64 = 16;
-const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
-const SUPPORTED_P2P_VERSION: u16 = 1;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -235,10 +233,10 @@ fn block_on_actors(
     // if feeding is started, than run chain manager
     let is_sandbox = env.tezos_network == environment::TezosEnvironment::Sandbox;
     // version
-    let network_version = Arc::new(NetworkVersion::new(
+    let shell_compatibility_version = Arc::new(ShellCompatibilityVersion::new(
         tezos_env.version.clone(),
-        SUPPORTED_DISTRIBUTED_DB_VERSION,
-        SUPPORTED_P2P_VERSION,
+        shell::SUPPORTED_DISTRIBUTED_DB_VERSION.to_vec(),
+        shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
     // create pool for ffi protocol runner connections (used just for readonly context)
@@ -378,7 +376,7 @@ fn block_on_actors(
         shell_channel.clone(),
         tokio_runtime.handle().clone(),
         identity,
-        network_version.clone(),
+        shell_compatibility_version.clone(),
         env.p2p.clone(),
     )
     .expect("Failed to create peer manager");
@@ -404,7 +402,7 @@ fn block_on_actors(
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
         tezos_env.clone(),
-        network_version,
+        Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
         is_sandbox,
     )

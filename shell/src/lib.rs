@@ -16,6 +16,12 @@ pub mod stats;
 pub mod utils;
 pub mod validation;
 
+/// Constant tells about p2p feature versions, which this shell is compatible with
+pub const SUPPORTED_P2P_VERSION: &[u16] = &[0, 1];
+
+/// Constant tells about distributed_db feature versions, which this shell is compatible with
+pub const SUPPORTED_DISTRIBUTED_DB_VERSION: &[u16] = &[0];
+
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
 pub struct PeerConnectionThreshold {
