@@ -137,6 +137,7 @@ impl ChainFeeder {
                 let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
                     block_storage.clone(),
                     persistent_storage.merkle(),
+                    true,
                 ));
                 let mut ipc_server = ipc_server;
 

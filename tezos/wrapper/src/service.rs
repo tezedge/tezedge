@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cell::RefCell;
+use std::{cell::RefCell, path::PathBuf};
 use std::convert::AsRef;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -97,7 +97,7 @@ enum NodeMessage {
 
 /// Empty message
 #[derive(Serialize, Deserialize, Debug)]
-struct NoopMessage;
+pub struct NoopMessage;
 
 pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
     let ipc_client: IpcClient<NoopMessage, ContextActionMessage> = IpcClient::new(socket_path);
@@ -353,6 +353,10 @@ pub struct IpcEvtServer(IpcServer<ContextActionMessage, NoopMessage>);
 impl IpcEvtServer {
     pub fn try_new() -> Result<Self, IpcError> {
         Ok(IpcEvtServer(IpcServer::bind_path(&temp_sock())?))
+    }
+
+    pub fn socket_path(& self) -> PathBuf{
+        self.0.path.clone()
     }
 
     /// Synchronously wait for new incoming IPC connection.

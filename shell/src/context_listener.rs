@@ -3,7 +3,7 @@
 
 //! Listens for events from the `protocol_runner`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{hash::Hash, sync::atomic::{AtomicBool, Ordering}};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -58,6 +58,7 @@ impl ContextListener {
                 let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
                     BlockStorage::new(&persistent_storage),
                     persistent_storage.merkle(),
+                    true,
                 ));
                 let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
@@ -251,12 +252,52 @@ fn listen_protocol_events(
     Ok(())
 }
 
-fn perform_context_action(
+fn get_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
+    let result = match &action{
+        ContextAction::Get {tree_hash, .. } => {Some(tree_hash.clone())}
+        ContextAction::Mem {tree_hash, .. } => {Some(tree_hash.clone())}
+        ContextAction::DirMem {tree_hash, ..} => {Some(tree_hash.clone())}
+        ContextAction::Set {tree_hash, ..} => {Some(tree_hash.clone())}
+        ContextAction::Copy {tree_hash, ..} => {Some(tree_hash.clone())}
+        ContextAction::Delete {tree_hash, ..} => {Some(tree_hash.clone())}
+        ContextAction::RemoveRecursively {tree_hash, ..} => {Some(tree_hash.clone())}
+        ContextAction::Commit {tree_hash, ..} => {Some(tree_hash.clone())}
+        ContextAction::Fold {tree_hash, ..} => {Some(tree_hash.clone())}
+        _ => {None}
+    };
+    match result {
+        Some(v) => {
+            if v.len() != 32 {
+                None
+            }else{
+                let mut hash:[u8;32] = [0;32];
+                // TODO: probably there is a more clever way to do that
+                for (h,d) in hash.iter_mut().zip(v){
+                    *h = d;
+                }
+                Some(hash)
+            }
+        }
+        None => {None}
+    }
+}
+
+
+pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
+    
+    match get_tree_hash(action){
+        Some(hash) => {
+            context.store_merkle_hash(hash);
+        }
+        None => {}
+    }
+
+
     match action {
-        ContextAction::Get { key, .. } => {
+        ContextAction::Get { key,tree_hash, .. } => {
             context.get_key(key)?;
         }
         ContextAction::Mem { key, .. } => {
@@ -300,13 +341,14 @@ fn perform_context_action(
             date,
             ..
         } => {
-            let hash = context.commit(
+            let hash_result = context.commit(
                 block_hash,
                 parent_context_hash,
                 author.to_string(),
                 message.to_string(),
                 *date,
-            )?;
+            );
+            let hash = hash_result?;
             assert_eq!(
                 &hash,
                 new_context_hash,
