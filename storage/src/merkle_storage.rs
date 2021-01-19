@@ -42,16 +42,13 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use std::thread;
-use std::mem;
 use std::array::TryFromSliceError;
 use std::collections::hash_map::Entry as MapEntry;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::time::Instant;
-use std::sync::{mpsc, Arc, RwLock};
-use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 use std::iter::FromIterator;
 use hex;
 
@@ -65,6 +62,7 @@ use rocksdb::{ColumnFamilyDescriptor, Cache};
 use crypto::hash::HashType;
 
 use crate::kv_store::{KVStore as KVStoreBase, KVStoreError};
+use crate::kv_store_gced::KVStoreGCed;
 use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 use crate::context_action_storage::{ContextAction, ContextActionStorage};
 
@@ -74,32 +72,32 @@ pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
 pub type EntryHash = [u8; HASH_LEN];
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NodeKind {
     NonLeaf,
     Leaf,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Node {
-    node_kind: NodeKind,
-    entry_hash: EntryHash,
+    pub node_kind: NodeKind,
+    pub entry_hash: EntryHash,
 }
 
 // Tree must be an ordered structure for consistent hash in hash_tree
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead
 pub type Tree = BTreeMap<String, Node>;
 
-#[derive(Debug, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Commit {
-    parent_commit_hash: Option<EntryHash>,
-    root_hash: EntryHash,
-    time: u64,
-    author: String,
-    message: String,
+    pub parent_commit_hash: Option<EntryHash>,
+    pub root_hash: EntryHash,
+    pub time: u64,
+    pub author: String,
+    pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
@@ -166,195 +164,6 @@ where T:
 {
 }
 
-
-/// Commands used by KVStoreGCed to interact with thread.
-enum CmdMsg {
-    StartNewCycle,
-    MarkReused(EntryHash),
-}
-
-/// Garbage Collected Key Value Store
-struct KVStoreGCed<T: KVStore> {
-    stores: Arc<RwLock<Vec<T>>>,
-    current: T,
-    thread: thread::JoinHandle<()>,
-    msg: mpsc::Sender<CmdMsg>,
-}
-
-fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
-where T: KVStore,
-      S: Deref<Target = Vec<T>>,
-{
-    stores.iter().rev()
-        .find_map(|store| store.get(key).unwrap_or(None))
-}
-
-fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
-where T: KVStore,
-      S: Deref<Target = Vec<T>>,
-{
-    stores.iter().rev().enumerate()
-        .find(|(_, store)| store.contains(key).unwrap_or(false))
-        .map(|(index, _)| index)
-}
-
-fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
-where T: KVStore,
-      S: Deref<Target = Vec<T>>,
-{
-    stores.iter().rev()
-        .find(|store| store.contains(key).unwrap_or(false))
-        .is_some()
-}
-
-/// finds in which store key is stored and deletes it
-fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<ContextValue>
-where T: KVStore,
-      S: DerefMut<Target = Vec<T>>,
-{
-    stores.iter_mut().rev()
-        .find_map(|store| store.delete(key).unwrap_or(None))
-}
-
-fn kvstore_gc_thread_fn<T: KVStore>(
-    stores: Arc<RwLock<Vec<T>>>,
-    rx: mpsc::Receiver<CmdMsg>,
-) {
-    let len = stores.read().unwrap().len();
-    let mut reused_keys = vec![HashSet::new(); len];
-    let mut todo_keys: VecDeque<EntryHash> = VecDeque::new();
-    loop {
-        let wait_for_events = reused_keys.len() == len;
-
-        let msg = if wait_for_events {
-            match rx.recv() {
-                Ok(value) => Some(value),
-                Err(_) => break,
-            }
-        } else {
-            match rx.try_recv() {
-                Ok(value) => Some(value),
-                Err(_) => None,
-            }
-        };
-
-        match msg {
-            Some(CmdMsg::StartNewCycle) => {
-                reused_keys.push(Default::default());
-            },
-            Some(CmdMsg::MarkReused(key)) => {
-                // TODO: refactor so that `mark_reused` isn't called
-                // unless key was in MerkleStorage::db
-                if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
-                    // since gc might be slow and this vec can grow,
-                    // we need to calculate offset from the end instead.
-                    let reused_keys_index = reused_keys.len() - len + index;
-                    for hs in reused_keys[0..reused_keys_index].iter_mut() {
-                        hs.remove(&key);
-                    }
-                    reused_keys[reused_keys_index].insert(key);
-                }
-            }
-            None => {}
-        }
-
-        if reused_keys.len() > len && reused_keys[0].len() > 0 {
-            todo_keys.extend(mem::take(&mut reused_keys[0]).into_iter());
-        }
-
-        if todo_keys.len() > 0 {
-            let keys: Vec<_> = todo_keys.drain(..(todo_keys.len().min(16))).collect();
-            let mut stores = stores.write().unwrap();
-            for key in keys.into_iter() {
-                let entry_bytes = match stores_get(&stores, &key) {
-                    Some(value) => value,
-                    None => continue,
-                };
-                let entry: Entry = match bincode::deserialize(&entry_bytes) {
-                    Ok(value) => value,
-                    Err(_) => continue
-                };
-                stores.last_mut().unwrap().put(key.clone(), entry_bytes).unwrap();
-
-                match entry {
-                    Entry::Blob(_) => {}
-                    Entry::Tree(tree) => {
-                        let children = tree.into_iter()
-                            .map(|(_, node)| node.entry_hash);
-                        todo_keys.extend(children);
-                    }
-                    Entry::Commit(commit) => {
-                        todo_keys.push_back(commit.root_hash);
-                    }
-                }
-            }
-        }
-
-        if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
-            reused_keys.drain(..1);
-            stores.write().unwrap().drain(..1);
-        }
-    }
-
-    println!("MerkleStorage GC thread shut down!");
-}
-
-impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
-    pub fn new(cycle_count: usize) -> Self {
-        assert!(cycle_count > 1, "cycle_count less than 2 for KVStoreGCed not supported");
-
-        let (tx, rx) = mpsc::channel();
-        let stores = Arc::new(RwLock::new(
-            (0..(cycle_count - 1)).map(|_| Default::default()).collect()
-        ));
-
-        Self {
-            stores: stores.clone(),
-            thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx)),
-            msg: tx,
-            current: Default::default(),
-        }
-    }
-
-    pub fn is_persisted(&self) -> bool { false }
-
-    fn stores_get(&self, key: &EntryHash) -> Option<ContextValue> {
-        stores_get(&self.stores.read().unwrap(), key)
-    }
-
-    fn stores_contains(&self, key: &EntryHash) -> bool {
-        stores_contains(&self.stores.read().unwrap(), key)
-    }
-
-    pub fn get(&self, key: &EntryHash) -> Option<ContextValue> {
-        self.current.get(key)
-            .unwrap_or(None)
-            .or_else(|| self.stores_get(key))
-    }
-
-    pub fn contains(&self, key: &EntryHash) -> bool {
-        self.current.contains(key).unwrap_or(false)
-            || self.stores_contains(key)
-    }
-
-    pub fn put(
-        &mut self,
-        key: EntryHash,
-        value: ContextValue,
-    ) -> Result<(), KVStoreError> {
-        self.current.put(key, value)
-    }
-
-    pub fn mark_reused(&mut self, key: EntryHash) {
-        let _ = self.msg.send(CmdMsg::MarkReused(key));
-    }
-
-    pub fn start_new_cycle(&mut self) {
-        let mut stores = self.stores.write().unwrap();
-        stores.push(mem::take(&mut self.current));
-        let _ = self.msg.send(CmdMsg::StartNewCycle);
-    }
-}
 
 impl KeyValueSchema for MerkleStorage {
     // keys is hash of Entry

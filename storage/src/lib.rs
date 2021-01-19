@@ -41,6 +41,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
+pub mod kv_store_gced;
 pub mod kv_store;
 pub mod in_memory;
 pub mod block_meta_storage;
