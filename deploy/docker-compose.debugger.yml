@@ -3,7 +3,7 @@ version: "3"
 services:
 
   debugger:
-    image: simplestakingcom/tezedge-debugger:latest
+    image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
     network_mode: "service:rust-network"
     privileged: true
     environment:
@@ -34,11 +34,11 @@ services:
       - "rust-shared-data:/tmp/tezedge"
 
   rust-explorer:
-    image: simplestakingcom/tezedge-explorer:latest-release
+    image: simplestakingcom/tezedge-explorer:${TEZEDGE_EXPLORER_IMAGE_TAG}
     network_mode: "service:rust-network"
 
   rust-network:
-    image: simplestakingcom/tezedge-debugger:latest-release
+    image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
     ports:
       # Explorer specific ports
       - "8080:8080"
