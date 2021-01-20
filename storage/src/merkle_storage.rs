@@ -1336,7 +1336,9 @@ impl MerkleStorage {
                 for (_, child_node) in tree.iter() {
                     let node_entry = self.staged_get(&child_node.entry_hash).cloned();
                     match node_entry {
-                        None => {},
+                        // if child node isn't in staging area it means it
+                        // hasn't changed from last commit and we should reuse it.
+                        None => self.db.mark_reused(child_node.entry_hash),
                         Some(entry) => self.persist_staged_entry_to_db(&entry)?,
                     }
                 }
