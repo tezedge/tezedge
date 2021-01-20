@@ -429,6 +429,7 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             let inner_encoding = fn_encoding();
             encode_value(data, value, &inner_encoding)
         }
+        Encoding::Custom(codec) => codec.encode(data, value, encoding),
         Encoding::Obj(obj_schema) => encode_record(data, value, obj_schema),
         Encoding::Tup(tup_encodings) => encode_tuple(data, value, tup_encodings),
     }

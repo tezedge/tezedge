@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use crypto::hash::HashType;
 use failure::Error;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::{BinaryMessage, JsonMessage};
 use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]
@@ -126,4 +128,165 @@ fn can_deserialize_operations_for_blocks_left() -> Result<(), Error> {
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }
+}
+
+const LEFT_BOUNDARY: u8 = 0xB0;
+const RIGHT_BOUNDARY: u8 = 0x0E;
+
+// Returns a byte vector of specified size, with BE encoding of the num
+// as its last 8 bytes
+fn get_hash(num: u64, size: usize) -> Vec<u8> {
+    use std::mem::size_of;
+    assert!(size >= size_of::<u64>() + 2);
+    let mut vec = Vec::new();
+    vec.push(LEFT_BOUNDARY);
+    vec.resize(size - size_of::<u64>() - 1, 0x11);
+    vec.push(RIGHT_BOUNDARY);
+    vec.append(&mut num.to_be_bytes().to_vec());
+    vec
+}
+
+fn create_operations_for_blocks_encoded(depth: usize) -> Vec<u8> {
+    let mut vec = Vec::new();
+
+    // size is
+    // 2 bytes for struct tag
+    // 32 bytes for operations for block hash
+    // 1 byte for operations for block validation
+    // depth bytes for Left tags
+    // 1 byte for Op tag
+    // depth * 32 for right hashes
+    let size = (2 + 32 + 1 + depth + 1 + (32 * depth)) as u32;
+
+    // operation message tag
+    vec.extend_from_slice(&size.to_be_bytes());
+
+    // struct tag
+    vec.extend_from_slice(&0x0061_u16.to_be_bytes());
+
+    // operations for block hash
+    vec.extend_from_slice(&get_hash(0xffffffff_u64, 32));
+
+    // operations for block validation
+    vec.push(0x01);
+
+    // Left tags
+    vec.append(&mut vec![0xf0].repeat(depth as usize));
+
+    // Op tag
+    vec.push(0x00);
+
+    // right hashes
+    for i in 0..depth {
+        vec.append(&mut get_hash((depth - i - 1) as u64, 32));
+    }
+
+    vec
+}
+
+fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
+    let mut path = Path::Op;
+    for i in 0..depth {
+        path = Path::Left(Box::new(PathLeft::new(
+            path,
+            get_hash((depth - i - 1) as u64, 32),
+            Default::default(),
+        )));
+    }
+
+    let message = PeerMessage::OperationsForBlocks(OperationsForBlocksMessage::new(
+        OperationsForBlock::new(get_hash(0xffffffff_u64, 32).try_into().unwrap(), 0x01),
+        path,
+        Vec::new(),
+    ));
+
+    message.into()
+}
+
+#[test]
+fn can_deserialize_operations_for_blocks_left_deep() -> Result<(), Error> {
+    let depth = PATH_MAX_DEPTH;
+    let message_bytes = create_operations_for_blocks_encoded(depth as usize);
+    let messages = PeerMessageResponse::from_bytes(message_bytes)?;
+    assert_eq!(1, messages.messages().len());
+
+    let message = messages.messages().get(0).unwrap();
+    if let PeerMessage::OperationsForBlocks(message) = message {
+        let mut path = message.operation_hashes_path();
+        for _ in 0..depth {
+            if let Path::Left(b) = path {
+                path = b.path();
+            } else {
+                panic!("Unexpected path kind");
+            }
+        }
+        Ok(())
+    } else {
+        panic!("Invalid message");
+    }
+}
+
+#[test]
+fn can_deserialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
+    let message_bytes = create_operations_for_blocks_encoded(PATH_MAX_DEPTH as usize + 1);
+    let result = PeerMessageResponse::from_bytes(message_bytes);
+    assert!(result.is_err());
+    Ok(())
+}
+
+#[test]
+fn can_deserialize_operations_for_blocks_left_depth_overflow() -> Result<(), Error> {
+    let message_bytes = create_operations_for_blocks_encoded(
+        tezos_encoding::types::RecursiveDataSize::max_value() as usize + 1,
+    );
+    let result = PeerMessageResponse::from_bytes(message_bytes);
+    assert!(result.is_err());
+    Ok(())
+}
+
+#[test]
+fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
+    let depth = PATH_MAX_DEPTH as usize;
+    let message = create_operations_for_blocks(depth);
+    let encoded = PeerMessageResponse::from(message).as_bytes()?;
+    let expected = create_operations_for_blocks_encoded(depth);
+    assert_eq!(encoded, expected);
+
+    Ok(())
+}
+
+#[test]
+#[ignore]
+// Ignored until JSON serialization is implemented for operations for blocks
+fn can_serialize_to_json_operations_for_blocks_left_deep() -> Result<(), Error> {
+    let depth = PATH_MAX_DEPTH as usize;
+    let message = create_operations_for_blocks(depth);
+    let _encoded = PeerMessageResponse::from(message).as_json()?;
+
+    Ok(())
+}
+
+#[test]
+fn can_serialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
+    let message = create_operations_for_blocks(PATH_MAX_DEPTH as usize + 1);
+    let result = PeerMessageResponse::from(message).as_bytes();
+    assert!(result.is_err());
+
+    Ok(())
+}
+
+#[test]
+#[ignore]
+// this test should be run with caution since it allocates a linked list
+// containing 65536 elements and basing on stack size setting it might fail
+// deallocating that structure
+// TODO: TE-354
+fn can_serialize_operations_for_blocks_left_depth_overflow() -> Result<(), Error> {
+    let message = create_operations_for_blocks(
+        tezos_encoding::types::RecursiveDataSize::max_value() as usize + 1,
+    );
+    let result = PeerMessageResponse::from(message).as_bytes();
+    assert!(result.is_err());
+
+    Ok(())
 }

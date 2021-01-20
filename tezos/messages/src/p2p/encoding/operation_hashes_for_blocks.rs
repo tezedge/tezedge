@@ -12,8 +12,6 @@ use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::prelude::Path;
 
-use super::operations_for_blocks::path_encoding;
-
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetOperationHashesForBlocksMessage {
     #[get = "pub"]
@@ -83,7 +81,10 @@ has_encoding!(
                 "operation_hashes_for_block",
                 OperationHashesForBlock::encoding().clone(),
             ),
-            Field::new("operation_hashes_path", path_encoding()),
+            Field::new(
+                "operation_hashes_path",
+                super::operations_for_blocks::PathCodec::get_encoding(),
+            ),
             Field::new(
                 "operation_hashes",
                 Encoding::list(Encoding::dynamic(Encoding::list(Encoding::Uint8))),

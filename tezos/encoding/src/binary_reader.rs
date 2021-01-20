@@ -29,6 +29,15 @@ pub enum BinaryReaderError {
     /// may simply mean that we have not yet defined tag in encoding.
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag { tag: u16 },
+    /// Enclosing level for recursive type value is too big
+    #[fail(
+        display = "Recursive data depth is too big for {}, max is {}",
+        name, max
+    )]
+    RecursiveDataOverflow {
+        name: String,
+        max: crate::types::RecursiveDataSize,
+    },
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -46,6 +55,7 @@ impl From<std::string::FromUtf8Error> for BinaryReaderError {
 }
 
 /// Safely read from input buffer. If input buffer does not contain enough bytes to construct desired error is returned.
+#[macro_export]
 macro_rules! safe {
     ($buf:ident, $foo:ident, $sz:ident) => {{
         use std::mem::size_of;
@@ -379,6 +389,7 @@ impl BinaryReader {
                 let inner_encoding = fn_encoding();
                 self.decode_value(buf, &inner_encoding)
             }
+            Encoding::Custom(codec) => codec.decode(buf, encoding),
             Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => {
                 Err(de::Error::custom(format!("Unsupported encoding {:?}", encoding)).into())
             }
