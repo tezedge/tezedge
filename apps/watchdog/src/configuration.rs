@@ -1,17 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
-
-use std::env;
 
 use clap::{App, Arg};
 
 pub struct WatchdogEnvironment {
     // logging level
     pub log_level: slog::Level,
-
-    // image tag to watch
-    pub image_tag: String,
 
     // slack bot token
     pub slack_token: String,
@@ -109,16 +103,12 @@ impl WatchdogEnvironment {
 
         validate_required_args(&args);
 
-        // get image tag form env var
-        let image_tag = env::var("TEZEDGE_IMAGE_TAG").unwrap_or("latest".to_string());
-
         WatchdogEnvironment {
             log_level: args
                 .value_of("log-level")
                 .unwrap_or("info")
                 .parse::<slog::Level>()
                 .expect("Was expecting one value from slog::Level"),
-            image_tag,
             slack_token: args.value_of("slack-token").unwrap_or("").to_string(),
             slack_url: args.value_of("slack-url").unwrap_or("").to_string(),
             slack_channel_name: args
