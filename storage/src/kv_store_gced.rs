@@ -160,10 +160,12 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 // TODO: refactor so that `mark_reused` isn't called
                 // unless key was in MerkleStorage::db
                 if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
-                    for hs in reused_keys[0..index].iter_mut() {
-                        hs.remove(&key);
+                    if index < reused_keys.len() {
+                        for hs in reused_keys[0..index].iter_mut() {
+                            hs.remove(&key);
+                        }
+                        reused_keys[index].insert(key);
                     }
-                    reused_keys[index].insert(key);
                 }
             }
             None => {
