@@ -114,7 +114,7 @@ pub type RefCnt = usize;
 
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
-    current_stage_tree: (Tree,EntryHash),
+    current_stage_tree: (Tree, EntryHash),
     db: Arc<MerkleStorageKV>,
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
@@ -144,6 +144,11 @@ pub enum MerkleError {
         key
     )]
     ValueIsNotABlob { key: String },
+    #[fail(
+        display = "There is a blob or commit under key {:?}, but not a tree!",
+        key
+    )]
+    ValueIsNotATree { key: String },
     #[fail(
         display = "Found wrong structure. Was looking for {}, but found {}",
         sought, found
@@ -328,12 +333,12 @@ impl MerkleStorage {
         let tree = Tree::new();
         let tree_hash = hash_tree(&tree);
         let mut map: HashMap<EntryHash, Entry> = HashMap::new();
-        map.insert(tree_hash,Entry::Tree(tree.clone()));
+        map.insert(tree_hash, Entry::Tree(tree.clone()));
 
         MerkleStorage {
             db,
             staged: map,
-            current_stage_tree: (tree,tree_hash),
+            current_stage_tree: (tree, tree_hash),
             last_commit_hash: None,
             perf_stats: MerklePerfStats {
                 global: HashMap::new(),
@@ -637,7 +642,7 @@ impl MerkleStorage {
     pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
         let commit = self.get_commit(&context_hash)?;
         let tree = self.get_tree(&commit.root_hash)?;
-        self.store_current_tree_root(&tree);
+        self.set_stage_root(&tree);
         self.last_commit_hash = Some(hash_commit(&commit));
         self.staged.clear();
         Ok(())
@@ -673,7 +678,7 @@ impl MerkleStorage {
     }
 
     /// Set key/val to the staging area.
-    fn store_current_tree_root(&mut self, tree: &Tree)  {
+    fn set_stage_root(&mut self, tree: &Tree) {
         self.current_stage_tree = (tree.clone(), hash_tree(&tree));
     }
 
@@ -681,7 +686,7 @@ impl MerkleStorage {
     pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
         let root = self.get_staged_root();
         let new_root_hash = &self._set(&root, key, value)?;
-        self.store_current_tree_root(&self.get_tree(new_root_hash)?);
+        self.set_stage_root(&self.get_tree(new_root_hash)?);
         Ok(())
     }
 
@@ -707,7 +712,7 @@ impl MerkleStorage {
         let root = self.get_staged_root();
         let new_root_hash = &self._delete(&root, key)?;
         let tree = self.get_tree(new_root_hash)?;
-        self.store_current_tree_root(&tree);
+        self.set_stage_root(&tree);
 
         Ok(())
     }
@@ -724,7 +729,7 @@ impl MerkleStorage {
     pub fn copy(&mut self, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), MerkleError> {
         let root = self.get_staged_root();
         let new_root_hash = self._copy(&root, from_key, to_key)?;
-        self.store_current_tree_root(&self.get_tree(&new_root_hash)?);
+        self.set_stage_root(&self.get_tree(&new_root_hash)?);
         Ok(())
     }
 
@@ -832,6 +837,32 @@ impl MerkleStorage {
     /// Get latest staged tree. If it's empty, init genesis  and return genesis root.
     fn get_staged_root(&mut self) -> Tree {
         self.current_stage_tree.0.clone()
+    }
+
+    pub fn get_staged_root_hash(&mut self) -> EntryHash {
+        self.current_stage_tree.1
+    }
+
+    pub fn stage_checkout(&mut self, hash: &EntryHash) -> Result<(), MerkleError> {
+        if *hash == self.current_stage_tree.1 {
+            return Ok(());
+        }
+
+        let entry = self
+            .staged
+            .get(hash)
+            .ok_or(MerkleError::EntryNotFoundInStaging {
+                hash: hex::encode(hash),
+            })?;
+        match entry.clone() {
+            Entry::Tree(tree) => {
+                self.set_stage_root(&tree.clone());
+                Ok(())
+            }
+            _ => Err(MerkleError::ValueIsNotATree {
+                key: hex::encode(hash),
+            }),
+        }
     }
 
     /// Put entry in staging area
@@ -1930,37 +1961,78 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_backtracking_on_set() {
         let db_name = "test_delete_whole_tree2";
+        let dummy_key = &vec!["a".to_string()];
+
         clean_db(db_name);
-
-        let key_abcd: &ContextKey = &vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string(),
-            "d".to_string(),
-        ];
-        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
-        let key_a: &ContextKey = &vec!["a".to_string()];
-
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
 
-        storage.set(key_abcd, &vec![1u8]);
+        storage.set(dummy_key, &vec![1u8]);
+        let hash_first = storage.get_staged_root_hash();
 
-        storage.set(key_abcd, &vec![2u8]);
+        storage.set(dummy_key, &vec![2u8]);
+        let hash_second = storage.get_staged_root_hash();
 
-        assert_eq!(storage.dirmem(&key_a).unwrap(), true);
-        assert_eq!(storage.dirmem(&key_ab).unwrap(), true);
-        assert_eq!(storage.dirmem(&key_abc).unwrap(), true);
-        assert_eq!(storage.mem(&key_abcd).unwrap(), true);
+        // get recent value
+        assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
 
-        storage.delete(key_abcd);
+        // checkout previous stage state
+        storage.stage_checkout(&hash_first);
+        assert_eq!(storage.get(dummy_key).unwrap(), vec![1u8]);
 
-        assert_eq!(storage.dirmem(&key_a).unwrap(), false);
-        assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
-        assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
-        assert_eq!(storage.mem(&key_abcd).unwrap(), false);
+        // checkout newest stage state
+        storage.stage_checkout(&hash_second);
+        assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
+    }
+
+    #[test]
+    fn test_backtracking_on_delete() {
+        let db_name = "test_delete_whole_tree2";
+        let key = &vec!["a".to_string()];
+        let value = vec![1u8];
+        let empty_response: ContextValue = Vec::new();
+
+        clean_db(db_name);
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let mut storage = get_storage(db_name, &cache);
+
+        storage.set(key, &value);
+        let hash_befeore_delete = storage.get_staged_root_hash();
+
+        storage.delete(key);
+        let hash_after_delete = storage.get_staged_root_hash();
+
+        assert_eq!(storage.get(key).unwrap(), empty_response);
+
+        // // checkout previous stage state
+        storage.stage_checkout(&hash_befeore_delete);
+        assert_eq!(storage.get(key).unwrap(), value);
+
+        // checkout latest stage state
+        storage.stage_checkout(&hash_after_delete);
+        assert_eq!(storage.get(key).unwrap(), empty_response);
+    }
+
+    #[test]
+    fn test_fail_to_checkout_stage_from_before_commit() {
+        let db_name = "test_delete_whole_tree2";
+        let key = &vec!["a".to_string()];
+
+        clean_db(db_name);
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let mut storage = get_storage(db_name, &cache);
+
+        storage.set(key, &vec![1u8]);
+        let outdated_stage_hash = storage.get_staged_root_hash();
+        storage.set(key, &vec![2u8]);
+        storage
+            .commit(0, "author".to_string(), "message".to_string())
+            .unwrap();
+
+        assert_eq!(storage.staged.is_empty(), true);
+        assert_eq!(storage.stage_checkout(&outdated_stage_hash).is_err(), true);
     }
 }
