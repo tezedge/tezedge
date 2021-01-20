@@ -11,10 +11,10 @@ use slog::{info, Logger};
 use shell::stats::memory::{LinuxData, ProcessMemoryStats};
 
 use crate::slack::SlackServer;
+use crate::image::{Image, Node};
 
 pub struct InfoMonitor {
     slack: SlackServer,
-    image_tag: String,
     log: Logger,
 }
 
@@ -26,10 +26,9 @@ pub struct SlackMonitorInfo {
 }
 
 impl InfoMonitor {
-    pub fn new(slack: SlackServer, image_tag: String, log: Logger) -> Self {
+    pub fn new(slack: SlackServer, log: Logger) -> Self {
         Self {
             slack,
-            image_tag,
             log,
         }
     }
@@ -69,13 +68,13 @@ impl InfoMonitor {
         let info = self.collect_node_info().await?;
 
         let InfoMonitor {
-            slack, image_tag, ..
+            slack, ..
         } = self;
 
         slack
             .send_message(&format!(
                 "Node info: \n\n Tezedge docker image: {} \n Last commit: {} \n Last head header: ```{}``` \n Memory stats[MB]: ```{}```",
-                image_tag,
+                Node::name(),
                 format!("https://github.com/simplestaking/tezedge/commit/{}", &info.commit_hash.replace('\"', "")),
                 info.last_head,
                 serde_json::to_string_pretty(&info.memory_info)?

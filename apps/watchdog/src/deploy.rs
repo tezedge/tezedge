@@ -3,43 +3,27 @@
 #![forbid(unsafe_code)]
 
 use failure::bail;
-use shiplift::rep::ImageDetails;
 use shiplift::Docker;
-use slog::{error, info, warn, Logger};
+use slog::{info, warn, Logger};
 
 use crate::deploy_with_compose::{
-    restart_stack, shutdown_and_update, CONTAINER_IMAGE, NODE_CONTAINER_NAME,
+    restart_stack, shutdown_and_update, NODE_CONTAINER_NAME,
 };
 use crate::slack::SlackServer;
+use crate::image::{changed, Node, Debugger, Explorer};
 
 pub struct DeployMonitor {
     docker: Docker,
     slack: SlackServer,
-    image_tag: String,
     log: Logger,
 }
 
 impl DeployMonitor {
-    pub fn new(docker: Docker, slack: SlackServer, image_tag: String, log: Logger) -> Self {
+    pub fn new(docker: Docker, slack: SlackServer, log: Logger) -> Self {
         Self {
             docker,
             slack,
-            image_tag,
             log,
-        }
-    }
-
-    async fn get_latest_image_hash(&self) -> Result<String, failure::Error> {
-        match reqwest::get(&format!("https://hub.docker.com/v2/repositories/simplestakingcom/tezedge/tags/{}/?page_size=100", self.image_tag.replace('\"', ""))).await {
-            Ok(result) => {
-                let res_json: serde_json::Value = match result.json().await {
-                    Ok(json) => json,
-                    Err(e) => bail!("Error converting result to json: {:?}", e),
-                };
-                let digest = res_json["images"][0]["digest"].to_string().replace('"', "");
-                Ok(format!("simplestakingcom/tezedge@{}", digest))
-            }
-            Err(e) => bail!("Error getting latest image: {:?}", e),
         }
     }
 
@@ -54,46 +38,27 @@ impl DeployMonitor {
         let DeployMonitor {
             docker,
             slack,
-            image_tag,
             ..
         } = self;
 
         if self.is_node_container_running().await {
-            match docker
-                .images()
-                .get(&format!("{}{}", CONTAINER_IMAGE, image_tag))
-                .inspect()
-                .await
-            {
-                Ok(image) => {
-                    // We have the image, lets check stuff
-                    let ImageDetails { repo_digests, .. } = image;
-
-                    let remote_image_hash = self.get_latest_image_hash().await?;
-                    let local_image_hash =
-                        repo_digests.unwrap_or_else(|| vec!["".to_string()])[0].clone();
-
-                    if local_image_hash == remote_image_hash {
-                        // Do nothing, No update occured
-                        info!(self.log, "No image change detected");
-                    } else {
-                        info!(
-                            self.log,
-                            "Image changed, local: {} != remote: {}",
-                            local_image_hash,
-                            remote_image_hash
-                        );
-                        slack
-                            .send_message("Updating tezedge node docker image")
-                            .await?;
-                        info!(self.log, "Updating docker image...");
-                        shutdown_and_update().await;
-                    }
-                }
-                Err(e) => {
-                    // Some other error we do not care about (Propagate the error)
-                    error!(self.log, "Image inspect Error: {}", e)
-                }
+            let node_updated = changed::<Node>(docker, &self.log).await?;
+            let debugger_updated = changed::<Debugger>(docker, &self.log).await?;
+            let explorer_updated = changed::<Explorer>(docker, &self.log).await?;
+            // TODO: here restart everything,
+            // but if debugger updated not need to restart explorer
+            // if explorer updated, only need to restart explorer
+            // if node updated, need to restart tezedge node and tezedge debugger
+            // and recreate tezedge volume, but not need to restart tezos and explorer
+            if node_updated || debugger_updated || explorer_updated {
+                slack
+                    .send_message("Updating tezedge node docker image")
+                    .await?;
+                info!(self.log, "Updating docker image...");
+                shutdown_and_update().await;
+            } else {
+                // Do nothing, No update occurred
+                info!(self.log, "No image change detected");
             }
         } else {
             warn!(self.log, "Node not running. Restarting stack");

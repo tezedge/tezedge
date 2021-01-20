@@ -3,5 +3,10 @@
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true,
     "**/target/debug/incremental/**": true
-  }
+  },
+  "cSpell.words": [
+    "Tezedge",
+    "shiplift",
+    "simplestakingcom"
+  ]
 }

@@ -21,7 +21,6 @@ sudo TEZEDGE_IMAGE_TAG=latest ./target/release/watchdog \
 --info-interval 21600 
 --slack-url https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX 
 --slack-token "Bearer xoxb-xxxxxxxxxxxx-xxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx" \
---image-tag v0.9.1 
 --slack-channel-name monitoring
 ```
 
