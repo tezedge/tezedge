@@ -1,7 +1,7 @@
 use std::thread;
 use std::mem;
 use std::collections::{HashSet, VecDeque};
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use std::sync::{mpsc, Arc, RwLock};
 use std::ops::{Deref, DerefMut};
 
@@ -58,6 +58,7 @@ pub enum CmdMsg {
 
 /// Garbage Collected Key Value Store
 pub struct KVStoreGCed<T: KVStore> {
+    cycle_count: usize,
     stores: Arc<RwLock<Vec<T>>>,
     current: T,
     thread: thread::JoinHandle<()>,
@@ -74,6 +75,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         ));
 
         Self {
+            cycle_count,
             stores: stores.clone(),
             thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx)),
             msg: tx,
@@ -118,6 +120,12 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         let mut stores = self.stores.write().unwrap();
         stores.push(mem::take(&mut self.current));
         let _ = self.msg.send(CmdMsg::StartNewCycle);
+    }
+
+    pub fn wait_for_gc_finish(&self) {
+        while self.stores.read().unwrap().len() >= self.cycle_count {
+            thread::sleep(Duration::from_millis(2));
+        }
     }
 }
 
@@ -266,12 +274,6 @@ mod tests {
         store.mark_reused(entry_hash(key));
     }
 
-    // waits for gc and shuts it down
-    fn finish<T: KVStore>(store: &mut KVStoreGCed<T>) {
-        store.msg.send(CmdMsg::Exit);
-        mem::replace(&mut store.thread, thread::spawn(|| {})).join();
-    }
-
     #[test]
     fn test_key_reused_exists() {
         let store = &mut empty_kvstore_gced(3);
@@ -285,7 +287,7 @@ mod tests {
         mark_reused(store, &[1]);
         store.start_new_cycle();
 
-        finish(store);
+        store.wait_for_gc_finish();
 
         assert_eq!(get(store, &[1]), Some(blob(vec![1])));
         assert_eq!(get(store, &[2]), None);

@@ -187,6 +187,7 @@ fn test_merkle_storage_gc() {
         if level % cycles == 0 && level > 0 {
             merkle.start_new_cycle().unwrap();
 
+            merkle.wait_for_gc_finish();
             // TODO: check for commits previous cycles which should have
             // been preserved as well.
             check_commit_hashes(&merkle, &commits[..]).unwrap();
