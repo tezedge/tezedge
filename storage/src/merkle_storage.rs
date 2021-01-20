@@ -835,11 +835,11 @@ impl MerkleStorage {
     }
 
     /// Get latest staged tree. If it's empty, init genesis  and return genesis root.
-    fn get_staged_root(&mut self) -> Tree {
+    fn get_staged_root(&self) -> Tree {
         self.current_stage_tree.0.clone()
     }
 
-    pub fn get_staged_root_hash(&mut self) -> EntryHash {
+    pub fn get_staged_root_hash(&self) -> EntryHash {
         self.current_stage_tree.1
     }
 
@@ -1963,7 +1963,7 @@ mod tests {
 
     #[test]
     fn test_backtracking_on_set() {
-        let db_name = "test_delete_whole_tree2";
+        let db_name = "test_backtracking_on_set";
         let dummy_key = &vec!["a".to_string()];
 
         clean_db(db_name);
@@ -1990,7 +1990,7 @@ mod tests {
 
     #[test]
     fn test_backtracking_on_delete() {
-        let db_name = "test_delete_whole_tree2";
+        let db_name = "test_backtracking_on_delete";
         let key = &vec!["a".to_string()];
         let value = vec![1u8];
         let empty_response: ContextValue = Vec::new();
@@ -2018,7 +2018,7 @@ mod tests {
 
     #[test]
     fn test_fail_to_checkout_stage_from_before_commit() {
-        let db_name = "test_delete_whole_tree2";
+        let db_name = "test_fail_to_checkout_stage_from_before_commit";
         let key = &vec!["a".to_string()];
 
         clean_db(db_name);
