@@ -139,7 +139,7 @@ fn recv_blocks(
     ctx_action_storage: ContextActionStorage,
 ) -> impl Iterator<Item = BlockAndActions> {
     let genesis_block_hash = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv").unwrap();
-    let (tx, rx) = mpsc::sync_channel(8);
+    let (tx, rx) = mpsc::sync_channel(128);
 
     thread::spawn(move || {
         for block in BlocksIterator::new(block_storage, &genesis_block_hash, 8) {
