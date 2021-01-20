@@ -403,8 +403,9 @@ impl From<MerkleError> for CheckEntryHashError {
 }
 
 /// Recursively check if entry hash is valid
-pub fn check_commit_hashes(storage: &MerkleStorage, commits: &[EntryHash]) -> Result<(), CheckEntryHashError> {
-    let mut entries = VecDeque::from_iter(commits.iter().cloned());
+pub fn check_commit_hashes<I>(storage: &MerkleStorage, commits: I) -> Result<(), CheckEntryHashError>
+where I: IntoIterator<Item = EntryHash> {
+    let mut entries = VecDeque::from_iter(commits);
     let mut checked = HashSet::new();
 
     loop {

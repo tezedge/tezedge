@@ -14,7 +14,7 @@ use rocksdb::{DB, Cache, Options};
 use storage::*;
 use in_memory::KVStore;
 use context_action_storage::ContextAction;
-use merkle_storage::{MerkleStorage, MerkleError, Entry, check_commit_hashes};
+use merkle_storage::{MerkleStorage, MerkleError, Entry, EntryHash, check_commit_hashes};
 use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};
 use persistent::sequence::Sequences;
 
@@ -160,7 +160,8 @@ fn recv_blocks(
 fn test_merkle_storage_gc() {
     let persistent_storage = init_persistent_storage();
 
-    let (mut prev_cycle_commits, mut commits) = (vec![], vec![]);
+    let preserved_cycles = 5usize;
+    let mut cycle_commit_hashes:Vec<Vec<EntryHash>> = vec![Default::default(); preserved_cycles - 1];
 
     let block_storage = BlockStorage::new(&persistent_storage);
     let ctx_action_storage = ContextActionStorage::new(&persistent_storage);
@@ -174,8 +175,9 @@ fn test_merkle_storage_gc() {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
-            if let ContextAction::Commit { new_context_hash, .. } = &action {
-                commits.push(new_context_hash[..].try_into().unwrap());
+                cycle_commit_hashes.last_mut().unwrap().push(
+                    new_context_hash[..].try_into().unwrap()
+                );
             }
             merkle.apply_context_action(&action).unwrap();
         }
@@ -184,7 +186,7 @@ fn test_merkle_storage_gc() {
 
         let (level, context_hash) = (block.header.level(), block.header.context());
         // let cycles = get_cycles_for_block(&persistent_storage, &context_hash);
-        let cycles = 4096;
+        let cycles = 2048;
 
         if level % cycles == 0 && level > 0 {
             merkle.start_new_cycle().unwrap();
@@ -192,13 +194,18 @@ fn test_merkle_storage_gc() {
 
             let t = Instant::now();
             merkle.wait_for_gc_finish();
-            // TODO: check for commits previous cycles which should have
-            // been preserved as well.
-            check_commit_hashes(&merkle, &commits[..]).unwrap();
+            println!("waited for GC: {}ms", t.elapsed().as_millis());
+            let t = Instant::now();
+            let commits_iter = cycle_commit_hashes.iter()
+                .flatten()
+                .cloned();
+            check_commit_hashes(&merkle, commits_iter).unwrap();
             println!("Block integrity intact! duration: {}ms", t.elapsed().as_millis());
 
-            prev_cycle_commits = commits;
-            commits = vec![];
+            cycle_commit_hashes = cycle_commit_hashes.into_iter()
+                .skip(1)
+                .chain(vec![vec![]])
+                .collect();
         }
     }
 }
