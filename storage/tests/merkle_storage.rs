@@ -80,7 +80,6 @@ struct BlocksIterator {
 
 impl BlocksIterator {
     pub fn new(block_storage: BlockStorage, start_block_hash: &BlockHash, limit: usize) -> Self {
-        let blocks = Self::get_blocks_after_block(&block_storage, &start_block_hash, limit);
         let mut this = Self { block_storage, limit, next_block_chunk_hash: None, blocks: vec![].into_iter() };
 
         this.get_and_set_blocks(start_block_hash);
