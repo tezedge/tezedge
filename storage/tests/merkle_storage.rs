@@ -3,6 +3,7 @@
 
 use std::convert::TryInto;
 use std::error::Error;
+use std::time::Instant;
 use std::collections::VecDeque;
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -169,6 +170,8 @@ fn test_merkle_storage_gc() {
 
         let merkle_rwlock = persistent_storage.merkle();
         let mut merkle = merkle_rwlock.write().unwrap();
+        let t = Instant::now();
+        let actions_len = actions.len();
 
         for action in actions.into_iter() {
             if let ContextAction::Commit { new_context_hash, .. } = &action {
@@ -177,7 +180,7 @@ fn test_merkle_storage_gc() {
             merkle.apply_context_action(&action).unwrap();
         }
 
-        println!("applied block: {}", block.header.level());
+        println!("applied actions of block: {}, actions: {}, duration: {}ms", block.header.level(), actions_len, t.elapsed().as_millis());
 
         let (level, context_hash) = (block.header.level(), block.header.context());
         // let cycles = get_cycles_for_block(&persistent_storage, &context_hash);
@@ -185,11 +188,14 @@ fn test_merkle_storage_gc() {
 
         if level % cycles == 0 && level > 0 {
             merkle.start_new_cycle().unwrap();
+            println!("started new cycle: {}", level / cycles + 1);
 
+            let t = Instant::now();
             merkle.wait_for_gc_finish();
             // TODO: check for commits previous cycles which should have
             // been preserved as well.
             check_commit_hashes(&merkle, &commits[..]).unwrap();
+            println!("Block integrity intact! duration: {}ms", t.elapsed().as_millis());
 
             prev_cycle_commits = commits;
             commits = vec![];
