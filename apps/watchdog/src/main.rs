@@ -14,6 +14,9 @@ mod deploy;
 mod deploy_with_compose;
 mod info;
 mod slack;
+mod image;
+
+use self::image::{Image, Node, Debugger, Explorer};
 
 #[tokio::main]
 async fn main() {
@@ -25,7 +28,10 @@ async fn main() {
 
     info!(
         log,
-        "Tezedge stack watchdog started. Image: {}", &env.image_tag
+        "Tezedge stack watchdog started. Images: {}, {}, {}",
+        Node::name(),
+        Debugger::name(),
+        Explorer::name(),
     );
 
     let slack_server = slack::SlackServer::new(
@@ -44,7 +50,6 @@ async fn main() {
     let deploy_handle = container_monitor::start_deploy_monitoring(
         slack_server.clone(),
         env.monitor_interval,
-        env.image_tag.clone(),
         log.clone(),
         running.clone(),
     );
@@ -52,7 +57,6 @@ async fn main() {
     let monitor_handle = container_monitor::start_info_monitoring(
         slack_server.clone(),
         env.info_interval,
-        env.image_tag,
         log.clone(),
         running.clone(),
     );

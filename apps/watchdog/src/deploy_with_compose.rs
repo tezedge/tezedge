@@ -6,7 +6,6 @@ use std::process::{Command, Output};
 
 use tokio::time::{delay_for, Duration};
 
-pub const CONTAINER_IMAGE: &str = "simplestakingcom/tezedge:";
 pub const NODE_CONTAINER_NAME: &str = "deploy_rust-node_1";
 pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_debugger_1";
 

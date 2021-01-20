@@ -18,12 +18,11 @@ use crate::slack::SlackServer;
 pub fn start_deploy_monitoring(
     slack: SlackServer,
     interval: u64,
-    tag: String,
     log: Logger,
     running: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor = DeployMonitor::new(docker, slack, tag, log.clone());
+    let deploy_monitor = DeployMonitor::new(docker, slack, log.clone());
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_stack().await {
@@ -37,11 +36,10 @@ pub fn start_deploy_monitoring(
 pub fn start_info_monitoring(
     slack: SlackServer,
     interval: u64,
-    tag: String,
     log: Logger,
     running: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
-    let info_monitor = InfoMonitor::new(slack, tag, log.clone());
+    let info_monitor = InfoMonitor::new(slack, log.clone());
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = info_monitor.send_monitoring_info().await {
