@@ -2,6 +2,7 @@
 
 **DISCLAIMER: this version of the automatic deployment allways cleans up ALL of the unused docker cointainers and volumes**
 
+**This deployment method is obsolete, use apps/watchdog**
 
 Follow this guide to enable automatic image updates utilising systemd jobs
 

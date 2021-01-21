@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
 use std::fs::{read_dir, File};
 use std::io::prelude::*;
 use std::path::Path;
@@ -88,6 +89,16 @@ impl TryFrom<LinuxData> for ProcessMemoryStats {
             virtual_mem,
             resident_mem,
         })
+    }
+}
+
+impl fmt::Display for ProcessMemoryStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, 
+            "\n\tVirtual memory: {} MB\n\tResident memory: {} MB",
+            self.virtual_mem,
+            self.resident_mem,
+        )
     }
 }
 

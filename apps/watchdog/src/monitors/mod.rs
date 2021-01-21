@@ -8,12 +8,22 @@ use std::sync::Arc;
 use shiplift::Docker;
 use slog::{error, info, Logger};
 use tokio::task::JoinHandle;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
-use crate::deploy::DeployMonitor;
 use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose};
-use crate::info::InfoMonitor;
+use crate::monitors::deploy::DeployMonitor;
+use crate::monitors::info::InfoMonitor;
 use crate::slack::SlackServer;
+
+pub mod deploy;
+pub mod info;
+
+// TODO: get this info from docker (shiplift needs to implement docker volume inspect)
+// path to the volumes
+pub const TEZEDGE_VOLUME_PATH: &'static str =
+    "/var/lib/docker/volumes/deploy_rust-shared-data/_data";
+pub const OCAML_VOLUME_PATH: &'static str =
+    "/var/lib/docker/volumes/deploy_ocaml-shared-data/_data";
 
 pub fn start_deploy_monitoring(
     slack: SlackServer,
@@ -28,7 +38,7 @@ pub fn start_deploy_monitoring(
             if let Err(e) = deploy_monitor.monitor_stack().await {
                 error!(log, "Deploy monitoring error: {}", e);
             }
-            delay_for(Duration::from_secs(interval)).await;
+            sleep(Duration::from_secs(interval)).await;
         }
     })
 }
@@ -45,7 +55,7 @@ pub fn start_info_monitoring(
             if let Err(e) = info_monitor.send_monitoring_info().await {
                 error!(log, "Info monitoring error: {}", e);
             }
-            delay_for(Duration::from_secs(interval)).await;
+            sleep(Duration::from_secs(interval)).await;
         }
     })
 }
@@ -64,7 +74,7 @@ pub async fn start_stack(slack: SlackServer, log: Logger) -> Result<(), failure:
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack
-    restart_stack().await;
+    restart_stack(log).await;
     slack.send_message("Tezedge stack started").await?;
     Ok(())
 }

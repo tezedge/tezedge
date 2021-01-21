@@ -9,14 +9,18 @@ use slog::{info, Drain, Level, Logger};
 use tokio::signal;
 
 mod configuration;
-mod container_monitor;
-mod deploy;
 mod deploy_with_compose;
-mod info;
-mod slack;
+mod display_info;
 mod image;
+mod monitors;
+mod node;
+mod slack;
 
-use self::image::{Image, Node, Debugger, Explorer};
+use crate::image::{Debugger, Explorer, Image};
+use crate::monitors::{
+    shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring, start_stack,
+};
+use crate::node::TezedgeNode;
 
 #[tokio::main]
 async fn main() {
@@ -29,7 +33,7 @@ async fn main() {
     info!(
         log,
         "Tezedge stack watchdog started. Images: {}, {}, {}",
-        Node::name(),
+        TezedgeNode::name(),
         Debugger::name(),
         Explorer::name(),
     );
@@ -41,20 +45,20 @@ async fn main() {
         log.clone(),
     );
 
-    container_monitor::start_stack(slack_server.clone(), log.clone())
+    start_stack(slack_server.clone(), log.clone())
         .await
         .expect("Stack failed to start");
 
     let running = Arc::new(AtomicBool::new(true));
 
-    let deploy_handle = container_monitor::start_deploy_monitoring(
+    let deploy_handle = start_deploy_monitoring(
         slack_server.clone(),
         env.monitor_interval,
         log.clone(),
         running.clone(),
     );
 
-    let monitor_handle = container_monitor::start_info_monitoring(
+    let monitor_handle = start_info_monitoring(
         slack_server.clone(),
         env.info_interval,
         log.clone(),
@@ -76,7 +80,7 @@ async fn main() {
 
     // cleanup
     info!(log, "Cleaning up containers");
-    container_monitor::shutdown_and_cleanup(slack_server, log.clone())
+    shutdown_and_cleanup(slack_server, log.clone())
         .await
         .expect("Cleanup failed");
     info!(log, "Shutdown complete");

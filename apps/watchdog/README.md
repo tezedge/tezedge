@@ -16,7 +16,7 @@ We need to set the *TEZEDGE_IMAGE_TAG* environment var to the desired version of
 Note that the debugger container needs root privilages. 
 
 ```
-sudo TEZEDGE_IMAGE_TAG=latest ./target/release/watchdog \
+sudo TEZEDGE_IMAGE_TAG=latest TEZEDGE_DEBUGGER_IMAGE_TAG=latest TEZEDGE_EXPLORER_IMAGE_TAG=latest HOSTNAME=$(hostname) ./target/release/watchdog \
 --monitor-interval 60 \ 
 --info-interval 21600 
 --slack-url https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX 
