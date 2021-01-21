@@ -37,7 +37,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
-use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
+use tezos_wrapper::{runner::{ExecutableProtocolRunner, ProtocolRunner}, service::IpcEvtServer};
 use tezos_wrapper::service::ProtocolRunnerEndpoint;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
@@ -598,5 +598,22 @@ fn main() {
                 actor_system
             ),
         }
+    }
+
+    fn foo(_sys: &impl ActorRefFactory,
+        persistent_storage: &PersistentStorage,
+        mut _event_server: IpcEvtServer,
+        log: Logger,
+        store_context_action: bool) {
+
+        let mut event_server = IpcEvtServer::try_new().unwrap();
+
+        let sys = SystemBuilder::new()
+        .name("test")
+        .log(log.clone())
+        .create()
+        .expect("Failed to create actor system");
+
+        let actor = ContextListener::actor(&sys, persistent_storage, event_server, log, store_context_action);
     }
 }
