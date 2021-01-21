@@ -165,8 +165,6 @@ steps:
     - cp /tmp/tezos-src/modified/python-tests/daemons/node.py /tmp/tezos-src/unmodified/tezos/tests_python/daemons/node.py
     - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/unmodified/tezos/tests_python/launchers/sandbox.py
     - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/constants.py
-    - cp /tmp/tezos-src/modified/python-tests/tools/utils.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/utils.py
-    - cp /tmp/tezos-src/modified/python-tests/test-parameters.json /tmp/tezos-src/unmodified/tezos/src/proto_alpha/parameters/test-parameters.json
     - cp /tmp/sandbox/sandbox-patch-context.json /tmp/tezos-src/unmodified/tezos/sandbox-patch-context.json
     # copy binaries to the test 
     - cp /artifacts/light-node /tmp/tezos-src/unmodified/tezos/
