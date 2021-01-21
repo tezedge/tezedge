@@ -7,11 +7,11 @@ use std::process::{Command, Output};
 use tokio::time::{delay_for, Duration};
 
 pub const NODE_CONTAINER_NAME: &str = "deploy_rust-node_1";
-pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_debugger_1";
+pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_rust-debugger_1";
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
 pub async fn launch_stack() {
-    start_with_compose(DEBUGGER_CONTAINER_NAME, "debugger");
+    start_with_compose(DEBUGGER_CONTAINER_NAME, "rust-debugger");
 
     // debugger healthcheck
     while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
@@ -26,6 +26,9 @@ pub async fn launch_stack() {
     {
         delay_for(Duration::from_millis(1000)).await;
     }
+
+    start_with_compose("deploy_ocaml-node_1", "ocaml-node");
+    start_with_compose("deploy_ocaml-debugger_1", "ocaml-debugger");
 }
 
 pub async fn restart_stack() {
