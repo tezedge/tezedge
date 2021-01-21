@@ -2,26 +2,39 @@ version: "3"
 
 services:
 
-  debugger:
+  rust-debugger:
     image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
-    network_mode: "service:rust-network"
     privileged: true
     environment:
       - RUST_BACKTRACE=1
       - P2P_PORT=9732
-    depends_on:
-      - rust-network
     volumes:
       - "rust-shared-data:/tmp/volume"
       - "/sys/kernel/debug:/sys/kernel/debug:rw"
     entrypoint: ./tezedge-debugger
+    ports:
+      - "17732:17732"      # debugger RPC port
+      - "10001:13131/udp"  # debugger syslog port
+
+  ocaml-debugger:
+    image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
+    privileged: true
+    environment:
+      - RUST_BACKTRACE=1
+      - P2P_PORT=9733
+    volumes:
+      - "ocaml-shared-data:/tmp/volume"
+      - "/sys/kernel/debug:/sys/kernel/debug:rw"
+    entrypoint: ./tezedge-debugger
+    ports:
+      - "17733:17732"      # debugger RPC port
+      - "11001:13131/udp"  # debugger syslog port
 
   rust-node:
     image: simplestakingcom/tezedge:${TEZEDGE_IMAGE_TAG}
-    network_mode: "service:rust-network"
     command: "/light-node --config-file /tezedge.config --network delphi"
     depends_on:
-      - rust-explorer
+      - explorer
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -32,30 +45,44 @@ services:
         syslog-format: "rfc5424micro"
     volumes:
       - "rust-shared-data:/tmp/tezedge"
-
-  rust-explorer:
-    image: simplestakingcom/tezedge-explorer:${TEZEDGE_EXPLORER_IMAGE_TAG}
-    environment:
-      - SANDBOX=https://carthage.tezedge.com:3030
-      - API=[{"id":"master","name":"master.dev.tezedge","http":"http://master.dev.tezedge.com:18732","debugger":"http://master.dev.tezedge.com:17732","ws":false}]
-    network_mode: "service:rust-network"
-
-  rust-network:
-    image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
     ports:
-      # Explorer specific ports
-      - "8080:80"
-      # Node specific ports
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
       - "18732:18732"     # node RPC port
       - "3030:3030"       # sandbox launcher port
-      # Debugger Ports must be specified on node service, because of debugger network_mode attaches
-      # debugger's container to the node container, allowing it to analyze node's traffic
-      - "17732:17732"      # debugger RPC port
-      - "10001:13131/udp"  # debugger syslog port
-    entrypoint: sleep inf
+
+  ocaml-node:
+    image: tezos/tezos:v7.0
+    entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733"
+    depends_on:
+      - explorer
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:11001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "ocaml-shared-data:/var/run/tezos/node"
+    ports:
+      # should be equal inside docker and outside, because the node tells this port in its connection message,
+      # that is how peers can connect to it later
+      - "9733:9733"
+      - "18733:18733"     # node RPC port
+
+  explorer:
+    image: simplestakingcom/tezedge-explorer:${TEZEDGE_EXPLORER_IMAGE_TAG}
+    environment:
+      - SANDBOX=https://carthage.tezedge.com:3030
+      # need a better way to provide such information
+      - API=[{"id":"rust","name":"rust.master.dev.tezedge","http":"http://master.dev.tezedge.com:18732","debugger":"http://master.dev.tezedge.com:17732","ws":"ws://master.dev.tezedge.com:4927"},{"id":"ocaml","name":"ocaml.master.dev.tezedge","http":"http://master.dev.tezedge.com:18733","debugger":"http://master.dev.tezedge.com:17733","ws":false}]
+    ports:
+      - "8080:80"
 
 volumes:
   rust-shared-data:
+    external: false
+  ocaml-shared-data:
     external: false
