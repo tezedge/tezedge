@@ -35,13 +35,16 @@ services:
 
   rust-explorer:
     image: simplestakingcom/tezedge-explorer:${TEZEDGE_EXPLORER_IMAGE_TAG}
+    environment:
+      - SANDBOX=https://carthage.tezedge.com:3030
+      - API=[{"id":"master","name":"master.dev.tezedge","http":"http://master.dev.tezedge.com:18732","debugger":"http://master.dev.tezedge.com:17732","ws":false}]
     network_mode: "service:rust-network"
 
   rust-network:
     image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
     ports:
       # Explorer specific ports
-      - "8080:8080"
+      - "8080:80"
       # Node specific ports
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
