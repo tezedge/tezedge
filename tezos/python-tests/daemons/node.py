@@ -239,7 +239,8 @@ class Node:
         """
         if self._process is None:
             return
-        self._process.terminate()
+        # self._process.terminate()
+        self._process.send_signal(signal.SIGINT)
         try:
             self._process.wait(timeout=TERM_TIMEOUT)
         except subprocess.TimeoutExpired:

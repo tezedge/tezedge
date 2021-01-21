@@ -10,26 +10,23 @@
 //!     - if service has the same implementation for various protocol, can be place directly here
 //!     - if in new version of protocol is changed behavior, we have to splitted it here aslo by protocol_hash
 
-use failure::{bail, Fail};
+use std::convert::{TryFrom, TryInto};
+
+use failure::{bail, format_err, Error, Fail};
 use getset::Getters;
 use itertools::Itertools;
 use serde::Serialize;
 
 use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use storage::context::ContextApi;
+use storage::merkle_storage::MerkleError;
 use storage::{context_key, num_from_slice, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 use tezos_api::ffi::{
     HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
 };
 use tezos_messages::base::rpc_support::RpcJsonMap;
-use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
-use tezos_messages::protocol::{
-    proto_001 as proto_001_constants, proto_002 as proto_002_constants,
-    proto_003 as proto_003_constants, proto_004 as proto_004_constants,
-    proto_005 as proto_005_constants, proto_005_2 as proto_005_2_constants,
-    proto_006 as proto_006_constants, proto_007 as proto_007_constants,
-    proto_008 as proto_008_constants,
-};
+use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
+use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
 use crate::helpers::get_context_hash;
 use crate::server::RpcServiceEnvironment;
@@ -41,7 +38,35 @@ mod proto_004;
 mod proto_005_2;
 mod proto_006;
 mod proto_007;
-mod proto_008;
+
+#[derive(Debug, Fail)]
+pub enum RightsError {
+    #[fail(display = "Rights error, reason: {}", reason)]
+    ServiceError { reason: Error },
+    #[fail(display = "Unsupported protocol {}", protocol)]
+    UnsupportedProtocolError { protocol: String },
+}
+
+impl From<ContextParamsError> for RightsError {
+    fn from(error: ContextParamsError) -> Self {
+        match error {
+            ContextParamsError::UnsupportedProtocolError { protocol } => {
+                RightsError::UnsupportedProtocolError { protocol }
+            }
+            _ => RightsError::ServiceError {
+                reason: error.into(),
+            },
+        }
+    }
+}
+
+impl From<failure::Error> for RightsError {
+    fn from(error: failure::Error) -> Self {
+        RightsError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
 
 /// Return generated baking rights.
 ///
@@ -60,113 +85,105 @@ mod proto_008;
 ///
 /// Prepare all data to generate baking rights and then use Tezos PRNG to generate them.
 pub(crate) fn check_and_get_baking_rights(
-    block_hash: BlockHash,
+    block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
     env: &RpcServiceEnvironment,
-) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
+) -> Result<Option<Vec<RpcJsonMap>>, RightsError> {
     // get protocol and constants
-    let context_proto_params = get_context_protocol_params(&block_hash, env)?;
+    let context_proto_params = get_context_protocol_params(block_hash, env)?;
 
     // split impl by protocol
-    let hash: &str = &HashType::ProtocolHash.hash_to_b58check(&context_proto_params.protocol_hash);
-    match hash {
-        proto_001_constants::PROTOCOL_HASH => {
-            proto_001::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
+    match context_proto_params.protocol_hash {
+        SupportedProtocol::Proto001 => proto_001::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto002 => proto_002::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto003 => proto_003::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto004 => proto_004::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto005 => panic!("not yet implemented!"),
+        SupportedProtocol::Proto005_2 => proto_005_2::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto006 => proto_006::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto007 => proto_007::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto008 => {
+            // TODO: TE-343 - implement and check
+            Err(RightsError::UnsupportedProtocolError {
+                protocol: context_proto_params.protocol_hash.protocol_hash(),
+            })
+            // proto_008::rights_service::check_and_get_baking_rights(
+            //     context_proto_params,
+            //     level,
+            //     delegate,
+            //     cycle,
+            //     max_priority,
+            //     has_all,
+            //     env.tezedge_context(),
+            // )
         }
-        proto_002_constants::PROTOCOL_HASH => {
-            proto_002::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_003_constants::PROTOCOL_HASH => {
-            proto_003::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_004_constants::PROTOCOL_HASH => {
-            proto_004::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
-        proto_005_2_constants::PROTOCOL_HASH => {
-            proto_005_2::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_006_constants::PROTOCOL_HASH => {
-            proto_006::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_007_constants::PROTOCOL_HASH => {
-            proto_007::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_008_constants::PROTOCOL_HASH => {
-            proto_008::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        _ => panic!(
-            "Missing baking rights implemetation for protocol: {}, protocol is not yet supported!",
-            hash
-        ),
     }
 }
 
@@ -186,61 +203,56 @@ pub(crate) fn check_and_get_baking_rights(
 ///
 /// Prepare all data to generate endorsing rights and then use Tezos PRNG to generate them.
 pub(crate) fn check_and_get_endorsing_rights(
-    block_hash: BlockHash,
+    block_hash: &BlockHash,
     level: Option<&str>,
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
     env: &RpcServiceEnvironment,
-) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
+) -> Result<Option<Vec<RpcJsonMap>>, RightsError> {
     // get protocol and constants
-    let context_proto_params = get_context_protocol_params(&block_hash, env)?;
+    let context_proto_params = get_context_protocol_params(block_hash, env)?;
 
     // split impl by protocol
-    let hash: &str = &HashType::ProtocolHash.hash_to_b58check(&context_proto_params.protocol_hash);
-    match hash {
-        proto_001_constants::PROTOCOL_HASH => {
-            proto_001::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_002_constants::PROTOCOL_HASH => {
-            proto_002::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_003_constants::PROTOCOL_HASH => {
-            proto_003::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_004_constants::PROTOCOL_HASH => {
-            proto_004::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
-        }
-        proto_005_constants::PROTOCOL_HASH => panic!("not yet implemented!"),
-        proto_005_2_constants::PROTOCOL_HASH => {
+    match context_proto_params.protocol_hash {
+        SupportedProtocol::Proto001 => proto_001::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto002 => proto_002::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto003 => proto_003::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto004 => proto_004::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto005 => panic!("not yet implemented!"),
+        SupportedProtocol::Proto005_2 => {
             proto_005_2::rights_service::check_and_get_endorsing_rights(
                 context_proto_params,
                 level,
@@ -249,47 +261,136 @@ pub(crate) fn check_and_get_endorsing_rights(
                 has_all,
                 env.tezedge_context(),
             )
+            .map_err(RightsError::from)
         }
-        proto_006_constants::PROTOCOL_HASH => {
-            proto_006::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
+        SupportedProtocol::Proto006 => proto_006::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto007 => proto_007::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
+        SupportedProtocol::Proto008 => {
+            // TODO: TE-343 - implement and check
+            Err(RightsError::UnsupportedProtocolError {
+                protocol: context_proto_params.protocol_hash.protocol_hash(),
+            })
+            // proto_008::rights_service::check_and_get_endorsing_rights(
+            //     context_proto_params,
+            //     level,
+            //     delegate,
+            //     cycle,
+            //     has_all,
+            //     env.tezedge_context(),
+            // )
         }
-        proto_007_constants::PROTOCOL_HASH => {
-            proto_007::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum VotesError {
+    #[fail(display = "Votes error, reason: {}", reason)]
+    ServiceError { reason: Error },
+    #[fail(display = "Unsupported protocol {}", protocol)]
+    UnsupportedProtocolError { protocol: String },
+}
+
+impl From<failure::Error> for VotesError {
+    fn from(error: failure::Error) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
         }
-        proto_008_constants::PROTOCOL_HASH => {
-            proto_008::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            )
+    }
+}
+
+impl From<storage::context::ContextError> for VotesError {
+    fn from(error: storage::context::ContextError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
         }
-        _ => panic!("Missing endorsing rights implemetation for protocol: {}, protocol is not yet supported!", hash)
+    }
+}
+
+impl From<MerkleError> for VotesError {
+    fn from(error: MerkleError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<ConversionError> for VotesError {
+    fn from(error: ConversionError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<UnsupportedProtocolError> for VotesError {
+    fn from(error: UnsupportedProtocolError) -> Self {
+        VotesError::UnsupportedProtocolError {
+            protocol: error.protocol,
+        }
     }
 }
 
 pub(crate) fn get_votes_listings(
-    block_hash: BlockHash,
+    block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<Option<Vec<VoteListings>>, failure::Error> {
-    let context_hash = get_context_hash(&block_hash, env)?;
+) -> Result<Option<Vec<VoteListings>>, VotesError> {
+    let context_hash = get_context_hash(block_hash, env)?;
 
+    // get protocol version
+    let protocol_hash = if let Some(protocol_hash) = env
+        .tezedge_context()
+        .get_key_from_history(&context_hash, &context_key!("protocol"))?
+    {
+        protocol_hash
+    } else {
+        return Err(VotesError::ServiceError {
+            reason: format_err!(
+                "No protocol found in context for block_hash: {}",
+                HashType::BlockHash.hash_to_b58check(&block_hash)
+            ),
+        });
+    };
+
+    // check if we support impl for this protocol
+    let supported_protocol = SupportedProtocol::try_from(protocol_hash)?;
+    match supported_protocol {
+        SupportedProtocol::Proto001
+        | SupportedProtocol::Proto002
+        | SupportedProtocol::Proto003
+        | SupportedProtocol::Proto004
+        | SupportedProtocol::Proto005
+        | SupportedProtocol::Proto005_2
+        | SupportedProtocol::Proto006
+        | SupportedProtocol::Proto007 => get_votes_listings_before_008(env, &context_hash),
+        SupportedProtocol::Proto008 => {
+            // TODO: TE-343 - implement and check
+            Err(VotesError::UnsupportedProtocolError {
+                protocol: supported_protocol.protocol_hash(),
+            })
+        }
+    }
+}
+
+fn get_votes_listings_before_008(
+    env: &RpcServiceEnvironment,
+    context_hash: &Vec<u8>,
+) -> Result<Option<Vec<VoteListings>>, VotesError> {
     // filter out the listings data
     let listings_data = if let Some(val) = env
         .tezedge_context()
@@ -297,7 +398,9 @@ pub(crate) fn get_votes_listings(
     {
         val
     } else {
-        bail!("No listings found in context")
+        return Err(VotesError::ServiceError {
+            reason: format_err!("No votes listings found in context"),
+        });
     };
 
     // convert the raw context data to VoteListings
@@ -354,11 +457,11 @@ impl VoteListings {
 pub(crate) fn get_context_constants_just_for_rpc(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<Option<RpcJsonMap>, failure::Error> {
+) -> Result<Option<RpcJsonMap>, ContextParamsError> {
     let context_proto_params = get_context_protocol_params(block_hash, env)?;
     Ok(tezos_messages::protocol::get_constants_for_rpc(
         &context_proto_params.constants_data,
-        context_proto_params.protocol_hash,
+        &context_proto_params.protocol_hash,
     )?)
 }
 
@@ -487,17 +590,55 @@ fn create_protocol_rpc_request(
 }
 
 pub(crate) struct ContextProtocolParam {
-    pub protocol_hash: ProtocolHash,
+    pub protocol_hash: SupportedProtocol,
     pub constants_data: Vec<u8>,
     pub block_header: BlockHeaderWithHash,
 }
 
-#[derive(Debug, Clone, Fail)]
+#[derive(Debug, Fail)]
 pub enum ContextParamsError {
     #[fail(display = "Protocol not found in context for block: {}", _0)]
     NoProtocolForBlock(String),
     #[fail(display = "Protocol constants not found in context for block: {}", _0)]
     NoConstantsForBlock(String),
+    #[fail(display = "Storage error occurred, reason: {}", reason)]
+    StorageError { reason: storage::StorageError },
+    #[fail(display = "Context error occurred, reason: {}", reason)]
+    ContextError {
+        reason: storage::context::ContextError,
+    },
+    #[fail(display = "Context constants, reason: {}", reason)]
+    ContextConstantsDecodeError {
+        reason: tezos_messages::protocol::ContextConstantsDecodeError,
+    },
+    #[fail(display = "Unsupported protocol {}", protocol)]
+    UnsupportedProtocolError { protocol: String },
+}
+
+impl From<storage::StorageError> for ContextParamsError {
+    fn from(error: storage::StorageError) -> Self {
+        ContextParamsError::StorageError { reason: error }
+    }
+}
+
+impl From<storage::context::ContextError> for ContextParamsError {
+    fn from(error: storage::context::ContextError) -> Self {
+        ContextParamsError::ContextError { reason: error }
+    }
+}
+
+impl From<UnsupportedProtocolError> for ContextParamsError {
+    fn from(error: UnsupportedProtocolError) -> Self {
+        ContextParamsError::UnsupportedProtocolError {
+            protocol: error.protocol,
+        }
+    }
+}
+
+impl From<tezos_messages::protocol::ContextConstantsDecodeError> for ContextParamsError {
+    fn from(error: tezos_messages::protocol::ContextConstantsDecodeError) -> Self {
+        ContextParamsError::ContextConstantsDecodeError { reason: error }
+    }
 }
 
 /// Get protocol and context constants as bytes from context list for desired block or level
@@ -512,17 +653,14 @@ pub enum ContextParamsError {
 pub(crate) fn get_context_protocol_params(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<ContextProtocolParam, failure::Error> {
+) -> Result<ContextProtocolParam, ContextParamsError> {
     // get block header
     let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
         Some(block) => block,
-        None => bail!(
-            "Block not found for block_hash: {}",
-            HashType::BlockHash.hash_to_b58check(block_hash)
-        ),
+        None => return Err(storage::StorageError::MissingKey.into()),
     };
 
-    let protocol_hash: Vec<u8>;
+    let protocol_hash: ProtocolHash;
     let constants: Vec<u8>;
     {
         let context = env.tezedge_context();
@@ -535,8 +673,7 @@ pub(crate) fn get_context_protocol_params(
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(
                 HashType::BlockHash.hash_to_b58check(&block_hash),
-            )
-            .into());
+            ));
         }
 
         if let Some(data) =
@@ -546,13 +683,12 @@ pub(crate) fn get_context_protocol_params(
         } else {
             return Err(ContextParamsError::NoConstantsForBlock(
                 HashType::BlockHash.hash_to_b58check(&block_hash),
-            )
-            .into());
+            ));
         }
     };
 
     Ok(ContextProtocolParam {
-        protocol_hash,
+        protocol_hash: protocol_hash.try_into()?,
         constants_data: constants,
         block_header,
     })

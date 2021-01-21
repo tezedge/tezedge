@@ -1,7 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::env;
+use std::iter::FromIterator;
 
 use assert_json_diff::assert_json_eq_no_panic;
 use enum_iterator::IntoEnumIterator;
@@ -340,49 +342,23 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 cycle, level, blocks_per_cycle
             );
 
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?cycle={}",
-                "chains/main/blocks", level, "helpers/endorsing_rights", cycle
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/endorsing_rights",
-                cycle + preserved_cycles
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/endorsing_rights",
-                std::cmp::max(0, cycle - 2)
-            ))
-            .await;
+            let cycles_to_check: HashSet<i64> = HashSet::from_iter(
+                [cycle, cycle + preserved_cycles, std::cmp::max(0, cycle - 2)].to_vec(),
+            );
 
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?all=true&cycle={}",
-                "chains/main/blocks", level, "helpers/baking_rights", cycle
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?all=true&cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/baking_rights",
-                cycle + preserved_cycles
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?all=true&cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/baking_rights",
-                std::cmp::max(0, cycle - 2)
-            ))
-            .await;
+            for cycle_to_check in cycles_to_check {
+                test_rpc_compare_json(&format!(
+                    "{}/{}/{}?cycle={}",
+                    "chains/main/blocks", level, "helpers/endorsing_rights", cycle_to_check
+                ))
+                .await;
+
+                test_rpc_compare_json(&format!(
+                    "{}/{}/{}?all=true&cycle={}",
+                    "chains/main/blocks", level, "helpers/baking_rights", cycle_to_check
+                ))
+                .await;
+            }
 
             // get all cycles - it is like json: [0,1,2,3,4,5,7,8]
             let cycles = try_get_data_as_json(&format!(
@@ -470,10 +446,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
-    let _ = test_rpc_compare_json_and_return_if_eq(rpc_path).await;
-}
-
-async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     if is_ignored(&IGNORE_PATH_PATTERNS, rpc_path) {
         println!("Skipping rpc_path check: {}", rpc_path);
@@ -501,8 +473,10 @@ async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) {
         panic!(
             "\n\nError: \n{}\n\nnode2_json: ({})\n{}\n\nnode1_json: ({})\n{}",
             error,
-            node_rpc_url(NodeType::Node2, rpc_path), node2_json,
-            node_rpc_url(NodeType::Node1, rpc_path), node1_json,
+            node_rpc_url(NodeType::Node2, rpc_path),
+            node2_json,
+            node_rpc_url(NodeType::Node1, rpc_path),
+            node1_json,
         );
     }
 }

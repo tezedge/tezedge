@@ -144,6 +144,9 @@ impl_to_ocaml_record! {
         last_allowed_fork_level: OCamlInt32,
         forking_testchain: bool,
         forking_testchain_data: Option<ForkingTestchainData>,
+        block_metadata_hash: Option<OCamlBlockMetadataHash>,
+        ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
+        ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use assert_json_diff::assert_json_eq;
 use failure::Error;
@@ -10,7 +11,7 @@ use serde_json::{json, Value};
 use crypto::hash::{HashType, ProtocolHash};
 use tezos_messages::base::rpc_support::{ToRpcJsonMap, UniversalValue};
 use tezos_messages::protocol::{
-    get_constants_for_rpc, proto_005_2, proto_006, proto_007, proto_008,
+    get_constants_for_rpc, proto_005_2, proto_006, proto_007, proto_008, SupportedProtocol,
 };
 
 #[test]
@@ -98,7 +99,10 @@ fn assert_constants_eq(
     assert_eq!(expected_protocol_hash, protocol_hash);
 
     // get all constatnts (fixed + dynamic decoded)
-    let constants = get_constants_for_rpc(&just_dynamic_constants_bytes, protocol_hash)?;
+    let constants = get_constants_for_rpc(
+        &just_dynamic_constants_bytes,
+        &SupportedProtocol::try_from(protocol_hash)?,
+    )?;
     assert!(constants.is_some());
     let constants = constants.unwrap();
 

@@ -3,10 +3,10 @@
 # - standalone-tests (just rust tests)
 # - sandbox-inject-operation (runs sandboxed ocaml and rust nodes and checks p2p, rpc between them, using tezos_client)
 # - connect-from-different-network-test (runs ocaml nodes and rust node)
-# - carthagenet-offline-tests (runs snapshoted local ocaml nodes and rust node)
+# - edonet-big-offline-tests (runs snapshoted local ocaml nodes and rust node - more robust then others)
 # - delphinet-offline-tests (runs snapshoted local ocaml nodes and rust node)
-# - edonet-offline-tests (runs snapshoted local ocaml nodes and rust node)
 # - mainnet-offline-tests (runs snapshoted local ocaml nodes and rust node)
+# - carthagenet-legacy-offline-tests (runs snapshoted local ocaml nodes and rust node - works just on older v8.0 image)
 ##############################################################################################################
 # Ocaml stuff is based on image tezos/tezos:v8 (if released new one, fell free to upgrade it here)
 ##############################################################################################################
@@ -196,8 +196,6 @@ steps:
     ref:
       exclude:
         - refs/pull/*/head
-  # TODO: remove
-  detach: true
 
 # prepare and compiles (async) bench for target branch (only for PR)
 - name: compile-benchmarks-for-target-branch
@@ -251,8 +249,6 @@ steps:
   commands:
     - /artifacts/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
     - /artifacts/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
-  # TODO: remove
-  detach: true
 
 - name: apply/block-context-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -271,8 +267,6 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/actors_apply_blocks_test --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
-  # TODO: remove
-  detach: true
 
 - name: current-branch/head-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -292,8 +286,6 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_branch_on_level3_then_current_head_level4
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_heads_to_level3
-  # TODO: remove
-  detach: true
 
 - name: simple-reorg-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -312,8 +304,6 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_reorg_with_different_current_branches
-  # TODO: remove
-  detach: true
 
 - name: multipass-blacklist-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -332,8 +322,6 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
-  # TODO: remove
-  detach: true
 
 - name: bootstrap-and-mempool-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -352,8 +340,6 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
-  # TODO: remove
-  detach: true
 
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -436,7 +422,6 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 ##############################################################################################################
 # This pipeline runs the python test framwork unmodified tests from the tezos repository aginst tezedge nodes
@@ -482,25 +467,6 @@ steps:
     - cd /tmp/tezos-src/unmodified/tezos/tests_python
     - mkdir $${DRONE_STEP_NAME}_logs
     - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_nodes.py
-
-- name: test-many-bakers
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  # TODO: TE-275 remove failure: ignore
-  failure: ignore
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tezos-src
-      path: /tmp/tezos-src
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezos-src/unmodified/tezos/tests_python
-    - mkdir $${DRONE_STEP_NAME}_logs
-    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_bakers.py
 
 - name: test-multinode
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -587,9 +553,11 @@ steps:
     - mkdir $${DRONE_STEP_NAME}_logs
     - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_programs.py
 
-- name: test-contract-annotations-test
+- name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
+  # TODO: TE-275 remove failure: ignore
+  failure: ignore
   user: root
   volumes:
     - name: build
@@ -602,7 +570,7 @@ steps:
   commands:
     - cd /tmp/tezos-src/unmodified/tezos/tests_python
     - mkdir $${DRONE_STEP_NAME}_logs
-    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_annotations.py
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_many_bakers.py
 
 - name: test-contract-baker-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -620,6 +588,26 @@ steps:
     - cd /tmp/tezos-src/unmodified/tezos/tests_python
     - mkdir $${DRONE_STEP_NAME}_logs
     - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_baker.py
+
+- name: test-contract-annotations-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tezos-src
+      path: /tmp/tezos-src
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd /tmp/tezos-src/unmodified/tezos/tests_python
+    - mkdir $${DRONE_STEP_NAME}_logs
+    - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_contract_annotations.py
+  # TODO: TE-275 remove failure: ignore
+  # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+  failure: ignore
 
 - name: basic-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -653,7 +641,6 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 depends_on:
   - build-and-tests
@@ -673,9 +660,6 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
@@ -686,9 +670,6 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
@@ -699,9 +680,6 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
@@ -712,9 +690,6 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
@@ -725,9 +700,6 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
@@ -738,9 +710,6 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
@@ -751,25 +720,15 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
-  volumes:
-    - name: build
-      path: /artifacts
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
   commands:
     - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_basic.py
 
-volumes:
-  - name: build
-    host:
-      path: /etc/tezedge-ci/build/
-
 trigger:
   branch:
-    - master
-    - develop
-    - feature/edo
+    - TODO_TE-275
 
 depends_on:
   - build-and-tests
@@ -967,7 +926,6 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 depends_on:
   - build-and-tests
@@ -1194,13 +1152,12 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 depends_on:
   - build-and-tests
 
 ##############################################################################################################
-# This pipeline runs tezedge node with mainnet configuration againts ocaml node with carthagenet configuration
+# This pipeline runs tezedge node with mainnet configuration againts ocaml node with different network cfg
 #
 ##############################################################################################################
 ---
@@ -1211,11 +1168,11 @@ clone:
   disable: true
 
 environment:
-  NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 0
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-carthage-run:8732
+  OCAML_NETWORK: edonet
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-run:8732
   TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT: http://tezedge-node-run-mainnet:18732
 
 steps:
@@ -1258,7 +1215,7 @@ steps:
       - tezos-node-bootstrap --bootstrap --level=0 --node_tezedge=$${TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT}
 
     # just run ocaml snapshoted node
-  - name: ocaml-node-carthage-run
+  - name: ocaml-node-run
     user: root
     image: tezos/tezos:v8.1
     detach: true
@@ -1272,16 +1229,16 @@ steps:
       - mkdir /home/tezos/data/
       - cp /artifacts/identities/identity_7.json /home/tezos/data/identity.json
       - rm -f /home/tezos/data/config.json
-      - tezos-node config init --data-dir /home/tezos/data --network carthagenet
-      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network carthagenet --no-bootstrap-peers
+      - tezos-node config init --data-dir /home/tezos/data --network $${OCAML_NETWORK}
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${OCAML_NETWORK} --no-bootstrap-peers
 
-  - name: wait-ocaml-node-carthage-to-start
+  - name: wait-ocaml-node-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
 
-  - name: ocaml-node-carthage-connect-to-tezedge
+  - name: ocaml-node-connect-to-tezedge
     user: root
     image: tezos/tezos:v8.1
     volumes:
@@ -1327,19 +1284,18 @@ trigger:
   branch:
     - master
     - develop
-#    - feature/edo
 
 depends_on:
   - build-and-tests
 
 ##############################################################################################################
-# This pipeline runs tezedge node and ocaml node with carthagenet configuration,
+# This pipeline runs tezedge node and ocaml node with edonet configuration,
 # which connects just to local ocaml nodes (does not connect to Internet to or any live node)
 ##############################################################################################################
 ---
 kind: pipeline
-name: carthagenet-offline-tests
-# default build goes with: --network "carthagenet"
+name: edonet-big-offline-tests
+# default build goes with: --network "edonet"
 # integration test is using env variables:
 # - FROM_BLOCK_HEADER - block level, (watch out, if use change this, then check parameter --stop=)
 # - TO_BLOCK_HEADER - block level (also is used by bootstrap task --bootstrap)
@@ -1354,9 +1310,11 @@ clone:
   disable: true
 
 environment:
-  NETWORK: carthagenet
+  NETWORK: edonet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
+  # TODO: TE-349 - remove, if fixed and use just TO_BLOCK_HEADER
+  TO_BLOCK_HEADER_FOR_INDEXER: 180 # also check parameter --stop=181
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
@@ -1385,15 +1343,15 @@ steps:
     - rm -rf /tmp/tezedge_target-branch_developer/light-node
     - rm -rf /tmp/tezedge_target-branch_developer/tezos-node
 
-# just run ocaml 3 carthagenet snapshoted nodes
+# just run ocaml 3 edonet snapshoted nodes
 - name: ocaml-node-run-1
   user: root
-  image: tezos/tezos:v8.0
+  image: tezos/tezos:v8.1
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-carthagenet-snapshot-data-1
+    - name: ocaml-node-edonet-snapshot-data-1
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip1.txt
@@ -1404,12 +1362,12 @@ steps:
 
 - name: ocaml-node-run-2
   user: root
-  image: tezos/tezos:v8.0
+  image: tezos/tezos:v8.1
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-carthagenet-snapshot-data-2
+    - name: ocaml-node-edonet-snapshot-data-2
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip2.txt
@@ -1420,12 +1378,12 @@ steps:
 
 - name: ocaml-node-run-3
   user: root
-  image: tezos/tezos:v8.0
+  image: tezos/tezos:v8.1
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-carthagenet-snapshot-data-3
+    - name: ocaml-node-edonet-snapshot-data-3
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip3.txt
@@ -1516,7 +1474,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=521"]
+  command: ["tzindex", "run", "--stop=181"]
 
 - name: tz-indexer-ocaml
   image: blockwatch/tzindex:latest
@@ -1534,7 +1492,7 @@ steps:
     TZ_SERVER_CORS_ENABLE: true
     TZ_DATABASE_PATH: /data/index
     TZ_SNAPSHOT_PATH: /data/snapshots
-  command: ["tzindex", "run", "--stop=521"]
+  command: ["tzindex", "run", "--stop=181"]
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
@@ -1556,7 +1514,7 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
+    - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER_FOR_INDEXER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
 
 # compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with two nodes (current branch and ocaml))
 # not triggered on pull request, because on pull request is triggered more complex wrk test
@@ -1595,15 +1553,15 @@ volumes:
   - name: build
     host:
       path: /etc/tezedge-ci/build
-  - name: ocaml-node-carthagenet-snapshot-data-1
+  - name: ocaml-node-edonet-snapshot-data-1
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-1
-  - name: ocaml-node-carthagenet-snapshot-data-2
+      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1
+  - name: ocaml-node-edonet-snapshot-data-2
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-2
-  - name: ocaml-node-carthagenet-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2
+  - name: ocaml-node-edonet-snapshot-data-3
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-ci/data/tezedge-node
@@ -1622,7 +1580,6 @@ trigger:
   branch:
     - master
     - develop
-#    - feature/edo
 
 depends_on:
   - build-and-tests
@@ -1827,23 +1784,23 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 depends_on:
   - build-and-tests
 
 ##############################################################################################################
-# This pipeline runs tezedge node with edonet configuration againts ocaml node with edonet snapshot
+# This pipeline runs tezedge node with carthagenet configuration againts ocaml node with carthagenet snapshot
+# Note: this is legacy and runs only on tezos v8.0 images
 ##############################################################################################################
 ---
 kind: pipeline
-name: edonet-offline-tests
+name: carthagenet-legacy-offline-tests
 
 clone:
   disable: true
 
 environment:
-  NETWORK: edonet
+  NETWORK: carthagenet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
@@ -1867,15 +1824,15 @@ steps:
       - rm -rf /tmp/tezedge_developer/light-node
       - rm -rf /tmp/tezedge_developer/tezos-node
 
-  # just run ocaml 3 edonet snapshoted nodes
+  # just run ocaml 3 carthagenet snapshoted nodes
   - name: ocaml-node-run-1
     user: root
-    image: tezos/tezos:v8.1
+    image: tezos/tezos:v8.0
     detach: true
     volumes:
       - name: build
         path: /artifacts
-      - name: ocaml-node-edonet-snapshot-data-1
+      - name: ocaml-node-carthagenet-snapshot-data-1
         path: /home/tezos/data
     commands:
       - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip1.txt
@@ -1886,12 +1843,12 @@ steps:
 
   - name: ocaml-node-run-2
     user: root
-    image: tezos/tezos:v8.1
+    image: tezos/tezos:v8.0
     detach: true
     volumes:
       - name: build
         path: /artifacts
-      - name: ocaml-node-edonet-snapshot-data-2
+      - name: ocaml-node-carthagenet-snapshot-data-2
         path: /home/tezos/data
     commands:
       - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip2.txt
@@ -1902,12 +1859,12 @@ steps:
 
   - name: ocaml-node-run-3
     user: root
-    image: tezos/tezos:v8.1
+    image: tezos/tezos:v8.0
     detach: true
     volumes:
       - name: build
         path: /artifacts
-      - name: ocaml-node-edonet-snapshot-data-3
+      - name: ocaml-node-carthagenet-snapshot-data-3
         path: /home/tezos/data
     commands:
       - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip3.txt
@@ -2000,8 +1957,6 @@ steps:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
       - /artifacts/rpc_integration_test --nocapture --ignored test_rpc_compare
-    # TODO: remove
-    detach: true
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: indexer-test
@@ -2013,15 +1968,15 @@ volumes:
   - name: build
     host:
       path: /etc/tezedge-ci/build
-  - name: ocaml-node-edonet-snapshot-data-1
+  - name: ocaml-node-carthagenet-snapshot-data-1
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1
-  - name: ocaml-node-edonet-snapshot-data-2
+      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-1
+  - name: ocaml-node-carthagenet-snapshot-data-2
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2
-  - name: ocaml-node-edonet-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-2
+  - name: ocaml-node-carthagenet-snapshot-data-3
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-carthagenet-snapshot-data-3
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-ci/data/tezedge-node
@@ -2034,14 +1989,13 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 depends_on:
   - build-and-tests
 
 
 ##############################################################################################################
-# This pipeline runs tezedge node with mainnet configuration againts ocaml node with edonet snapshot
+# This pipeline runs tezedge node with mainnet configuration againts ocaml node with mainnet snapshot
 ##############################################################################################################
 ---
 kind: pipeline
@@ -2244,7 +2198,6 @@ trigger:
   branch:
     - master
     - develop
-    - feature/edo
 
 depends_on:
   - build-and-tests
@@ -2294,10 +2247,10 @@ depends_on:
   - sandbox-carthage-node-tests
   - tezos-python-tests
   - connect-from-different-network-test
-  - carthagenet-offline-tests
+  - edonet-big-offline-tests
   - delphinet-offline-tests
-  - edonet-offline-tests
   - mainnet-offline-tests
+  - carthagenet-legacy-offline-tests
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
@@ -2344,7 +2297,7 @@ depends_on:
   - sandbox-carthage-node-tests
   - tezos-python-tests
   - connect-from-different-network-test
-  - carthagenet-offline-tests
+  - edonet-big-offline-tests
   - delphinet-offline-tests
-  - edonet-offline-tests
   - mainnet-offline-tests
+  - carthagenet-legacy-offline-tests

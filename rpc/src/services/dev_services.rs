@@ -119,7 +119,10 @@ pub(crate) fn get_cycle_length_for_block(
     log: &Logger,
 ) -> Result<i32, failure::Error> {
     if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
-        Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?
+        Ok(tezos_messages::protocol::get_constants_for_rpc(
+            &context_proto_params.constants_data,
+            &context_proto_params.protocol_hash,
+        )?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
                     slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
