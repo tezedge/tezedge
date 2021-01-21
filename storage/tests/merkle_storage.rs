@@ -18,6 +18,8 @@ use merkle_storage::{MerkleStorage, MerkleError, Entry, EntryHash, check_commit_
 use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};
 use persistent::sequence::Sequences;
 
+const OPEN_FILES_LIMIT: u64 = 64 * 1024; //64k open files limit for process
+
 // fn get_cycles_for_block(persistent_storage: &PersistentStorage, context_hash: &ContextHash) -> i32 {
 //     let tezedge_context = TezedgeContext::new(
 //         // BlockStorage::new(&persistent_storage),
@@ -34,7 +36,32 @@ use persistent::sequence::Sequences;
 //     }
 // }
 
+// Sets the limit of open file descriptors for the process
+// If user set a higher limit before, it will be left as is
+unsafe fn set_file_desc_limit(num: u64) {
+    // Get current open file desc limit
+    let rlim = match rlimit::getrlimit(rlimit::Resource::NOFILE) {
+        Ok(rlim) => rlim,
+        Err(e) => {
+            eprintln!("Setting open files limit failed (getrlimit): {}", e);
+            return;
+        }
+    };
+    let (mut soft, hard) = rlim;
+    // If the currently set rlimit is higher, do not change it
+    if soft >= num {
+        return;
+    }
+    // Set rlimit to num, but not higher than hard limit
+    soft = num.min(hard);
+    match rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard) {
+        Ok(()) => println!("Open files limit set to {}.", soft),
+        Err(e) => eprintln!("Setting open files limit failed (setrlimit): {}", e),
+    }
+}
+
 fn init_persistent_storage() -> PersistentStorage {
+    unsafe { set_file_desc_limit(OPEN_FILES_LIMIT); };
     // Parses config + cli args
     // let env = crate::configuration::Environment::from_args();
     let db_path = "/tmp/tezedge/light-node";
@@ -175,6 +202,7 @@ fn test_merkle_storage_gc() {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
+            if let ContextAction::Commit { new_context_hash, .. } = &action {
                 cycle_commit_hashes.last_mut().unwrap().push(
                     new_context_hash[..].try_into().unwrap()
                 );
