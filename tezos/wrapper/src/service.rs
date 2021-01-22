@@ -291,7 +291,7 @@ pub fn handle_protocol_service_error<LC: Fn(ProtocolServiceError)>(
     match error {
         ProtocolServiceError::IpcError { .. } | ProtocolServiceError::UnexpectedMessage { .. } => {
             // we need to refresh protocol runner endpoint, so propagate error
-            return Err(error);
+            Err(error)
         }
         _ => {
             // just log error

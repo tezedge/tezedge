@@ -55,7 +55,7 @@ pub(crate) fn get_block_actions_cursor(
     let values = context_action_storage
         .load_cursor(cursor_id, limit, filters)?
         .into_iter()
-        .map(|value| ContextActionJson::from(value))
+        .map(ContextActionJson::from)
         .collect();
     Ok(values)
 }
@@ -76,7 +76,7 @@ pub(crate) fn get_contract_actions_cursor(
     let values = context_action_storage
         .load_cursor(cursor_id, limit, filters)?
         .into_iter()
-        .map(|value| ContextActionJson::from(value))
+        .map(ContextActionJson::from)
         .collect();
     Ok(values)
 }

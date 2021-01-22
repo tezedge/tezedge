@@ -35,7 +35,7 @@ lazy_static! {
     pub static ref NODE_P2P_PORT: u16 = 1234; // TODO: maybe some logic to verify and get free port
     pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
-            listener_port: NODE_P2P_PORT.clone(),
+            listener_port: *NODE_P2P_PORT,
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
@@ -1425,7 +1425,7 @@ mod test_node_peer {
         ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
 
-            let result = loop {
+            loop {
                 if self.connected.load(Ordering::Acquire) {
                     break Ok(());
                 }
@@ -1436,8 +1436,7 @@ mod test_node_peer {
                 } else {
                     break Err(failure::format_err!("[{}] wait_for_connection - something is wrong - timeout (timeout: {:?}, delay: {:?}) exceeded!", self.name, timeout, delay));
                 }
-            };
-            result
+            }
         }
 
         // TODO: refactor with async/condvar, not to block main thread

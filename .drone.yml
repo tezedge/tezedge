@@ -1539,7 +1539,7 @@ steps:
     - refs/pull/*/head
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
-- name: wrk-performance-test--tezedge-vs-ocaml-vs-tezedge_target_branch
+- name: wrk-performance-test-tezedge-vs-ocaml-vs-tezedge_target_branch
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root

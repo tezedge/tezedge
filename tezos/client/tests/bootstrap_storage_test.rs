@@ -415,7 +415,7 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
         )

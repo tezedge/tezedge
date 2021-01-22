@@ -131,7 +131,7 @@ pub mod subscription {
     {
         shell_channel.tell(
             Subscribe {
-                actor: Box::new(myself.clone()),
+                actor: Box::new(myself),
                 topic: ShellChannelTopic::ShellEvents.into(),
             },
             None,
@@ -163,7 +163,7 @@ pub mod subscription {
     {
         shell_channel.tell(
             Subscribe {
-                actor: Box::new(myself.clone()),
+                actor: Box::new(myself),
                 topic: ShellChannelTopic::ShellShutdown.into(),
             },
             None,

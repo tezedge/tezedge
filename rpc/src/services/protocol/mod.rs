@@ -62,9 +62,7 @@ impl From<ContextParamsError> for RightsError {
 
 impl From<failure::Error> for RightsError {
     fn from(error: failure::Error) -> Self {
-        RightsError::ServiceError {
-            reason: error.into(),
-        }
+        RightsError::ServiceError { reason: error }
     }
 }
 

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support for 008 Edo protocol
+- Support for 008 protocol Edo + network support - p2p, rpc, fii
 
 ### Changed
 

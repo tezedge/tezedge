@@ -84,8 +84,6 @@ fn apply_block_request_decoded_roundtrip(request: ApplyBlockRequest) -> Result<(
             ))
             .unwrap();
             let _response: ApplyBlockResponse = result.to_rust();
-
-            ()
         })
     })
 }

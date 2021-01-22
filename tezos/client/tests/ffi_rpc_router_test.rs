@@ -209,7 +209,7 @@ fn test_context_contract() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path:
                 "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17"

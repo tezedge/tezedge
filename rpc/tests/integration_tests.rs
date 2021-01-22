@@ -568,7 +568,7 @@ fn ignore_path_patterns() -> Vec<String> {
     )
 }
 
-fn is_ignored(ignore_patters: &Vec<String>, rpc_path: &str) -> bool {
+fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
     if ignore_patters.is_empty() {
         return false;
     }
