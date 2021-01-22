@@ -192,12 +192,12 @@ fn test_merkle_storage_gc() {
 
     let block_storage = BlockStorage::new(&persistent_storage);
     let ctx_action_storage = ContextActionStorage::new(&persistent_storage);
+    let merkle_rwlock = persistent_storage.merkle();
+    let mut merkle = merkle_rwlock.write().unwrap();
 
     for (block, actions) in recv_blocks(block_storage, ctx_action_storage) {
         println!("applying block: {}", block.header.level());
 
-        let merkle_rwlock = persistent_storage.merkle();
-        let mut merkle = merkle_rwlock.write().unwrap();
         let t = Instant::now();
         let actions_len = actions.len();
 
