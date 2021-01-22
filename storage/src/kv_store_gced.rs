@@ -1,6 +1,6 @@
 use std::thread;
 use std::mem;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashSet};
 use std::time::{Instant, Duration};
 use std::sync::{mpsc, Arc, RwLock};
 use std::ops::{Deref, DerefMut};
@@ -135,7 +135,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 ) {
     let len = stores.read().unwrap().len();
     let mut reused_keys = vec![HashSet::new(); len];
-    let mut todo_keys: VecDeque<EntryHash> = VecDeque::new();
+    let mut todo_keys: Vec<EntryHash> = vec![];
     let mut received_exit_msg = false;
     let mut reused_count = 0;
     loop {
@@ -186,10 +186,16 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         }
 
         if todo_keys.len() > 0 {
-            reused_count += todo_keys.len().min(16);
-            let keys: Vec<_> = todo_keys.drain(..(todo_keys.len().min(16))).collect();
+            let processed_len = todo_keys.len().min(64);
+            reused_count += processed_len;
+
             let mut stores = stores.write().unwrap();
-            for key in keys.into_iter() {
+            for _ in (0..processed_len) {
+                let key = match todo_keys.pop() {
+                    Some(key) => key,
+                    None => break, // unreachable!
+                };
+
                 let entry_bytes = stores_get(&stores, &key).unwrap();
                 let entry: Entry = bincode::deserialize(&entry_bytes).unwrap();
                 // let entry_bytes = match stores_get(&stores, &key) {
@@ -210,7 +216,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                         todo_keys.extend(children);
                     }
                     Entry::Commit(commit) => {
-                        todo_keys.push_back(commit.root_hash);
+                        todo_keys.push(commit.root_hash);
                     }
                 }
             }

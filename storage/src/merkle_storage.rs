@@ -405,11 +405,11 @@ impl From<MerkleError> for CheckEntryHashError {
 /// Recursively check if entry hash is valid
 pub fn check_commit_hashes<I>(storage: &MerkleStorage, commits: I) -> Result<(), CheckEntryHashError>
 where I: IntoIterator<Item = EntryHash> {
-    let mut entries = VecDeque::from_iter(commits);
+    let mut entries = Vec::from_iter(commits);
     let mut checked = HashSet::new();
 
     loop {
-        let entry_hash = match entries.pop_front() {
+        let entry_hash = match entries.pop() {
             Some(hash) => hash,
             None => break,
         };
@@ -425,13 +425,13 @@ where I: IntoIterator<Item = EntryHash> {
             Entry::Tree(tree) => {
                 let hash = hash_tree(&tree)?;
                 for (_, node) in tree.into_iter() {
-                    entries.push_back(node.entry_hash);
+                    entries.push(node.entry_hash);
                 }
                 hash
             }
             Entry::Commit(commit) => {
                 let hash = hash_commit(&commit)?;
-                entries.push_back(commit.root_hash);
+                entries.push(commit.root_hash);
                 hash
             }
         };
