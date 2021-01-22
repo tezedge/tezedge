@@ -196,6 +196,7 @@ pub struct MerkleStorage {
     last_commit_hash: Option<EntryHash>,
     /// storage latency statistics
     perf_stats: MerklePerfStats,
+    block_latencies: BlockLatencies,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
 }
@@ -277,6 +278,35 @@ impl Default for OperationLatencies {
             op_exec_time_min: f64::MAX,
             op_exec_time_max: f64::MIN,
         }
+    }
+}
+
+/// Block application latencies
+#[derive(Serialize, Default, Debug, Clone)]
+pub struct BlockLatencies {
+    latencies: Vec<u64>,
+    current: u64,
+}
+
+impl BlockLatencies {
+    fn new() -> Self {
+        Default::default()
+    }
+
+    fn update(&mut self, latency: u64) {
+        self.current += latency;
+    }
+
+    fn end_block(&mut self) {
+        self.latencies.push(self.current);
+        self.current = 0;
+    }
+
+    pub fn get(&self, offset_from_last_applied: usize) -> Option<u64> {
+        self.latencies.len()
+            .checked_sub(offset_from_last_applied + 1)
+            .and_then(|index| self.latencies.get(index))
+            .map(|x| *x)
     }
 }
 
@@ -462,6 +492,7 @@ impl MerkleStorage {
                 global: HashMap::new(),
                 perpath: HashMap::new(),
             },
+            block_latencies: Default::default(),
             actions: Arc::new(Vec::new()),
         }
     }
@@ -1497,6 +1528,10 @@ impl MerkleStorage {
         })
     }
 
+    pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
+        self.block_latencies.get(offset_from_last_applied)
+    }
+
     /// Update global and per-path execution stats. Pass Instant with operation execution time
     pub fn update_execution_stats(
         &mut self,
@@ -1505,7 +1540,14 @@ impl MerkleStorage {
         instant: &Instant,
     ) {
         // stop timer and get duration
-        let exec_time: f64 = instant.elapsed().as_nanos() as f64;
+        let exec_time_nanos = instant.elapsed().as_nanos();
+        let exec_time: f64 = exec_time_nanos as f64;
+
+        self.block_latencies.update(exec_time_nanos as u64);
+        // commit signifies end of the block
+        if &op == "Commit" {
+            self.block_latencies.end_block();
+        }
 
         // collect global stats
         let entry = self
@@ -1564,6 +1606,10 @@ impl MerkleStorage {
 #[allow(unused_must_use)]
 mod tests {
     use assert_json_diff::assert_json_eq;
+    use rocksdb::{Options, DB};
+    use std::path::{Path, PathBuf};
+    use std::{env, fs};
+    use std::time::Duration;
 
     use super::*;
     use crate::context_key;
@@ -2246,5 +2292,29 @@ mod tests {
             )
             .unwrap()
         );
+    }
+
+    #[test]
+    fn test_block_latenices() {
+        let db_name = "ms_test_block_latencies";
+        let mut storage = {
+            clean_db(db_name);
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            get_storage(db_name, &cache)
+        };
+
+        let t = |milis: u64| Instant::now() - Duration::from_nanos(milis * 1000);
+
+        storage.update_execution_stats("Get".to_string(), None, &t(10));
+        storage.update_execution_stats("Set".to_string(), None, &t(20));
+        storage.update_execution_stats("Commit".to_string(), None, &t(30));
+
+        assert_eq!(storage.get_block_latency(0).unwrap() / 1000, 60);
+
+        storage.update_execution_stats("Set".to_string(), None, &t(6));
+        storage.update_execution_stats("Commit".to_string(), None, &t(60));
+
+        assert_eq!(storage.get_block_latency(0).unwrap() / 1000, 66);
+        assert_eq!(storage.get_block_latency(1).unwrap() / 1000, 60);
     }
 }
