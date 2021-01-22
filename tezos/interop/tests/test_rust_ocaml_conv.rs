@@ -3,6 +3,7 @@
 #![feature(test)]
 extern crate test;
 
+use crypto::hash::HashType;
 use ocaml_interop::{ocaml_frame, to_ocaml, OCaml, OCamlRuntime, ToOCaml};
 use serial_test::serial;
 
@@ -14,7 +15,7 @@ use tezos_api::{
     ffi::RpcRequest,
     ffi::RustBytes,
     ffi::ValidateOperationRequest,
-    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder},
+    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData},
     ocaml_conv::FfiBlockHeader,
     ocaml_conv::FfiOperation,
 };
@@ -37,10 +38,20 @@ mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
 
     use tezos_api::{
-        ffi::ApplyBlockRequest, ffi::BeginConstructionRequest, ffi::PrevalidatorWrapper,
-        ffi::ProtocolRpcRequest, ffi::RpcMethod, ffi::RpcRequest, ffi::ValidateOperationRequest,
-        ocaml_conv::OCamlBlockHash, ocaml_conv::OCamlContextHash, ocaml_conv::OCamlOperationHash,
-        ocaml_conv::OCamlProtocolHash,
+        ffi::ApplyBlockRequest,
+        ffi::BeginConstructionRequest,
+        ffi::PrevalidatorWrapper,
+        ffi::ProtocolRpcRequest,
+        ffi::RpcMethod,
+        ffi::RpcRequest,
+        ffi::{ApplyBlockResponse, ForkingTestchainData, ValidateOperationRequest},
+        ocaml_conv::OCamlBlockHash,
+        ocaml_conv::OCamlContextHash,
+        ocaml_conv::OCamlOperationHash,
+        ocaml_conv::{
+            OCamlBlockMetadataHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
+            OCamlProtocolHash,
+        },
     };
     use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
@@ -64,7 +75,23 @@ mod tezos_ffi {
             block_header: BlockHeader,
             pred_header: BlockHeader,
             max_operations_ttl: OCamlInt,
-            operations: OCamlList<OCamlList<Operation>>
+            operations: OCamlList<OCamlList<Operation>>,
+        ) -> bool;
+        pub fn construct_and_compare_apply_block_response(
+            apply_block_response: ApplyBlockResponse,
+            validation_result_message: OCamlBytes,
+            context_hash: OCamlContextHash,
+            block_header_proto_json: OCamlBytes,
+            block_header_proto_metadata_json: OCamlBytes,
+            operations_proto_metadata_json: OCamlBytes,
+            max_operations_ttl: OCamlInt,
+            last_allowed_fork_level: OCamlInt32,
+            forking_testchain: bool,
+            forking_testchain_data: Option<ForkingTestchainData>,
+            block_metadata_hash: Option<OCamlBlockMetadataHash>,
+            ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
+            ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+
         ) -> bool;
         pub fn construct_and_compare_begin_construction_request(
             begin_construction_request: BeginConstructionRequest,
@@ -271,6 +298,101 @@ fn test_apply_block_request_conv() {
     .unwrap();
 
     assert!(result, "ApplyBlockRequest conversion failed")
+}
+
+#[test]
+#[serial]
+fn test_apply_block_response_conv() {
+    let response = ApplyBlockResponse {
+        validation_result_message: "validation_result_message".to_string(),
+        context_hash: HashType::ContextHash
+            .b58check_to_hash("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")
+            .expect("failed to convert"),
+        block_header_proto_json: "block_header_proto_json".to_string(),
+        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
+        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        max_operations_ttl: 6,
+        last_allowed_fork_level: 8,
+        forking_testchain: true,
+        forking_testchain_data: Some(ForkingTestchainData {
+            test_chain_id: HashType::ChainId
+                .b58check_to_hash("NetXgtSLGNJvNye")
+                .unwrap(),
+            forking_block_hash: HashType::BlockHash
+                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
+                .unwrap(),
+        }),
+        block_metadata_hash: None,
+        ops_metadata_hashes: None,
+        ops_metadata_hash: None,
+    };
+
+    let (into, from): (bool, bool) = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(
+            rt,
+            (
+                apply_block_response_root,
+                validation_result_message_root,
+                context_hash_root,
+                block_header_proto_json_root,
+                block_header_proto_metadata_json_root,
+                operations_proto_metadata_json_root,
+                max_operations_ttl_root,
+                last_allowed_fork_level_root,
+                forking_testchain_root,
+                forking_testchain_data_root,
+                block_metadata_hash_root,
+                ops_metadata_hashes_root,
+                ops_metadata_hash_root,
+            ),
+            {
+                let apply_block_response = to_ocaml!(
+                    rt,
+                    response,
+                    apply_block_response_root
+                );
+                let validation_result_message = to_ocaml!(rt, response.validation_result_message, validation_result_message_root);
+                let context_hash = to_ocaml!(rt, response.context_hash, context_hash_root);
+                let block_header_proto_json = to_ocaml!(rt, response.block_header_proto_json, block_header_proto_json_root);
+                let block_header_proto_metadata_json = to_ocaml!(rt, response.block_header_proto_metadata_json, block_header_proto_metadata_json_root);
+                let operations_proto_metadata_json = to_ocaml!(rt, response.operations_proto_metadata_json, operations_proto_metadata_json_root);
+                let max_operations_ttl = OCaml::of_i32(response.max_operations_ttl);
+                let last_allowed_fork_level = to_ocaml!(rt, response.last_allowed_fork_level, last_allowed_fork_level_root);
+                let forking_testchain = to_ocaml!(rt, response.forking_testchain, forking_testchain_root);
+                let forking_testchain_data = to_ocaml!(rt, response.forking_testchain_data, forking_testchain_data_root);
+                let block_metadata_hash = to_ocaml!(rt, response.block_metadata_hash, block_metadata_hash_root);
+                let ops_metadata_hashes = to_ocaml!(rt, response.ops_metadata_hashes, ops_metadata_hashes_root);
+                let ops_metadata_hash = to_ocaml!(rt, response.ops_metadata_hash, ops_metadata_hash_root);
+
+                let into_result: bool = tezos_ffi::construct_and_compare_apply_block_response(
+                    rt,
+                    apply_block_response,
+                    validation_result_message,
+                    context_hash,
+                    block_header_proto_json,
+                    block_header_proto_metadata_json,
+                    operations_proto_metadata_json,
+                    &max_operations_ttl,
+                    last_allowed_fork_level,
+                    forking_testchain,
+                    forking_testchain_data,
+                    block_metadata_hash,
+                    ops_metadata_hashes,
+                    ops_metadata_hash,
+                )
+                .to_rust();
+
+                let rust_apply_block_response: ApplyBlockResponse = apply_block_response.to_rust(rt);
+                let from_result = rust_apply_block_response == response;
+
+                (into_result, from_result)
+            }
+        )
+    })
+    .unwrap();
+
+    assert!(into, "ApplyBlockResponse conversion into OCaml failed");
+    assert!(from, "ApplyBlockResponse conversion from OCaml failed");
 }
 
 #[test]
