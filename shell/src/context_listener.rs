@@ -203,6 +203,8 @@ fn listen_protocol_events(
     let mut event_count = 0;
 
     while apply_block_run.load(Ordering::Acquire) {
+        // TODO: receive with record/perform flag
+        // TODO: skip when flag != perform
         match rx.receive() {
             Ok(ContextAction::Shutdown) => {
                 apply_block_run.store(false, Ordering::Release);
@@ -235,43 +237,27 @@ fn listen_protocol_events(
                         key,
                         value,
                         context_hash,
-                        ignored,
                         ..
                     } => {
-                        if !ignored {
-                            context.set(context_hash, key, value)?;
-                        }
+                        context.set(context_hash, key, value)?;
                     }
                     ContextAction::Copy {
                         to_key: key,
                         from_key,
                         context_hash,
-                        ignored,
                         ..
                     } => {
-                        if !ignored {
-                            context.copy_to_diff(context_hash, from_key, key)?;
-                        }
+                        context.copy_to_diff(context_hash, from_key, key)?;
                     }
                     ContextAction::Delete {
-                        key,
-                        context_hash,
-                        ignored,
-                        ..
+                        key, context_hash, ..
                     } => {
-                        if !ignored {
-                            context.delete_to_diff(context_hash, key)?;
-                        }
+                        context.delete_to_diff(context_hash, key)?;
                     }
                     ContextAction::RemoveRecursively {
-                        key,
-                        context_hash,
-                        ignored,
-                        ..
+                        key, context_hash, ..
                     } => {
-                        if !ignored {
-                            context.remove_recursively_to_diff(context_hash, key)?;
-                        }
+                        context.remove_recursively_to_diff(context_hash, key)?;
                     }
                     ContextAction::Commit {
                         parent_context_hash,

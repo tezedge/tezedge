@@ -9,3 +9,4 @@
 //! the crossbeam channel.
 
 pub mod channel;
+pub mod from_ocaml;
