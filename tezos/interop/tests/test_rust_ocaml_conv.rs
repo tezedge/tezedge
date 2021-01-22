@@ -346,23 +346,47 @@ fn test_apply_block_response_conv() {
                 ops_metadata_hash_root,
             ),
             {
-                let apply_block_response = to_ocaml!(
+                let apply_block_response = to_ocaml!(rt, response, apply_block_response_root);
+                let validation_result_message = to_ocaml!(
                     rt,
-                    response,
-                    apply_block_response_root
+                    response.validation_result_message,
+                    validation_result_message_root
                 );
-                let validation_result_message = to_ocaml!(rt, response.validation_result_message, validation_result_message_root);
                 let context_hash = to_ocaml!(rt, response.context_hash, context_hash_root);
-                let block_header_proto_json = to_ocaml!(rt, response.block_header_proto_json, block_header_proto_json_root);
-                let block_header_proto_metadata_json = to_ocaml!(rt, response.block_header_proto_metadata_json, block_header_proto_metadata_json_root);
-                let operations_proto_metadata_json = to_ocaml!(rt, response.operations_proto_metadata_json, operations_proto_metadata_json_root);
+                let block_header_proto_json = to_ocaml!(
+                    rt,
+                    response.block_header_proto_json,
+                    block_header_proto_json_root
+                );
+                let block_header_proto_metadata_json = to_ocaml!(
+                    rt,
+                    response.block_header_proto_metadata_json,
+                    block_header_proto_metadata_json_root
+                );
+                let operations_proto_metadata_json = to_ocaml!(
+                    rt,
+                    response.operations_proto_metadata_json,
+                    operations_proto_metadata_json_root
+                );
                 let max_operations_ttl = OCaml::of_i32(response.max_operations_ttl);
-                let last_allowed_fork_level = to_ocaml!(rt, response.last_allowed_fork_level, last_allowed_fork_level_root);
-                let forking_testchain = to_ocaml!(rt, response.forking_testchain, forking_testchain_root);
-                let forking_testchain_data = to_ocaml!(rt, response.forking_testchain_data, forking_testchain_data_root);
-                let block_metadata_hash = to_ocaml!(rt, response.block_metadata_hash, block_metadata_hash_root);
-                let ops_metadata_hashes = to_ocaml!(rt, response.ops_metadata_hashes, ops_metadata_hashes_root);
-                let ops_metadata_hash = to_ocaml!(rt, response.ops_metadata_hash, ops_metadata_hash_root);
+                let last_allowed_fork_level = to_ocaml!(
+                    rt,
+                    response.last_allowed_fork_level,
+                    last_allowed_fork_level_root
+                );
+                let forking_testchain =
+                    to_ocaml!(rt, response.forking_testchain, forking_testchain_root);
+                let forking_testchain_data = to_ocaml!(
+                    rt,
+                    response.forking_testchain_data,
+                    forking_testchain_data_root
+                );
+                let block_metadata_hash =
+                    to_ocaml!(rt, response.block_metadata_hash, block_metadata_hash_root);
+                let ops_metadata_hashes =
+                    to_ocaml!(rt, response.ops_metadata_hashes, ops_metadata_hashes_root);
+                let ops_metadata_hash =
+                    to_ocaml!(rt, response.ops_metadata_hash, ops_metadata_hash_root);
 
                 let into_result: bool = tezos_ffi::construct_and_compare_apply_block_response(
                     rt,
@@ -382,7 +406,8 @@ fn test_apply_block_response_conv() {
                 )
                 .to_rust();
 
-                let rust_apply_block_response: ApplyBlockResponse = apply_block_response.to_rust(rt);
+                let rust_apply_block_response: ApplyBlockResponse =
+                    apply_block_response.to_rust(rt);
                 let from_result = rust_apply_block_response == response;
 
                 (into_result, from_result)
